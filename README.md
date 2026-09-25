@@ -14,7 +14,7 @@ npm run check
 npm run dev
 ```
 
-`check` generates the parser, checks types, runs unit and BDD acceptance tests, and builds the package. `dev` watches TypeScript tests and regenerates the parser when the grammar changes. Tests use Vitest's `describe`/`it` API; fixtures live in `test/resources`.
+`check` generates the parser, checks types, runs unit and BDD acceptance tests, and builds the package. `dev` generates the parser once and starts Vitest's watch mode. After editing `src/grammar/Expec.g4`, run `npm run grammar:generate` to regenerate the TypeScript parser; Vitest watches the generated code. Tests use Vitest's `describe`/`it` API; fixtures live in `test/resources`.
 
 ## Package
 
