@@ -1,6 +1,6 @@
 import type { CompilationInput, CompilationResult } from './model/compiler.js';
-import type { SyntaxReader } from './model/source.js';
-import { AntlrSyntaxReader } from './syntax/reader.js';
+import type { SyntaxReader } from './grammar/source.js';
+import { AntlrSyntaxReader } from './grammar/reader.js';
 import { SemanticValidator } from './semantics/validator.js';
 export { CompilationUnimplementedError } from './unimplemented.js';
 

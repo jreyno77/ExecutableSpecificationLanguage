@@ -34,7 +34,7 @@ async function regenerate() {
   restarting = false;
 }
 
-const watcher = watch(resolve(root, "grammar"), (_event, filename) => {
+const watcher = watch(resolve(root, "src/grammar"), (_event, filename) => {
   if (!filename?.endsWith(".g4")) return;
   clearTimeout(timer);
   timer = setTimeout(() => { void regenerate(); }, 150);

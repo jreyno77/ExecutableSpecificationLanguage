@@ -1,4 +1,4 @@
-import type { SourceNode, SourceNodeId } from '../model/source.js';
+import type { SourceNode, SourceNodeId } from '../grammar/source.js';
 import type { BuiltinCatalog, CompilationResult, CompilerDiagnostic, CompilationObligation, DerivedRelationship, DiagnosticOrigin, ResolvedSpecification, SymbolKind, SymbolRecord, TypeId, TypeShape, ValidationInput } from '../model/compiler.js';
 import { CompilationUnimplementedError } from '../unimplemented.js';
 

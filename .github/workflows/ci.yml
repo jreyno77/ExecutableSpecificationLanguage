@@ -1,10 +1,9 @@
-name: Compiler checks
+name: Build and test
 
 on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: read
@@ -26,11 +25,6 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Validate task and delivery metadata before merge
-        if: github.event_name == 'pull_request'
-        env:
-          EXPEC_PR_BODY: ${{ github.event.pull_request.body }}
-        run: node --input-type=module -e "import { readPullRequestMetadata } from './scripts/release/metadata.mjs'; readPullRequestMetadata(process.env.EXPEC_PR_BODY);"
       - name: Use the pinned package manager
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies

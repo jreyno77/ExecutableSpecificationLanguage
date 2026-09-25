@@ -1,4 +1,4 @@
-import type { SourceDocument, SourceRange, SourceDescription, SourceNodeId } from './source.js';
+import type { SourceDocument, SourceRange, SourceDescription, SourceNodeId } from '../grammar/source.js';
 
 export type SymbolId = { value: string };
 export type TypeId = { value: string };

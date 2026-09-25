@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const output = resolve(root, "src/syntax/generated");
+const output = resolve(root, "src/grammar/generated");
 mkdirSync(output, { recursive: true });
 
 const result = spawnSync(process.execPath, [
@@ -15,7 +15,7 @@ const result = spawnSync(process.execPath, [
   "--exact-output-dir", "true",
   "--warnings-are-errors", "true",
   "--output-directory", output,
-  "--", "grammar/Expec.g4",
+  "--", "src/grammar/Expec.g4",
 ], { cwd: root, stdio: "inherit" });
 
 if (result.error) throw result.error;
