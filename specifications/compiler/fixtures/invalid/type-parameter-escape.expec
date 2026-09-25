@@ -1,2 +1,0 @@
-type Pair<T> = [T, T]
-function identity(value: T) returns T

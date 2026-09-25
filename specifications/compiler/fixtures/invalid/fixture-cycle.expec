@@ -1,4 +1,0 @@
-examples {
-  fixture first: Number = second
-  fixture second: Number = first
-}

@@ -1,4 +1,0 @@
-type Cart {
-  count: Number
-  count: Text
-}

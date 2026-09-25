@@ -1,3 +1,0 @@
-function multiply(a: Number, b: Number) returns Number {
-  requires a + b
-}

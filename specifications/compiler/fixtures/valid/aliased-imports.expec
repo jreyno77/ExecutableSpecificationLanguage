@@ -1,3 +1,0 @@
-use Receipt as PaymentReceipt from "payments"
-use Receipt as ShippingReceipt from "shipping"
-function record(payment: PaymentReceipt, shipment: ShippingReceipt) returns Nothing

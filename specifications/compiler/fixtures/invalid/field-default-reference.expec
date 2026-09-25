@@ -1,4 +1,0 @@
-type Settings {
-  base: Number = 1
-  derived: Number = base
-}

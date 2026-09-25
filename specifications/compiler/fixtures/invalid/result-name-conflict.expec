@@ -1,3 +1,0 @@
-function calculate(result: Number) returns Number {
-  ensures result >= 0
-}

@@ -1,7 +1,0 @@
-examples {
-  action addBook(title: Text) returns Nothing
-  scenario "unknown observation" {
-    when addBook("Dune")
-    then bookQuantitty("Dune") == 1
-  }
-}

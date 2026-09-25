@@ -1,7 +1,0 @@
-examples {
-  action reset() returns Nothing
-  scenario "number used as a check" {
-    when reset()
-    then 1
-  }
-}

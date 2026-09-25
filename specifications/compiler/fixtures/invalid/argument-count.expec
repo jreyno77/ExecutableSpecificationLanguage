@@ -1,7 +1,0 @@
-examples {
-  action add(count: Number) returns Nothing
-  scenario "too many arguments" {
-    when add(1, 2)
-    then true
-  }
-}

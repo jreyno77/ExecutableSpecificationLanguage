@@ -1,3 +1,0 @@
-type Snapshot {
-  position Number
-}

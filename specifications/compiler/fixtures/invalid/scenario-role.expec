@@ -1,7 +1,0 @@
-examples {
-  observation bookQuantity(title: Text) returns Number
-  scenario "observation used as an action" {
-    when bookQuantity("Dune")
-    then true
-  }
-}

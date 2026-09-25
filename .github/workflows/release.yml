@@ -1,4 +1,4 @@
-name: Deliver merged pull request
+name: Release merged pull request
 
 on:
   pull_request:
@@ -6,15 +6,14 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
   deployments: write
 
 concurrency:
-  group: delivery-pr-${{ github.event.pull_request.number }}
+  group: release-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  deliver:
+  release:
     if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -27,13 +26,84 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.19.0
+          node-version-file: .node-version
           package-manager-cache: false
-      - name: Use the pinned package manager
-        run: npm install --global npm@11.20.0 --ignore-scripts
-      - name: Build, verify, and deliver the immutable artifact
+      - name: Install dependencies
+        run: |
+          npm install --global npm@11.20.0 --ignore-scripts
+          npm ci
+      - name: Check and build
+        run: npm run check
+      - name: Pack the built package
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          base_version=$(node -p "require('./package.json').version.split('-')[0]")
+          npm version "${base_version}-pr.${PR_NUMBER}" --no-git-tag-version --ignore-scripts
+          npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
+      - name: Publish or verify the PR release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MERGE_SHA"
+          tag="pr-$PR_NUMBER"
+          packages=("$RUNNER_TEMP/package/"*.tgz)
+          test "${#packages[@]}" -eq 1 && test -f "${packages[0]}"
+          package="${packages[0]}"
+          name="$(basename "$package")"
+
+          if existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null); then
+            test "$existing_sha" = "$MERGE_SHA" || { echo 'Existing release tag points to a different commit.' >&2; exit 1; }
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$MERGE_SHA" >/dev/null
+          fi
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            printf 'Pull request: %s\n\nMerged commit: %s\n' "$PR_URL" "$MERGE_SHA" > "$RUNNER_TEMP/release-notes.md"
+            gh release create "$tag" --verify-tag --draft --title "PR #$PR_NUMBER" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          if gh release view "$tag" --json assets | jq -e --arg name "$name" '.assets | any(.name == $name)' >/dev/null; then
+            gh release download "$tag" --pattern "$name" --dir "$RUNNER_TEMP/existing-package"
+            cmp "$package" "$RUNNER_TEMP/existing-package/$name"
+          else
+            gh release upload "$tag" "$package"
+          fi
+          if test "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = true; then
+            gh release edit "$tag" --draft=false
+          fi
+          test "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = false
+          gh release download "$tag" --pattern "$name" --dir "$RUNNER_TEMP/verified-package"
+          cmp "$package" "$RUNNER_TEMP/verified-package/$name"
+          url=$(gh release view "$tag" --json url --jq '.url')
+          test -n "$url"
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+      - name: Record package availability
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_URL: ${{ steps.release.outputs.url }}
         with:
           script: |
-            const { deliverMergedPullRequest } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/release/deliver.mjs`);
-            await deliverMergedPullRequest({ github, context, core });
+            const repo = context.repo;
+            const sha = context.payload.pull_request.merge_commit_sha;
+            const environment = 'package-delivery';
+            const existing = await github.paginate(github.rest.repos.listDeployments, { ...repo, sha, environment, per_page: 100 });
+            if (existing.length > 1) throw new Error('Multiple deployment records exist for this commit; review them before retrying.');
+            const deployment = existing[0] ?? (await github.rest.repos.createDeployment({
+              ...repo, ref: sha, environment, auto_merge: false, required_contexts: [],
+              production_environment: true, description: `Package for PR #${context.payload.pull_request.number}`,
+            })).data;
+            const statuses = await github.paginate(github.rest.repos.listDeploymentStatuses, { ...repo, deployment_id: deployment.id, per_page: 100 });
+            if (!statuses.some(status => status.state === 'success')) {
+              await github.rest.repos.createDeploymentStatus({
+                ...repo, deployment_id: deployment.id, state: 'success', auto_inactive: false,
+                environment_url: process.env.RELEASE_URL,
+                log_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`,
+                description: 'Built package downloaded and verified from the release.',
+              });
+            }

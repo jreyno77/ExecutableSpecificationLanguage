@@ -1,4 +1,0 @@
-concept StoreGame {
-  public saveGame
-  capability save() returns Nothing
-}

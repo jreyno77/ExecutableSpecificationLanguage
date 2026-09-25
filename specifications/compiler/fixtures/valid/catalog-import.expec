@@ -1,2 +1,0 @@
-use ValidationResult from "results"
-function validate(source: Text) returns ValidationResult

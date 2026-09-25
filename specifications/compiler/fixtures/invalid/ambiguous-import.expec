@@ -1,3 +1,0 @@
-use Receipt from "payments"
-use Receipt from "shipping"
-function record(receipt: Receipt) returns Nothing

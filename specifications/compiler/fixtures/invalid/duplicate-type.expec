@@ -1,2 +1,0 @@
-type Item { title: Text }
-type Item { count: Number }

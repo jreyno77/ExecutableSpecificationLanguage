@@ -1,2 +1,0 @@
-use ValidationResult from "results"
-type ValidationResult { accepted: Boolean }

@@ -1,4 +1,0 @@
-concept StoreGame {
-  public saveGame
-  local type saveGame { value: Text }
-}

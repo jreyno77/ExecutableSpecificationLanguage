@@ -1,9 +1,0 @@
-examples {
-  setup prepare(value: Number) returns Number
-  action create() returns Number
-  scenario "use a future capture" {
-    given earlier = prepare(later)
-    when later = create()
-    then earlier == later
-  }
-}

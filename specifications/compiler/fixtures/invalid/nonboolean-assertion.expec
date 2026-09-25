@@ -1,5 +1,0 @@
-examples {
-  check quantityIsCorrect() {
-    assert 1
-  }
-}

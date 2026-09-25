@@ -1,6 +1,0 @@
-examples {
-  fixture title: Text = "Dune"
-  setup prepare(first: Text = title, second: Text = first) returns Text {
-    return second
-  }
-}

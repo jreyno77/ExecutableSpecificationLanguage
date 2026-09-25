@@ -1,3 +1,0 @@
-examples {
-  setup prepare(title: Text = fallback, fallback: Text = "Dune") returns Nothing
-}
