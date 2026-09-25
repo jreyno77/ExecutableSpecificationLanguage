@@ -1,0 +1,2 @@
+concept StoreGame {}
+extend StoreGame { capability save() returns Nothing }

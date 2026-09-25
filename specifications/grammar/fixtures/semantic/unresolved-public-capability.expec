@@ -1,0 +1,4 @@
+concept StoreGame {
+  public saveGame
+  capability save()
+}

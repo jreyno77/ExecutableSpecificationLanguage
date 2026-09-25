@@ -1,0 +1,26 @@
+{
+  "name": "expec-compiler",
+  "version": "0.0.1",
+  "languageVersion": "draft-0",
+  "sources": ["./compiler.expec", "./output.expec"],
+  "project": {
+    "root": "../.."
+  },
+  "targets": [
+    {
+      "language": "typescript",
+      "sourceDirectory": "src",
+      "testDirectory": "tests/generated"
+    },
+    {
+      "format": "uml",
+      "outputDirectory": "docs/generated"
+    }
+  ],
+  "dependencies": {
+    "core": {
+      "source": "./core.expec",
+      "imports": ["Text", "Boolean", "List"]
+    }
+  }
+}

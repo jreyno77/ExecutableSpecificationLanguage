@@ -1,0 +1,11 @@
+interface Storage {
+  public persist
+  capability persist(snapshot: Text) returns Text
+}
+component Screen {
+  interaction "wrong message argument"() {
+    participant screen: Screen
+    participant storage: Storage
+    message screen -> storage.persist(1)
+  }
+}

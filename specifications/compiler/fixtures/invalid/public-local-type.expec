@@ -1,0 +1,5 @@
+concept StoreGame {
+  public inspect
+  local type SessionState { running: Boolean }
+  capability inspect(state: SessionState) returns Boolean
+}

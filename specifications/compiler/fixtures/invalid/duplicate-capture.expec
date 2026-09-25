@@ -1,0 +1,9 @@
+examples {
+  setup prepare() returns Number
+  action create() returns Number
+  scenario "reuse a capture name" {
+    given value = prepare()
+    when value = create()
+    then value == 1
+  }
+}

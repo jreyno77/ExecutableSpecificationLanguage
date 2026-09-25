@@ -1,0 +1,7 @@
+examples {
+  action reset() returns Nothing
+  scenario "capture a no-result action" {
+    when value = reset()
+    then value == 1
+  }
+}

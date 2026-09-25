@@ -1,0 +1,4 @@
+function multiply(a: Number, b: Number) returns Number
+examples {
+  example "wrong expected type": multiply(8, 8) => "sixty-four"
+}

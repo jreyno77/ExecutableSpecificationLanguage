@@ -1,0 +1,5 @@
+function multiply(a: Number, b: Number) returns Number {
+  requires a >= 0 and b >= 0
+  ensures result >= 0
+  promises "Return the product of the inputs."
+}

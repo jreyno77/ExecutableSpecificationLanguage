@@ -1,0 +1,25 @@
+// Candidate source syntax for the acceptance examples, not an implemented grammar.
+// The example environment explicitly supplies the draft core dependency.
+
+"ExpecCompiler"
+dependencies: Specification, ValidationResult
+userFacingCapabilities: "validate"
+
+"validate"(specification: Specification) returns ValidationResult
+  => "Unknown references produce diagnostics that identify the name and its source location."
+
+"Specification" type
+dependencies: core.Text
+source: core.Text
+
+"ValidationResult" type
+dependencies: Diagnostic, core.Boolean, core.List
+valid: core.Boolean
+diagnostics: core.List<Diagnostic>
+
+"Diagnostic" type
+dependencies: core.Text
+name: core.Text
+sourcePath: core.Text
+location: core.Text
+message: core.Text

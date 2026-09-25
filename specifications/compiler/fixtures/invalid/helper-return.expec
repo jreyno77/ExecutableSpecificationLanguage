@@ -1,0 +1,5 @@
+examples {
+  observation quantity() returns Number {
+    return "many"
+  }
+}

@@ -1,0 +1,17 @@
+function multiply(a: Number, b: Number) returns Number
+function label() returns Text
+examples for multiply {
+  example "eight times eight": multiply(8, 8) => 64
+  example "description of the digits": multiply(8, 8) => satisfies "A nonnegative pair of digits starting with 6 and ending with 4."
+  example "operator precedence": 2 + 3 * 4 => 14
+  example "grouping": (2 + 3) * 4 => 20
+  example "logical operators": not false and 2 < 3 or false => true
+}
+examples for label {
+  example "a literal string result": label() => "Dune"
+  scenario "a descriptive obligation" {
+    when title = label()
+    then title == "Dune"
+    then satisfies "The title communicates the selected book."
+  }
+}

@@ -1,0 +1,7 @@
+examples {
+  action calculate()
+  scenario "capture an unspecified result" {
+    when value = calculate()
+    then value == 1
+  }
+}

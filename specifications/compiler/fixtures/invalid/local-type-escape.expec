@@ -1,0 +1,4 @@
+concept StoreGame {
+  local type SessionState { running: Boolean }
+}
+function inspect(state: StoreGame.SessionState) returns Boolean

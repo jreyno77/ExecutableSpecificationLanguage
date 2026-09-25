@@ -1,0 +1,8 @@
+concept Counter {
+  capability add(value: Number) returns Nothing
+  examples {
+    action addUnknown(value: Text | Number) returns Nothing {
+      do add(value)
+    }
+  }
+}

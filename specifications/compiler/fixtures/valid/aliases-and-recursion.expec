@@ -1,0 +1,7 @@
+type Count = Number
+type Label = Text
+type TreeNode {
+  label: Label
+  children: List<TreeNode>
+  next: TreeNode?
+}

@@ -1,0 +1,10 @@
+interface Storage {
+  public persist
+  capability persist(snapshot: Text) returns Text
+}
+component Screen {
+  interaction "missing participant"(snapshot: Text) {
+    participant screen: Screen
+    message screen -> storage.persist(snapshot)
+  }
+}

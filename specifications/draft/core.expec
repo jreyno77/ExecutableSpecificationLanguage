@@ -1,0 +1,7 @@
+// Draft notation only. No compiler or standard library implements this file yet.
+// These declarations identify primitive forms supplied by the handwritten seed.
+// Their semantics must be implemented explicitly, not inferred from their names.
+
+primitive Text
+primitive Boolean
+primitive List<T>

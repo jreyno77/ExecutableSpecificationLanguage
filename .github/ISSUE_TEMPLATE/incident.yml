@@ -1,0 +1,76 @@
+name: Consumer incident
+description: Report a problem with a delivered .expec artifact and record its recovery.
+title: "[Incident] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Record observed facts. Use UTC timestamps such as 2026-09-25T18:30:00Z.
+        Write Unknown where evidence is missing; issue creation time is not a substitute.
+        Recovery fields can be updated after the developer supplies a fix and the consumer verifies it.
+  - type: input
+    id: affected-release
+    attributes:
+      label: Affected release tag or artifact URL
+      description: Identify the artifact you actually used; write Unknown if unavailable.
+    validations:
+      required: true
+  - type: input
+    id: affected-pr
+    attributes:
+      label: Affected pull request or deployment ID
+      description: Link the originating change when known. Do not guess its identity.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected behavior, observed behavior, and consumer impact
+      description: Include a small reproducing specification or commands and the affected work.
+    validations:
+      required: true
+  - type: input
+    id: impact-started-at
+    attributes:
+      label: Impact started at (UTC)
+      description: Earliest evidenced failure time, or Unknown. This is not automatically deployment time.
+    validations:
+      required: true
+  - type: input
+    id: detected-at
+    attributes:
+      label: Detected at (UTC)
+      description: When you observed the incident, or Unknown.
+    validations:
+      required: true
+  - type: dropdown
+    id: immediate-intervention
+    attributes:
+      label: Does this deployment require immediate intervention?
+      description: A rollback, hotfix, disablement, or urgent repair qualifies. Ordinary planned improvement does not.
+      options:
+        - "Unknown — needs triage"
+        - "Yes — immediate intervention is required"
+        - "No — planned follow-up is sufficient"
+    validations:
+      required: true
+  - type: input
+    id: recovered-at
+    attributes:
+      label: Recovered at (UTC)
+      description: Update with evidenced recovery time after verification; leave blank while open or write Unknown.
+  - type: dropdown
+    id: recovery-verified
+    attributes:
+      label: Recovery verification
+      options:
+        - "Not yet verified"
+        - "Consumer verified the expected behavior"
+  - type: input
+    id: recovery-release
+    attributes:
+      label: Recovery release or deployment
+      description: Link the usable repair or rollback artifact and its pull request.
+  - type: textarea
+    id: recovery-evidence
+    attributes:
+      label: Recovery evidence and learning
+      description: Update with the verification performed, result, remaining impact, and task learning.

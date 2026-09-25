@@ -1,0 +1,145 @@
+(* .expec candidate v0.1 -- proposal only; no parser or execution is implemented.
+   EBNF notation: comma = sequence; | = choice; [ ] = optional; { } = repetition.
+   Lexical special sequences and newline handling are defined in lexical-rules.md.
+   Syntax recognition does not resolve references or establish behavior. *)
+
+source = { newline }, { top_level, { newline } } ;
+
+top_level = use_declaration | include_declaration | examples_attachment
+          | concept_declaration | type_declaration | opaque_type_declaration
+          | function_declaration | extension_declaration
+          | examples_declaration | interaction_declaration ;
+
+use_declaration = "use", imported_name, { ",", imported_name },
+                  "from", string, terminator ;
+imported_name = qualified_name, [ "as", name ] ;
+include_declaration = "include", string, terminator ;
+examples_attachment = "examples", "for", qualified_name, "from", string,
+                      terminator ;
+
+concept_declaration = concept_kind, name, concept_body, terminator ;
+concept_kind = "concept" | "component" | "class" | "interface" ;
+concept_body = "{", { newline }, { concept_member, { newline } }, "}" ;
+concept_member = dependency_declaration | package_requirement
+               | public_declaration | construction_declaration
+               | capability_declaration | local_declaration
+               | inline_examples
+               | interaction_declaration ;
+
+dependency_declaration = "depends", "on", qualified_name,
+                         { ",", qualified_name }, terminator ;
+package_requirement = "requires", "package", string,
+                      [ "for", package_phase ], terminator ;
+package_phase = "build" | "runtime" | "test" ;
+public_declaration = "public", name, { ",", name }, terminator ;
+construction_declaration = "construction", parameter_list, terminator ;
+capability_declaration = "capability", name, parameter_list,
+                         [ return_type ], [ contract_body ], terminator ;
+function_declaration = "function", name, parameter_list,
+                       [ return_type ], [ contract_body ], terminator ;
+return_type = "returns", type_expression ;
+
+parameter_list = "(", [ parameter, { ",", parameter }, [ "," ] ], ")" ;
+parameter = name, ":", type_expression, [ "=", expression ] ;
+contract_body = "{", { newline }, { contract_clause, { newline } }, "}" ;
+contract_clause = "promises", string, terminator
+                | "requires", expression, terminator
+                | "ensures", expression, terminator ;
+
+local_declaration = "local", ( concept_declaration | type_declaration
+                              | opaque_type_declaration ) ;
+extension_declaration = "extend", qualified_name, concept_body, terminator ;
+
+type_declaration = "type", name, [ type_parameters ],
+                   ( "=", type_expression | field_body ), terminator ;
+opaque_type_declaration = "opaque", "type", name, [ type_parameters ], terminator ;
+type_parameters = "<", name, { ",", name }, [ "," ], ">" ;
+field_body = "{", { newline }, { field_declaration, { newline } }, "}" ;
+field_declaration = name, ":", type_expression, [ "=", expression ], terminator ;
+
+type_expression = optional_type, { "|", optional_type } ;
+optional_type = primary_type, [ "?" ] ;
+primary_type = named_type | tuple_type | type_literal
+             | "(", type_expression, ")" ;
+named_type = qualified_name, [ type_arguments ] ;
+type_arguments = "<", type_expression, { ",", type_expression }, [ "," ], ">" ;
+tuple_type = "[", type_expression, { ",", type_expression }, [ "," ], "]" ;
+type_literal = string | [ "-" ], number | boolean ;
+
+examples_declaration = "examples", [ "for", qualified_name ],
+                       examples_body, terminator ;
+inline_examples = "examples", examples_body, terminator ;
+examples_body = "{", { newline }, { example_member, { newline } }, "}" ;
+example_member = fixture_declaration | helper_declaration | check_declaration
+               | scenario_declaration | short_example ;
+
+fixture_declaration = "fixture", name, ":", type_expression, "=", expression,
+                      terminator ;
+helper_declaration = helper_kind, name, parameter_list,
+                     [ return_type ], [ helper_body ], terminator ;
+helper_kind = "setup" | "action" | "observation" ;
+helper_body = "{", { newline }, { helper_statement, { newline } }, "}" ;
+helper_statement = let_statement | do_statement | return_statement ;
+let_statement = "let", name, "=", expression, terminator ;
+do_statement = "do", call_expression, terminator ;
+return_statement = "return", expression, terminator ;
+check_declaration = "check", name, parameter_list, [ check_body ], terminator ;
+check_body = "{", { newline }, { check_statement, { newline } }, "}" ;
+check_statement = helper_statement | "assert", expression, terminator ;
+
+scenario_declaration = "scenario", string, scenario_body, terminator ;
+scenario_body = "{", { newline },
+                { given_step, { newline } },
+                when_step, { newline }, { when_step, { newline } },
+                then_step, { newline }, { then_step, { newline } }, "}" ;
+given_step = "given", [ name, "=" ], call_expression, terminator ;
+when_step = "when", [ name, "=" ], call_expression, terminator ;
+then_step = "then", ( expression | "satisfies", string ), terminator ;
+short_example = "example", string, ":", expression, "=>",
+                ( expression | "satisfies", string ), terminator ;
+
+interaction_declaration = "interaction", string, parameter_list,
+                          interaction_body, terminator ;
+interaction_body = "{", { newline }, { interaction_member, { newline } }, "}" ;
+interaction_member = participant_declaration | message_declaration ;
+participant_declaration = "participant", name, ":", type_expression, terminator ;
+message_declaration = "message", qualified_name, "->", qualified_name, ".",
+                      name, arguments, [ "as", name ], terminator ;
+
+expression = or_expression ;
+or_expression = and_expression, { "or", and_expression } ;
+and_expression = comparison_expression, { "and", comparison_expression } ;
+comparison_expression = additive_expression,
+                        [ comparison_operator, additive_expression ] ;
+comparison_operator = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
+additive_expression = multiplicative_expression,
+                      { ( "+" | "-" ), multiplicative_expression } ;
+multiplicative_expression = unary_expression,
+                            { ( "*" | "/" | "%" ), unary_expression } ;
+unary_expression = ( "+" | "-" | "not" ), unary_expression | postfix_expression ;
+postfix_expression = primary_expression, { member_suffix | call_suffix } ;
+member_suffix = ".", name ;
+call_suffix = arguments ;
+call_expression = primary_expression, { member_suffix | call_suffix }, call_suffix ;
+arguments = "(", [ expression, { ",", expression }, [ "," ] ], ")" ;
+primary_expression = number | string | boolean | name | list_expression
+                   | record_expression | "(", expression, ")" ;
+boolean = "true" | "false" ;
+list_expression = "[", [ expression, { ",", expression }, [ "," ] ], "]" ;
+record_expression = [ named_type ], "{",
+                    [ record_entry, { ",", record_entry }, [ "," ] ], "}" ;
+record_entry = name, ":", expression ;
+
+qualified_name = name, { ".", name } ;
+name = identifier | quoted_identifier ;
+identifier = ? ASCII letter or underscore followed by ASCII letters, digits,
+               or underscores; exact reserved keywords are excluded ? ;
+quoted_identifier = ? Nonempty backtick-delimited name; escapes and exclusions
+                      are defined in lexical-rules.md ? ;
+string = ? Double-quoted string token with the escapes defined in lexical-rules.md ? ;
+number = ? Unsigned decimal number token, optionally fractional or exponential,
+           defined in lexical-rules.md ? ;
+newline = ? Significant LF or CRLF outside collection delimiters,
+            as defined in lexical-rules.md ? ;
+terminator = newline | ? Zero-width only immediately before the closing brace
+                        of the current structural block or end of file ? ;

@@ -1,0 +1,246 @@
+// CORE-18 candidate contracts. Handwritten, unimplemented, and unexecuted.
+use SourceDocument, SourceRange from "../shared/source.expec"
+use SyntaxReader from "../grammar/recognition.expec"
+use SourceDescription, SourceNodeId from "./source-model.expec"
+
+// These identifiers are local to a compilation snapshot, not persistent SpecIdentifier.
+type SymbolId { value: Text }
+type TypeId { value: Text }
+type PrimitiveName = "Text" | "Number" | "Boolean"
+type BuiltinDefinition {
+  name: Text
+  arity: Number
+  category: "primitive" | "container" | "no-result"
+}
+type BuiltinCatalog {
+  version: "candidate-0.1"
+  definitions: List<BuiltinDefinition>
+}
+
+type SourceOrigin {
+  kind: "source"
+  node: SourceNodeId
+}
+type BuiltinOrigin {
+  kind: "builtin"
+  name: Text
+}
+type ExternalOrigin {
+  kind: "external"
+  locator: Text
+  exportedPath: List<Text>
+}
+type ContextOrigin {
+  kind: "context"
+  owner: SourceNodeId
+  role: "result"
+}
+type DeclarationOrigin = SourceOrigin | BuiltinOrigin | ExternalOrigin | ContextOrigin
+type PrimitiveShape {
+  kind: "primitive"
+  primitiveName: PrimitiveName
+}
+type DeclaredShape {
+  kind: "declared"
+  declaration: SymbolId
+  arguments: List<TypeId>
+}
+type ParameterShape {
+  kind: "type-parameter"
+  declaration: SymbolId
+  position: Number
+}
+type LiteralShape {
+  kind: "literal"
+  primitiveName: PrimitiveName
+  valueText: Text
+}
+type TupleShape {
+  kind: "tuple"
+  elements: List<TypeId>
+}
+type UnionShape {
+  kind: "union"
+  alternatives: List<TypeId>
+}
+type OptionalShape {
+  kind: "optional"
+  element: TypeId
+}
+type ListShape {
+  kind: "list"
+  element: TypeId
+}
+type NoResultShape { kind: "no-result" }
+type TypeShape = PrimitiveShape | DeclaredShape | ParameterShape | LiteralShape | TupleShape | UnionShape | OptionalShape | ListShape | NoResultShape
+type SemanticType {
+  id: TypeId
+  shape: TypeShape
+}
+type ParameterContract {
+  symbol: SymbolId
+  name: Text
+  valueType: TypeId
+  hasDefault: Boolean
+  defaultSource: SourceNodeId?
+}
+type FieldContract {
+  symbol: SymbolId
+  name: Text
+  valueType: TypeId
+  optional: Boolean
+  hasDefault: Boolean
+  defaultSource: SourceNodeId?
+}
+type SymbolKind = "primitive-type" | "container-type" | "no-result-type" | "concept" | "component" | "class" | "interface" | "record-type" | "alias-type" | "opaque-type" | "type-parameter" | "construction" | "function" | "capability" | "setup" | "action" | "observation" | "check" | "parameter" | "field" | "fixture" | "local-value" | "participant" | "capture" | "result"
+type SymbolRecord {
+  id: SymbolId
+  path: List<Text>
+  kind: SymbolKind
+  owner: SymbolId?
+  origin: DeclarationOrigin
+  typeParameters: List<SymbolId>
+  valueType: TypeId?
+  aliasTarget: TypeId?
+  parameters: List<ParameterContract>
+  resultType: TypeId?
+  resultSpecified: Boolean
+  fields: List<FieldContract>
+  members: List<SymbolId>
+  publicMembers: List<SymbolId>
+}
+type DependencyModule {
+  locator: Text
+  symbols: List<SymbolRecord>
+  types: List<SemanticType>
+  exports: List<SymbolId>
+}
+type PackageDeclaration {
+  alias: Text
+  phases: List<"build" | "runtime" | "test">
+}
+type DependencyCatalog {
+  modules: List<DependencyModule>
+  packages: List<PackageDeclaration>
+}
+type CompilationInput {
+  source: SourceDocument
+  dependencies: DependencyCatalog
+}
+type ValidationInput {
+  document: SourceDocument
+  description: SourceDescription
+  dependencies: DependencyCatalog
+}
+
+type SourceIssue {
+  kind: "source"
+  range: SourceRange
+}
+type InputIssue {
+  kind: "input"
+  propertyPath: Text
+}
+type DiagnosticOrigin = SourceIssue | InputIssue
+type CompilerDiagnostic {
+  code: Text
+  phase: "syntax" | "input" | "resolution" | "typing" | "composition"
+  explanation: Text
+  primary: DiagnosticOrigin
+  related: List<DiagnosticOrigin>
+}
+type ReferenceBinding {
+  reference: SourceNodeId
+  target: SymbolId
+}
+type ExpressionType {
+  expression: SourceNodeId
+  role: "value" | "call-target" | "namespace" | "no-result" | "check-result" | "unspecified-result"
+  valueType: TypeId?
+}
+type TypeResolution {
+  source: SourceNodeId
+  resolvedType: TypeId
+}
+type ResolvedImport {
+  source: SourceNodeId
+  locator: Text
+  target: SymbolId
+  localName: Text
+}
+type PublicContract {
+  owner: SymbolId
+  capabilities: List<SymbolId>
+}
+type DependencyUse {
+  owner: SymbolId
+  target: SymbolId
+  source: SourceNodeId
+}
+type PackageUse {
+  owner: SymbolId
+  alias: Text
+  phase: ("build" | "runtime" | "test")?
+  source: SourceNodeId
+}
+type DerivedRelationship {
+  kind: "dependency" | "construction-input" | "capability-input" | "capability-output" | "function-input" | "function-output" | "field"
+  owner: SymbolId
+  target: SymbolId
+  source: SourceNodeId
+  direction: "input" | "output" | "reference"
+}
+type CompilationObligation {
+  kind: "implementation-needed" | "check-implementation-needed" | "prose-needs-check" | "result-type-unspecified" | "execution-not-performed" | "package-installation-not-verified"
+  source: SourceNodeId
+  explanation: Text
+}
+type ResolvedSpecification {
+  grammarVersion: "candidate-0.1"
+  document: SourceDocument
+  source: SourceDescription
+  symbols: List<SymbolRecord>
+  types: List<SemanticType>
+  bindings: List<ReferenceBinding>
+  expressionTypes: List<ExpressionType>
+  typeResolutions: List<TypeResolution>
+  imports: List<ResolvedImport>
+  publicContracts: List<PublicContract>
+  dependencies: List<DependencyUse>
+  packages: List<PackageUse>
+  relationships: List<DerivedRelationship>
+}
+type AcceptedCompilation {
+  status: "accepted"
+  specification: ResolvedSpecification
+  diagnostics: List<CompilerDiagnostic>
+  obligations: List<CompilationObligation>
+}
+type RejectedCompilation {
+  status: "rejected"
+  diagnostics: List<CompilerDiagnostic>
+}
+type CompilationResult = AcceptedCompilation | RejectedCompilation
+
+interface SemanticValidator {
+  depends on BuiltinCatalog, ValidationInput, CompilationResult
+  construction(builtins: BuiltinCatalog)
+  public validate
+  capability validate(input: ValidationInput) returns CompilationResult {
+    promises "Resolve available declarations and validate their types, contracts, examples, and ordered messages"
+    promises "Return a resolved specification only when all required validation succeeds"
+    promises "Preserve unfinished implementation, descriptive, and execution obligations separately from invalid source"
+  }
+}
+
+interface Compiler {
+  depends on SyntaxReader, SemanticValidator, CompilationInput, CompilationResult
+  construction(reader: SyntaxReader, validator: SemanticValidator)
+  public compile
+  capability compile(input: CompilationInput) returns CompilationResult {
+    promises "Read the supplied source and validate its meaning using the supplied dependency snapshot"
+    promises "Reject unavailable references, incompatible contracts, malformed source, and composition that has not occurred"
+    promises "Return independently inspectable source, bindings, types, public contracts, and remaining obligations"
+    promises "Do not discover files, fetch packages, execute scenarios, or write to a connected project"
+  }
+}

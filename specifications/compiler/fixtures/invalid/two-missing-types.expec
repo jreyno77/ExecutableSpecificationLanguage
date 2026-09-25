@@ -1,0 +1,3 @@
+// Both unavailable names are independent errors.
+function first(value: MissingFirst) returns Nothing
+function second(value: MissingSecond) returns Nothing

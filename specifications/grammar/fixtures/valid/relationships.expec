@@ -1,0 +1,22 @@
+use PlayerStateSnapshot from "./models/player-state.expec"
+type Receipt { id: Text }
+
+interface GameStorage {
+  capability persist(snapshot: PlayerStateSnapshot) returns Receipt
+}
+component GameScreen {
+  depends on GameStorage
+  capability showSaved(receipt: Receipt) returns Nothing
+
+  interaction "save and show confirmation"(snapshot: PlayerStateSnapshot) {
+    participant screen: GameScreen
+    participant storage: GameStorage
+    message screen -> storage.persist(snapshot) as receipt
+    message storage -> screen.showSaved(receipt)
+  }
+}
+interaction "persist without a confirmation view"(snapshot: PlayerStateSnapshot) {
+  participant screen: GameScreen
+  participant storage: GameStorage
+  message screen -> storage.persist(snapshot)
+}

@@ -1,0 +1,4 @@
+concept StoreGame {
+  public save
+  capability save(snapshot: PlayerStateSnapshot) returns Nothing
+}

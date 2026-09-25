@@ -1,0 +1,4 @@
+type Pair<T> = [T, T]
+type Page<T> { items: List<T> }
+type Positions = List<Pair<Number>>
+type Snapshots = Page<Positions>

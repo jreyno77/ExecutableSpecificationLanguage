@@ -1,0 +1,4 @@
+type Cart { count: Number }
+examples {
+  fixture cart: Cart = Cart { count: 1, label: "extra" }
+}

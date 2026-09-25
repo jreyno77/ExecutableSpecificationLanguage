@@ -1,0 +1,614 @@
+{
+  "status": "18 substantial tasks covering construction of .expec from grammar and compiler foundations through connected projects, generation, evolution, additional outputs, and self-development. Detailed specifications and code design follow. Implementation has not started.",
+  "taskBodySections": [
+    "Hypothesis",
+    "Test list",
+    "Learnings"
+  ],
+  "tasks": [
+    {
+      "id": "CORE-01",
+      "title": "Define the .expec language grammar",
+      "hypothesis": "A consistent, readable grammar can express the agreed software specifications precisely enough to implement and test.",
+      "tests": [
+        "Express StoreGame with dependencies, public startup/saveGame capabilities, typed inputs and outputs, and behavior promises.",
+        "Express types, interfaces, components, functions, local types, and generic fields such as Pair<Number>.",
+        "Express literal results, prose expectations, scenarios, and ordered communications.",
+        "Express declarations and examples inline or in referenced files; identify malformed and ambiguous syntax."
+      ],
+      "dependsOn": [],
+      "stories": [
+        "US-001",
+        "US-002",
+        "US-005",
+        "US-009"
+      ],
+      "order": 1,
+      "workstream": "Language core",
+      "stage": "Ready",
+      "hypothesisResult": "Untested",
+      "learnings": "Grammar candidate ready; relationships derive from declared dependencies, construction/capability signatures, outputs, and fields. No dedicated relationship keyword is required. Retain shortening as design learning.",
+      "specification": "specifications/grammar/README.md",
+      "specificationUrl": "https://app.notion.com/p/3e60391456658154b355f311127ba550",
+      "notionUrl": "https://app.notion.com/p/3e6039145665819cb7bed5350ce614ad?pvs=204",
+      "notionId": "3e603914-5665-819c-b7be-d5350ce614ad",
+      "consolidates": [
+        "CORE-01",
+        "CORE-02",
+        "CORE-04",
+        "CORE-20"
+      ]
+    },
+    {
+      "id": "CORE-18",
+      "title": "Build the compiler and validation",
+      "hypothesis": "A runnable compiler can turn valid source into a shared specification model and reject invalid contracts with useful diagnostics.",
+      "tests": [
+        "Set up and run the compiler and its independent acceptance tests from a clean checkout.",
+        "Compile StoreGame and supplied dependencies; preserve typed contracts, examples, ordered messages, and source locations.",
+        "Reject unavailable names, the saveGame/save mismatch, incompatible types, and invalid contract or scenario flow.",
+        "Keep unfinished behavior visible; unsupported composition and an incorrect compiler cannot masquerade as success."
+      ],
+      "dependsOn": [
+        "CORE-01"
+      ],
+      "stories": [
+        "US-001",
+        "US-002",
+        "US-005",
+        "US-008"
+      ],
+      "order": 2,
+      "workstream": "Language core",
+      "stage": "Ready",
+      "hypothesisResult": "Untested",
+      "learnings": "Specified compile/read/validate contracts and acceptance cases. Relationships derive from declared uses; implementation work is beginning.",
+      "notionUrl": "https://app.notion.com/p/3e6039145665815db0bdc490acf8a18c?pvs=204",
+      "notionId": "3e603914-5665-815d-b0bd-c490acf8a18c",
+      "consolidates": [
+        "CORE-07",
+        "CORE-08",
+        "CORE-09",
+        "CORE-19",
+        "CORE-10",
+        "CORE-14",
+        "CORE-15",
+        "CORE-16",
+        "CORE-21",
+        "CORE-17",
+        "CORE-18",
+        "CORE-06"
+      ],
+      "specification": "specifications/compiler/README.md",
+      "specificationUrl": "https://app.notion.com/p/3e6039145665818c940af6af42bf3be2"
+    },
+    {
+      "id": "PROJECT-01",
+      "title": "Implement configuration and dependency management",
+      "hypothesis": "One manifest can maintain project settings, output choices, versions, and the dependencies required to build the specified software.",
+      "tests": [
+        "Configure StoreGame's project path, TypeScript output, version, and build settings.",
+        "Declare specification libraries separately from target packages such as Vite and Supabase.",
+        "Resolve compatible declared dependencies and expose missing or conflicting requirements.",
+        "Change a configured destination or output; the next operation uses the new settings."
+      ],
+      "dependsOn": [
+        "CORE-18"
+      ],
+      "stories": [
+        "US-002",
+        "US-003",
+        "US-007",
+        "US-010"
+      ],
+      "order": 3,
+      "workstream": "Project integration",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581c79c4ffe6b6194edb7?pvs=204",
+      "notionId": "3e603914-5665-81c7-9c4f-fe6b6194edb7",
+      "consolidates": [
+        "CORE-05",
+        "PROJECT-01",
+        "PROJECT-02"
+      ]
+    },
+    {
+      "id": "CORE-13",
+      "title": "Implement imports and specification composition",
+      "hypothesis": "Authors can split and reuse specifications without changing their meaning or making undeclared names available.",
+      "tests": [
+        "Import PlayerStateSnapshot and ShoppingCart from declared sources; their references resolve.",
+        "Keep StoreGame examples inline or in a separate file and obtain equivalent specifications.",
+        "Enforce local-type visibility and report missing, duplicate, ambiguous, or invalid cyclic references.",
+        "A nearby unimported file does not silently supply a missing declaration."
+      ],
+      "dependsOn": [
+        "CORE-18",
+        "PROJECT-01"
+      ],
+      "stories": [
+        "US-001",
+        "US-002",
+        "US-009"
+      ],
+      "order": 4,
+      "workstream": "Language core",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/3e60391456658111a70ce23fafa8e728",
+      "notionId": "3e60391456658111a70ce23fafa8e728",
+      "consolidates": [
+        "CORE-03",
+        "CORE-12",
+        "CORE-13"
+      ]
+    },
+    {
+      "id": "PROJECT-03",
+      "title": "Implement project connection and initialization",
+      "hypothesis": "An author can connect the intended software project or choose to initialize one before output is written.",
+      "tests": [
+        "Connect an existing project through the manifest and use its actual source files.",
+        "With no project connected, ask whether to initialize one and honor the selected destination and target.",
+        "Declining initialization creates nothing; an invalid connection is reported.",
+        "Initialize the selected target's project structure and required dependency setup."
+      ],
+      "dependsOn": [
+        "PROJECT-01"
+      ],
+      "stories": [
+        "US-003",
+        "US-004"
+      ],
+      "order": 5,
+      "workstream": "Project integration",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e6039145665813d935adbc52b03cb7c?pvs=204",
+      "notionId": "3e603914-5665-813d-935a-dbc52b03cb7c",
+      "consolidates": [
+        "PROJECT-03",
+        "PROJECT-04"
+      ]
+    },
+    {
+      "id": "OUT-01",
+      "title": "Implement the extensible output API",
+      "hypothesis": "Interchangeable outputs can use the same resolved specification through the agreed operations and configured project context.",
+      "tests": [
+        "Construct an output with target options and a live project-context component.",
+        "Exercise create(spec), insert(specDiff), update(specDiff), read(id), search(id), and delete(id) using SpecIdentifier.",
+        "Select a supported output from the manifest without changing the parser.",
+        "Add a sample output and report unsupported operations or mappings explicitly."
+      ],
+      "dependsOn": [
+        "CORE-18",
+        "PROJECT-01"
+      ],
+      "stories": [
+        "US-007",
+        "US-010",
+        "US-011"
+      ],
+      "order": 6,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e60391456658112887cd63b6e55c679?pvs=204",
+      "notionId": "3e603914-5665-8112-887c-d63b6e55c679",
+      "consolidates": [
+        "OUT-01",
+        "OUT-02"
+      ]
+    },
+    {
+      "id": "PROJECT-05",
+      "title": "Implement live project reading and searching",
+      "hypothesis": "The tool can inspect the complete current representation of a concept and its actual relationships, including handwritten and unspecified code.",
+      "tests": [
+        "Read StoreGame across files, including public methods, private fields, helpers, and handwritten bodies.",
+        "Search its definition, outgoing dependencies, and all resolvable incoming uses, including an unspecified consumer.",
+        "Edit project code between calls; the next read or search reflects the edit.",
+        "Inspection changes no files and discloses unsupported or unresolved code instead of claiming complete coverage."
+      ],
+      "dependsOn": [
+        "PROJECT-03",
+        "OUT-01"
+      ],
+      "stories": [
+        "US-003",
+        "US-006",
+        "US-010",
+        "US-011"
+      ],
+      "order": 7,
+      "workstream": "Project integration",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e60391456658163bf2de4421935eecd?pvs=204",
+      "notionId": "3e603914-5665-8163-bf2d-e4421935eecd",
+      "consolidates": [
+        "PROJECT-05",
+        "PROJECT-07",
+        "PROJECT-08",
+        "PROJECT-18"
+      ]
+    },
+    {
+      "id": "PROJECT-10",
+      "title": "Implement specification identity and change comparison",
+      "hypothesis": "Stable associations and live comparisons can identify intended changes without guessing which existing code belongs to a specification.",
+      "tests": [
+        "Associate StoreGame and its members with an existing single-file or distributed implementation.",
+        "Compare specification versions and identify additions, updates, moves, renames, and removals.",
+        "Expected dependencies a,b,c versus actual a,b,d reports missing c and extra d.",
+        "Ambiguous correspondence remains unresolved; a similar name does not silently establish identity."
+      ],
+      "dependsOn": [
+        "CORE-18",
+        "PROJECT-05"
+      ],
+      "stories": [
+        "US-006",
+        "US-010",
+        "US-011"
+      ],
+      "order": 8,
+      "workstream": "Project integration",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e60391456658177b89cdbee12ceffbd?pvs=204",
+      "notionId": "3e603914-5665-8177-b89c-dbee12ceffbd",
+      "consolidates": [
+        "PROJECT-17",
+        "PROJECT-06",
+        "PROJECT-09",
+        "PROJECT-10"
+      ]
+    },
+    {
+      "id": "OUT-03",
+      "title": "Generate TypeScript contracts and implementation scaffolds",
+      "hypothesis": "Declared concepts can become useful TypeScript structure while unfinished behavior stays explicit.",
+      "tests": [
+        "Generate StoreGame's public signatures and the SystemConfig, PlayerStateSnapshot, ShoppingCart, and Pair types.",
+        "Map appropriate concepts to classes, interfaces, types, or functions without forcing every concept into a class.",
+        "A new capability has an explicit not-implemented body; a prose promise does not invent its implementation.",
+        "Render required target dependencies and report unsupported mappings."
+      ],
+      "dependsOn": [
+        "CORE-13",
+        "OUT-01"
+      ],
+      "stories": [
+        "US-001",
+        "US-003",
+        "US-007"
+      ],
+      "order": 9,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e6039145665813cb987c8a7b62619b1?pvs=204",
+      "notionId": "3e603914-5665-813c-b987-c8a7b62619b1",
+      "consolidates": [
+        "OUT-03"
+      ]
+    },
+    {
+      "id": "OUT-04",
+      "title": "Generate readable executable specifications and domain helpers",
+      "hypothesis": "Specified examples can become readable tests with reusable domain helpers and meaningful checks.",
+      "tests": [
+        "Generate a shopper test using bookIsAvailable, startWithEmptyBasket, addBook, and expectBookQuantity.",
+        "Turn explicit inputs, observations, and literal expectations into real comparisons; wrong results fail.",
+        "Generate typed helper contracts and reuse declared operations across scenarios.",
+        "A prose expectation without an executable observation remains a visible unfinished obligation."
+      ],
+      "dependsOn": [
+        "CORE-13",
+        "OUT-03"
+      ],
+      "stories": [
+        "US-001",
+        "US-005",
+        "US-009"
+      ],
+      "order": 10,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/3e603914566581739ebfc952e41e129d",
+      "notionId": "3e603914566581739ebfc952e41e129d",
+      "consolidates": [
+        "OUT-04",
+        "OUT-05",
+        "OUT-06",
+        "OUT-09"
+      ]
+    },
+    {
+      "id": "OUT-07",
+      "title": "Implement scenario setup and execution integration",
+      "hypothesis": "Readable generated tests can exercise real software through reusable setup and drivers without hiding implementation details in the scenarios.",
+      "tests": [
+        "Share declared fixture setup and pass action results to later observations.",
+        "Run scenarios independently without leaked state.",
+        "Connect the same domain operation to a real application driver and inspect the system's actual result.",
+        "An unavailable driver or failed observation cannot count as a passing scenario."
+      ],
+      "dependsOn": [
+        "OUT-04",
+        "PROJECT-03"
+      ],
+      "stories": [
+        "US-005",
+        "US-008"
+      ],
+      "order": 11,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581a7bf18e73ce3a19646?pvs=204",
+      "notionId": "3e603914-5665-81a7-bf18-e73ce3a19646",
+      "consolidates": [
+        "OUT-07",
+        "OUT-08"
+      ]
+    },
+    {
+      "id": "PROJECT-11",
+      "title": "Implement project updates that preserve handwritten code",
+      "hypothesis": "Specification changes can alter connected source structure while retaining implementation work and exposing conflicts.",
+      "tests": [
+        "Create files or insert capabilities; existing bodies, private state, helpers, and unrelated files survive.",
+        "Update signatures or expectations, and apply established renames or moves in single-file and distributed projects.",
+        "Remove obsolete generated structure while retaining handwritten work and reporting affected consumers.",
+        "A conflicting manual edit is reported instead of silently overwritten; changed behavior may still require implementation."
+      ],
+      "dependsOn": [
+        "PROJECT-10",
+        "OUT-03",
+        "OUT-04"
+      ],
+      "stories": [
+        "US-003",
+        "US-006",
+        "US-010"
+      ],
+      "order": 12,
+      "workstream": "Project integration",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581ef8407f710c6bbf70f?pvs=204",
+      "notionId": "3e603914-5665-81ef-8407-f710c6bbf70f",
+      "consolidates": [
+        "PROJECT-11",
+        "PROJECT-12",
+        "PROJECT-13",
+        "PROJECT-14",
+        "PROJECT-15"
+      ]
+    },
+    {
+      "id": "OUT-19",
+      "title": "Assemble repeatable builds into connected projects",
+      "hypothesis": "A build can coordinate validation, selected outputs, and project updates with clear results across specification versions.",
+      "tests": [
+        "Build a valid StoreGame specification into the manifest-connected project with its selected outputs.",
+        "An invalid specification leaves the project's files unchanged.",
+        "Repeat an unchanged build without duplicate artifacts or further edits.",
+        "Increment the manifest version, apply the specification diff, and report changes and remaining implementation obligations."
+      ],
+      "stories": [
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005",
+        "US-006",
+        "US-010"
+      ],
+      "dependsOn": [
+        "CORE-13",
+        "PROJECT-03",
+        "OUT-07",
+        "PROJECT-11"
+      ],
+      "order": 13,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581389d72c884da252b87?pvs=204",
+      "notionId": "3e603914-5665-8138-9d72-c884da252b87",
+      "consolidates": [
+        "OUT-19",
+        "PROJECT-16"
+      ]
+    },
+    {
+      "id": "OUT-10",
+      "title": "Implement UML structure and interaction outputs",
+      "hypothesis": "The shared specification can communicate both structural relationships and explicitly described interactions through UML.",
+      "tests": [
+        "Show StoreGame, its contracts, types, and declared dependency relationships.",
+        "Show a save interaction in the specified participant and message order.",
+        "A dependency alone does not invent a message sequence; missing interaction detail is reported.",
+        "Changing the specification updates the corresponding diagram consistently."
+      ],
+      "dependsOn": [
+        "CORE-13",
+        "OUT-01"
+      ],
+      "stories": [
+        "US-001",
+        "US-007",
+        "US-010"
+      ],
+      "order": 14,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e60391456658101902ce3111a609b61?pvs=204",
+      "notionId": "3e603914-5665-8101-902c-e3111a609b61",
+      "consolidates": [
+        "OUT-10",
+        "OUT-21"
+      ]
+    },
+    {
+      "id": "OUT-11",
+      "title": "Implement Markdown documentation output",
+      "hypothesis": "Readable project documentation can stay consistent with the same contracts and examples used for code and tests.",
+      "tests": [
+        "Export StoreGame's capabilities, inputs, outputs, dependencies, relationships, and examples.",
+        "Distinguish executable checks from unfinished prose expectations.",
+        "Update generated documentation while preserving handwritten additions.",
+        "Use the configured output API and destination."
+      ],
+      "dependsOn": [
+        "OUT-04",
+        "PROJECT-11"
+      ],
+      "stories": [
+        "US-001",
+        "US-005",
+        "US-007",
+        "US-010"
+      ],
+      "order": 15,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581b684dad345efcf7a63?pvs=204",
+      "notionId": "3e603914-5665-81b6-84da-d345efcf7a63",
+      "consolidates": [
+        "OUT-11"
+      ]
+    },
+    {
+      "id": "OUT-12",
+      "title": "Implement Kotlin, Java, and Python targets",
+      "hypothesis": "Additional code targets can preserve the same specification meaning through their own code, test, inspection, and update support.",
+      "tests": [
+        "Generate equivalent contracts and supported acceptance examples in Kotlin, Java, and Python.",
+        "Read and search each target's existing project representation, disclosing discovery limitations.",
+        "Apply supported changes without losing handwritten implementations.",
+        "Report unsupported mappings and dynamic references rather than guessing equivalent behavior."
+      ],
+      "dependsOn": [
+        "OUT-19",
+        "PROJECT-05"
+      ],
+      "stories": [
+        "US-005",
+        "US-006",
+        "US-007",
+        "US-010",
+        "US-011"
+      ],
+      "order": 16,
+      "workstream": "Outputs and acceptance",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e60391456658136bb9bfdc44877e9b7?pvs=204",
+      "notionId": "3e603914-5665-8136-bb9b-fdc44877e9b7",
+      "consolidates": [
+        "PROJECT-19",
+        "OUT-12",
+        "PROJECT-20",
+        "OUT-13",
+        "PROJECT-21",
+        "OUT-14"
+      ]
+    },
+    {
+      "id": "OUT-17",
+      "title": "Develop .expec through its own specifications and a real pilot",
+      "hypothesis": "Using .expec on itself and StoreGame can test the proposed workflow and reveal requirements the implementation misses.",
+      "tests": [
+        "Describe compiler contracts and acceptance examples in .expec, then generate and evolve supported parts of the compiler project.",
+        "Check the generated tool independently and retain a usable bootstrap path.",
+        "Evolve StoreGame from local persistence to Supabase while retaining implementation work and exposing changed obligations.",
+        "Record actual results and revise tasks, stories, and the pitch when the examples or approach need to change."
+      ],
+      "dependsOn": [
+        "OUT-19",
+        "OUT-10",
+        "OUT-11"
+      ],
+      "stories": [
+        "US-001",
+        "US-003",
+        "US-005",
+        "US-006",
+        "US-008"
+      ],
+      "order": 17,
+      "workstream": "Self-development",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/3e603914566581359d7bf3e060e4e3ae",
+      "notionId": "3e603914566581359d7bf3e060e4e3ae",
+      "consolidates": [
+        "OUT-16",
+        "OUT-17",
+        "OUT-18"
+      ]
+    },
+    {
+      "id": "OUT-20",
+      "title": "Package the tool and support exporter development",
+      "hypothesis": "Authors and output developers can install and use .expec without relying on repository internals.",
+      "tests": [
+        "Install a versioned package and follow a project initialization, validation, build, and revision walkthrough.",
+        "Implement and register an additional output through the documented API.",
+        "Run shared output-contract checks, including read/search responsibilities and unsupported-feature reporting.",
+        "Document supported targets, dependency setup, common diagnostics, and remaining limitations."
+      ],
+      "stories": [
+        "US-003",
+        "US-004",
+        "US-007",
+        "US-008",
+        "US-010",
+        "US-011"
+      ],
+      "dependsOn": [
+        "OUT-17",
+        "OUT-12"
+      ],
+      "order": 18,
+      "workstream": "Self-development",
+      "stage": "Captured",
+      "hypothesisResult": "Untested",
+      "learnings": "Not tried yet.",
+      "notionUrl": "https://app.notion.com/p/3e603914566581c886abc8f6c7ce8611?pvs=204",
+      "notionId": "3e603914-5665-81c8-86ab-c8f6c7ce8611",
+      "consolidates": [
+        "OUT-15",
+        "OUT-20"
+      ]
+    }
+  ],
+  "earlierPlan": {
+    "localPath": "docs/planning/earlier-build-backlog.json",
+    "notionUrl": "https://app.notion.com/p/3e603914566581418962c2f7c5d60caf",
+    "description": "44 earlier cards moved out of the active board; all 62 original cards and properties retained in the local snapshot."
+  }
+}

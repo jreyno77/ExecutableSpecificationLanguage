@@ -1,0 +1,18 @@
+type Basket { id: Text }
+concept BasketService {
+  capability openBasket() returns Basket
+  capability addCopies(basket: Basket, count: Number) returns Nothing
+  capability quantity(basket: Basket) returns Number
+  examples {
+    setup stockedBasket() returns Basket {
+      let basket = openBasket()
+      do addCopies(basket, 2)
+      return basket
+    }
+    scenario "add to an existing basket" {
+      given basket = stockedBasket()
+      when addCopies(basket, 1)
+      then quantity(basket) == 3
+    }
+  }
+}

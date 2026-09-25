@@ -1,0 +1,1 @@
+function multiply(value: Number, value: Number) returns Number

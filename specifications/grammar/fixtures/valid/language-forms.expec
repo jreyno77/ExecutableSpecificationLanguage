@@ -1,0 +1,38 @@
+use Mode as OperatingMode from "./support/shared.expec"
+include "./support/shared.expec"
+opaque type Token
+opaque type Handle<T>
+type Pair<T> = [T, T]
+type Selection = "small" | "large" | 0 | -1 | true | false
+type Settings {
+  mode: OperatingMode = "preview"
+  values: List<Number> = [1, 2, 3]
+  pair: Pair<Number> = [0, 0]
+  label: (Text | Number)?
+  enabled: Boolean = true
+}
+class Worker {
+  construction(settings: Settings, tag: Text = "worker")
+  capability start() returns Nothing
+  local interface Driver { capability connect() returns Nothing }
+  local opaque type State
+}
+extend Worker { capability stop() returns Nothing }
+component Gateway { depends on Worker }
+concept `Store Game` {
+  public `new game`
+  capability `new game`() returns Token
+}
+function multiply(a: Number, b: Number) returns Number {
+  requires a >= 0 and b >= 0
+  ensures result >= 0
+  promises "Return the product of the inputs."
+  promises "Keep both input values unchanged."
+}
+examples for Worker {
+  fixture settings: Settings = Settings {
+    mode: "live", values: [1, 2], pair: [0, 0], enabled: true,
+  }
+}
+type PairList = List<Pair<Number>>
+opaque type SpecIdentifier

@@ -1,0 +1,11 @@
+interface Storage {
+  public persist
+  capability persist(snapshot: Text) returns Text
+}
+component Screen {
+  interaction "misspelled recipient operation"(snapshot: Text) {
+    participant screen: Screen
+    participant storage: Storage
+    message screen -> storage.persisst(snapshot)
+  }
+}

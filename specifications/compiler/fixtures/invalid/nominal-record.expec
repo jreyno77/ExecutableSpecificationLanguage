@@ -1,0 +1,5 @@
+type Cart { count: Number }
+type Basket { count: Number }
+examples {
+  fixture cart: Cart = Basket { count: 1 }
+}

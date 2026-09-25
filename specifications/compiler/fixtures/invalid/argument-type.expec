@@ -1,0 +1,7 @@
+examples {
+  action add(count: Number) returns Nothing
+  scenario "wrong argument type" {
+    when add("one")
+    then true
+  }
+}

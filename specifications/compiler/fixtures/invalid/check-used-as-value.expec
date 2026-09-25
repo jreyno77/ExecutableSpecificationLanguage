@@ -1,0 +1,8 @@
+examples {
+  check isReady() {
+    assert true
+  }
+  observation quantity() returns Number {
+    return isReady()
+  }
+}

@@ -1,0 +1,7 @@
+type Message {
+  body: Text
+  count: Number
+  visible: Boolean
+  labels: List<Text>
+}
+function show(item: Message) returns Nothing

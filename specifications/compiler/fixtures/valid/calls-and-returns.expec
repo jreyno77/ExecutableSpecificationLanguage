@@ -1,0 +1,13 @@
+concept Counter {
+  capability double(value: Number) returns Number
+  examples {
+    action add(count: Number = 1) returns Nothing
+    observation doubled(value: Number = 2) returns Number {
+      return double(value)
+    }
+    scenario "use a declared default" {
+      when add()
+      then doubled() == 4
+    }
+  }
+}

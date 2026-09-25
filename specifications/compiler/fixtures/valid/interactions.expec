@@ -1,0 +1,17 @@
+type Snapshot { title: Text }
+type Receipt { id: Text }
+interface Storage {
+  public persist
+  capability persist(snapshot: Snapshot) returns Receipt
+}
+component Screen {
+  depends on Storage
+  public showSaved
+  capability showSaved(receipt: Receipt) returns Nothing
+  interaction "save and show confirmation"(snapshot: Snapshot) {
+    participant screen: Screen
+    participant storage: Storage
+    message screen -> storage.persist(snapshot) as receipt
+    message storage -> screen.showSaved(receipt)
+  }
+}
