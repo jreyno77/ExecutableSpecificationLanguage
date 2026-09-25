@@ -1,30 +1,18 @@
-import { describe, expect, it } from "vitest";
-import { createSyntaxReader } from "../../src/index.js";
-import { sourceFixture } from "../support/source-fixture.js";
+import { describe, it } from "vitest";
+import { SourceReading } from "../support/source-reading.js";
 
-describe("source reader", () => {
+describe("an author reads a specification", () => {
   it.each([
-    ["valid/store-game.expec", "StoreGame", false, 4, 9],
-    ["valid/language-forms.expec", "Store Game", true, 22, 9],
-  ] as const)("GR-001: read %s as an authored concept name", (fixture, name, quoted, line, column) => {
-    const source = sourceFixture(fixture, "grammar");
-    const result = createSyntaxReader().read(source);
-    expect(result.status).toBe("accepted");
-    if (result.status !== "accepted") throw new Error("Expected accepted source");
-    const declarations = result.description.nodes.filter((node) => node.payload.kind === "concept");
-    const declaration = declarations.find((node) => {
-      if (node.payload.kind !== "concept") return false;
-      const nameId = node.payload.name;
-      const nameNode = result.description.nodes.find((candidate) => candidate.id.ordinal === nameId.ordinal);
-      return nameNode?.payload.kind === "name" && nameNode.payload.decoded === name;
-    });
-    expect(declaration).toBeDefined();
-    if (declaration?.payload.kind !== "concept") throw new Error("Expected concept declaration");
-    const nameId = declaration.payload.name;
-    const nameNode = result.description.nodes.find((node) => node.id.ordinal === nameId.ordinal);
-    expect(nameNode?.payload).toEqual({ kind: "name", decoded: name, quoted });
-    expect(nameNode?.range).toMatchObject({ sourceId: fixture, start: { line, column } });
-    expect(result.document).toEqual(source);
-    expect(result.grammarVersion).toBe("candidate-0.1");
+    { spelling: "a plain concept name", fixture: "valid/store-game.expec", name: "StoreGame", quoted: false, line: 4, column: 9 },
+    { spelling: "a quoted concept name", fixture: "valid/language-forms.expec", name: "Store Game", quoted: true, line: 22, column: 9 },
+  ])("GR-001: preserves $spelling at its authored location", ({ fixture, name, quoted, line, column }) => {
+    const language = new SourceReading();
+    language.sourceIs(fixture);
+
+    language.readSource();
+
+    language.expectConceptNamed(name, { quoted, at: { line, column } });
+    language.expectOriginalSourcePreserved();
+    language.expectGrammarVersion("candidate-0.1");
   });
 });
