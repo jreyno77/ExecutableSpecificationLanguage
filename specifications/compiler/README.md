@@ -1,6 +1,6 @@
 # CORE-18 — Build the compiler and validation
 
-**Compiler candidate 0.1 · Ready for implementation · Hypothesis Untested.** This specification is authored by hand. No compiler, ANTLR integration, acceptance runner, or generated implementation has been added or executed. Ready means that the construction work has an explicit contract and observable acceptance criteria.
+**Compiler candidate 0.1 · Implementing · Full-scope hypothesis Inconclusive.** This handwritten specification remains the implementation contract. An initial TypeScript reader/compiler and selected independent acceptance bindings now run; the complete semantic specification is not implemented. See [implementation evidence](../../docs/implementation-evidence.md) and the [coverage inventory](../acceptance/coverage.json) for results and limits.
 
 Task: [02 — Build the compiler and validation](https://app.notion.com/p/3e6039145665815db0bdc490acf8a18c). Stories: US-001 concepts/contracts, US-002 declaration availability, US-005 executable specifications, and US-008 developing .expec through its own specifications.
 
@@ -24,7 +24,7 @@ The tests start with authored intent. For example, if an author promises `saveGa
 | [source-model.expec](source-model.expec) | Concrete source description shared by the reader and validator. |
 | [model-contract.md](model-contract.md) | Node meanings, graph invariants, provenance, and how consumers inspect source data. |
 | [semantic-rules.md](semantic-rules.md) | Name, scope, type, contract, scenario, helper, and interaction validation policies. |
-| [compiler.feature](../acceptance/compiler.feature) | CV-001–CV-025: 25 scenario definitions, 56 cases with outline rows; unbound and unexecuted. |
+| [compiler.feature](../acceptance/compiler.feature) | CV-001–CV-025: 25 definitions, 56 expanded cases; 7 definitions bound, 2 partial, and 16 unbound. |
 | [Compiler fixtures](fixtures/README.md) | 67 concrete source fixtures and supplied catalog facts for those cases. |
 | [Shared source records](../shared/source.expec) | SourceDocument, SourcePosition, and SourceRange without a reader/model import cycle. |
 
@@ -142,7 +142,7 @@ Use the agreed ANTLR direction. Implement a `.g4` grammar from the reviewed EBNF
 
 Keep semantic checking outside embedded grammar actions. Exercise significant newlines, record-expression versus structural braces, nested generic delimiters, escaped identifiers, operator precedence, and original Unicode/CRLF positions through the GR cases. A parser-generator default is not authority to change the reviewed syntax. If an implementation constraint exposes an ambiguity, record it and revise the grammar with an example.
 
-The implementation step must choose and document the bootstrap host language, exact supported tool/runtime versions, dependency locks, generation/build commands, and acceptance-runner command. Those are routine construction choices, not hidden assumptions in the language or exported target. A clean checkout must be able to regenerate the parser, build the compiler, and run the real acceptance suite with the documented prerequisites. Failing acceptance cases must make the command fail. No successful execution is claimed in this specification.
+The initial implementation uses TypeScript, Node, the pinned antlr-ng/antlr4ng toolchain, and Vitest. [Development instructions](../../docs/development.md) record versions, locked dependencies, generation/build commands, and the acceptance command. These construction choices do not constrain exported targets. A clean checkout must regenerate the parser, build the compiler, and run the real acceptance suite; failing acceptance cases must make the command fail. [Implementation evidence](../../docs/implementation-evidence.md) separates observed local checks from clean-package and live CI/delivery verification.
 
 Suggested implementation responsibilities follow from the examples: adapt source and diagnostics; establish scopes and builtin/dependency availability; bind names; check types and expression contexts; validate contracts/helpers/messages; assemble results and obligations; bind the independent acceptance suite. These are internal construction steps within task 02, not new board cards.
 

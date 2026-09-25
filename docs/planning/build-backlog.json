@@ -1,5 +1,5 @@
 {
-  "status": "18 substantial tasks covering construction of .expec from grammar and compiler foundations through connected projects, generation, evolution, additional outputs, and self-development. Detailed specifications and code design follow. Implementation has not started.",
+  "status": "18 substantial construction tasks. CORE-01 and CORE-18 are Implementing with Ready specification baselines and Inconclusive full-scope hypotheses; scoped reader/compiler evidence is recorded in Learnings. The remaining 16 tasks are Captured and Untested.",
   "taskBodySections": [
     "Hypothesis",
     "Test list",
@@ -25,9 +25,9 @@
       ],
       "order": 1,
       "workstream": "Language core",
-      "stage": "Ready",
-      "hypothesisResult": "Untested",
-      "learnings": "Grammar candidate ready; relationships derive from declared dependencies, construction/capability signatures, outputs, and fields. No dedicated relationship keyword is required. Retain shortening as design learning.",
+      "stage": "Implementing",
+      "hypothesisResult": "Inconclusive",
+      "learnings": "The Ready grammar baseline now has an ANTLR-based reader and scoped syntax/acceptance evidence. Relationships derive from existing declarations without a dedicated keyword. Complete GR acceptance coverage remains unfinished; see docs/implementation-evidence.md.",
       "specification": "specifications/grammar/README.md",
       "specificationUrl": "https://app.notion.com/p/3e60391456658154b355f311127ba550",
       "notionUrl": "https://app.notion.com/p/3e6039145665819cb7bed5350ce614ad?pvs=204",
@@ -60,9 +60,9 @@
       ],
       "order": 2,
       "workstream": "Language core",
-      "stage": "Ready",
-      "hypothesisResult": "Untested",
-      "learnings": "Specified compile/read/validate contracts and acceptance cases. Relationships derive from declared uses; implementation work is beginning.",
+      "stage": "Implementing",
+      "hypothesisResult": "Inconclusive",
+      "learnings": "An initial compiler resolves declarations, builtins, signatures, public references, diagnostics, and derived relationships through real API tests. The latest integrated check passed 154 unit and 17 acceptance tests, with 71 explicit TODOs; full semantic scope remains unfinished. See docs/implementation-evidence.md.",
       "notionUrl": "https://app.notion.com/p/3e6039145665815db0bdc490acf8a18c?pvs=204",
       "notionId": "3e603914-5665-815d-b0bd-c490acf8a18c",
       "consolidates": [

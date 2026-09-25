@@ -1,4 +1,4 @@
-(* .expec candidate v0.1 -- proposal only; no parser or execution is implemented.
+(* .expec candidate v0.1 -- reviewed baseline; an initial ANTLR reader exists.
    EBNF notation: comma = sequence; | = choice; [ ] = optional; { } = repetition.
    Lexical special sequences and newline handling are defined in lexical-rules.md.
    Syntax recognition does not resolve references or establish behavior. *)

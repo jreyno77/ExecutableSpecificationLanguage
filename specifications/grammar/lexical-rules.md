@@ -1,6 +1,6 @@
 # Candidate lexical and layout rules
 
-Status: proposed v0.1 grammar, unimplemented and unexecuted. This document and [language.ebnf](language.ebnf) specify a candidate for discussion, not the adopted language. The fixtures document intended recognition and rejection; no parser has checked them. Grammar acceptance does not establish resolved declarations, valid types, executable behavior, or successful generation.
+Status: candidate v0.1 implementation baseline. This document and [language.ebnf](language.ebnf) define the reviewed lexical contract; an ANTLR-based reader and scoped tests now exist. See [implementation evidence](../../docs/implementation-evidence.md) for coverage and limits. Grammar acceptance does not establish resolved declarations, valid types, executable behavior, or successful target generation.
 
 ## Text, names, and comments
 

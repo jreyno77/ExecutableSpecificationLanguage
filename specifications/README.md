@@ -4,13 +4,13 @@ These specifications are part of the [development learning loop](../docs/develop
 
 The examples describe observable behavior of .expec itself. They are the starting point for its implementation, not a description generated afterward from whatever the implementation happens to do. Confirmed needs do not prove a proposed solution. Each task should identify the scope in which its examples support a hypothesis and what counterevidence would require reconsideration. Keep failed or incomplete checks visible rather than changing them merely to make an implementation appear successful.
 
-The current set has 18 construction tasks, 11 stories, and **78 scenario definitions: 34 earlier EX, 19 grammar GR, and 25 compiler CV scenarios**. All remain unbound and unexecuted. **CORE-01 — Define the .expec language grammar** and **CORE-18 — Build the compiler and validation** are **Ready**; the remaining 16 tasks are **Captured**, and all hypotheses are **Untested**. No compiler or generation implementation exists. Ready describes specified work, not completed software or a tested hypothesis.
+The current set has 18 construction tasks, 11 stories, and **78 scenario definitions: 34 earlier EX, 19 grammar GR, and 25 compiler CV scenarios**. The [coverage inventory](acceptance/coverage.json) records **8 bound, 2 partially bound, and 68 unbound** definitions. CORE-01 and CORE-18 are **Implementing**, with full-scope hypotheses **Inconclusive**; the remaining 16 tasks are **Captured** and **Untested**. Their Ready specifications remain the implementation baseline. An initial TypeScript reader/compiler and real acceptance tests run; target generation and connected-project updates remain later work. See [implementation evidence](../docs/implementation-evidence.md).
 
 ## Ready specifications: grammar and compiler
 
-[CORE-01's detailed specification](grammar/README.md) develops the first construction task into a syntax proposal, lexical rules, source fixtures, the `SyntaxReader.read` contract, and [GR-001–GR-019 acceptance scenarios](acceptance/grammar.feature), comprising 28 cases when outline rows are expanded. These cases specify authored meaning and useful diagnostics through a future real reader. They do not run the described software, load imports, or generate targets.
+[CORE-01's detailed specification](grammar/README.md) develops the first construction task into a syntax proposal, lexical rules, source fixtures, the `SyntaxReader.read` contract, and [GR-001–GR-019 acceptance scenarios](acceptance/grammar.feature), comprising 28 cases when outline rows are expanded. Selected cases now observe the real reader; the remaining complete GR scenarios need bindings. Reading does not run the described software, load imports, or generate targets.
 
-The candidate distinguishes names from strings, literal expectations from prose obligations, and declared capabilities from public references. Syntax reading can retain a `saveGame`/`save` mismatch; semantic validation must reject it during compilation. Review confirmed import-free primitives and the working names `read` and `ReadResult`. Both suggested relationship styles were rejected; the user then chose to derive relationships from existing declarations, with GR-010 revised accordingly. Dependencies and explicit ordered interactions remain specified. ANTLR is the preferred parser-generator candidate.
+The candidate distinguishes names from strings, literal expectations from prose obligations, and declared capabilities from public references. Syntax reading can retain a `saveGame`/`save` mismatch; semantic validation rejects it during compilation. Review confirmed import-free primitives and the working names `read` and `ReadResult`. Both suggested relationship styles were rejected; the user then chose to derive relationships from existing declarations, with GR-010 revised accordingly. Dependencies and explicit ordered interactions remain specified. The implementation uses antlr-ng with the antlr4ng runtime; pinned versions and commands are in the development guide.
 
 [CORE-18's detailed specification](compiler/README.md) defines `Compiler.compile(CompilationInput)`, the reader/validator contracts, a concrete shared source model, supplied dependency catalogs, validation rules, and inspectable accepted or rejected results. Its [CV-001–CV-025 acceptance scenarios](acceptance/compiler.feature) comprise 56 expanded cases supported by 67 fixtures. The compiler core reads supplied source and validates against supplied metadata; project discovery, generation, and mutation remain later construction tasks.
 
@@ -21,10 +21,10 @@ The earlier EX scenarios and files under `draft/` are historical discovery sketc
 | Artifact | Purpose | Current status |
 | --- | --- | --- |
 | [User stories](../docs/stories.md) | Identify who needs each behavior and why. | Drafted from the confirmed requirements. |
-| [Grammar specification](grammar/README.md) | Define current language forms, source reading, supporting types, and source provenance. | Candidate 0.1, Ready; no parser or runtime implementation. |
-| [Grammar acceptance cases](acceptance/grammar.feature) | GR-001–GR-019 with concrete source fixtures and authored observations. | Draft, unbound, and unexecuted. |
-| [Compiler specification](compiler/README.md) | Define the compiler core, shared source model, validation rules, catalogs, and results. | Candidate 0.1, Ready; no implementation. |
-| [Compiler acceptance cases](acceptance/compiler.feature) | CV-001–CV-025, 56 expanded cases, and 67 supporting fixtures. | Draft, unbound, and unexecuted. |
+| [Grammar specification](grammar/README.md) | Define current language forms, source reading, supporting types, and source provenance. | Ready baseline; reader implementation and scoped tests exist. |
+| [Grammar acceptance cases](acceptance/grammar.feature) | GR-001–GR-019 with concrete source fixtures and authored observations. | GR-001 bound; other complete GR scenarios remain unbound. |
+| [Compiler specification](compiler/README.md) | Define the compiler core, shared source model, validation rules, catalogs, and results. | Implementing an initial subset; full contract remains incomplete. |
+| [Compiler acceptance cases](acceptance/compiler.feature) | CV-001–CV-025, 56 expanded cases, and 67 supporting fixtures. | 7 definitions bound, 2 partially bound, and 16 unbound; see coverage inventory. |
 | [Declaration examples](acceptance/declarations.feature) | Valid and invalid compiler contracts; explicit dependency resolution. | Concrete acceptance scenarios; no runner or bindings yet. |
 | [Connected-project examples](acceptance/projects.feature) | Manifest destinations, initialization choices, and diagram output. | Concrete acceptance scenarios; no runner or bindings yet. |
 | [Behavior and evolution examples](acceptance/evolution.feature) | Readable tests, incomplete behavior, preservation, and repeated builds. | Concrete acceptance scenarios; no runner or bindings yet. |
@@ -37,7 +37,7 @@ The earlier EX scenarios and files under `draft/` are historical discovery sketc
 | [Earlier core declarations](draft/core.expec) | Preserve the earlier explicitly imported primitive sketch. | Historical; current primitives require no imports. |
 | [Draft manifest](draft/expec.manifest.example.json) | Show the compiler's own project connection and output choices. | Illustrative configuration; no tool reads it yet. |
 
-The `.feature` files use readable Given/When/Then notation to preserve the examples independently of the language grammar. This is a temporary acceptance-specification format, not a decision that .expec must embed Gherkin or depend on a particular BDD framework. The `@unbound` tag means the scenarios do not yet execute. It does not mean they have passed.
+The `.feature` files use readable Given/When/Then notation to preserve examples independently of the language grammar. Vitest bindings now exercise selected expectations; the files do not themselves become executable merely by existing. This does not make Gherkin part of .expec. The coverage inventory distinguishes bound, partial, and unbound cases; `@unbound` on historical EX features still means no executable binding, not a passing result.
 
 ## Story-to-example map
 
@@ -89,18 +89,18 @@ The eventual test body should read in these domain terms. Helpers beneath it can
 | Compare intended and actual dependencies | Resolved specification compared with search evidence | Matched a,b; missing c; project-only d, without editing either input |
 | Execute a generated expectation | Target test runner and real implementation binding | Passing, failing, or explicitly incomplete execution |
 
-Test-runner choice and source-editing mechanisms remain open; CORE-18 now proposes compiler diagnostic and result schemas. A bare test name or unbound sentence is not an executable assertion. Bindings that throw not-implemented errors must fail or remain explicitly incomplete; they must not count as verified behavior.
+Vitest runs the current independent bindings; source-editing mechanisms remain future work. CORE-18 specifies compiler diagnostic and result schemas. A bare test name or unbound sentence is not an executable assertion. Bindings that throw not-implemented errors must fail or remain explicitly incomplete; they must not count as verified behavior.
 
 ## Bootstrap sequence
 
-1. Use the Ready CORE-01 grammar specification and its valid/invalid examples, retaining the user's explicit deferral of labeled relationship notation.
-2. Implement the Ready CORE-18 compiler/validation specification with an independent acceptance runner. Its contracts and examples define the observable work; internal implementation choices remain testable hypotheses.
+1. Use the Ready CORE-01 grammar specification and its valid/invalid examples; derive relationships from ordinary declarations rather than adding a dedicated keyword.
+2. Continue implementing CORE-18 with independent acceptance bindings. Its contracts and examples define the observable work; internal implementation choices remain testable hypotheses.
 3. Run the relevant examples against the real compiler. Include deliberately incorrect behavior, such as a validator that always returns success, to check that the acceptance observations detect it. Record actual results and limitations.
 4. Continue through the configuration, composition, connected-project, output, and preservation tasks in the build plan. Generate artifacts when those capabilities exist, while keeping unfinished implementation and test obligations visible.
 5. In the self-development task, use the compiler to read its self-description and manifest and generate or update its own contracts and tests while preserving handwritten implementation. Exercise the Store Game pilot and record feedback against the original need.
 6. Evaluate outcomes against independent checks, update Learnings, and revisit the board, stories, specifications, and pitch as necessary. Complete the remaining construction tasks and continue the learning cycle until the desired outcomes are met. Full self-hosting requires its own demonstrated result.
 
-Self-description, generating the compiler's structure, and full self-hosting are different milestones. The current contracts are authored by hand; no compiler or self-generation is implemented. The bootstrap provides the initial machinery, and independently authored examples provide behavioral checks. Passing selected examples does not verify the entire language. Counterevidence is a reason to learn and revise; if an expectation changes for a justified reason, retain that rationale and rerun the relevant checks instead of reusing evidence for the earlier requirement.
+Self-description, generating the compiler's structure, and full self-hosting are different milestones. The current contracts are authored by hand; an initial compiler exists, but self-generation is not implemented. The bootstrap provides the initial machinery, and independently authored examples provide behavioral checks. Passing selected examples does not verify the entire language. Counterevidence is a reason to learn and revise; if an expectation changes for a justified reason, retain that rationale and rerun the relevant checks instead of reusing evidence for the earlier requirement.
 
 ## Provisional choices exposed by these examples
 

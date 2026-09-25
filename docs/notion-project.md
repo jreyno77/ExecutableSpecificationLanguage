@@ -4,7 +4,7 @@ Created September 25, 2026 in Joshua Reynolds’s Space.
 
 [Open .expec — Project Home](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48)
 
-The project home contains the Learning Kanban board. The active plan has **18 substantial construction tasks**, with **CORE-01 — Define the .expec language grammar** and **CORE-18 — Build the compiler and validation** both **Ready**. The other 16 tasks are Captured. All hypotheses are Untested; all 11 stories remain Not demonstrated.
+The project home contains the Learning Kanban board. The active plan has **18 substantial construction tasks**, with **CORE-01 — Define the .expec language grammar** and **CORE-18 — Build the compiler and validation** both **Implementing**. Their specifications remain Ready baselines and their full-scope hypotheses are **Inconclusive**, with scoped implementation evidence recorded in Learnings. The other 16 tasks are Captured and Untested; whole stories are not marked demonstrated by selected passing examples.
 
 ## Project areas
 
@@ -29,9 +29,11 @@ The previous 62 cards were consolidated into 18 existing pages. The other 44 pag
 
 Board phases are Captured → Specifying → Ready → Implementing → Evaluating → Reviewed. Hypothesis result is tracked separately. Reviewed closes a learning cycle; it does not establish delivery. Learnings can revise the tasks, examples, stories, and pitch.
 
-Notion holds planning and learning records. Local sources and acceptance fixtures hold versionable details. Changes are reconciled deliberately; no automatic synchronization is installed. This iteration remains planning and specification work, with no compiler implementation or executed acceptance evidence.
+Notion holds planning and learning records. Local sources and acceptance fixtures hold versionable details. Changes are reconciled deliberately; no automatic synchronization is installed. The initial reader/compiler now has executable evidence; [implementation-evidence.md](implementation-evidence.md) records results, remaining coverage, and delivery checks still awaiting observation.
 
-## Grammar specification checkpoint
+## Historical grammar specification checkpoint
+
+The following paragraphs record the preimplementation design checkpoint. Current task and implementation status appear above; subsequent implementation does not rewrite this earlier evidence.
 
 CORE-01 now links to a detailed candidate specification, with child pages for the [grammar rules and recognition contract](https://app.notion.com/p/3e6039145665815b9174fd3c2a616d55) and [acceptance cases with source fixtures](https://app.notion.com/p/3e603914566581cabc84f95897b4cf53). The local source is [specifications/grammar/README.md](../specifications/grammar/README.md). The task card retains only Hypothesis, Test list, and Learnings.
 
@@ -39,7 +41,7 @@ GR-001–GR-019 add 19 scenario definitions (28 cases with outline rows) to the 
 
 The next review confirmed import-free primitives (including `Text`) and renamed the reader operation to `read`. A subsequent review accepted `ReadResult` as the working result name, rejected the later `owns cart: Cart` / `uses storage: Storage` style too, and retained the shortening ideas as learning for future design. The rejected labeled-relationship notation was removed, with GR-010 explicitly `@syntax-pending`; its requirement remains. ANTLR 4 is the preferred implementation candidate, and shortening the broader language remains a discussion question. Current specification, rules, fixtures, and Notion copies were reconciled; no parser was installed or implemented.
 
-## Compiler specification checkpoint
+## Historical compiler specification checkpoint
 
 [CORE-18 compiler specification](https://app.notion.com/p/3e6039145665818c940af6af42bf3be2) refines task 02 into the compile/read/validate interfaces, concrete source and resolved models, supplied dependency contracts, semantic rules, diagnostics, and independent acceptance examples. Local source: [specifications/compiler/README.md](../specifications/compiler/README.md).
 

@@ -1,6 +1,6 @@
 # Candidate grammar fixtures
 
-Status: proposed and unexecuted. These files express intended syntax acceptance or rejection for the v0.1 grammar proposal. No compiler, parser, runtime, test driver, or executable grammar check exists as a result of this work. They are source fixtures, not executable implementations.
+Status: authored v0.1 syntax inputs, now exercised by the reader's unit checks and selected acceptance bindings. Fixtures are source data, not implementations or expected reader output. The [coverage inventory](../../acceptance/coverage.json) and [implementation evidence](../../../docs/implementation-evidence.md) distinguish scoped checks from remaining complete GR scenarios.
 
 Each listed entry is an independent example source set. Do not load every valid file into one module: several independent fixtures deliberately reuse ordinary names. The proposed `read(SourceDocument)` operation can inspect each physical file without loading any imported content. A semantic compiler will additionally need any specified dependency provider and source graph.
 

@@ -1,11 +1,12 @@
-@draft @unbound @CORE-18
+@draft @coverage-in-progress @CORE-18
 Feature: Compile authored specifications into validated meaning
   As a specification author and an output implementer
   I want available declarations and compatible contracts preserved in a resolved specification
   So that unavailable or inconsistent promises cannot be presented as valid project input
 
-  These are proposed acceptance specifications, not executed tests.
-  The future driver calls the real Compiler.compile(CompilationInput) boundary.
+  These independently authored specifications have selected executable Vitest bindings.
+  The coverage inventory records bound, partial, and unbound cases without claiming full implementation.
+  The driver calls the real Compiler.compile(CompilationInput) boundary.
   It supplies source text and a typed dependency snapshot, not a prepared compiler result.
   Observations inspect actual results against the independently authored facts below.
   Rejection means diagnostics and no accepted ResolvedSpecification.

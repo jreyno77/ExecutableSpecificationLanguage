@@ -6,7 +6,7 @@ The [development workflow](development-workflow.md) expands the progression obse
 
 The requirements summarized as **Confirmed** come from the user's request and clarifications. A confirmed need is not evidence that a proposed solution meets it. **Proposed examples** and sequencing are candidate acceptance agreements whose success criteria and limits should be recorded on the related tasks. Counterevidence can require revisiting the solution or examples. Names such as `ExpecCompiler`, `Specification`, and `ValidationResult` are illustrative declarations for discussing the compiler itself, not adopted syntax or architecture.
 
-The [concrete acceptance examples and traceability map](../specifications/README.md) turn these summaries into 34 identified Given/When/Then scenario definitions. All remain unbound and unexecuted. Tasks backfilled from this work record design, not completed implementation or tested hypotheses. Executable bindings, generation, implementation, and evidence-driven revision follow as development proceeds.
+The [concrete acceptance examples and traceability map](../specifications/README.md) retain 34 earlier EX scenario definitions and add the current GR/CV cases. The earlier EX files remain historical and unbound. Selected GR/CV expectations now exercise the initial reader/compiler; the [coverage inventory](../specifications/acceptance/coverage.json) and [implementation evidence](implementation-evidence.md) distinguish that scoped progress from the remaining work. Backfilled design tasks do not establish completed stories or a tested full-scope hypothesis.
 
 ## US-001 — Describe concepts and public contracts
 

@@ -1,11 +1,12 @@
-@draft @unbound @CORE-01
+@draft @coverage-in-progress @CORE-01
 Feature: Read candidate language source while preserving its authored meaning
   As a specification author
   I want my source to retain its written meaning or identify malformed syntax
   So that later compiler work receives an accurate description of what I wrote
 
-  These scenarios describe candidate-0.1, not an implemented reader.
-  A future acceptance driver submits source to the real read(SourceDocument)
+  These scenarios describe candidate-0.1; selected bindings now exercise its reader.
+  The coverage inventory identifies the complete cases still awaiting bindings.
+  The acceptance driver submits source to the real read(SourceDocument)
   boundary and independently inspects its returned description or diagnostics.
   ReadResult is the agreed working return-type name; its class layout is not prescribed.
   Expected facts below are authored independently of the reader's output.

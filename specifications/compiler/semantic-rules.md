@@ -1,6 +1,6 @@
 # Compiler candidate 0.1 — semantic rules
 
-These are concrete proposed policies for implementing CORE-18. They refine the agreed needs; they remain revisable through evidence. No tests have executed them. The grammar decides which forms can be read; these rules decide whether supported forms describe a coherent contract. Relationships are derived from declared uses; no separate notation is required.
+These policies define the CORE-18 semantic contract and remain revisable through evidence. An initial subset now has implementation and tests; the [coverage inventory](../acceptance/coverage.json) and [implementation evidence](../../docs/implementation-evidence.md) identify its limits. The grammar decides which forms can be read; these rules decide whether supported forms describe a coherent contract. Relationships are derived from declared uses; no separate notation is required.
 
 ## Names, scopes, and supplied dependencies
 

@@ -1,0 +1,41 @@
+{
+  "name": "executable-specification-language",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "docs/development.md"],
+  "description": "A compiler for readable executable software specifications.",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "npm": ">=11.20.0 <12"
+  },
+  "packageManager": "npm@11.20.0",
+  "scripts": {
+    "grammar:generate": "node scripts/generate-parser.mjs",
+    "build": "npm run grammar:generate && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:acceptance": "vitest run tests/acceptance",
+    "test:watch": "vitest",
+    "dev": "node scripts/dev.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "dependencies": {
+    "antlr4ng": "3.0.16"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "antlr-ng": "1.0.10",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}

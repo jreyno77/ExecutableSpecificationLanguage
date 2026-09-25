@@ -1,6 +1,6 @@
 # Compiler acceptance inputs
 
-Status: authored fixtures for CORE-18, all unexecuted. No compiler, generated ANTLR parser, acceptance driver, dependency resolver, or test result is supplied by these files.
+Status: authored CORE-18 inputs, with selected fixtures now exercised by the real compiler acceptance bindings. These files supply inputs, not expected compiler results. The [coverage inventory](../../acceptance/coverage.json) distinguishes bound, partial, and unbound scenarios; [implementation evidence](../../../docs/implementation-evidence.md) records observed results.
 
 Each `.expec` file is one independent source input for [compiler.feature](../../acceptance/compiler.feature). Do not concatenate the directory into one module: independent examples deliberately reuse names. The future driver reads the chosen fixture as test setup, then passes its exact text and source identity to `Compiler.compile`. The compiler itself receives a `CompilationInput` snapshot and must not discover other files.
 
@@ -45,4 +45,4 @@ The earlier examples remain historical design artifacts; this table carries thei
 
 Expected diagnostic locations and semantic facts are written in the feature independently of future compiler output. They are not parser snapshots. Tests should compare declaration bindings, checked types, source provenance, and unfinished obligations through the actual public result. They must not satisfy an assertion by reparsing the fixture in the observation helper or by returning the expected answer directly.
 
-CV-024 specifies the eventual clean-checkout ANTLR and acceptance path. It is an implementation obligation, not a command executed by creating this directory. All CV cases remain `@unbound` until real bindings and the real compiler make their outcomes observable.
+CV-024 specifies the complete clean-checkout ANTLR and acceptance path. Creating fixtures does not fulfill that obligation. Selected CV cases now have real bindings; remaining and partial coverage stays explicit in the inventory and runner TODOs.

@@ -1,6 +1,6 @@
 # Generating readable acceptance tests and their supporting DSL
 
-Status: design examples only. This records the user's clarification of the desired output and proposes how deterministic compilation could produce it. No compiler, executable binding, or final grammar is implemented.
+Status: design examples for generated acceptance output. This records the user's clarification and proposes deterministic generation. An initial source compiler exists, but the acceptance-code generator and generated execution bindings described here remain unimplemented.
 
 ## Confirmed output level
 

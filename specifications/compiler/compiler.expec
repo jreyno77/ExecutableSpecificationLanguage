@@ -1,4 +1,5 @@
-// CORE-18 candidate contracts. Handwritten, unimplemented, and unexecuted.
+// CORE-18 handwritten contracts. Initial implementation exists; full contract remains incomplete.
+// See docs/implementation-evidence.md and the acceptance coverage inventory.
 use SourceDocument, SourceRange from "../shared/source.expec"
 use SyntaxReader from "../grammar/recognition.expec"
 use SourceDescription, SourceNodeId from "./source-model.expec"
