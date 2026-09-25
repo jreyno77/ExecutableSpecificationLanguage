@@ -6,13 +6,17 @@ For this project, a **compiler deployment** occurs when a built package artifact
 
 ## Work through delivery
 
-1. Select the Notion task and its consumer outcome. Refine the relevant examples into independent executable expectations; identify what remains unfinished.
+1. Select the Notion task and its consumer outcome. Before starting its specification, test, or implementation work, create the task branch and a task-start commit naming the task ID and Notion link. An empty commit is acceptable when no files have changed. Push it promptly and retain its SHA and original timestamp. Then refine the relevant examples into independent executable expectations; identify what remains unfinished.
 2. Implement and run the real checks. Keep the task's compact Hypothesis / Testlist / Learnings body current; detailed specifications stay in the repository.
 3. Open a PR using the [PR template](../.github/pull_request_template.md). Supply the task ID, actual Notion link, changed behavior, executed validation, remaining limits, and learning. Record `Delivery-kind: planned` or `Delivery-kind: incident-recovery`; the latter requires linked incidents and means unplanned work responding to an incident.
 4. Follow the repository's review and merge policy. The delivery workflow builds and exposes the artifact, verifies availability, and records the release/deployment and `delivery.json`. A failed workflow before availability is build/release-process evidence, not a successful package delivery.
 5. The consumer exercises the delivered artifact. A discovered failure enters the incident process below. The developer updates evidence and task learning rather than changing expected results merely to obtain green tests.
 
 The machine-readable PR lines are `Notion-task:`, `Notion-link:`, `Delivery-kind:`, and `Incidents:`. An incident list looks like `#12, #34`; a planned change without an incident uses `none`. Missing classification remains unknown. A release can be available successfully while its behavior later proves faulty; that is how a delivered change enters the failure numerator.
+
+Link the task-start commit in the PR's Behavior section. Its original commit record is retained by the release's `source.commits` inventory even when the PR is squash-merged. Preserve that record before rewriting history. Continuing or resuming the same task does not create a new start time. The task-start-to-delivery duration is a separate task-level observation; the existing DORA calculator still reports its documented per-commit lead-time measure and does not yet calculate task duration.
+
+CORE-01 and CORE-18 began before this convention was adopted. Their first commits were made after work had started; the original task-start times are unknown. Do not backdate replacement commits or use today's process-update commit as their original start. Later tasks should have a start commit created before the work.
 
 ## Incident and recovery cycle
 

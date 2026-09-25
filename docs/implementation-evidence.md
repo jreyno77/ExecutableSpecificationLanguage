@@ -35,6 +35,10 @@ A relationship test initially selected both a named concept and its unnamed cons
 
 ## Coverage and limits
 
+The 71 TODO test entries are reminders of planned acceptance coverage that is not completely executable yet. They are not 71 unexpected failures or learning findings. Some have underlying behavior already covered by unit tests but still lack the complete consumer-level acceptance observation; others depend on unimplemented compiler behavior or later construction tasks. A TODO itself supplies no execution evidence. The findings about display paths and missing incident evidence above are actual learnings, with their corrections covered by running tests.
+
+These entries span the project backlog: 34 historical EX definitions, 18 GR definitions, 16 unbound CV definitions, and 2 partially bound CV definitions. The inventory produces 70 entries; an additional explicit CV-020 catalog-removal TODO represents the same scenario again, giving 71 runner entries for 70 distinct scenario IDs. Examples include supplied-module removal, Boolean contract conditions, and later code generation that preserves handwritten implementation.
+
 The [coverage inventory](../specifications/acceptance/coverage.json) tracks all **78 authored scenario definitions**: **8 bound, 2 partially bound, and 68 unbound**. Bound definitions are CV-002, CV-003, CV-004, CV-017, CV-018, CV-022, CV-023, and GR-001. CV-005 lacks its imported-alias collision binding; CV-020 lacks its supplied-catalog change binding. A separate executable case covers derived relationships. Definition counts differ from expanded examples and runner test counts.
 
 The remaining semantic specification includes supplied module catalogs, full generic/type compatibility, expression/default checking, contracts, helper/scenario flow, interactions, and broader obligation handling. Unsupported implemented-entry-point paths fail explicitly with `CompilationUnimplementedError`; they must not masquerade as valid author input or successful behavior. Individual supported validation rules have narrower unit evidence, but that does not bind the remaining complete CV scenarios.

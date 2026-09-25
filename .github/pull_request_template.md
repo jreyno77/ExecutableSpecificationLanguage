@@ -10,6 +10,8 @@ as #12, #34 on the Incidents line; use none for a planned delivery without one. 
 
 ## Behavior
 
+Task start commit: <!-- Link the original task-start commit, or write Unknown with the reason. Do not substitute a late commit or reset the clock on continuation. -->
+
 <!-- What useful behavior changes, and which requirement/example does it satisfy? -->
 
 ## Validation

@@ -30,6 +30,8 @@ Each task body has only three sections:
 
 Use the story relation for story links. Detailed scenarios, contracts, execution details, and supporting records belong in the separate specifications, rather than being repeated on the card.
 
+Before beginning a new task's active work, create and push a task-start commit on its branch, naming the task ID and Notion link; an empty commit is acceptable. Link that commit in the task PR and preserve its original timestamp. Continuing the task keeps the same start. The [delivery guide](delivery.md) distinguishes this task timing from commit-level metrics and records the unknown starts of the first two tasks.
+
 For the grammar task, the hypothesis can be: “One readable grammar can express the current specification needs consistently.” Its Test list can be:
 
 - Express concepts, types, public contracts, dependencies, relationships, and behavior.
@@ -68,6 +70,8 @@ Keep tests capable of exposing incorrect behavior. Use real implementation bindi
 Write from the intent of the person using the code, including another component as a consumer. Before implementation, use concrete examples to discover useful contracts, dependencies, and boundaries. The domain-level test should communicate the reason the behavior matters; its helpers should carry the mechanics of exercising and observing the real system. Deriving both a test and its expected answer from the implementation can repeat the same mistaken assumption. A test's useful perspective and observations matter more than its label or the layer through which it happens to run.
 
 An expectation can change when learning shows it was wrong. Record the reason, update the linked story or hypothesis, and run the revised checks. Evidence for an earlier requirement does not automatically verify its replacement. Preserve counterevidence and limitations so the next decision can use them.
+
+Acceptance TODOs are planned examples without complete executable bindings. They record remaining work, not an unexpected outcome and not a passing or failed execution. To implement one, first bind its real action and independent observation, run it to see the expected failure, then implement and refactor. Unexpected findings go in Learnings with regression tests where appropriate; an existing failing regression must not be hidden as a TODO.
 
 ## Current position
 
