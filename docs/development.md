@@ -9,7 +9,7 @@ npm run dev
 
 The development command generates the parser and starts Vitest in watch mode. TypeScript edits trigger the relevant tests. Editing `grammar/Expec.g4` stops tests, regenerates the parser, then restarts the watcher. If generation fails, tests remain stopped until a grammar edit fixes the error; old generated code must not produce a misleading green result. `npm run test:watch` is the lighter option when only editing TypeScript.
 
-Write the next unit or acceptance example first, run it and observe the expected failure, then implement the behavior and repeat. Acceptance tests use the public compiler API; unit tests isolate syntax, semantic rules, delivery guards, and metrics. Explicit TODO cases preserve work that is specified but unimplemented. A passing run does not claim those cases are implemented.
+Write the next unit or acceptance example for the current task first, run it and observe the expected failure, then implement the behavior and repeat. Acceptance tests use the public compiler API; unit tests isolate syntax, semantic rules, delivery guards, and metrics. TODOs are restricted to the active CORE-18 compiler task; future work stays in its stories and tasks. Existing regression tests remain. A passing run does not complete CORE-18 while its acceptance TODOs remain.
 
 ```sh
 npm run test:unit

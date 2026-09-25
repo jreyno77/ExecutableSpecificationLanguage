@@ -37,7 +37,7 @@ The earlier EX scenarios and files under `draft/` are historical discovery sketc
 | [Earlier core declarations](draft/core.expec) | Preserve the earlier explicitly imported primitive sketch. | Historical; current primitives require no imports. |
 | [Draft manifest](draft/expec.manifest.example.json) | Show the compiler's own project connection and output choices. | Illustrative configuration; no tool reads it yet. |
 
-The `.feature` files use readable Given/When/Then notation to preserve examples independently of the language grammar. Vitest bindings now exercise selected expectations; the files do not themselves become executable merely by existing. This does not make Gherkin part of .expec. The coverage inventory distinguishes bound, partial, and unbound cases; `@unbound` on historical EX features still means no executable binding, not a passing result.
+The `.feature` files use readable Given/When/Then notation to preserve examples independently of the language grammar. Vitest bindings now exercise selected expectations; the files do not themselves become executable merely by existing. This does not make Gherkin part of .expec. The coverage inventory distinguishes bound, partial, and unbound cases; `@unbound` on historical EX features still means no executable binding, not a passing result. This documentation inventory is not a runner backlog: new tests and TODOs belong to the current task, CORE-18. Future work stays in its stories and tasks; completed regression tests remain.
 
 ## Story-to-example map
 

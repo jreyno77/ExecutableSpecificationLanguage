@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "note": "Binding status records executable test coverage, not a passing result or an implemented full compiler. Scenario outlines are not counted as one assertion. Legacy EX cases remain unbound even where newer CV tests cover related intent.",
+  "note": "This is a documentation inventory across tasks, not a test backlog. Only the current CORE-18 compiler scenarios supply acceptance TODOs; future task examples stay in their stories and tasks. Binding status is not a passing result or an implemented full compiler. Scenario outlines are not counted as one assertion. Legacy EX cases remain unbound even where newer CV tests cover related intent.",
   "execution": "No passing execution is asserted by this inventory; consult the actual test-run evidence.",
   "cases": [
     {

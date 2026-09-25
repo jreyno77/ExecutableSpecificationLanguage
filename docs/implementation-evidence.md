@@ -21,9 +21,9 @@ The reported local component runs at this checkpoint are:
 | Delivery metrics unit cases | 12 passed |
 | Release unit cases | 13 passed |
 | Unit total | 154 passed |
-| Executable acceptance | 17 passed, with 71 explicit TODO cases |
+| Executable acceptance | 17 passed, with 18 CORE-18 TODO cases |
 
-The latest **`npm run check` passed**, including 154 unit tests and 17 acceptance tests, with 71 explicit TODOs. The same checks passed in a clean archived checkout and in [GitHub CI on Ubuntu and Windows](https://github.com/jreyno77/ExecutableSpecificationLanguage/actions/runs/36187140824) for commit `824037ff4976d814658af8312989a531604cde45`. Development commands and the pinned runtime are in [development.md](development.md).
+The latest **`npm run check` passed**, including 154 unit tests and 17 acceptance tests, with 18 TODOs belonging to the current CORE-18 task. No active test or regression assertion was removed. The earlier runner also included 52 out-of-task placeholders and one duplicate, giving 71 TODOs; that broader inventory was a process mistake, corrected at the user's direction. The earlier checks passed in a clean archived checkout and in [GitHub CI on Ubuntu and Windows](https://github.com/jreyno77/ExecutableSpecificationLanguage/actions/runs/36187140824) for commit `824037ff4976d814658af8312989a531604cde45`. Development commands and the pinned runtime are in [development.md](development.md).
 
 That exact commit produced `executable-specification-language-0.1.0-pr.2.tgz` (85,504 bytes, SHA-256 `a643b282cb59491b5b52a113434f7d2ea60c5fd107782970c4e18296e2025575`). Installing the tarball into an isolated consumer and importing its public API accepted a valid declaration and rejected an unknown type. The original checkout remained clean. This verifies a local deliverable, not a hosted deployment: release publication and GitHub deployment integration remain unverified until an authorized merge.
 
@@ -35,9 +35,9 @@ A relationship test initially selected both a named concept and its unnamed cons
 
 ## Coverage and limits
 
-The 71 TODO test entries are reminders of planned acceptance coverage that is not completely executable yet. They are not 71 unexpected failures or learning findings. Some have underlying behavior already covered by unit tests but still lack the complete consumer-level acceptance observation; others depend on unimplemented compiler behavior or later construction tasks. A TODO itself supplies no execution evidence. The findings about display paths and missing incident evidence above are actual learnings, with their corrections covered by running tests.
+The runner's 18 TODOs cover only unfinished CORE-18 acceptance: 16 unbound CV scenarios and the unfinished portions of CV-005 and CV-020. The explicit CV-020 test body remains; the inventory no longer creates a duplicate. These are requirements of the current compiler task, which must be completed before its PR is ready unless the user agrees to change scope.
 
-These entries span the project backlog: 34 historical EX definitions, 18 GR definitions, 16 unbound CV definitions, and 2 partially bound CV definitions. The inventory produces 70 entries; an additional explicit CV-020 catalog-removal TODO represents the same scenario again, giving 71 runner entries for 70 distinct scenario IDs. Examples include supplied-module removal, Boolean contract conditions, and later code generation that preserves handwritten implementation.
+Future work belongs in its user stories and construction tasks, not in today's test TODOs. The earlier 34 EX and 18 GR placeholders were removed from the compiler runner; their authored specifications remain as documentation. Existing executed grammar and compiler regression tests remain. Some compiler behavior has unit coverage but still needs its full acceptance observation; a TODO provides no execution evidence. The findings about display paths and missing incident evidence above are actual learnings, with their corrections covered by running tests.
 
 The [coverage inventory](../specifications/acceptance/coverage.json) tracks all **78 authored scenario definitions**: **8 bound, 2 partially bound, and 68 unbound**. Bound definitions are CV-002, CV-003, CV-004, CV-017, CV-018, CV-022, CV-023, and GR-001. CV-005 lacks its imported-alias collision binding; CV-020 lacks its supplied-catalog change binding. A separate executable case covers derived relationships. Definition counts differ from expanded examples and runner test counts.
 

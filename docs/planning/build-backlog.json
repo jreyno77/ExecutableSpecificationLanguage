@@ -62,7 +62,7 @@
       "workstream": "Language core",
       "stage": "Implementing",
       "hypothesisResult": "Inconclusive",
-      "learnings": "An initial compiler resolves declarations, builtins, signatures, public references, diagnostics, and derived relationships through real API tests. The latest integrated check passed 154 unit and 17 acceptance tests, with 71 explicit TODOs; full semantic scope remains unfinished. See docs/implementation-evidence.md.",
+      "learnings": "An initial compiler resolves declarations, builtins, signatures, public references, diagnostics, and derived relationships through real API tests. The latest integrated check passed 154 unit and 17 acceptance tests, with 18 TODOs belonging only to CORE-18. Future-task placeholders and a duplicate were removed; full compiler scope remains unfinished. See docs/implementation-evidence.md.",
       "notionUrl": "https://app.notion.com/p/3e6039145665815db0bdc490acf8a18c?pvs=204",
       "notionId": "3e603914-5665-815d-b0bd-c490acf8a18c",
       "consolidates": [

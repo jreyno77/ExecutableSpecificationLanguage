@@ -71,7 +71,7 @@ Write from the intent of the person using the code, including another component 
 
 An expectation can change when learning shows it was wrong. Record the reason, update the linked story or hypothesis, and run the revised checks. Evidence for an earlier requirement does not automatically verify its replacement. Preserve counterevidence and limitations so the next decision can use them.
 
-Acceptance TODOs are planned examples without complete executable bindings. They record remaining work, not an unexpected outcome and not a passing or failed execution. To implement one, first bind its real action and independent observation, run it to see the expected failure, then implement and refactor. Unexpected findings go in Learnings with regression tests where appropriate; an existing failing regression must not be hidden as a TODO.
+New acceptance tests and TODOs belong to the current construction task. Future work stays in its user stories and tasks; the test runner must not turn the wider project backlog into TODOs. Retain completed regression tests as later tasks begin. The current task's unfinished acceptance scope must be completed before its PR is ready, unless a scope change is explicitly agreed. Bind each real action and independent observation, observe the expected failure, then implement and refactor. Unexpected findings go in Learnings with regression tests where appropriate; an existing failing regression must not be hidden as a TODO.
 
 ## Current position
 
