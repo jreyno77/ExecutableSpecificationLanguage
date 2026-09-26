@@ -7,7 +7,7 @@ export interface Collector<K extends InspectionKind, T> {
 
 /** Eagerly project each matching occurrence into a caller-owned result array. */
 export function collect<K extends InspectionKind, T>(
-  _inspection: Inspection, _collector: Collector<K, T>,
+  inspection: Inspection, collector: Collector<K, T>,
 ): T[] {
-  return [];
+  return Array.from(inspection.nodes(collector.kind), node => collector.project(node, inspection));
 }
