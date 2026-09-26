@@ -1,33 +1,66 @@
-import { createSyntaxReader, inspect, collect, type Inspection, type InspectionNode } from '../../src/index.js';
-import { capabilityCollector, namedTypeCollector, promiseCollector } from './inspection-collectors.js';
-import { InspectionExpectations, type InspectionObservations } from './inspection-expectations.js';
+import { expect } from 'vitest';
+import { capabilityCollector, namedTypeCollector, promiseCollector, type Capability, type TypeUse, type PromiseText } from './inspection-collectors.js';
+import { createSyntaxReader, inspect, collect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
+
+function recorded<T>(value: T | undefined, message: string): T {
+  if (value === undefined) throw new Error(message);
+  return value;
+}
 
 export class QueryInspection {
+  private result: ReadResult | undefined;
+  private original!: ReadResult;
   private inspection: Inspection | undefined;
-  private readonly observations: InspectionObservations = {};
-  readonly expect = new InspectionExpectations(this.observations);
+  private capabilities: Capability[] | undefined;
+  private typeUses: TypeUse[] | undefined;
+  private typeIds: string[] = [];
+  private promises: PromiseText[] | undefined;
 
   sourceIs(sourceId: string, text: string): void {
-    delete this.observations.capabilities;
-    delete this.observations.namedTypes;
-    delete this.observations.promises;
-    const result = createSyntaxReader().read({ sourceId, text });
-    const before = structuredClone(result);
-    this.inspection = result.status === 'accepted' ? inspect(result.description) : undefined;
-    this.observations.read = { result, before, inspectionCreated: this.inspection !== undefined };
+    this.capabilities = undefined;
+    this.typeUses = undefined;
+    this.typeIds = [];
+    this.promises = undefined;
+    this.result = createSyntaxReader().read({ sourceId, text });
+    this.original = structuredClone(this.result);
+    this.inspection = this.result.status === 'accepted' ? inspect(this.result.description) : undefined;
   }
 
   collectCapabilities(): void {
-    this.observations.capabilities = collect(this.acceptedInspection(), capabilityCollector);
+    this.capabilities = collect(this.acceptedInspection(), capabilityCollector);
   }
 
   collectNamedTypes(): void {
-    this.observations.namedTypes = collect(this.acceptedInspection(), namedTypeCollector);
+    const occurrences = collect(this.acceptedInspection(), namedTypeCollector);
+    this.typeUses = occurrences.map(occurrence => occurrence.fact);
+    this.typeIds = occurrences.map(occurrence => JSON.stringify(occurrence.id));
   }
 
   collectPromises(): void {
-    this.observations.promises = collect(this.acceptedInspection(), promiseCollector);
+    this.promises = collect(this.acceptedInspection(), promiseCollector);
   }
+
+
+  expectCapabilities(expected: Capability[]): void { expect(recorded(this.capabilities, 'Collect capabilities before checking them'), 'Capability declarations in authored order').toEqual(expected); }
+  expectCapabilityNames(expected: string[]): void { expect(recorded(this.capabilities, 'Collect capabilities before checking them').map(item => item.name), 'Capability names in authored order').toEqual(expected); }
+  expectNamedTypes(expected: TypeUse[]): void { expect(recorded(this.typeUses, 'Collect named types before checking them'), 'Named type occurrences in authored order').toEqual(expected); }
+  expectTypeNames(expected: string[]): void { expect(recorded(this.typeUses, 'Collect named types before checking them').map(item => item.name), 'Named type spellings in authored order').toEqual(expected); }
+  expectDistinctTypeOccurrences(count: number): void {
+    recorded(this.typeUses, 'Collect named types before checking them');
+    expect(this.typeIds).toHaveLength(count);
+    expect(new Set(this.typeIds).size).toBe(count);
+  }
+  expectPromises(expected: PromiseText[]): void { expect(recorded(this.promises, 'Collect promises before checking them'), 'Authored prose promises').toEqual(expected); }
+  expectSourceUnchanged(): void { expect(recorded(this.result, 'Read source before checking it'), 'Source read result after inspection').toEqual(this.original); }
+  expectRejectedWithDiagnostics(): void {
+    const result = recorded(this.result, 'Read source before checking it');
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') throw new Error('Expected syntax rejection');
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(this.inspection).toBeUndefined();
+    expect(result.diagnostics).toEqual(this.original.status === 'rejected' ? this.original.diagnostics : []);
+  }
+
 
   private acceptedInspection(): Inspection {
     if (!this.inspection) throw new Error('Expected syntactically accepted source');
@@ -45,4 +78,3 @@ export function inspectText(text: string, sourceId = 'store.expec'): Inspection 
 export function capabilityNames(inspection: Inspection, nodes: Iterable<InspectionNode<'capability'>>): string[] {
   return Array.from(nodes, node => inspection.name(node.payload.name));
 }
-

@@ -11,13 +11,13 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
 
-    inspection.expect.capabilities([
+    inspection.expectCapabilities([
       { name: 'startup', inputs: ['configurations: SystemConfig'], sourceId: 'store.expec',
         declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 21 } },
       { name: 'saveGame', inputs: ['snapshot: PlayerStateSnapshot'], sourceId: 'store.expec',
         declarationAt: { line: 3, column: 3 }, nameAt: { line: 3, column: 14 }, nameEndsAt: { line: 3, column: 22 } },
     ]);
-    inspection.expect.sourceUnchanged();
+    inspection.expectSourceUnchanged();
   });
 
   it('preserves differently named capability inputs in their declared order', () => {
@@ -28,7 +28,7 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
 
-    inspection.expect.capabilities([
+    inspection.expectCapabilities([
       { name: 'transfer', inputs: ['origin: Cart', 'destination: Storage'], sourceId: 'store.expec',
         declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 22 } },
     ]);
@@ -43,7 +43,7 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
 
-    inspection.expect.capabilities([
+    inspection.expectCapabilities([
       { name: 'save', inputs: ['values: List<Number>'], sourceId: 'store.expec',
         declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 18 } },
     ]);
@@ -61,7 +61,7 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
 
-    inspection.expect.capabilities([
+    inspection.expectCapabilities([
       { name: 'startup', inputs: [], sourceId: 'store.expec',
         declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 21 } },
       { name: 'save', inputs: ['snapshot: PlayerStateSnapshot'], sourceId: 'store.expec',
@@ -77,7 +77,7 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectNamedTypes();
 
-    inspection.expect.namedTypes([
+    inspection.expectNamedTypes([
       { name: 'List', at: { line: 2, column: 26 }, arguments: ['Pair'] },
       { name: 'Pair', at: { line: 2, column: 31 }, arguments: ['Number'] },
       { name: 'Number', at: { line: 2, column: 36 }, arguments: [] },
@@ -85,7 +85,7 @@ describe('an analysis author inspects declared source through queries', () => {
       { name: 'Pair', at: { line: 2, column: 58 }, arguments: ['Number'] },
       { name: 'Number', at: { line: 2, column: 63 }, arguments: [] },
     ]);
-    inspection.expect.distinctTypeOccurrences(6);
+    inspection.expectDistinctTypeOccurrences(6);
   });
 
   it('adds an independent promise-text consumer using the public inspection API', () => {
@@ -98,7 +98,7 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectPromises();
 
-    inspection.expect.promises([
+    inspection.expectPromises([
       { text: 'A snapshot is saved', clauseAt: { line: 3, column: 5 }, textAt: { line: 3, column: 14 } },
     ]);
   });
@@ -112,14 +112,14 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
     inspection.collectNamedTypes();
-    inspection.expect.capabilityNames(['startup', 'saveGame']);
-    inspection.expect.typeNames(['SystemConfig', 'PlayerStateSnapshot']);
+    inspection.expectCapabilityNames(['startup', 'saveGame']);
+    inspection.expectTypeNames(['SystemConfig', 'PlayerStateSnapshot']);
 
     inspection.collectNamedTypes();
     inspection.collectCapabilities();
-    inspection.expect.capabilityNames(['startup', 'saveGame']);
-    inspection.expect.typeNames(['SystemConfig', 'PlayerStateSnapshot']);
-    inspection.expect.sourceUnchanged();
+    inspection.expectCapabilityNames(['startup', 'saveGame']);
+    inspection.expectTypeNames(['SystemConfig', 'PlayerStateSnapshot']);
+    inspection.expectSourceUnchanged();
   });
 
   it('keeps separate documents and later reads independent', () => {
@@ -142,17 +142,17 @@ describe('an analysis author inspects declared source through queries', () => {
     original.collectNamedTypes();
     original.collectCapabilities();
 
-    original.expect.capabilityNames(['saveGame']);
-    original.expect.typeNames(['PlayerStateSnapshot']);
-    other.expect.capabilities([
+    original.expectCapabilityNames(['saveGame']);
+    original.expectTypeNames(['PlayerStateSnapshot']);
+    other.expectCapabilities([
       { name: 'load', inputs: ['key: Text'], sourceId: 'storage.expec',
         declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 18 } },
     ]);
-    other.expect.typeNames(['Text']);
-    revised.expect.capabilityNames(['saveDraft']);
-    original.expect.sourceUnchanged();
-    other.expect.sourceUnchanged();
-    revised.expect.sourceUnchanged();
+    other.expectTypeNames(['Text']);
+    revised.expectCapabilityNames(['saveDraft']);
+    original.expectSourceUnchanged();
+    other.expectSourceUnchanged();
+    revised.expectSourceUnchanged();
   });
 
   it('reports no capabilities when none are declared', () => {
@@ -161,14 +161,14 @@ describe('an analysis author inspects declared source through queries', () => {
 
     inspection.collectCapabilities();
 
-    inspection.expect.capabilities([]);
+    inspection.expectCapabilities([]);
   });
 
   it('preserves reader rejection instead of manufacturing inspectable source', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', 'concept StoreGame {');
 
-    inspection.expect.rejectedWithDiagnostics();
-    inspection.expect.sourceUnchanged();
+    inspection.expectRejectedWithDiagnostics();
+    inspection.expectSourceUnchanged();
   });
 });
