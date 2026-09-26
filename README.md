@@ -2,7 +2,7 @@
 
 An experimental language for readable software specifications.
 
-The package provides an ANTLR grammar, a source reader, and typed inspection of accepted source. Callers can inspect authored declarations and locations through repeatable queries. Semantic validation and project generation are subsequent work.
+The package provides an ANTLR grammar, a source reader, typed inspection, and declaration/dependency resolution. Full type and behavior validation, compiler composition, and project generation are subsequent work.
 
 ## Inspect declarations
 
@@ -32,6 +32,45 @@ keep that input unchanged and reacquire identifiers after a new read. It preserv
 authored facts and locations without resolving references. Checked lookup throws
 `InspectionError` with `foreign-source`, `missing-node`, or `unexpected-kind`;
 these access errors are separate from reader syntax diagnostics.
+
+## Resolve declarations
+
+`Resolver` consumes the `Inspection` interface and a supplied dependency snapshot:
+
+```ts
+import { createSyntaxReader, DescriptionInspection, Resolver } from 'executable-specification-language';
+
+const read = createSyntaxReader().read({
+  sourceId: 'store.expec',
+  text: `concept StoreGame {
+  public saveGame
+  capability saveGame(snapshot: Text) returns Nothing
+}`,
+});
+
+if (read.status === 'accepted') {
+  const resolution = new Resolver().resolve(
+    new DescriptionInspection(read.description),
+    { modules: [], packages: [] },
+  );
+  console.log([...resolution.declarations()].map(declaration => declaration.name));
+  console.log(resolution.problems, resolution.deferred);
+}
+```
+
+Resolution exposes declaration identities, kinds, origins and reference bindings.
+Results retain no inspection provider. External modules supply data-only declaration
+headers, explicit exports and required declaration links; they need no source AST.
+Only explicitly imported exports enter source scope. Package entries establish
+configured availability, not installation.
+
+A report can preserve independent valid facts while also reporting problems.
+Deferred references identify work requiring composition, expression or interaction
+analysis; an empty problem list is not whole-compiler acceptance. Required external
+links are checked for closure, not type compatibility or completeness of future
+signature metadata. Query declaration identities only in their owning report, and
+reacquire source identifiers after a new read.
+
 
 ## Development
 
