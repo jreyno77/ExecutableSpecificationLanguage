@@ -1,14 +1,21 @@
-import type { Inspection } from './inspection.js';
-import type { InspectionNode } from './inspection.js';
-import type {
-  Declaration, DeclarationKind, DeferredReason, DeferredReference, DependencySnapshot, ReferenceBinding,
-  Resolution, ResolutionProblem,
-} from './resolution/contracts.js';
-import { DependencyCatalog } from './resolution/dependency-catalog.js';
-import { builtins } from './resolution/identity.js';
-import { ResolutionReport } from './resolution/report.js';
-import { originLocation, SourceScopes, type Scope } from './resolution/scopes.js';
-import { copyNodeId, copyRange, nodeKey, SourceIndex } from './resolution/source-index.js';
+import type { Inspection, InspectionNode } from './inspection.js';
+import type { DeclarationKind } from './resolution/declaration.js';
+import { deferredReference, type DeferredReason, type DeferredReference, type ReferenceBinding } from './resolution/reference.js';
+import { ImportResolver, type DependencyResolution } from './resolution/import-resolver.js';
+import { ModuleCatalog } from './resolution/dependency-module.js';
+import type { DependencyModule } from './resolution/dependency-module.js';
+import { PackageAvailability, type DependencyPackage } from './resolution/package-availability.js';
+import { builtins } from './resolution/builtins.js';
+import { ResolutionReport, type Resolution } from './resolution/report.js';
+import { originLocation, type ResolutionProblem } from './resolution/problem.js';
+import { SourceScopes, type Scope, type NamedImport } from './resolution/scopes.js';
+import { copyRange, nodeKey, SourceIndex } from './resolution/source-index.js';
+
+/** Supplied inputs for a single resolution; neither collection implies installation. */
+export interface DependencySnapshot {
+  readonly modules: readonly DependencyModule[];
+  readonly packages: readonly DependencyPackage[];
+}
 
 const typeKinds: ReadonlySet<DeclarationKind> = new Set([
   'concept', 'component', 'class', 'interface', 'record-type', 'alias-type', 'opaque-type', 'type-parameter', 'builtin-type',
@@ -29,25 +36,23 @@ class SourceResolution {
   private readonly source: SourceIndex;
   private readonly builtinDeclarations = builtins();
   private readonly scopes: SourceScopes;
-  private readonly catalog: DependencyCatalog;
+  private readonly dependencies: DependencyResolution;
+  private readonly packages: PackageAvailability;
   private readonly bindings = new Map<string, ReferenceBinding>();
   private readonly problems: ResolutionProblem[] = [];
   private readonly deferred: DeferredReference[] = [];
-  private readonly locatedCatalogCauses = new Set<ResolutionProblem>();
   private readonly hasIncludes: boolean;
 
-  constructor(inspection: Inspection, private readonly dependencies: DependencySnapshot) {
+  constructor(inspection: Inspection, dependencies: DependencySnapshot) {
     this.source = new SourceIndex(inspection);
-    this.scopes = new SourceScopes(this.source, this.builtinDeclarations);
-    this.catalog = new DependencyCatalog(dependencies, this.builtinDeclarations);
+    this.packages = new PackageAvailability(dependencies.packages);
+    const imports = this.imports(new ImportResolver(new ModuleCatalog(dependencies.modules), this.builtinDeclarations));
+    this.dependencies = imports.dependencies;
+    this.scopes = new SourceScopes(this.source, this.builtinDeclarations, imports.introductions, this.dependencies.declarations);
     this.hasIncludes = this.source.of('include').length > 0;
   }
 
   report(): Resolution {
-    this.imports();
-    this.scopes.addExternal([...this.catalog.declarations()], this.dependencies);
-    this.scopes.attachExamples();
-    this.scopes.finishIntroductions();
     this.problems.push(...this.scopes.problems);
     this.ownerContracts();
     this.packagesAndComposition();
@@ -60,54 +65,43 @@ class SourceResolution {
       if (!this.bindings.has(nodeKey(reference.id))) this.resolve(reference);
     }
     return new ResolutionReport(
-      [...this.scopes.declarations(), ...this.builtinDeclarations, ...this.externalDeclarations()],
+      [...this.scopes.declarations(), ...this.builtinDeclarations, ...this.dependencies.declarations.map(item => item.declaration)],
       this.source.nodes, this.bindings,
-      [...this.problems, ...this.catalog.problems.filter(problem => !this.locatedCatalogCauses.has(problem))], this.deferred,
+      [...this.problems, ...this.dependencies.problems, ...this.packages.problems], this.deferred,
     );
   }
 
-  private externalDeclarations(): readonly Declaration[] {
-    const admitted = new Map<string, Declaration>();
-    for (const declaration of this.catalog.declarations()) {
-      if (declaration.origin.kind === 'external') {
-        admitted.set(JSON.stringify([declaration.origin.module, declaration.origin.declaration]), declaration);
-      }
-    }
-    const ordered: Declaration[] = [];
-    const modules = [...this.dependencies.modules].sort((a, b) => a.locator < b.locator ? -1 : a.locator > b.locator ? 1 : 0);
-    for (const module of modules) {
-      for (const input of module.declarations) {
-        const key = JSON.stringify([module.locator, input.id]);
-        const declaration = admitted.get(key);
-        if (declaration) { ordered.push(declaration); admitted.delete(key); }
-      }
-    }
-    return ordered;
-  }
-
-  private imports(): void {
-    for (const use of this.source.of('use')) {
+  private imports(imports: ImportResolver): { dependencies: DependencyResolution; introductions: readonly NamedImport[] } {
+    const requests = this.source.of('use').flatMap(use => {
       const locator = this.source.node(use.payload.locator);
       if (locator.payload.kind !== 'string-literal') throw new Error('Accepted use locator is not a string literal.');
-      for (const id of use.payload.imports) {
+      const module = locator.payload.value;
+      return use.payload.imports.map(id => {
         const item = this.source.node(id);
         if (item.payload.kind !== 'import-item') throw new Error('Accepted use contains a non-import item.');
         const reference = this.source.node(item.payload.imported);
         const path = this.source.reference(reference.id);
-        const name = item.payload.alias ? this.source.name(item.payload.alias) : path.at(-1)!;
-        const found = this.catalog.export(locator.payload.value, path);
-        const at = { kind: 'source' as const, range: copyRange(item.range) };
-        const importKey = JSON.stringify([locator.payload.value, path]);
-        if (found.status === 'found') {
-          this.scopes.addImport(name, { target: found.declaration, at, importKey });
-          this.bindings.set(nodeKey(reference.id), { status: 'bound', target: found.declaration.id });
-        } else {
-          const problems = this.locateCatalogFailure(reference, found.problems);
-          this.scopes.addImport(name, { problems, at, importKey });
-          this.bindings.set(nodeKey(reference.id), { status: 'invalid', problems });
-        }
+        return {
+          module, path, reference,
+          name: item.payload.alias ? this.source.name(item.payload.alias) : path.at(-1)!,
+          at: { kind: 'source' as const, range: copyRange(item.range) },
+          importKey: JSON.stringify([module, path]),
+        };
+      });
+    });
+    const dependencies = imports.resolve(requests);
+    const introductions: NamedImport[] = requests.map((request, index) => {
+      const found = dependencies.imports[index]!;
+      const { name, at, importKey, reference } = request;
+      if (found.status === 'found') {
+        this.bindings.set(nodeKey(reference.id), { status: 'bound', target: found.declaration.id });
+        return { name, target: found.declaration, at, importKey };
       }
-    }
+      const problems = this.locateDependencyFailure(reference, found.problems);
+      this.bindings.set(nodeKey(reference.id), { status: 'invalid', problems });
+      return { name, problems, at, importKey };
+    });
+    return { dependencies, introductions };
   }
 
   private ownerContracts(): void {
@@ -148,7 +142,7 @@ class SourceResolution {
     for (const requirement of this.source.of('requires-package')) {
       const locator = this.source.node(requirement.payload.locator);
       if (locator.payload.kind !== 'string-literal') throw new Error('Accepted package locator is not a string literal.');
-      this.locateCatalogFailure(locator, this.catalog.package(locator.payload.value, requirement.payload.phase));
+      this.locateDependencyFailure(locator, this.packages.check(locator.payload.value, requirement.payload.phase));
     }
     for (const node of this.source.nodes) {
       if (node.payload.kind === 'include' || node.payload.kind === 'extend' || node.payload.kind === 'examples-attachment') {
@@ -160,14 +154,16 @@ class SourceResolution {
     }
   }
 
-  private locateCatalogFailure(node: InspectionNode, causes: readonly ResolutionProblem[]): readonly ResolutionProblem[] {
+  private locateDependencyFailure(node: InspectionNode, causes: readonly ResolutionProblem[]): readonly ResolutionProblem[] {
     return causes.map(cause => {
-      if (cause.code === 'invalid-dependency-catalog') return cause;
+      if (cause.code === 'invalid-dependency-catalog') {
+        this.problems.push(cause);
+        return cause;
+      }
       const problem: ResolutionProblem = {
         code: cause.code, message: cause.message, at: { kind: 'source', range: copyRange(node.range) },
         related: [cause.at, ...cause.related],
       };
-      this.locatedCatalogCauses.add(cause);
       this.problems.push(problem);
       return problem;
     });
@@ -257,16 +253,7 @@ class SourceResolution {
   }
 
   private defer(reference: InspectionNode<'reference'>, reason: DeferredReason, requires?: string): void {
-    const required: Record<DeferredReason, string> = {
-      'receiver-type': 'Expression typing must identify the receiver and its available members.',
-      'contextual-result': 'Contract checking must establish whether a result is available in this context.',
-      'ordered-scope': 'Helper, scenario, or default checking must establish ordered local and capture visibility.',
-      composition: 'Source composition must supply the declarations and ownership of the combined document.',
-      interaction: 'Interaction checking must identify participants and select the recipient operation.',
-    };
-    const requirement: DeferredReference = {
-      occurrence: copyNodeId(reference.id), range: copyRange(reference.range), reason, requires: requires ?? required[reason],
-    };
+    const requirement = deferredReference(reference, reason, requires);
     this.deferred.push(requirement);
     this.bindings.set(nodeKey(reference.id), { status: 'deferred', requirement });
   }

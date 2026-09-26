@@ -1,17 +1,18 @@
 import type { InspectionNode } from '../inspection.js';
-import type {
-  Declaration, DeclarationId, DeclarationKind, DependencySnapshot, NodeId,
-  ProblemLocation, ResolutionProblem,
-} from './contracts.js';
-import { declarationId } from './identity.js';
+import type { SourceNodeId } from '../grammar/source.js';
+import { declarationId, type Declaration, type DeclarationId, type DeclarationKind } from './declaration.js';
+import type { ExternalDeclaration } from './import-resolver.js';
+import { originLocation, type ProblemLocation, type ResolutionProblem } from './problem.js';
 import { children, copyNodeId, copyRange, nodeKey, SourceIndex } from './source-index.js';
 
-export interface Introduction {
-  readonly target?: Declaration;
-  readonly problems?: readonly ResolutionProblem[];
+export type Introduction = {
   readonly at: ProblemLocation;
   readonly importKey?: string;
-}
+} & (
+  | { readonly target: Declaration; readonly problems?: never }
+  | { readonly problems: readonly ResolutionProblem[]; readonly target?: never }
+);
+export type NamedImport = Introduction & { readonly name: string };
 export class Scope {
   readonly names = new Map<string, Introduction[]>();
   readonly conflicts = new Map<string, readonly ResolutionProblem[]>();
@@ -20,36 +21,16 @@ export class Scope {
     readonly owner: DeclarationId | undefined,
     readonly composition = false,
     readonly orderedNames: ReadonlySet<string> = new Set(),
-    readonly blockedSubject: NodeId | undefined = undefined,
+    readonly blockedSubject: SourceNodeId | undefined = undefined,
   ) {}
 }
 export type Lookup =
   | { readonly status: 'found'; readonly declaration: Declaration }
   | { readonly status: 'missing' }
   | { readonly status: 'inaccessible'; readonly declaration: Declaration }
-  | { readonly status: 'subject-context'; readonly subject: NodeId }
+  | { readonly status: 'subject-context'; readonly subject: SourceNodeId }
   | { readonly status: 'ambiguous'; readonly introductions: readonly Introduction[] }
   | { readonly status: 'invalid'; readonly problems: readonly ResolutionProblem[] };
-
-export function originLocation(declaration: Declaration): ProblemLocation {
-  const origin = declaration.origin;
-  switch (origin.kind) {
-    case 'source': return { kind: 'source', range: origin.range };
-    case 'builtin': return { kind: 'builtin', name: origin.name };
-    case 'external': return origin;
-  }
-}
-function kindOf(kind: InspectionNode['payload']['kind']): DeclarationKind | undefined {
-  switch (kind) {
-    case 'record-type-declaration': return 'record-type';
-    case 'alias-type-declaration': return 'alias-type';
-    case 'opaque-type-declaration': return 'opaque-type';
-    case 'concept': case 'component': case 'class': case 'interface':
-    case 'capability': case 'function': case 'setup': case 'action': case 'observation': case 'check':
-    case 'field': case 'parameter': case 'fixture': case 'participant': return kind;
-    default: return undefined;
-  }
-}
 
 /** Lexical introductions and accessibility, separate from reference-use rules. */
 export class SourceScopes {
@@ -62,34 +43,42 @@ export class SourceScopes {
   private readonly externalPrivate = new Set<DeclarationId>();
   private readonly sourceDeclarations: Declaration[] = [];
   private readonly builtinsByName = new Map<string, Declaration>();
-  private readonly attachedExamples: { readonly subject: NodeId; readonly members: readonly NodeId[]; readonly scope: Scope }[] = [];
+  private readonly attachedExamples: { readonly subject: SourceNodeId; readonly members: readonly SourceNodeId[]; readonly scope: Scope }[] = [];
 
-  constructor(private readonly source: SourceIndex, builtins: readonly Declaration[]) {
+  constructor(
+    private readonly source: SourceIndex,
+    builtins: readonly Declaration[],
+    imports: readonly NamedImport[],
+    external: readonly ExternalDeclaration[],
+  ) {
     for (const builtin of builtins) {
       this.builtinsByName.set(builtin.name, builtin);
       this.introduce(this.root, builtin.name, { target: builtin, at: originLocation(builtin) });
     }
     for (const root of source.roots) this.walk(root, this.root);
+    for (const introduction of imports) this.introduce(this.root, introduction.name, introduction);
+    this.addExternal(external);
+    this.attachExamples();
+    this.finishIntroductions();
   }
 
   declarations(): readonly Declaration[] {
     return [...this.sourceDeclarations].sort((a, b) =>
       (a.origin.kind === 'source' ? a.origin.node.ordinal : 0) - (b.origin.kind === 'source' ? b.origin.node.ordinal : 0));
   }
-  scope(id: NodeId): Scope {
+  scope(id: SourceNodeId): Scope {
     const scope = this.nodeScopes.get(nodeKey(id));
     if (!scope) throw new Error('Accepted source occurrence has no lexical scope.');
     return scope;
   }
-  introduce(scope: Scope, name: string, introduction: Introduction): void {
+  private introduce(scope: Scope, name: string, introduction: Introduction): void {
     const introductions = scope.names.get(name) ?? [];
     introductions.push(introduction);
     scope.names.set(name, introductions);
   }
-  addImport(name: string, introduction: Introduction): void { this.introduce(this.root, name, introduction); }
 
   /** Associate same-source subjects after forward declarations and imports exist. */
-  attachExamples(): void {
+  private attachExamples(): void {
     for (const examples of this.attachedExamples) {
       const target = this.lookup(examples.scope, this.source.reference(examples.subject));
       const subjectScope = target.status === 'found' && target.declaration.origin.kind === 'source'
@@ -102,19 +91,12 @@ export class SourceScopes {
   }
 
   /** Only the admitted external contract is available for qualified lookup. */
-  addExternal(declarations: readonly Declaration[], dependencies: DependencySnapshot): void {
-    for (const declaration of declarations) {
-      if (!this.members.has(declaration.id)) this.members.set(declaration.id, new Scope(undefined, declaration.id));
-      const origin = declaration.origin;
-      if (origin.kind === 'external') {
-        const metadata = dependencies.modules.find(module => module.locator === origin.module)
-          ?.declarations.find(item => item.id === origin.declaration);
-        if (metadata?.local || declaration.kind === 'type-parameter' || declaration.kind === 'parameter') {
-          this.externalPrivate.add(declaration.id);
-        }
-      }
+  private addExternal(external: readonly ExternalDeclaration[]): void {
+    for (const { declaration, local } of external) {
+      this.members.set(declaration.id, new Scope(undefined, declaration.id));
+      if (local) this.externalPrivate.add(declaration.id);
     }
-    for (const declaration of declarations) {
+    for (const { declaration } of external) {
       if (declaration.owner) {
         const owner = this.members.get(declaration.owner);
         if (owner) this.introduce(owner, declaration.name, { target: declaration, at: originLocation(declaration) });
@@ -122,7 +104,7 @@ export class SourceScopes {
     }
   }
 
-  finishIntroductions(): void {
+  private finishIntroductions(): void {
     for (const scope of this.scopes) {
       for (const [name, authored] of scope.names) {
         const builtin = this.builtinsByName.get(name);
@@ -205,7 +187,7 @@ export class SourceScopes {
     return false;
   }
   private childScope(parent: Scope, owner = parent.owner, orderedNames: ReadonlySet<string> = new Set(),
-    composition = parent.composition, blockedSubject?: NodeId): Scope {
+    composition = parent.composition, blockedSubject?: SourceNodeId): Scope {
     const scope = new Scope(parent, owner, composition, orderedNames, blockedSubject);
     this.scopes.push(scope);
     return scope;
@@ -220,7 +202,7 @@ export class SourceScopes {
     if (local) this.privateTo.set(declaration.id, scope);
     return declaration;
   }
-  private parameters(ids: readonly NodeId[], scope: Scope): void {
+  private parameters(ids: readonly SourceNodeId[], scope: Scope): void {
     const names = new Set(ids.map(id => {
       const parameter = this.source.node(id);
       if (parameter.payload.kind !== 'parameter') throw new Error('Accepted parameter list contains a non-parameter.');
@@ -242,7 +224,7 @@ export class SourceScopes {
         return;
       }
       case 'record-type-declaration': case 'alias-type-declaration': case 'opaque-type-declaration': {
-        const declaration = this.declare(node, this.source.name(p.name), kindOf(p.kind)!, scope, local);
+        const declaration = this.declare(node, this.source.name(p.name), ({ 'record-type-declaration': 'record-type', 'alias-type-declaration': 'alias-type', 'opaque-type-declaration': 'opaque-type' } as const)[p.kind], scope, local);
         const inside = this.childScope(scope, declaration.id);
         this.members.set(declaration.id, inside);
         this.walk(this.source.node(p.name), scope);

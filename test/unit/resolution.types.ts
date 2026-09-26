@@ -8,6 +8,12 @@ function readonlyContracts(resolution: Resolution, declaration: Declaration, dep
   resolution.problems.push({});
   // @ts-expect-error Consumers do not mutate declaration names.
   declaration.name = 'changed';
+  if (declaration.origin.kind === 'source') {
+    // @ts-expect-error Source identities are immutable snapshot facts.
+    declaration.origin.node.ordinal = 0;
+    // @ts-expect-error Source positions remain readonly inside a report.
+    declaration.origin.range.start.line = 1;
+  }
   // @ts-expect-error Origins do not expose the source collaborator.
   declaration.origin.inspection;
   // @ts-expect-error External descriptions do not require or expose Inspection.

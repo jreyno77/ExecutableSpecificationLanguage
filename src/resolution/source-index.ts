@@ -1,14 +1,14 @@
 import type { Inspection, InspectionKind, InspectionNode } from '../inspection.js';
-import type { NodeId, Range } from './contracts.js';
+import type { SourceNodeId, SourceRange } from '../grammar/source.js';
 
-export function nodeKey(id: NodeId): string { return JSON.stringify([id.sourceId, id.ordinal]); }
-export function copyNodeId(id: NodeId): NodeId { return { sourceId: id.sourceId, ordinal: id.ordinal }; }
-export function copyRange(range: Range): Range {
+export function nodeKey(id: SourceNodeId): string { return JSON.stringify([id.sourceId, id.ordinal]); }
+export function copyNodeId(id: SourceNodeId): SourceNodeId { return { sourceId: id.sourceId, ordinal: id.ordinal }; }
+export function copyRange(range: SourceRange): SourceRange {
   return { sourceId: range.sourceId, start: { ...range.start }, end: { ...range.end } };
 }
 
 /** Syntactic ownership edges, including authored names and reference segments. */
-export function children(node: InspectionNode): readonly NodeId[] {
+export function children(node: InspectionNode): readonly SourceNodeId[] {
   const p = node.payload;
   switch (p.kind) {
     case 'name': case 'string-literal': case 'number-literal': case 'boolean-literal': return [];
@@ -62,7 +62,7 @@ export class SourceIndex {
   readonly nodes: readonly InspectionNode[];
   readonly roots: readonly InspectionNode[];
   private readonly byId = new Map<string, InspectionNode>();
-  private readonly parents = new Map<string, NodeId>();
+  private readonly parents = new Map<string, SourceNodeId>();
 
   constructor(inspection: Inspection) {
     const candidates: InspectionNode[] = [];
@@ -88,7 +88,7 @@ export class SourceIndex {
     this.roots = this.nodes.filter(node => !this.parents.has(nodeKey(node.id)));
   }
 
-  node(id: NodeId): InspectionNode {
+  node(id: SourceNodeId): InspectionNode {
     const node = this.byId.get(nodeKey(id));
     if (!node) throw new Error('Accepted source contains an unreachable node handle.');
     return node;
@@ -96,16 +96,16 @@ export class SourceIndex {
   of<K extends InspectionKind>(kind: K): readonly InspectionNode<K>[] {
     return this.nodes.filter(node => node.payload.kind === kind) as InspectionNode<K>[];
   }
-  parent(id: NodeId): InspectionNode | undefined {
+  parent(id: SourceNodeId): InspectionNode | undefined {
     const parent = this.parents.get(nodeKey(id));
     return parent ? this.node(parent) : undefined;
   }
-  name(id: NodeId): string {
+  name(id: SourceNodeId): string {
     const node = this.node(id);
     if (node.payload.kind !== 'name') throw new Error('Accepted source requires a name handle.');
     return node.payload.decoded;
   }
-  reference(id: NodeId): readonly string[] {
+  reference(id: SourceNodeId): readonly string[] {
     const node = this.node(id);
     if (node.payload.kind !== 'reference') throw new Error('Accepted source requires a reference handle.');
     return node.payload.segments.map(segment => this.name(segment));

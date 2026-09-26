@@ -4,18 +4,18 @@ export interface SourceDocument {
   text: string
 }
 export interface SourcePosition {
-  offset: number
-  line: number
-  column: number
+  readonly offset: number
+  readonly line: number
+  readonly column: number
 }
 export interface SourceRange {
-  sourceId: string
-  start: SourcePosition
-  end: SourcePosition
+  readonly sourceId: string
+  readonly start: SourcePosition
+  readonly end: SourcePosition
 }
 export interface SourceNodeId {
-  sourceId: string
-  ordinal: number
+  readonly sourceId: string
+  readonly ordinal: number
 }
 export interface SourceDescription {
   sourceId: string

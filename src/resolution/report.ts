@@ -1,10 +1,23 @@
 import type { InspectionNode } from '../inspection.js';
-import {
-  ResolutionQueryError,
-  type Declaration, type DeclarationId, type DeferredReference, type NodeId,
-  type ReferenceBinding, type Resolution, type ResolutionProblem,
-} from './contracts.js';
+import type { SourceNodeId } from '../grammar/source.js';
+import type { Declaration, DeclarationId } from './declaration.js';
+import type { DeferredReference, ReferenceBinding } from './reference.js';
+import type { ResolutionProblem } from './problem.js';
 import { nodeKey } from './source-index.js';
+
+export interface Resolution {
+  declarations(): Iterable<Declaration>;
+  declaration(id: DeclarationId): Declaration;
+  binding(occurrence: SourceNodeId): ReferenceBinding;
+  readonly problems: readonly ResolutionProblem[];
+  readonly deferred: readonly DeferredReference[];
+}
+
+export type ResolutionQueryErrorCode = 'unknown-declaration' | 'foreign-source' | 'missing-node' | 'non-reference' | 'not-analyzed';
+export class ResolutionQueryError extends Error {
+  override readonly name = 'ResolutionQueryError';
+  constructor(readonly code: ResolutionQueryErrorCode, message: string) { super(message); }
+}
 
 /** Detached observations: querying a report never calls its input provider. */
 export class ResolutionReport implements Resolution {
@@ -36,7 +49,7 @@ export class ResolutionReport implements Resolution {
     if (!declaration) throw new ResolutionQueryError('unknown-declaration', 'The declaration identity does not belong to this resolution.');
     return declaration;
   }
-  binding(occurrence: NodeId): ReferenceBinding {
+  binding(occurrence: SourceNodeId): ReferenceBinding {
     if (this.sourceIds.size && !this.sourceIds.has(occurrence.sourceId)) {
       throw new ResolutionQueryError('foreign-source', 'The occurrence does not belong to this source snapshot.');
     }

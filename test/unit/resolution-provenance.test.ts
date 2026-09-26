@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { originLocation } from '../../src/resolution/scopes.js';
-import { declarationId } from '../../src/resolution/identity.js';
+import { originLocation } from '../../src/resolution/problem.js';
+import { declarationId } from '../../src/resolution/declaration.js';
 
 it('identifies an external declaration without inventing an array position in supplied metadata', () => {
   const origin = { kind: 'external' as const, module: 'shopping', declaration: 'Cart' };
