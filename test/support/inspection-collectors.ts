@@ -1,4 +1,4 @@
-import type { Collector, SourceNodeId } from '../../src/index.js';
+import type { Inspection, SourceNodeId } from '../../src/index.js';
 import { describeReference, describeType } from './type-description.js';
 
 export type Position = { line: number; column: number };
@@ -12,9 +12,8 @@ export type PromiseText = { text: string; clauseAt: Position; textAt: Position }
 
 function position(point: Position): Position { return { line: point.line, column: point.column }; }
 
-export const capabilityCollector: Collector<'capability', Capability> = {
-  kind: 'capability',
-  project(capability, source) {
+export function capabilitySummaries(source: Inspection): Capability[] {
+  return Array.from(source.nodes('capability'), capability => {
     const name = source.node(capability.payload.name, 'name');
     return {
       name: name.payload.decoded,
@@ -27,12 +26,11 @@ export const capabilityCollector: Collector<'capability', Capability> = {
       nameAt: position(name.range.start),
       nameEndsAt: position(name.range.end),
     };
-  },
-};
+  });
+}
 
-export const namedTypeCollector: Collector<'named-type', TypeOccurrence> = {
-  kind: 'named-type',
-  project(type, source) {
+export function namedTypeOccurrences(source: Inspection): TypeOccurrence[] {
+  return Array.from(source.nodes('named-type'), type => {
     const reference = source.node(type.payload.reference, 'reference');
     const name = source.node(reference.payload.segments[0]!, 'name');
     return {
@@ -48,18 +46,17 @@ export const namedTypeCollector: Collector<'named-type', TypeOccurrence> = {
         }),
       },
     };
-  },
-};
+  });
+}
 
-export const promiseCollector: Collector<'promises', PromiseText> = {
-  kind: 'promises',
-  project(clause, source) {
+export function promiseDescriptions(source: Inspection): PromiseText[] {
+  return Array.from(source.nodes('promises'), clause => {
     const text = source.node(clause.payload.content, 'string-literal');
     return {
       text: text.payload.value,
       clauseAt: position(clause.range.start),
       textAt: position(text.range.start),
     };
-  },
-};
+  });
+}
 

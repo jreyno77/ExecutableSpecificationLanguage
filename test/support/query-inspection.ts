@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
-import { capabilityCollector, namedTypeCollector, promiseCollector, type Capability, type TypeUse, type PromiseText } from './inspection-collectors.js';
-import { createSyntaxReader, inspect, collect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
+import { capabilitySummaries, namedTypeOccurrences, promiseDescriptions, type Capability, type TypeUse, type PromiseText } from './inspection-collectors.js';
+import { createSyntaxReader, inspect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
 
 function recorded<T>(value: T | undefined, message: string): T {
   if (value === undefined) throw new Error(message);
@@ -27,17 +27,17 @@ export class QueryInspection {
   }
 
   collectCapabilities(): void {
-    this.capabilities = collect(this.acceptedInspection(), capabilityCollector);
+    this.capabilities = capabilitySummaries(this.acceptedInspection());
   }
 
   collectNamedTypes(): void {
-    const occurrences = collect(this.acceptedInspection(), namedTypeCollector);
+    const occurrences = namedTypeOccurrences(this.acceptedInspection());
     this.typeUses = occurrences.map(occurrence => occurrence.fact);
     this.typeIds = occurrences.map(occurrence => JSON.stringify(occurrence.id));
   }
 
   collectPromises(): void {
-    this.promises = collect(this.acceptedInspection(), promiseCollector);
+    this.promises = promiseDescriptions(this.acceptedInspection());
   }
 
 
