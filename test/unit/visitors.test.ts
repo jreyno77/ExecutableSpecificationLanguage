@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { visit, VisitError, type VisitorContext, type VisitorInput, type VisitorNode } from '../../src/index.js';
-import { readForVisit } from '../support/visitor-inspection.js';
+import { readForVisit } from '../support/visiting.js';
 
 function firstConcept(description: VisitorInput): { node: VisitorNode<'concept'>; context: VisitorContext } {
   let first: { node: VisitorNode<'concept'>; context: VisitorContext } | undefined;

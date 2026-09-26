@@ -14,8 +14,8 @@ export function readForVisit(text: string, sourceId = 'store.expec'): SourceDesc
   return read.description;
 }
 
-/** Domain observations use public visitors; they do not discover matches themselves. */
-export class VisitorInspection {
+/** Acceptance-test driver for the visitor API. Consumers collect facts through visit. */
+export class Visiting {
   private result: ReadResult | undefined;
   private original: SourceDescription | undefined;
   private capabilities: Capability[] = [];
