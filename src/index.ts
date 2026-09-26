@@ -3,5 +3,6 @@ export { AntlrSyntaxReader } from './grammar/reader.js';
 import { AntlrSyntaxReader } from './grammar/reader.js';
 export function createSyntaxReader(): AntlrSyntaxReader { return new AntlrSyntaxReader(); }
 
-export { inspectSource, type SourceInspection } from './inspection/query.js';
-export { SourceInspectionError, type SourceLookup, type SourceNodeOf, type SourceKind } from './inspection/source-access.js';
+export { visit } from './visitors/visit.js';
+export { VisitError } from './visitors/context.js';
+export type { Visitor, Visitors, VisitorContext, VisitorInput, VisitorKind, VisitorNode } from './visitors/types.js';

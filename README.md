@@ -2,12 +2,12 @@
 
 An experimental language for readable software specifications.
 
-The ANTLR source reader accepts syntax, rejects malformed source, and preserves authored structure and locations. Typed inspection lets independent consumers collect facts from the same description. Semantic validation and project generation are subsequent work.
+The ANTLR reader accepts syntax, rejects malformed source, and preserves authored structure and locations. Visitors let independent consumers collect facts from the same description. Semantic validation and project generation are subsequent work.
 
-## Inspect source
+## Visit source
 
 ```typescript
-import { createSyntaxReader, inspectSource } from 'executable-specification-language';
+import { createSyntaxReader, visit } from 'executable-specification-language';
 
 const read = createSyntaxReader().read({
   sourceId: 'game.expec',
@@ -15,17 +15,20 @@ const read = createSyntaxReader().read({
 });
 
 if (read.status === 'accepted') {
-  const source = inspectSource(read.description);
-  const capabilities = [...source.nodes('capability')].map(node => ({
-    name: source.name(node.payload.name),
-    location: node.range,
-  }));
+  const names: string[] = [];
+  visit(read.description, {
+    capability(node, context) {
+      names.push(context.name(node.payload.name));
+    },
+  });
 }
 ```
 
-`nodes(kind)` returns a fresh iterable in authored depth-first order. Views are deeply readonly to TypeScript callers; keep the original snapshot stable while inspecting it. IDs are local to that snapshot, not persistent across edits. `name(id)` decodes a name, `reference(id)` returns decoded name segments, and `node(id, kind)` checks an ID and narrows its payload. Invalid lookups throw `SourceInspectionError`.
+`Visitor<K>` is one typed callback; `Visitors` registers callbacks by kind. `visit` delivers matching nodes synchronously in the reader's source order, including nested declarations. Callers own their results; a thrown callback error propagates and stops that visit.
 
-These are authored source facts. References remain unresolved; inspection does not load files, execute scenarios, or infer runtime relationships.
+`VisitorContext` reads nodes by identifier, decodes names and returns ordered reference segments. `node(id, kind)` also checks the expected kind. Invalid access throws `VisitError` with `code` and `nodeId`; wrong-kind errors include `expectedKind` and `actualKind`.
+
+Views are deeply readonly to TypeScript callers; keep the input snapshot stable while visiting. IDs are local to a read and cannot distinguish revisions with the same source ID. Source references remain unresolved. Visiting performs no I/O or scenario execution.
 
 ## Development
 
@@ -38,8 +41,6 @@ npm run dev
 ```
 
 `check` generates the parser, checks types, runs unit and BDD acceptance tests, and builds the package. `dev` generates the parser once and starts Vitest's watch mode. After editing `src/grammar/Expec.g4`, run `npm run grammar:generate` to regenerate the TypeScript parser; Vitest watches the generated code. Tests use Vitest's `describe`/`it` API; fixtures live in `test/resources`.
-
-The inspection comparison keeps its callback alternative in `test/resources/inspection`; only the selected query API is exported by the package. The [contract and experiment results](https://app.notion.com/p/3e70391456658139b630fc046ee35802) record the decision and its limits.
 
 ## Package
 
