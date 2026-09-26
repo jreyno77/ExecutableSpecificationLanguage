@@ -165,4 +165,19 @@ describe('An analysis author inspects source through visitors', () => {
         at: { line: 6, column: 5 }, textAt: { line: 6, column: 14 } },
     ]);
   });
+
+  it('keeps two differently typed inputs in their authored parameter order', () => {
+    const inspection = new VisitorInspection();
+    inspection.sourceIs('store.expec', `concept StoreGame {
+  capability transfer(origin: Cart, destination: Storage)
+}`);
+
+    inspection.collectCapabilities();
+
+    inspection.expectCapabilities([
+      { name: 'transfer', inputs: [{ name: 'origin', type: ['Cart'] }, { name: 'destination', type: ['Storage'] }],
+        sourceId: 'store.expec', at: { line: 2, column: 3 },
+        nameAt: { line: 2, column: 14 }, nameEnd: { line: 2, column: 22 } },
+    ]);
+  });
 });
