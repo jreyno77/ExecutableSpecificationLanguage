@@ -20,6 +20,21 @@ describe('an analysis author inspects declared source through queries', () => {
     inspection.expectSourceUnchanged();
   });
 
+  it('preserves differently named capability inputs in their declared order', () => {
+    const inspection = new QueryInspection();
+    inspection.sourceIs('store.expec', `concept StoreGame {
+  capability transfer(origin: Cart, destination: Storage)
+}`);
+
+    inspection.collectCapabilities();
+
+    inspection.expectCapabilities([
+      { name: 'transfer', inputs: ['origin: Cart', 'destination: Storage'], sourceId: 'store.expec',
+        declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 22 } },
+    ]);
+  });
+
+
   it('finds capabilities inside a local concept without consumer recursion', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', `concept StoreGame {
