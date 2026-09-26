@@ -2,7 +2,7 @@
 
 An experimental language for readable software specifications.
 
-This task defines the ANTLR grammar and a source reader. The tests accept valid syntax, reject malformed source, and preserve authored structure and source locations. Semantic validation and project generation are subsequent work.
+The package provides an ANTLR grammar, a source reader, and typed inspection of accepted source. Callers can inspect authored declarations and locations through repeatable queries. Semantic validation and project generation are subsequent work.
 
 ## Inspect declarations
 
@@ -32,7 +32,6 @@ keep that input unchanged and reacquire identifiers after a new read. It preserv
 authored facts and locations without resolving references. Checked lookup throws
 `InspectionError` with `foreign-source`, `missing-node`, or `unexpected-kind`;
 these access errors are separate from reader syntax diagnostics.
-
 
 ## Development
 
