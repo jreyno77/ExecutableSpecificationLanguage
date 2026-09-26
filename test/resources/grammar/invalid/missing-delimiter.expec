@@ -1,0 +1,2 @@
+concept Unclosed {
+  capability start()

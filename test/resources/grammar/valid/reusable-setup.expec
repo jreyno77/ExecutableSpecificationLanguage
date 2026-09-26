@@ -1,0 +1,27 @@
+type Basket { id: Text }
+type Book { title: Text }
+concept BasketService {
+  capability openBasket() returns Basket
+  capability stockBook(title: Text) returns Nothing
+  capability addCopies(basket: Basket, title: Text, count: Number) returns Nothing
+  capability quantity(basket: Basket, title: Text) returns Number
+  examples {
+    fixture defaultBook: Book = Book {
+      title: "Dune",
+    }
+    setup stockedBasket(title: Text = defaultBook.title, copies: Number = 2) returns Basket {
+      let basket = openBasket()
+      do stockBook(title)
+      do addCopies(basket, title, copies)
+      return basket
+    }
+    observation copiesIn(basket: Basket, title: Text) returns Number {
+      return quantity(basket, title)
+    }
+    scenario "add to a basket that already contains copies" {
+      given basket = stockedBasket()
+      when addCopies(basket, "Dune", 1)
+      then copiesIn(basket, "Dune") == 3
+    }
+  }
+}

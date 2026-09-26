@@ -1,0 +1,24 @@
+// The escaped backtick belongs to the concept's name.
+concept `Display \`name\`` {
+capability render(
+    title: Text = "A \"quoted\" title",
+    location: Text = "C:\\books",
+  ) returns Text {
+    promises "Render text including \\ and a tab \t."
+  }
+}
+type Measurements {
+  values: List<Number> = [
+    1,
+    2,
+  ]
+}
+examples for `Display \`name\`` {
+  fixture title: Text = "Dune\nPart two\u0021"
+  fixture sample: Measurements = Measurements {
+    values: [1, 2], // A comment does not remove a collection comma.
+  }
+  example "grouping across lines": (
+    2 + 3
+  ) * 4 => 20
+}

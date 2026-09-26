@@ -1,0 +1,25 @@
+use SystemConfig from "./models/system-config.expec"
+use PlayerStateSnapshot from "./models/player-state.expec"
+
+concept StoreGame {
+  depends on SystemConfig, PlayerStateSnapshot
+  requires package "vite" for build
+  requires package "supabase" for runtime
+  public startup, saveGame, delete, newGame, shutDown
+
+  construction(configurations: SystemConfig)
+  capability startup(configurations: SystemConfig) returns Nothing {
+    promises "Build and start the server with the main starting page."
+  }
+  capability saveGame(snapshot: PlayerStateSnapshot) returns Nothing {
+    promises "Save the snapshot to the configured Supabase database."
+  }
+  capability delete() returns Nothing
+  capability newGame() returns PlayerStateSnapshot
+  capability shutDown() returns Nothing
+
+  local type SessionState {
+    running: Boolean = false
+    snapshot: PlayerStateSnapshot?
+  }
+}

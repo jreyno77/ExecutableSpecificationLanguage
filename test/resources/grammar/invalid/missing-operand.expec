@@ -1,0 +1,3 @@
+examples {
+  example "incomplete addition": 8 + => 64
+}

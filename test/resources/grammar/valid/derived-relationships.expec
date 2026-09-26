@@ -1,0 +1,10 @@
+concept X {
+  depends on Y
+  construction(y: Y)
+  public make
+  capability make() returns Y
+}
+concept Y {
+  public handle
+  capability handle(x: X) returns Nothing
+}

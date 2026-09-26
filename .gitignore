@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.vitest/
+src/grammar/generated/
+.local-docs/
+/AGENTS.md
+*.tsbuildinfo
+*.log

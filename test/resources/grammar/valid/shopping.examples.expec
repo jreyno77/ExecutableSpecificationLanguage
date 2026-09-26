@@ -1,0 +1,10 @@
+examples {
+  scenario "a shopper can add an available book" {
+    given bookIsAvailable("Dune")
+    given startWithEmptyBasket()
+
+    when addBook("Dune")
+
+    then expectBookQuantity("Dune", 1)
+  }
+}

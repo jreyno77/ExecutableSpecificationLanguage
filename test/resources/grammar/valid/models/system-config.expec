@@ -1,0 +1,6 @@
+use URL from "expec:core"
+type SystemConfig {
+  os: "windows"
+  gameroot: URL
+  brightness: Number = 80
+}

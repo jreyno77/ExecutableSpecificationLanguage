@@ -1,0 +1,6 @@
+use Pair from "./pair.expec"
+use ShoppingCart from "./shopping-cart.expec"
+type PlayerStateSnapshot {
+  characterPosition: Pair<Number> = [0, 0]
+  shoppingCart: ShoppingCart
+}

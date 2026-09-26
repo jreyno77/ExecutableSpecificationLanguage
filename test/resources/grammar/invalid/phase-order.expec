@@ -1,0 +1,7 @@
+examples {
+  scenario "a setup after its action" {
+    when addBook("Dune")
+    given startWithEmptyBasket()
+    then expectBookQuantity("Dune", 1)
+  }
+}
