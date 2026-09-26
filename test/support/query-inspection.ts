@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import { createSyntaxReader, inspect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
+import { createSyntaxReader, inspect, type Inspection, type InspectionNode, type ReadResult, type SourceNodeId } from '../../src/index.js';
 
 type Position = { line: number; column: number };
 type Capability = {
@@ -10,6 +10,15 @@ type TypeUse = { name: string; at: Position; arguments: string[] };
 type PromiseText = { text: string; clauseAt: Position; textAt: Position };
 
 function position(point: Position): Position { return { line: point.line, column: point.column }; }
+
+// Focused projection repair: this path currently accepts named types only.
+function namedTypeDescription(source: Inspection, id: Readonly<SourceNodeId>): string {
+  const type = source.node(id, 'named-type');
+  const name = source.reference(type.payload.reference).join('.');
+  const argumentsText = type.payload.arguments.map(argument => namedTypeDescription(source, argument));
+  return name + (argumentsText.length ? `<${argumentsText.join(', ')}>` : '');
+}
+
 
 export class QueryInspection {
   private result!: ReadResult;
@@ -34,8 +43,7 @@ export class QueryInspection {
         name: name.payload.decoded,
         inputs: capability.payload.parameters.map(id => {
           const parameter = source.node(id, 'parameter');
-          const type = source.node(parameter.payload.declaredType, 'named-type');
-          return `${source.name(parameter.payload.name)}: ${source.reference(type.payload.reference).join('.')}`;
+          return `${source.name(parameter.payload.name)}: ${namedTypeDescription(source, parameter.payload.declaredType)}`;
         }),
         sourceId: capability.range.sourceId,
         declarationAt: position(capability.range.start),
