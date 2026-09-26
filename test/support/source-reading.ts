@@ -1,7 +1,6 @@
 import { expect } from 'vitest';
 import { createSyntaxReader } from '../../src/index.js';
 import type { AcceptedSource, ReadResult, SourceDocument, SourceNode, SourceNodeId } from '../../src/index.js';
-import { sourceFixture } from './source-fixture.js';
 
 type ConceptExpectation = {
   quoted: boolean;
@@ -15,8 +14,8 @@ export class SourceReading {
   private originalSource: SourceDocument | undefined;
   private result: ReadResult | undefined;
 
-  sourceIs(fixture: string): void {
-    this.source = sourceFixture(fixture, 'grammar');
+  sourceIs(text: string): void {
+    this.source = { sourceId: 'memory:example', text };
     this.originalSource = structuredClone(this.source);
     this.result = undefined;
   }
