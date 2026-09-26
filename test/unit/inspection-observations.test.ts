@@ -6,41 +6,41 @@ describe('inspection observations cannot imply work that has not run', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', 'concept StoreGame {}');
 
-    expect(() => inspection.expectCapabilities([])).toThrow('Collect capabilities before checking them');
+    expect(() => inspection.expect.capabilities([])).toThrow('Collect capabilities before checking them');
 
     inspection.collectCapabilities();
-    inspection.expectCapabilities([]);
+    inspection.expect.capabilities([]);
   });
 
   it('clears earlier observations when a new source is read', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', 'concept StoreGame { capability save() }');
     inspection.collectCapabilities();
-    inspection.expectCapabilityNames(['save']);
+    inspection.expect.capabilityNames(['save']);
 
     inspection.sourceIs('store.expec', 'concept StoreGame {}');
 
-    expect(() => inspection.expectCapabilityNames(['save'])).toThrow('Collect capabilities before checking them');
+    expect(() => inspection.expect.capabilityNames(['save'])).toThrow('Collect capabilities before checking them');
   });
 
   it('requires a type collection before claiming no named types', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', 'concept StoreGame {}');
 
-    expect(() => inspection.expectNamedTypes([])).toThrow('Collect named types before checking them');
+    expect(() => inspection.expect.namedTypes([])).toThrow('Collect named types before checking them');
   });
 
   it('requires a promise collection before claiming no promises', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', 'concept StoreGame {}');
 
-    expect(() => inspection.expectPromises([])).toThrow('Collect promises before checking them');
+    expect(() => inspection.expect.promises([])).toThrow('Collect promises before checking them');
   });
 
   it('requires a source read before asserting that it stayed unchanged', () => {
     const inspection = new QueryInspection();
 
-    expect(() => inspection.expectSourceUnchanged()).toThrow('Read source before checking it');
+    expect(() => inspection.expect.sourceUnchanged()).toThrow('Read source before checking it');
   });
 });
 
