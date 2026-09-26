@@ -5,7 +5,10 @@ import { DeclarationResolution } from '../support/declaration-resolution.js';
 describe('an author connects references to declared identities', () => {
   it('repairs one missing type without hiding a separate missing declaration', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {\n  capability save(snapshot: PlayerStateSnapshot) returns Nothing\n  capability load() returns MissingReceipt\n}');
+    resolution.sourceIs(`concept StoreGame {
+  capability save(snapshot: PlayerStateSnapshot) returns Nothing
+  capability load() returns MissingReceipt
+}`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['PlayerStateSnapshot'], 'unresolved-reference');
     resolution.expectInvalid(['MissingReceipt'], 'unresolved-reference');
@@ -13,7 +16,11 @@ describe('an author connects references to declared identities', () => {
     resolution.expectProblem('unresolved-reference', { line: 3, column: 29 });
     resolution.expectBound(['Nothing'], { name: 'Nothing', origin: { kind: 'builtin', name: 'Nothing' } });
 
-    resolution.sourceIs('concept StoreGame {\n  capability save(snapshot: PlayerStateSnapshot) returns Nothing\n  capability load() returns MissingReceipt\n}\ntype PlayerStateSnapshot { label: Text }');
+    resolution.sourceIs(`concept StoreGame {
+  capability save(snapshot: PlayerStateSnapshot) returns Nothing
+  capability load() returns MissingReceipt
+}
+type PlayerStateSnapshot { label: Text }`);
     resolution.resolveDeclarations();
     resolution.expectBound(['PlayerStateSnapshot'], { name: 'PlayerStateSnapshot', kind: 'record-type', origin: { kind: 'source' } });
     resolution.expectBound(['Text'], { name: 'Text', origin: { kind: 'builtin', name: 'Text' } });
@@ -24,7 +31,11 @@ describe('an author connects references to declared identities', () => {
 
   it('supplies the fixed builtin names without imports or fabricated source declarations', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Message { body: Text\n count: Number\n visible: Boolean\n labels: List<Text> }\nfunction show(item: Message) returns Nothing');
+    resolution.sourceIs(`type Message { body: Text
+ count: Number
+ visible: Boolean
+ labels: List<Text> }
+function show(item: Message) returns Nothing`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['Text'], { name: 'Text', kind: 'builtin-type' });
@@ -39,7 +50,8 @@ describe('an author connects references to declared identities', () => {
 
   it('rejects a function where an input type is required', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('function PlayerStateSnapshot() returns Nothing\nconcept StoreGame { capability save(snapshot: PlayerStateSnapshot) }');
+    resolution.sourceIs(`function PlayerStateSnapshot() returns Nothing
+concept StoreGame { capability save(snapshot: PlayerStateSnapshot) }`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['PlayerStateSnapshot'], 'wrong-reference-kind');
   });
@@ -53,12 +65,18 @@ describe('an author connects references to declared identities', () => {
 
   it('requires a public capability to exist under its exact name', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {\n  public saveGame\n  capability save(snapshot: Text) returns Nothing\n}');
+    resolution.sourceIs(`concept StoreGame {
+  public saveGame
+  capability save(snapshot: Text) returns Nothing
+}`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['saveGame'], 'unresolved-reference');
     resolution.expectProblem('unresolved-reference', { line: 2, column: 10 });
 
-    resolution.sourceIs('concept StoreGame {\n  public saveGame\n  capability saveGame(snapshot: Text) returns Nothing\n}');
+    resolution.sourceIs(`concept StoreGame {
+  public saveGame
+  capability saveGame(snapshot: Text) returns Nothing
+}`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['saveGame'], { name: 'saveGame', kind: 'capability' });
@@ -67,7 +85,8 @@ describe('an author connects references to declared identities', () => {
 
   it('does not borrow another owners capability for a public entry', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept Storage { capability saveGame() }\nconcept StoreGame { public saveGame }');
+    resolution.sourceIs(`concept Storage { capability saveGame() }
+concept StoreGame { public saveGame }`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['saveGame'], 'unresolved-reference');
     resolution.expectDeclaration('saveGame', 'capability', 'Storage');
@@ -75,21 +94,24 @@ describe('an author connects references to declared identities', () => {
 
   it('does not confuse a local type with a public capability', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame { public saveGame\n local type saveGame { value: Text } }');
+    resolution.sourceIs(`concept StoreGame { public saveGame
+ local type saveGame { value: Text } }`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['saveGame'], 'wrong-reference-kind');
   });
 
   it('reports both repeated public introductions', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame { public save, save\n capability save() }');
+    resolution.sourceIs(`concept StoreGame { public save, save
+ capability save() }`);
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
   });
 
   it('rejects two construction declarations for one owner', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame { construction()\n construction() }');
+    resolution.sourceIs(`concept StoreGame { construction()
+ construction() }`);
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
   });
@@ -107,7 +129,9 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('reports ambiguity between two explicitly selected exports', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart from "shopping"\nuse Cart from "shipping"\nfunction save(cart: Cart)');
+    resolution.sourceIs(`use Cart from "shopping"
+use Cart from "shipping"
+function save(cart: Cart)`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.moduleExportsRecord('shipping', 'Cart');
     resolution.resolveDeclarations();
@@ -117,7 +141,9 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('preserves different module identities through explicit aliases', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart as Basket from "shopping"\nuse Cart as Shipment from "shipping"\nfunction save(basket: Basket, shipment: Shipment)');
+    resolution.sourceIs(`use Cart as Basket from "shopping"
+use Cart as Shipment from "shipping"
+function save(basket: Basket, shipment: Shipment)`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.moduleExportsRecord('shipping', 'Cart');
     resolution.resolveDeclarations();
@@ -129,7 +155,9 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('keeps two aliases for one export attached to the same declaration', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart as Basket from "shopping"\nuse Cart as Trolley from "shopping"\nfunction save(first: Basket, second: Trolley)');
+    resolution.sourceIs(`use Cart as Basket from "shopping"
+use Cart as Trolley from "shopping"
+function save(first: Basket, second: Trolley)`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
@@ -138,7 +166,9 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('rejects a repeated introduction instead of silently merging it', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart from "shopping"\nuse Cart from "shopping"\nfunction save(cart: Cart)');
+    resolution.sourceIs(`use Cart from "shopping"
+use Cart from "shopping"
+function save(cart: Cart)`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
@@ -146,7 +176,8 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('reports an imported name colliding with a local declaration', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart from "shopping"\ntype Cart { count: Number }');
+    resolution.sourceIs(`use Cart from "shopping"
+type Cart { count: Number }`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
@@ -154,7 +185,9 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('keeps a quoted dotted export distinct from a qualified export path', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use `Sales.Cart` as Dotted from "shopping"\nuse Sales.Cart as Qualified from "shopping"\nfunction save(first: Dotted, second: Qualified)');
+    resolution.sourceIs(`use \`Sales.Cart\` as Dotted from "shopping"
+use Sales.Cart as Qualified from "shopping"
+function save(first: Dotted, second: Qualified)`);
     resolution.dependenciesAre({ packages: [], modules: [{
       locator: 'shopping',
       declarations: [
@@ -172,7 +205,8 @@ describe('an author chooses supplied declarations explicitly', () => {
 
   it('does not select a declaration that its module never exported', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart from "shopping"\nfunction save(cart: Cart)');
+    resolution.sourceIs(`use Cart from "shopping"
+function save(cart: Cart)`);
     resolution.dependenciesAre({ packages: [], modules: [{
       locator: 'shopping', declarations: [{ id: 'cart', name: 'Cart', kind: 'record-type', links: [] }], exports: [],
     }] });
@@ -184,7 +218,11 @@ describe('an author chooses supplied declarations explicitly', () => {
 describe('an author keeps names within their declared scopes', () => {
   it('allows local types inside their owner but rejects qualified escape', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {\n local type SessionState { label: Text }\n capability save(snapshot: SessionState)\n}\nfunction outside(snapshot: StoreGame.SessionState)');
+    resolution.sourceIs(`concept StoreGame {
+ local type SessionState { label: Text }
+ capability save(snapshot: SessionState)
+}
+function outside(snapshot: StoreGame.SessionState)`);
     resolution.resolveDeclarations();
     resolution.expectBound(['SessionState'], { name: 'SessionState', kind: 'record-type' });
     resolution.expectInvalid(['StoreGame', 'SessionState'], 'inaccessible-reference');
@@ -193,7 +231,9 @@ describe('an author keeps names within their declared scopes', () => {
 
   it('gives each declaring type its own generic parameter identity', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Pair<T> = [T, T]\ntype Page<T> { items: List<T> }\nfunction outside(value: T)');
+    resolution.sourceIs(`type Pair<T> = [T, T]
+type Page<T> { items: List<T> }
+function outside(value: T)`);
     resolution.resolveDeclarations();
     resolution.expectBound(['T'], { name: 'T', kind: 'type-parameter', origin: { kind: 'source' } });
     resolution.expectSameTargets(['T'], ['T'], 0, 1);
@@ -203,7 +243,8 @@ describe('an author keeps names within their declared scopes', () => {
 
   it('resolves a declaration written after its first use', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('function save(cart: Cart)\ntype Cart { count: Number }');
+    resolution.sourceIs(`function save(cart: Cart)
+type Cart { count: Number }`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['Cart'], { name: 'Cart', kind: 'record-type' });
@@ -212,14 +253,16 @@ describe('an author keeps names within their declared scopes', () => {
 
   it('reports duplicate type declarations with both source locations', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Item { title: Text }\ntype Item { count: Number }');
+    resolution.sourceIs(`type Item { title: Text }
+type Item { count: Number }`);
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
   });
 
   it('reports two fields with the same name in one record', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Cart { count: Number\n count: Text }');
+    resolution.sourceIs(`type Cart { count: Number
+ count: Text }`);
     resolution.resolveDeclarations();
     resolution.expectProblem('duplicate-declaration', undefined, 1);
   });
@@ -241,7 +284,12 @@ describe('an author keeps names within their declared scopes', () => {
 
   it('permits nested shadowing of a nonbuiltin declaration', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Item { title: Text }\nconcept StoreGame {\n local type Item { count: Number }\n capability save(value: Item)\n}\nfunction outside(value: Item)');
+    resolution.sourceIs(`type Item { title: Text }
+concept StoreGame {
+ local type Item { count: Number }
+ capability save(value: Item)
+}
+function outside(value: Item)`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBoundAt(['Item'], { line: 3, column: 8 }, 0);
@@ -253,7 +301,8 @@ describe('an author keeps names within their declared scopes', () => {
 describe('a caller supplies closed declaration metadata', () => {
   it('imports an externally described record with all required declaration links', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use ValidationResult from "results"\nfunction validate(source: Text) returns ValidationResult');
+    resolution.sourceIs(`use ValidationResult from "results"
+function validate(source: Text) returns ValidationResult`);
     resolution.dependenciesAre({ packages: [], modules: [{
       locator: 'results',
       declarations: [{ id: 'result', name: 'ValidationResult', kind: 'record-type', links: [
@@ -296,7 +345,8 @@ describe('a caller supplies closed declaration metadata', () => {
 
   it('resolves transitive required imports from the supplied snapshot', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use ValidationResult from "results"\nfunction validate() returns ValidationResult');
+    resolution.sourceIs(`use ValidationResult from "results"
+function validate() returns ValidationResult`);
     resolution.dependenciesAre({ packages: [], modules: [
       { locator: 'results', declarations: [{ id: 'result', name: 'ValidationResult', kind: 'record-type', links: [
         { label: 'messages.element', target: { kind: 'import', module: 'messages', path: ['Message'] } },
@@ -312,7 +362,9 @@ describe('a caller supplies closed declaration metadata', () => {
 
   it('keeps an independent valid import when another export has an unavailable transitive dependency', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use ValidationResult from "results"\nuse Cart from "shopping"\nfunction save(cart: Cart)');
+    resolution.sourceIs(`use ValidationResult from "results"
+use Cart from "shopping"
+function save(cart: Cart)`);
     resolution.dependenciesAre({ packages: [], modules: [
       { locator: 'results', declarations: [{ id: 'result', name: 'ValidationResult', kind: 'record-type', links: [
         { label: 'messages.element', target: { kind: 'import', module: 'messages', path: ['Message'] } },
@@ -322,13 +374,15 @@ describe('a caller supplies closed declaration metadata', () => {
     ] });
     resolution.resolveDeclarations();
     resolution.expectProblem('unavailable-module');
+    resolution.expectDependencyCause('unavailable-module', ['modules', 0, 'declarations', 0, 'links', 0, 'target']);
     resolution.expectInvalid(['ValidationResult'], 'invalid-dependency-catalog');
     resolution.expectBound(['Cart'], { name: 'Cart', origin: { kind: 'external', module: 'shopping' } }, 1);
   });
 
   it('allows mutually referring record declarations without treating the cycle as an alias error', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use First from "records"\nfunction save(value: First)');
+    resolution.sourceIs(`use First from "records"
+function save(value: First)`);
     resolution.dependenciesAre({ packages: [], modules: [{
       locator: 'records',
       declarations: [
@@ -397,7 +451,8 @@ describe('a caller supplies closed declaration metadata', () => {
 describe('an author declares dependencies without implicitly introducing them', () => {
   it('binds an explicit dependency to its existing declaration', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Storage {}\nconcept StoreGame { depends on Storage }');
+    resolution.sourceIs(`type Storage {}
+concept StoreGame { depends on Storage }`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['Storage'], { name: 'Storage', kind: 'record-type' });
@@ -412,14 +467,18 @@ describe('an author declares dependencies without implicitly introducing them', 
 
   it('rejects a function where a dependency requires a concept or type', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('function Storage()\nconcept StoreGame { depends on Storage }');
+    resolution.sourceIs(`function Storage()
+concept StoreGame { depends on Storage }`);
     resolution.resolveDeclarations();
     resolution.expectInvalid(['Storage'], 'wrong-reference-kind');
   });
 
   it('requires the declared package phase and independently reports another missing package', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {\n requires package "vite" for build\n requires package "supabase"\n}');
+    resolution.sourceIs(`concept StoreGame {
+ requires package "vite" for build
+ requires package "supabase"
+}`);
     resolution.dependenciesAre({ modules: [], packages: [{ alias: 'vite', phases: ['runtime'] }] });
     resolution.resolveDeclarations();
     resolution.expectProblemCodes(['unavailable-package', 'unavailable-package']);
@@ -427,7 +486,10 @@ describe('an author declares dependencies without implicitly introducing them', 
 
   it('accepts an available unqualified package without inventing its phase', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {\n requires package "vite" for build\n requires package "supabase"\n}');
+    resolution.sourceIs(`concept StoreGame {
+ requires package "vite" for build
+ requires package "supabase"
+}`);
     resolution.dependenciesAre({ modules: [], packages: [
       { alias: 'vite', phases: ['build'] }, { alias: 'supabase', phases: [] },
     ] });
@@ -461,7 +523,13 @@ describe('an author declares dependencies without implicitly introducing them', 
 describe('a consumer distinguishes resolved facts from pending work', () => {
   it('resolves an unambiguous helper declared after its use', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('examples {\n scenario "prepare" {\n  when perform()\n  then true\n }\n action perform() returns Nothing\n}');
+    resolution.sourceIs(`examples {
+ scenario "prepare" {
+  when perform()
+  then true
+ }
+ action perform() returns Nothing
+}`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['perform'], { name: 'perform', kind: 'action' });
@@ -469,7 +537,8 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 
   it('defers a receiver-dependent member without inventing its target', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Cart {}\nfunction save(cart: Cart) { ensures cart.save() == true }');
+    resolution.sourceIs(`type Cart {}
+function save(cart: Cart) { ensures cart.save() == true }`);
     resolution.resolveDeclarations();
     resolution.expectBound(['Cart'], { name: 'Cart', kind: 'record-type' });
     resolution.expectDeferred(['save'], 'receiver-type');
@@ -485,7 +554,16 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 
   it('does not bind an outer name when ordered capture scope may replace it', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('examples {\n fixture value: Number = 1\n setup prepare(input: Number) returns Number\n action create() returns Number\n scenario "ordered values" {\n  given earlier = prepare(value)\n  when value = create()\n  then value == 1\n }\n}');
+    resolution.sourceIs(`examples {
+ fixture value: Number = 1
+ setup prepare(input: Number) returns Number
+ action create() returns Number
+ scenario "ordered values" {
+  given earlier = prepare(value)
+  when value = create()
+  then value == 1
+ }
+}`);
     resolution.resolveDeclarations();
     resolution.expectDeferred(['value'], 'ordered-scope', 0);
     resolution.expectDeferred(['value'], 'ordered-scope', 1);
@@ -494,7 +572,8 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 
   it('reports inclusion as a composition requirement rather than searching a file', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('include "./types.expec"\nfunction save(value: ImportedType)');
+    resolution.sourceIs(`include "./types.expec"
+function save(value: ImportedType)`);
     resolution.resolveDeclarations();
     resolution.expectProblem('composition-required', { line: 1, column: 1 });
     resolution.expectDeferred(['ImportedType'], 'composition');
@@ -511,7 +590,8 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 
   it('reports external examples as a composition requirement', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {}\nexamples for StoreGame from "./saving.examples.expec"');
+    resolution.sourceIs(`concept StoreGame {}
+examples for StoreGame from "./saving.examples.expec"`);
     resolution.resolveDeclarations();
     resolution.expectProblem('composition-required');
     resolution.expectDeclaration('StoreGame', 'concept');
@@ -520,7 +600,8 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 
   it('resolves the subject of same-document examples', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('concept StoreGame {}\nexamples for StoreGame { action save() returns Nothing }');
+    resolution.sourceIs(`concept StoreGame {}
+examples for StoreGame { action save() returns Nothing }`);
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
     resolution.expectBound(['StoreGame'], { name: 'StoreGame', kind: 'concept' });
@@ -530,7 +611,8 @@ describe('a consumer distinguishes resolved facts from pending work', () => {
 describe('a consumer reads a fresh, checked resolution report', () => {
   it('observes removed dependency input on the same resolver instance', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('use Cart from "shopping"\nfunction save(cart: Cart)');
+    resolution.sourceIs(`use Cart from "shopping"
+function save(cart: Cart)`);
     resolution.moduleExportsRecord('shopping', 'Cart');
     resolution.resolveDeclarations();
     resolution.expectNoProblems();
@@ -549,13 +631,107 @@ describe('a consumer reads a fresh, checked resolution report', () => {
 
   it('supports independent declaration iteration and checked queries', () => {
     const resolution = new DeclarationResolution();
-    resolution.sourceIs('type Cart {}\nfunction save(cart: Cart)');
+    resolution.sourceIs(`type Cart {}
+function save(cart: Cart)`);
     resolution.resolveDeclarations();
     resolution.expectDeclarationNamesStartWith(['Cart', 'save', 'cart']);
     resolution.expectDeclarationsReplay();
     resolution.expectBound(['Cart'], { name: 'Cart', kind: 'record-type' });
     resolution.expectCheckedQueries();
     resolution.expectInputsUnchanged();
+  });
+});
+
+
+
+describe('resolution respects component and lexical boundaries', () => {
+  it('binds a fixed parameter reference without deferring it as an ordered local', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`type Cart {}
+function save(cart: Cart) { ensures cart.save() == true }`);
+    resolution.resolveDeclarations();
+    resolution.expectBound(['cart'], { name: 'cart', kind: 'parameter' });
+    resolution.expectDeferred(['save'], 'receiver-type');
+  });
+
+  it('prevents an import alias from replacing builtin Text', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`use Cart as Text from "shopping"
+function save(value: Text)`);
+    resolution.moduleExportsRecord('shopping', 'Cart');
+    resolution.resolveDeclarations();
+    resolution.expectProblem('duplicate-declaration', undefined, 1);
+    resolution.expectBuiltinHasNoSource('Text');
+  });
+
+  it('makes a local type visible inside descendants of its owner', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`concept StoreGame {
+ local type SessionState { label: Text }
+ local concept Screen {
+  capability show(state: SessionState)
+ }
+}`);
+    resolution.resolveDeclarations();
+    resolution.expectNoProblems();
+    resolution.expectBound(['SessionState'], { name: 'SessionState', kind: 'record-type' });
+    resolution.expectDeclaration('SessionState', 'record-type', 'StoreGame');
+  });
+
+  it('rejects a required transitive export absent from an otherwise supplied module', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs('use ValidationResult from "results"');
+    resolution.dependenciesAre({ packages: [], modules: [
+      { locator: 'results', declarations: [{ id: 'result', name: 'ValidationResult', kind: 'record-type', links: [
+        { label: 'messages.element', target: { kind: 'import', module: 'messages', path: ['Message'] } },
+      ] }], exports: [{ path: ['ValidationResult'], declaration: 'result' }] },
+      { locator: 'messages', declarations: [{ id: 'message', name: 'Message', kind: 'record-type', links: [] }],
+        exports: [] },
+    ] });
+    resolution.resolveDeclarations();
+    resolution.expectCatalogProblemWithin(['modules', 0, 'declarations', 0, 'links', 0]);
+    resolution.expectDependencyCause('unresolved-reference', ['modules', 0, 'declarations', 0, 'links', 0, 'target']);
+    resolution.expectInvalid(['ValidationResult'], 'invalid-dependency-catalog');
+  });
+
+  it('does not introduce construction parameters into capability contracts', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`concept StoreGame {
+ construction(configuration: Text)
+ capability start() { requires configuration == "live" }
+}`);
+    resolution.resolveDeclarations();
+    resolution.expectInvalid(['configuration'], 'unresolved-reference');
+  });
+
+  it('keeps helpers in separate ownerless examples blocks isolated', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`examples { action onlyHere() returns Nothing }
+examples {
+ scenario "unavailable helper" {
+  when onlyHere()
+  then true
+ }
+}`);
+    resolution.resolveDeclarations();
+    resolution.expectInvalid(['onlyHere'], 'unresolved-reference');
+  });
+
+  it('defers message participant and operation selection while retaining their declared types', () => {
+    const resolution = new DeclarationResolution();
+    resolution.sourceIs(`interface Storage { capability persist(snapshot: Text) returns Nothing }
+component Screen {}
+interaction "save"() {
+ participant screen: Screen
+ participant storage: Storage
+ message screen -> storage.persist("snapshot")
+}`);
+    resolution.resolveDeclarations();
+    resolution.expectBound(['Screen'], { name: 'Screen', kind: 'component' });
+    resolution.expectBound(['Storage'], { name: 'Storage', kind: 'interface' });
+    resolution.expectDeferred(['screen'], 'interaction');
+    resolution.expectDeferred(['storage'], 'interaction');
+    resolution.expectDeferred(['persist'], 'interaction');
   });
 });
 

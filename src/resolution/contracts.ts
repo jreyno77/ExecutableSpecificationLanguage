@@ -24,6 +24,7 @@ export interface Declaration {
   readonly origin: DeclarationOrigin;
 }
 export type ProblemLocation =
+  | { readonly kind: 'external'; readonly module: string; readonly declaration: string }
   | { readonly kind: 'source'; readonly range: Range }
   | { readonly kind: 'dependency'; readonly path: readonly (string | number)[] }
   | { readonly kind: 'builtin'; readonly name: BuiltinName };
@@ -87,4 +88,3 @@ export interface DependencySnapshot {
   readonly modules: readonly DependencyModule[];
   readonly packages: readonly { readonly alias: string; readonly phases: readonly PackagePhase[] }[];
 }
-

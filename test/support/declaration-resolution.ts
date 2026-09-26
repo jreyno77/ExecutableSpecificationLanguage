@@ -62,6 +62,14 @@ export class DeclarationResolution {
     expect(found, 'The malformed supplied metadata needs a located catalog problem').toBeDefined();
   }
 
+
+  expectDependencyCause(code: ResolutionProblemCode, path: readonly (string | number)[]): void {
+    const found = this.resolved().problems.find(problem => problem.code === code
+      && [problem.at, ...problem.related].some(at => at.kind === 'dependency'
+        && JSON.stringify(at.path) === JSON.stringify(path)));
+    expect(found, 'The actual unavailable dependency cause and exact metadata location must survive').toBeDefined();
+  }
+
   expectBound(segments: readonly string[], expected: Target, occurrence = 0): void {
     expect(this.target(segments, occurrence)).toMatchObject(expected);
   }
@@ -161,5 +169,3 @@ export class DeclarationResolution {
     return this.resolved().declaration(binding.target);
   }
 }
-
-
