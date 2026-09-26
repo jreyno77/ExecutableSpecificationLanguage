@@ -1,5 +1,8 @@
 import { expect } from 'vitest';
-import { createSyntaxReader, inspectSource, visitSource, type SourceDescription } from '../../src/index.js';
+import { createSyntaxReader, type SourceDescription } from '../../src/index.js';
+
+import { callbackCapabilities, queryCapabilities } from '../resources/inspection/capability-analyses.js';
+import { callbackTypeUses, queryTypeUses } from '../resources/inspection/type-use-analyses.js';
 
 export type InspectionOption = 'callbacks' | 'queries';
 export type LocatedName = { name: string; line: number; column: number };
@@ -20,36 +23,10 @@ export class SourceAnalyses {
     return this.source;
   }
   capabilities(): LocatedName[] {
-    const result: LocatedName[] = [];
-    if (this.option === 'callbacks') {
-      visitSource(this.description(), {
-        capability(node, source) {
-          result.push({ name: source.name(node.payload.name), line: node.range.start.line, column: node.range.start.column });
-        },
-      });
-    } else {
-      const source = inspectSource(this.description());
-      for (const node of source.nodes('capability')) {
-        result.push({ name: source.name(node.payload.name), line: node.range.start.line, column: node.range.start.column });
-      }
-    }
-    return result;
+    return this.option === 'callbacks' ? callbackCapabilities(this.description()) : queryCapabilities(this.description());
   }
   typeUses(): LocatedTypeUse[] {
-    const result: LocatedTypeUse[] = [];
-    if (this.option === 'callbacks') {
-      visitSource(this.description(), {
-        'named-type'(node, source) {
-          result.push({ segments: source.reference(node.payload.reference), line: node.range.start.line, column: node.range.start.column });
-        },
-      });
-    } else {
-      const source = inspectSource(this.description());
-      for (const node of source.nodes('named-type')) {
-        result.push({ segments: source.reference(node.payload.reference), line: node.range.start.line, column: node.range.start.column });
-      }
-    }
-    return result;
+    return this.option === 'callbacks' ? callbackTypeUses(this.description()) : queryTypeUses(this.description());
   }
   expectCapabilities(expected: LocatedName[]): void { expect(this.capabilities()).toEqual(expected); }
   expectTypeUses(expected: LocatedTypeUse[]): void { expect(this.typeUses()).toEqual(expected); }
@@ -61,4 +38,10 @@ export class SourceAnalyses {
     expect(this.capabilities()).toEqual(capabilities);
     expect(this.description()).toEqual(before);
   }
+}
+
+export function expectNoInspectableSource(text: string): void {
+  const read = createSyntaxReader().read({ sourceId: 'author.expec', text });
+  expect(read.status).toBe('rejected');
+  expect(read).not.toHaveProperty('description');
 }

@@ -1,4 +1,5 @@
-import { inspectSource, visitSource, type SourceDescription, type ReadResult } from '../../src/index.js';
+import { visitSource } from '../resources/inspection/visitor-candidate.js';
+import { inspectSource, type SourceDescription, type ReadResult } from '../../src/index.js';
 
 // Compiled by npm run typecheck; deliberately not executed.
 export function sourceInspectionTypeContract(source: SourceDescription, read: ReadResult): void {
@@ -14,6 +15,12 @@ export function sourceInspectionTypeContract(source: SourceDescription, read: Re
   }
   // @ts-expect-error Node kinds are closed and typed.
   inspection.nodes('capabilty');
+  visitSource(source, {
+    // @ts-expect-error Visitor keys use the same closed, typed node kinds.
+    capabilty() {},
+  });
+  // @ts-expect-error A ReadResult is not a source description for callbacks either.
+  visitSource(read, {});
   visitSource(source, {
     capability(node, lookup) {
       lookup.name(node.payload.name);

@@ -1,5 +1,6 @@
+import { visitSource } from '../resources/inspection/visitor-candidate.js';
 import { describe, expect, it } from 'vitest';
-import { inspectSource, visitSource, SourceInspectionError } from '../../src/index.js';
+import { inspectSource, SourceInspectionError } from '../../src/index.js';
 import { readSpecification } from '../support/source-inspection.js';
 
 describe('Source inspection boundaries', () => {
@@ -60,5 +61,24 @@ describe('Source inspection boundaries', () => {
     const names: string[] = [];
     visitSource(source, { capability(node, lookup) { names.push(lookup.name(node.payload.name)); } });
     expect(names).toEqual(['save']);
+  });
+
+  it('preserves the original node identity and complete authored range', () => {
+    const source = readSpecification('concept StoreGame {}');
+    const query = [...inspectSource(source).nodes('concept')][0]!;
+    expect(query.id).toEqual({ sourceId: 'author.expec', ordinal: 0 });
+    expect(query.range).toEqual({
+      sourceId: 'author.expec',
+      start: { offset: 0, line: 1, column: 1 },
+      end: { offset: 20, line: 1, column: 21 },
+    });
+    expect(query.id).toEqual(source.nodes[0]!.id);
+    expect(query.range).toEqual(source.nodes[0]!.range);
+    visitSource(source, {
+      concept(node) {
+        expect(node.id).toEqual(query.id);
+        expect(node.range).toEqual(query.range);
+      },
+    });
   });
 });

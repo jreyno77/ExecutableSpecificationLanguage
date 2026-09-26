@@ -1,5 +1,6 @@
-import type { SourceDescription, SourceNodeId } from '../grammar/source.js';
-import { createSourceLookup, type SourceKind, type SourceLookup, type SourceNodeOf } from './source-access.js';
+// Comparison prototype retained for CORE-19; not part of the released API.
+import type { SourceDescription, SourceNodeId } from '../../../src/index.js';
+import { createSourceLookup, type SourceKind, type SourceLookup, type SourceNodeOf } from '../../../src/inspection/source-access.js';
 
 export type SourceVisitors = { [K in SourceKind]?: (node: SourceNodeOf<K>, source: SourceLookup) => void };
 export function visitSource(source: SourceDescription, visitors: SourceVisitors): void {
