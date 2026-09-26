@@ -35,6 +35,21 @@ describe('an analysis author inspects declared source through queries', () => {
   });
 
 
+  it('retains generic arguments in a capability input description', () => {
+    const inspection = new QueryInspection();
+    inspection.sourceIs('store.expec', `concept StoreGame {
+  capability save(values: List<Number>)
+}`);
+
+    inspection.collectCapabilities();
+
+    inspection.expectCapabilities([
+      { name: 'save', inputs: ['values: List<Number>'], sourceId: 'store.expec',
+        declarationAt: { line: 2, column: 3 }, nameAt: { line: 2, column: 14 }, nameEndsAt: { line: 2, column: 18 } },
+    ]);
+  });
+
+
   it('finds capabilities inside a local concept without consumer recursion', () => {
     const inspection = new QueryInspection();
     inspection.sourceIs('store.expec', `concept StoreGame {
