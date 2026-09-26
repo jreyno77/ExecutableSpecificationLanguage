@@ -31,11 +31,7 @@ export class InspectionError extends Error {
 }
 
 /** Inspect one accepted reader description. No resolution, I/O, or input mutation. */
-export function inspect(description: InspectionInput): Inspection {
-  return new DescriptionInspection(description);
-}
-
-class DescriptionInspection implements Inspection {
+export class DescriptionInspection implements Inspection {
   constructor(private readonly description: InspectionInput) {}
 
   nodes<K extends InspectionKind>(kind: K): Iterable<InspectionNode<K>> {

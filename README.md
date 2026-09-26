@@ -6,10 +6,10 @@ The package provides an ANTLR grammar, a source reader, and typed inspection of 
 
 ## Inspect declarations
 
-`inspect` creates an `Inspection` from an accepted reader result:
+`DescriptionInspection` implements `Inspection` over an accepted reader result:
 
 ```ts
-import { createSyntaxReader, inspect, type Inspection } from 'executable-specification-language';
+import { createSyntaxReader, DescriptionInspection, type Inspection } from 'executable-specification-language';
 
 const result = createSyntaxReader().read({
   sourceId: 'store.expec',
@@ -17,7 +17,7 @@ const result = createSyntaxReader().read({
 });
 
 if (result.status === 'accepted') {
-  const inspection: Inspection = inspect(result.description);
+  const inspection: Inspection = new DescriptionInspection(result.description);
   const capabilities = inspection.nodes('capability');
   const names = Array.from(capabilities, node => inspection.name(node.payload.name));
   // names: ['saveGame']

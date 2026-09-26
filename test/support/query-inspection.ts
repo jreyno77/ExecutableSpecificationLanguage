@@ -3,7 +3,7 @@ import {
   capabilitySummaries, namedTypeOccurrences, promiseDescriptions,
   type Capability, type TypeUse, type PromiseText,
 } from './inspection-collectors.js';
-import { createSyntaxReader, inspect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
+import { createSyntaxReader, DescriptionInspection, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
 
 function recorded<T>(value: T | undefined, message: string): T {
   if (value === undefined) throw new Error(message);
@@ -26,7 +26,7 @@ export class QueryInspection {
     this.promises = undefined;
     this.result = createSyntaxReader().read({ sourceId, text });
     this.original = structuredClone(this.result);
-    this.inspection = this.result.status === 'accepted' ? inspect(this.result.description) : undefined;
+    this.inspection = this.result.status === 'accepted' ? new DescriptionInspection(this.result.description) : undefined;
   }
 
   collectCapabilities(): void {
@@ -98,7 +98,7 @@ export class QueryInspection {
 export function inspectText(text: string, sourceId = 'store.expec'): Inspection {
   const result = createSyntaxReader().read({ sourceId, text });
   if (result.status !== 'accepted') throw new Error(JSON.stringify(result.diagnostics));
-  return inspect(result.description);
+  return new DescriptionInspection(result.description);
 }
 
 export function capabilityNames(inspection: Inspection, nodes: Iterable<InspectionNode<'capability'>>): string[] {
