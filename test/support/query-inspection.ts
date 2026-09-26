@@ -1,16 +1,6 @@
 import { expect } from 'vitest';
-import { describeType } from './type-description.js';
-import { createSyntaxReader, inspect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
-
-type Position = { line: number; column: number };
-type Capability = {
-  name: string; inputs: string[]; sourceId: string;
-  declarationAt: Position; nameAt: Position; nameEndsAt: Position;
-};
-type TypeUse = { name: string; at: Position; arguments: string[] };
-type PromiseText = { text: string; clauseAt: Position; textAt: Position };
-
-function position(point: Position): Position { return { line: point.line, column: point.column }; }
+import { capabilityCollector, namedTypeCollector, promiseCollector, type Capability, type TypeUse, type PromiseText } from './inspection-collectors.js';
+import { createSyntaxReader, inspect, collect, type Inspection, type InspectionNode, type ReadResult } from '../../src/index.js';
 
 function recorded<T>(value: T | undefined, message: string): T {
   if (value === undefined) throw new Error(message);
@@ -37,52 +27,19 @@ export class QueryInspection {
   }
 
   collectCapabilities(): void {
-    const source = this.acceptedInspection();
-    this.capabilities = Array.from(source.nodes('capability'), capability => {
-      const name = source.node(capability.payload.name, 'name');
-      return {
-        name: name.payload.decoded,
-        inputs: capability.payload.parameters.map(id => {
-          const parameter = source.node(id, 'parameter');
-          return `${source.name(parameter.payload.name)}: ${describeType(source, parameter.payload.declaredType)}`;
-        }),
-        sourceId: capability.range.sourceId,
-        declarationAt: position(capability.range.start),
-        nameAt: position(name.range.start),
-        nameEndsAt: position(name.range.end),
-      };
-    });
+    this.capabilities = collect(this.acceptedInspection(), capabilityCollector);
   }
 
   collectNamedTypes(): void {
-    const source = this.acceptedInspection();
-    this.typeIds = [];
-    this.typeUses = Array.from(source.nodes('named-type'), type => {
-      this.typeIds.push(JSON.stringify(type.id));
-      const reference = source.node(type.payload.reference, 'reference');
-      const name = source.node(reference.payload.segments[0]!, 'name');
-      return {
-        name: source.reference(reference.id).join('.'),
-        at: position(name.range.start),
-        arguments: type.payload.arguments.map(id => {
-          const argument = source.node(id, 'named-type');
-          return source.reference(argument.payload.reference).join('.');
-        }),
-      };
-    });
+    const occurrences = collect(this.acceptedInspection(), namedTypeCollector);
+    this.typeUses = occurrences.map(occurrence => occurrence.fact);
+    this.typeIds = occurrences.map(occurrence => JSON.stringify(occurrence.id));
   }
 
   collectPromises(): void {
-    const source = this.acceptedInspection();
-    this.promises = Array.from(source.nodes('promises'), clause => {
-      const text = source.node(clause.payload.content, 'string-literal');
-      return {
-        text: text.payload.value,
-        clauseAt: position(clause.range.start),
-        textAt: position(text.range.start),
-      };
-    });
+    this.promises = collect(this.acceptedInspection(), promiseCollector);
   }
+
 
   expectCapabilities(expected: Capability[]): void { expect(recorded(this.capabilities, 'Collect capabilities before checking them')).toEqual(expected); }
   expectCapabilityNames(expected: string[]): void { expect(recorded(this.capabilities, 'Collect capabilities before checking them').map(item => item.name)).toEqual(expected); }
