@@ -1,50 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { createSyntaxReader, DescriptionInspection, Resolver, ResolutionQueryError, type Inspection } from '../../src/index.js';
+import { AntlrSyntaxReader } from '../../src/grammar/reader.js';
+import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/inspection.js';
+import { Resolver } from '../../src/resolution/resolve.js';
 
-function source(text: string): Inspection {
-  const read = createSyntaxReader().read({ sourceId: 'report.expec', text });
+function source(text: string): ModuleInspection {
+  const read = new AntlrSyntaxReader().read({ sourceId: 'report.expec', text });
   if (read.status !== 'accepted') throw new Error('The report example must be grammatical');
-  return new DescriptionInspection(read.description);
+  return new DescriptionInspection('entry', read.description);
 }
 
-describe('a consumer retains resolution facts independently of inspection', () => {
-  it('can read a reference target after the supplied inspection becomes unavailable', () => {
-    const inspection = source('type Message { body: Text }');
-    const reference = [...inspection.nodes('reference')][0]!;
-    let available = true;
-    const collaborator = new Proxy(inspection, {
-      get(target, property, receiver) {
-        if (!available) throw new Error('Inspection is no longer available');
-        return Reflect.get(target, property, receiver);
-      },
-    });
-    const report = new Resolver().resolve(collaborator, { modules: [], packages: [] });
-    available = false;
-
-    const binding = report.binding(reference.id);
-    expect(binding.status).toBe('bound');
-    if (binding.status !== 'bound') throw new Error('Expected the authored Text use to resolve');
-    expect(report.declaration(binding.target)).toMatchObject({
-      name: 'Text', kind: 'builtin-type', origin: { kind: 'builtin', name: 'Text' },
-    });
-    expect(report.problems).toEqual([]);
-    expect([...report.declarations()].map(declaration => declaration.name)).toContain('Message');
-  });
-
-  it('does not accept a declaration identity owned by an earlier report', () => {
+describe('a consumer keeps completed resolution views independent', () => {
+  it('owns fresh builtin handles while preserving the same supplied declaration handles', () => {
     const inspection = source('type Message { body: Text }');
     const resolver = new Resolver();
     const first = resolver.resolve(inspection, { modules: [], packages: [] });
-    const earlier = [...first.declarations()].find(declaration => declaration.name === 'Message');
-    expect(earlier, 'The first report contains Message').toBeDefined();
-    if (!earlier) throw new Error('Expected Message to have a declaration identity');
-
     const second = resolver.resolve(inspection, { modules: [], packages: [] });
+    const earlier = [...first.nodes('builtin-type')].find(node => first.name(node.payload.name) === 'Text')!;
+    const current = [...second.nodes('builtin-type')].find(node => second.name(node.payload.name) === 'Text')!;
+    expect(earlier.id).not.toBe(current.id);
+    expect(() => second.node(earlier.id)).toThrowError(expect.objectContaining({ name: 'InspectionError', code: 'foreign-node' }));
+    const declaration = [...inspection.nodes('record-type-declaration')][0]!;
+    expect(first.node(declaration.id).id).toBe(declaration.id);
+    expect(second.node(declaration.id).id).toBe(declaration.id);
+  });
 
-    expect(() => second.declaration(earlier.id)).toThrow(ResolutionQueryError);
-    try { second.declaration(earlier.id); } catch (error) {
-      expect(error).toMatchObject({ code: 'unknown-declaration' });
-    }
+  it('retains an earlier invalid reference after another call obtains its missing dependency', () => {
+    const inspection = source('use Cart from "shopping"');
+    const reference = [...inspection.nodes('reference')][0]!;
+    const resolver = new Resolver();
+    const missing = resolver.resolve(inspection, { modules: [], packages: [] });
+    const present = resolver.resolve(inspection, { modules: [new ExternalInspection('shopping', [
+      { kind: 'record-type', name: 'Cart', fields: [] },
+    ])], packages: [] });
+    expect(missing.node(reference.id, 'reference').payload.resolution.status).toBe('invalid');
+    expect(missing.problems.map(problem => problem.code)).toContain('unavailable-module');
+    expect(present.node(reference.id, 'reference').payload.resolution.status).toBe('bound');
+    expect(present.problems).toEqual([]);
+  });
+
+  it('enumerates entry roots, primitives and reached module roots in the documented order', () => {
+    const inspection = source('use Zed from "z"\nuse Alpha from "a"\ntype Entry {}');
+    const result = new Resolver().resolve(inspection, { modules: [
+      new ExternalInspection('z', [{ kind: 'record-type', name: 'Zed', fields: [] }]),
+      new ExternalInspection('a', [{ kind: 'record-type', name: 'Alpha', fields: [] }]),
+    ], packages: [] });
+    const roots = [...result.roots()].map(id => {
+      const node = result.node(id);
+      return 'name' in node.payload ? result.name(node.payload.name) : node.payload.kind;
+    });
+    expect(roots).toEqual(['use', 'use', 'Entry', 'Text', 'Number', 'Boolean', 'List', 'Nothing', 'Alpha', 'Zed']);
   });
 });
-

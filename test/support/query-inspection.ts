@@ -16,7 +16,7 @@ export class QueryInspection {
   private inspection: Inspection | undefined;
   private capabilities: Capability[] | undefined;
   private typeUses: TypeUse[] | undefined;
-  private typeIds: string[] = [];
+  private typeIds: object[] = [];
   private promises: PromiseText[] | undefined;
 
   sourceIs(sourceId: string, text: string): void {
@@ -26,7 +26,7 @@ export class QueryInspection {
     this.promises = undefined;
     this.result = createSyntaxReader().read({ sourceId, text });
     this.original = structuredClone(this.result);
-    this.inspection = this.result.status === 'accepted' ? new DescriptionInspection(this.result.description) : undefined;
+    this.inspection = this.result.status === 'accepted' ? new DescriptionInspection(sourceId, this.result.description) : undefined;
   }
 
   collectCapabilities(): void {
@@ -36,7 +36,7 @@ export class QueryInspection {
   collectNamedTypes(): void {
     const occurrences = namedTypeOccurrences(this.acceptedInspection());
     this.typeUses = occurrences.map(occurrence => occurrence.fact);
-    this.typeIds = occurrences.map(occurrence => JSON.stringify(occurrence.id));
+    this.typeIds = occurrences.map(occurrence => occurrence.id);
   }
 
   collectPromises(): void {
@@ -98,7 +98,7 @@ export class QueryInspection {
 export function inspectText(text: string, sourceId = 'store.expec'): Inspection {
   const result = createSyntaxReader().read({ sourceId, text });
   if (result.status !== 'accepted') throw new Error(JSON.stringify(result.diagnostics));
-  return new DescriptionInspection(result.description);
+  return new DescriptionInspection(sourceId, result.description);
 }
 
 export function capabilityNames(inspection: Inspection, nodes: Iterable<InspectionNode<'capability'>>): string[] {

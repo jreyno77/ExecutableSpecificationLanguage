@@ -1,36 +1,42 @@
-import type {
-  Declaration, DependencySnapshot, ReferenceBinding, Resolution, SourceNodeId,
-} from '../../src/index.js';
+import type { InspectionNode, NodeId, SourceNodeId } from '../../src/index.js';
+import type { ResolutionDependencies } from '../../src/resolution/resolve.js';
+import type { Resolution } from '../../src/resolution/resolved-inspection.js';
 
-// Compile-time consumers: results and dependency descriptions expose readonly facts.
-function readonlyContracts(resolution: Resolution, declaration: Declaration, dependencies: DependencySnapshot, reference: SourceNodeId) {
+// Compile-time consumers: one inspected representation carries readonly resolution facts.
+function readonlyContracts(resolution: Resolution, declaration: InspectionNode<'record-type-declaration'>,
+  dependencies: ResolutionDependencies, reference: NodeId, sourceReference: SourceNodeId) {
   // @ts-expect-error Resolution diagnostics are readonly.
   resolution.problems.push({});
-  // @ts-expect-error Consumers do not mutate declaration names.
-  declaration.name = 'changed';
+  // @ts-expect-error Declaration child handles are readonly.
+  declaration.payload.name = reference;
   if (declaration.origin.kind === 'source') {
-    // @ts-expect-error Source identities are immutable snapshot facts.
+    // @ts-expect-error Source provenance is immutable snapshot data.
     declaration.origin.node.ordinal = 0;
-    // @ts-expect-error Source positions remain readonly inside a report.
+    // @ts-expect-error Source positions remain readonly inside a resolved view.
     declaration.origin.range.start.line = 1;
   }
   // @ts-expect-error Origins do not expose the source collaborator.
   declaration.origin.inspection;
-  // @ts-expect-error External descriptions do not require or expose Inspection.
-  dependencies.modules[0]!.inspection;
-  // @ts-expect-error External module declarations are readonly.
-  dependencies.modules[0]!.declarations.push({});
-  // @ts-expect-error External IDs cannot be used as authored source occurrences.
-  resolution.binding('ExternalId');
-  // @ts-expect-error Source occurrence lookup has no fabricated module AST argument.
-  resolution.binding(reference, 'module');
-  const binding: ReferenceBinding = resolution.binding(reference);
+  // @ts-expect-error Downstream input is common inspection, not raw external definitions.
+  dependencies.modules[0]!.declarations;
+  // @ts-expect-error Input module inventory is readonly.
+  dependencies.modules.push(dependencies.modules[0]!);
+  // @ts-expect-error Source provenance identifiers are not common handles.
+  resolution.node(sourceReference);
+  // @ts-expect-error External text IDs are not common handles.
+  resolution.node('ExternalId');
+  // @ts-expect-error Binding is a reference facet, not a second report API.
+  resolution.binding(reference);
+  const node = resolution.node(reference, 'reference');
+  // @ts-expect-error Resolution facts are readonly.
+  node.payload.resolution = { status: 'not-analyzed' };
+  const binding = node.payload.resolution;
   if (binding.status === 'bound') {
-    const name: string = resolution.declaration(binding.target).name;
-    return name;
+    const target: InspectionNode = resolution.node(binding.target);
+    return target.payload.kind;
   }
   if (binding.status === 'deferred') return binding.requirement.reason;
-  return binding.problems[0]?.code;
+  if (binding.status === 'invalid') return binding.problems[0]?.code;
+  return binding.status;
 }
 void readonlyContracts;
-

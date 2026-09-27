@@ -1,18 +1,12 @@
-import type { Inspection, InspectionKind, InspectionNode } from '../inspection.js';
-import type { SourceNodeId, SourceRange } from '../grammar/source.js';
-
-export function nodeKey(id: SourceNodeId): string { return JSON.stringify([id.sourceId, id.ordinal]); }
-export function copyNodeId(id: SourceNodeId): SourceNodeId { return { sourceId: id.sourceId, ordinal: id.ordinal }; }
-export function copyRange(range: SourceRange): SourceRange {
-  return { sourceId: range.sourceId, start: { ...range.start }, end: { ...range.end } };
-}
+import type { InspectionKind, InspectionNode, ModuleInspection, NodeId } from '../inspection.js';
 
 /** Syntactic ownership edges, including authored names and reference segments. */
-export function children(node: InspectionNode): readonly SourceNodeId[] {
+export function children(node: InspectionNode): readonly NodeId[] {
   const p = node.payload;
   switch (p.kind) {
     case 'name': case 'string-literal': case 'number-literal': case 'boolean-literal': return [];
     case 'reference': return p.segments;
+    case 'type-parameter': case 'builtin-type': return [p.name];
     case 'use': return [...p.imports, p.locator];
     case 'import-item': return [p.imported, ...(p.alias ? [p.alias] : [])];
     case 'include': case 'requires-package': return [p.locator];
@@ -27,7 +21,7 @@ export function children(node: InspectionNode): readonly SourceNodeId[] {
     case 'depends-on': case 'public': return p.references;
     case 'construction': return p.parameters;
     case 'capability': case 'function': case 'setup': case 'action': case 'observation': case 'check':
-      return [p.name, ...p.parameters, ...(p.returnType ? [p.returnType] : []), ...(p.body ? [p.body] : [])];
+      return [p.name, ...p.parameters, ...(p.returnType ? [p.returnType] : []), ...(p.body.kind === 'available' ? [p.body.node] : [])];
     case 'contract-body': case 'helper-body': case 'check-body': return p.members;
     case 'promises': case 'requires': case 'ensures': return [p.content];
     case 'examples': return [...(p.subject ? [p.subject] : []), ...p.members];
@@ -57,55 +51,47 @@ export function children(node: InspectionNode): readonly SourceNodeId[] {
   }
 }
 
-/** A call-local index. It owns no parser and retains no Inspection provider. */
+/** Index common containment once; consumers never need to distinguish producers. */
 export class SourceIndex {
+  readonly locator: string;
   readonly nodes: readonly InspectionNode[];
   readonly roots: readonly InspectionNode[];
-  private readonly byId = new Map<string, InspectionNode>();
-  private readonly parents = new Map<string, SourceNodeId>();
+  private readonly byId = new Map<NodeId, InspectionNode>();
+  private readonly parents = new Map<NodeId, NodeId>();
 
-  constructor(inspection: Inspection) {
-    const candidates: InspectionNode[] = [];
-    // These are all grammar top-level forms. Nested candidates are removed by
-    // their actual child edges, not inferred from source ranges or spelling.
-    const rootKinds = [
-      'use', 'include', 'examples-attachment', 'concept', 'component', 'class', 'interface',
-      'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration',
-      'function', 'extend', 'examples', 'interaction',
-    ] as const;
-    for (const kind of rootKinds) candidates.push(...inspection.nodes(kind));
+  constructor(inspection: ModuleInspection) {
+    this.locator = inspection.locator;
     const visit = (node: InspectionNode): void => {
-      const key = nodeKey(node.id);
-      if (this.byId.has(key)) return;
-      this.byId.set(key, node);
+      if (this.byId.has(node.id)) return;
+      this.byId.set(node.id, node);
       for (const child of children(node)) {
-        this.parents.set(nodeKey(child), node.id);
+        this.parents.set(child, node.id);
         visit(inspection.node(child));
       }
     };
-    for (const candidate of candidates) visit(candidate);
-    this.nodes = [...this.byId.values()].sort((a, b) => a.id.ordinal - b.id.ordinal);
-    this.roots = this.nodes.filter(node => !this.parents.has(nodeKey(node.id)));
+    this.roots = [...inspection.roots()].map(id => inspection.node(id));
+    for (const root of this.roots) visit(root);
+    this.nodes = [...this.byId.values()];
   }
 
-  node(id: SourceNodeId): InspectionNode {
-    const node = this.byId.get(nodeKey(id));
+  node(id: NodeId): InspectionNode {
+    const node = this.byId.get(id);
     if (!node) throw new Error('Accepted source contains an unreachable node handle.');
     return node;
   }
   of<K extends InspectionKind>(kind: K): readonly InspectionNode<K>[] {
     return this.nodes.filter(node => node.payload.kind === kind) as InspectionNode<K>[];
   }
-  parent(id: SourceNodeId): InspectionNode | undefined {
-    const parent = this.parents.get(nodeKey(id));
+  parent(id: NodeId): InspectionNode | undefined {
+    const parent = this.parents.get(id);
     return parent ? this.node(parent) : undefined;
   }
-  name(id: SourceNodeId): string {
+  name(id: NodeId): string {
     const node = this.node(id);
     if (node.payload.kind !== 'name') throw new Error('Accepted source requires a name handle.');
     return node.payload.decoded;
   }
-  reference(id: SourceNodeId): readonly string[] {
+  reference(id: NodeId): readonly string[] {
     const node = this.node(id);
     if (node.payload.kind !== 'reference') throw new Error('Accepted source requires a reference handle.');
     return node.payload.segments.map(segment => this.name(segment));

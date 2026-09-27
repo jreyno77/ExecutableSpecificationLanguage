@@ -1,11 +1,17 @@
-import { declarationId, type Declaration } from './declaration.js';
+import { builtinNames } from '../inspection/builtins.js';
+import type { InspectionNode } from '../inspection.js';
+import { createNodeId, InspectionView } from '../inspection/view.js';
 
-export const builtinNames = ['Text', 'Number', 'Boolean', 'List', 'Nothing'] as const;
-export type BuiltinName = typeof builtinNames[number];
 
-/** Each resolution owns fresh identities for the fixed language builtin profile. */
-export function builtins(): readonly Declaration[] {
-  return builtinNames.map(name => ({
-    id: declarationId(), name, kind: 'builtin-type', origin: { kind: 'builtin', name },
-  }));
+/** Primitive declarations participate in the common inspection graph. */
+export function builtinInspection(): InspectionView {
+  const nodes: InspectionNode[] = [];
+  const roots = builtinNames.map(name => {
+    const origin = { kind: 'builtin' as const, name };
+    const id = createNodeId(), nameId = createNodeId();
+    nodes.push({ id, origin, payload: { kind: 'builtin-type', name: nameId } },
+      { id: nameId, origin, payload: { kind: 'name', decoded: name } });
+    return id;
+  });
+  return new InspectionView(roots, nodes);
 }

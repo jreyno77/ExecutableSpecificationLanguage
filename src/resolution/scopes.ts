@@ -1,135 +1,102 @@
-import type { InspectionNode } from '../inspection.js';
-import type { SourceNodeId } from '../grammar/source.js';
-import { declarationId, type Declaration, type DeclarationId, type DeclarationKind } from './declaration.js';
-import type { ExternalDeclaration } from './import-resolver.js';
-import { originLocation, type ProblemLocation, type ResolutionProblem } from './problem.js';
-import { children, copyNodeId, copyRange, nodeKey, SourceIndex } from './source-index.js';
+import type { Inspection, InspectionNode, NodeId, ReferenceResolution } from '../inspection.js';
+import type { ProblemLocation, ResolutionProblem } from './problem.js';
+import { children, SourceIndex } from './source-index.js';
 
 export type Introduction = {
   readonly at: ProblemLocation;
   readonly importKey?: string;
 } & (
-  | { readonly target: Declaration; readonly problems?: never }
+  | { readonly target: InspectionNode; readonly problems?: never }
   | { readonly problems: readonly ResolutionProblem[]; readonly target?: never }
 );
-export type NamedImport = Introduction & { readonly name: string };
+
 export class Scope {
   readonly names = new Map<string, Introduction[]>();
-  readonly conflicts = new Map<string, readonly ResolutionProblem[]>();
   constructor(
     readonly parent: Scope | undefined,
-    readonly owner: DeclarationId | undefined,
+    readonly owner: NodeId | undefined,
     readonly composition = false,
     readonly orderedNames: ReadonlySet<string> = new Set(),
-    readonly blockedSubject: SourceNodeId | undefined = undefined,
+    readonly blockedSubject: NodeId | undefined = undefined,
   ) {}
 }
+
 export type Lookup =
-  | { readonly status: 'found'; readonly declaration: Declaration }
+  | { readonly status: 'found'; readonly declaration: InspectionNode }
   | { readonly status: 'missing' }
-  | { readonly status: 'inaccessible'; readonly declaration: Declaration }
-  | { readonly status: 'subject-context'; readonly subject: SourceNodeId }
+  | { readonly status: 'inaccessible'; readonly declaration: InspectionNode }
+  | { readonly status: 'subject-context'; readonly subject: NodeId }
   | { readonly status: 'ambiguous'; readonly introductions: readonly Introduction[] }
   | { readonly status: 'invalid'; readonly problems: readonly ResolutionProblem[] };
 
-/** Lexical introductions and accessibility, separate from reference-use rules. */
-export class SourceScopes {
-  readonly root = new Scope(undefined, undefined);
+/** Ready lexical/module scopes over common nodes. Construction owns the indexing order. */
+export class ScopeGraph {
   readonly problems: ResolutionProblem[] = [];
-  private readonly scopes = [this.root];
-  private readonly nodeScopes = new Map<string, Scope>();
-  private readonly members = new Map<DeclarationId, Scope>();
-  private readonly privateTo = new Map<DeclarationId, Scope>();
-  private readonly externalPrivate = new Set<DeclarationId>();
-  private readonly sourceDeclarations: Declaration[] = [];
-  private readonly builtinsByName = new Map<string, Declaration>();
-  private readonly attachedExamples: { readonly subject: SourceNodeId; readonly members: readonly SourceNodeId[]; readonly scope: Scope }[] = [];
+  readonly imports = new Map<NodeId, ReferenceResolution>();
+  private readonly builtinScope = new Scope(undefined, undefined);
+  private readonly outside = new Scope(undefined, undefined);
+  private readonly scopes: Scope[] = [];
+  private readonly moduleRoots = new Map<string, Scope>();
+  private readonly nodeScopes = new Map<NodeId, Scope>();
+  private readonly indices = new Map<NodeId, SourceIndex>();
+  private readonly members = new Map<NodeId, Scope>();
+  private readonly privateTo = new Map<NodeId, Scope>();
+  private readonly capabilityOwners = new Map<NodeId, Scope>();
+  private readonly publicNames = new Map<Scope, Set<string>>();
+  private readonly attachedExamples: {
+    readonly source: SourceIndex;
+    readonly subject: NodeId;
+    readonly members: readonly NodeId[];
+    readonly scope: Scope;
+  }[] = [];
 
   constructor(
-    private readonly source: SourceIndex,
-    builtins: readonly Declaration[],
-    imports: readonly NamedImport[],
-    external: readonly ExternalDeclaration[],
+    sources: readonly SourceIndex[],
+    builtinInspection: Inspection,
+    private readonly moduleFailures: ReadonlyMap<string, readonly ResolutionProblem[]> = new Map(),
   ) {
-    for (const builtin of builtins) {
-      this.builtinsByName.set(builtin.name, builtin);
-      this.introduce(this.root, builtin.name, { target: builtin, at: originLocation(builtin) });
+    for (const builtin of builtinInspection.nodes('builtin-type')) {
+      this.introduce(this.builtinScope, builtinInspection.name(builtin.payload.name), { target: builtin, at: builtin.origin });
     }
-    for (const root of source.roots) this.walk(root, this.root);
-    for (const introduction of imports) this.introduce(this.root, introduction.name, introduction);
-    this.addExternal(external);
+    // All declarations exist before imports: cyclic modules select actual identities.
+    for (const source of sources) {
+      const root = this.childScope(this.builtinScope, undefined);
+      this.moduleRoots.set(source.locator, root);
+      for (const node of source.nodes) this.indices.set(node.id, source);
+      for (const node of source.roots) this.walk(source, node, root);
+    }
+    for (const source of sources) this.importModuleNames(source);
     this.attachExamples();
     this.finishIntroductions();
   }
 
-  declarations(): readonly Declaration[] {
-    return [...this.sourceDeclarations].sort((a, b) =>
-      (a.origin.kind === 'source' ? a.origin.node.ordinal : 0) - (b.origin.kind === 'source' ? b.origin.node.ordinal : 0));
-  }
-  scope(id: SourceNodeId): Scope {
-    const scope = this.nodeScopes.get(nodeKey(id));
-    if (!scope) throw new Error('Accepted source occurrence has no lexical scope.');
+  scope(id: NodeId): Scope {
+    const scope = this.nodeScopes.get(id);
+    if (!scope) throw new Error('Inspected occurrence has no lexical scope.');
     return scope;
   }
-  private introduce(scope: Scope, name: string, introduction: Introduction): void {
-    const introductions = scope.names.get(name) ?? [];
-    introductions.push(introduction);
-    scope.names.set(name, introductions);
-  }
 
-  /** Associate same-source subjects after forward declarations and imports exist. */
-  private attachExamples(): void {
-    for (const examples of this.attachedExamples) {
-      const target = this.lookup(examples.scope, this.source.reference(examples.subject));
-      const subjectScope = target.status === 'found' && target.declaration.origin.kind === 'source'
-        ? this.members.get(target.declaration.id) : undefined;
-      const inside = subjectScope
-        ? this.childScope(subjectScope)
-        : this.childScope(examples.scope, examples.scope.owner, undefined, undefined, examples.subject);
-      for (const member of examples.members) this.walk(this.source.node(member), inside);
-    }
-  }
+  builtin(name: string): Lookup { return this.lookup(this.builtinScope, [name], true); }
 
-  /** Only the admitted external contract is available for qualified lookup. */
-  private addExternal(external: readonly ExternalDeclaration[]): void {
-    for (const { declaration, local } of external) {
-      this.members.set(declaration.id, new Scope(undefined, declaration.id));
-      if (local) this.externalPrivate.add(declaration.id);
+  /** Select authored declarations; imported aliases and builtins are not exports. */
+  select(locator: string, path: readonly string[], requester = this.outside): Lookup {
+    const failures = this.moduleFailures.get(locator);
+    if (failures?.length) return { status: 'invalid', problems: failures };
+    const root = this.moduleRoots.get(locator);
+    if (!root) return { status: 'invalid', problems: [{
+      code: 'unavailable-module', message: 'No supplied module has locator ' + locator + '.',
+      at: { kind: 'dependency', path: ['modules', locator] }, related: [],
+    }] };
+    const first = path[0];
+    if (first === undefined) return { status: 'missing' };
+    let found = this.choose(root, first, requester, true);
+    for (const segment of path.slice(1)) {
+      if (found.status !== 'found') return found;
+      const inside = this.members.get(found.declaration.id);
+      if (!inside) return { status: 'missing' };
+      found = this.choose(inside, segment, requester, true);
     }
-    for (const { declaration } of external) {
-      if (declaration.owner) {
-        const owner = this.members.get(declaration.owner);
-        if (owner) this.introduce(owner, declaration.name, { target: declaration, at: originLocation(declaration) });
-      }
-    }
-  }
-
-  private finishIntroductions(): void {
-    for (const scope of this.scopes) {
-      for (const [name, authored] of scope.names) {
-        const builtin = this.builtinsByName.get(name);
-        const introductions = builtin && !authored.some(item => item.target === builtin)
-          ? [{ target: builtin, at: originLocation(builtin) }, ...authored] : authored;
-        if (introductions.length < 2) continue;
-        const conflicts: ResolutionProblem[] = [];
-        for (let index = 1; index < introductions.length; index++) {
-          const current = introductions[index]!;
-          const prior = introductions.slice(0, index);
-          const duplicate = prior.find(previous => !current.importKey || !previous.importKey
-            || current.importKey === previous.importKey || (current.target && current.target === previous.target));
-          // Distinct explicit imports are ambiguous at a use; they do not pick
-          // an arbitrary winner and are not duplicate local declarations.
-          if (!duplicate) continue;
-          const problem: ResolutionProblem = {
-            code: 'duplicate-declaration', message: `The name ${name} is introduced more than once in this scope.`,
-            at: current.at, related: [duplicate.at],
-          };
-          conflicts.push(problem);
-          this.problems.push(problem);
-        }
-        if (conflicts.length) scope.conflicts.set(name, conflicts);
-      }
-    }
+    return found;
   }
 
   lookup(scope: Scope, path: readonly string[], ownOnly = false): Lookup {
@@ -138,9 +105,9 @@ export class SourceScopes {
     let selected: Scope | undefined = scope;
     while (selected && !selected.names.has(first)) {
       if (selected.blockedSubject) {
-        // A missing subject may supply a nearer name. Keep block-owned names
-        // and unshadowable builtins useful without guessing an outer binding.
-        if (this.builtinsByName.has(first)) { selected = this.root; break; }
+        // A missing subject may supply a nearer name. Only unshadowable builtins
+        // can safely bypass that context.
+        if (this.builtinScope.names.has(first)) { selected = this.builtinScope; break; }
         return { status: 'subject-context', subject: selected.blockedSubject };
       }
       selected = ownOnly ? undefined : selected.parent;
@@ -149,9 +116,9 @@ export class SourceScopes {
     let found = this.choose(selected, first, scope);
     for (const segment of path.slice(1)) {
       if (found.status !== 'found') return found;
-      const memberScope = this.members.get(found.declaration.id);
-      if (!memberScope?.names.has(segment)) return { status: 'missing' };
-      found = this.choose(memberScope, segment, scope);
+      const inside = this.members.get(found.declaration.id);
+      if (!inside) return { status: 'missing' };
+      found = this.choose(inside, segment, scope);
     }
     return found;
   }
@@ -162,14 +129,51 @@ export class SourceScopes {
     }
     return false;
   }
-  isWithinDeclaration(scope: Scope, declaration: DeclarationId): boolean {
+
+  isWithinDeclaration(scope: Scope, declaration: NodeId): boolean {
     const inside = this.members.get(declaration);
     return inside !== undefined && this.within(scope, inside);
   }
-  private choose(scope: Scope, name: string, from: Scope): Lookup {
-    const introductions = scope.names.get(name)!;
-    const conflicts = scope.conflicts.get(name);
-    if (conflicts?.length) return { status: 'invalid', problems: conflicts };
+
+  private introduce(scope: Scope, name: string, introduction: Introduction): void {
+    const introductions = scope.names.get(name) ?? [];
+    introductions.push(introduction);
+    scope.names.set(name, introductions);
+  }
+
+  private conflicts(name: string, authored: readonly Introduction[]): readonly ResolutionProblem[] {
+    const builtin = this.builtinScope.names.get(name)?.[0];
+    const introductions = builtin && !authored.includes(builtin) ? [builtin, ...authored] : authored;
+    const problems: ResolutionProblem[] = [];
+    for (let index = 1; index < introductions.length; index++) {
+      const current = introductions[index]!;
+      const duplicate = introductions.slice(0, index).find(previous =>
+        !current.importKey || !previous.importKey || current.importKey === previous.importKey
+        || (current.target && current.target.id === previous.target?.id));
+      // Distinct imports are ambiguous when used, not duplicate declarations.
+      if (duplicate) problems.push({
+        code: 'duplicate-declaration', message: 'The name ' + name + ' is introduced more than once in this scope.',
+        at: current.at, related: [duplicate.at],
+      });
+    }
+    return problems;
+  }
+
+  private finishIntroductions(): void {
+    for (const scope of this.scopes) {
+      for (const [name, introductions] of scope.names) this.problems.push(...this.conflicts(name, introductions));
+    }
+  }
+
+  private choose(scope: Scope, name: string, from: Scope, exportsOnly = false): Lookup {
+    const introductions = (scope.names.get(name) ?? []).filter(item => !exportsOnly || (
+      item.importKey === undefined && item.target
+      && item.target.payload.kind !== 'builtin-type'
+      && item.target.payload.kind !== 'parameter' && item.target.payload.kind !== 'type-parameter'
+    ));
+    if (!introductions.length) return { status: 'missing' };
+    const conflicts = this.conflicts(name, introductions);
+    if (conflicts.length) return { status: 'invalid', problems: conflicts };
     const problems = introductions.flatMap(item => item.problems ?? []);
     if (problems.length) return { status: 'invalid', problems };
     const targets = [...new Map(introductions.filter(item => item.target).map(item => [item.target!.id, item.target!])).values()];
@@ -177,143 +181,200 @@ export class SourceScopes {
     const declaration = targets[0];
     if (!declaration) return { status: 'missing' };
     const privateScope = this.privateTo.get(declaration.id);
-    if (this.externalPrivate.has(declaration.id) || (privateScope && !this.within(from, privateScope))) {
-      return { status: 'inaccessible', declaration };
+    if (privateScope && !this.within(from, privateScope)) return { status: 'inaccessible', declaration };
+    const owner = this.capabilityOwners.get(declaration.id);
+    if (owner && declaration.payload.kind === 'capability' && !this.within(from, owner)) {
+      const name = this.indices.get(declaration.id)!.name(declaration.payload.name);
+      if (!this.publicNames.get(owner)?.has(name)) return { status: 'inaccessible', declaration };
     }
     return { status: 'found', declaration };
   }
+
+  private importModuleNames(source: SourceIndex): void {
+    const root = this.moduleRoots.get(source.locator)!;
+    for (const use of source.of('use')) {
+      const locator = source.node(use.payload.locator);
+      if (locator.payload.kind !== 'string-literal') throw new Error('Inspected import locator is not text.');
+      for (const id of use.payload.imports) {
+        const item = source.node(id);
+        if (item.payload.kind !== 'import-item') throw new Error('Inspected import item is malformed.');
+        const reference = source.node(item.payload.imported);
+        const path = source.reference(reference.id);
+        const name = item.payload.alias ? source.name(item.payload.alias) : path.at(-1)!;
+        const found = this.select(locator.payload.value, path, root);
+        const introduction = { at: item.origin, importKey: JSON.stringify([locator.payload.value, path]) };
+        if (found.status === 'found') {
+          this.introduce(root, name, { ...introduction, target: found.declaration });
+          this.imports.set(reference.id, { status: 'bound', target: found.declaration.id });
+        } else {
+          const problems = this.importProblems(reference, path, found);
+          this.introduce(root, name, { ...introduction, problems });
+          this.imports.set(reference.id, { status: 'invalid', problems });
+          this.problems.push(...problems);
+        }
+      }
+    }
+  }
+
+  private importProblems(reference: InspectionNode, path: readonly string[], found: Exclude<Lookup, { status: 'found' }>): readonly ResolutionProblem[] {
+    if (found.status === 'invalid') return found.problems.map(problem => ({
+      ...problem, at: reference.origin, related: [problem.at, ...problem.related],
+    }));
+    const inaccessible = found.status === 'inaccessible';
+    return [{
+      code: inaccessible ? 'inaccessible-reference' : found.status === 'ambiguous' ? 'ambiguous-reference' : 'unresolved-reference',
+      message: 'The module does not provide an accessible unambiguous declaration for ' + path.join('.') + '.',
+      at: reference.origin,
+      related: inaccessible ? [found.declaration.origin]
+        : found.status === 'ambiguous' ? found.introductions.map(item => item.at) : [],
+    }];
+  }
+
+  private attachExamples(): void {
+    for (const examples of this.attachedExamples) {
+      const target = this.lookup(examples.scope, examples.source.reference(examples.subject));
+      // Same-module subjects supply lexical ownership. Cross-module example
+      // attachment requires composition, independent of the module's producer.
+      const subjectScope = target.status === 'found' && this.indices.get(target.declaration.id) === examples.source
+        ? this.members.get(target.declaration.id) : undefined;
+      const inside = subjectScope
+        ? this.childScope(subjectScope)
+        : this.childScope(examples.scope, examples.scope.owner, undefined, undefined, examples.subject);
+      for (const member of examples.members) this.walk(examples.source, examples.source.node(member), inside);
+    }
+  }
+
   private within(scope: Scope, ancestor: Scope): boolean {
     for (let current: Scope | undefined = scope; current; current = current.parent) if (current === ancestor) return true;
     return false;
   }
+
   private childScope(parent: Scope, owner = parent.owner, orderedNames: ReadonlySet<string> = new Set(),
-    composition = parent.composition, blockedSubject?: SourceNodeId): Scope {
+    composition = parent.composition, blockedSubject?: NodeId): Scope {
     const scope = new Scope(parent, owner, composition, orderedNames, blockedSubject);
     this.scopes.push(scope);
     return scope;
   }
-  private declare(node: InspectionNode, name: string, kind: DeclarationKind, scope: Scope, local: boolean): Declaration {
-    const declaration: Declaration = {
-      id: declarationId(), name, kind, ...(scope.owner ? { owner: scope.owner } : {}),
-      origin: { kind: 'source', node: copyNodeId(node.id), range: copyRange(node.range) },
-    };
-    this.sourceDeclarations.push(declaration);
-    this.introduce(scope, name, { target: declaration, at: originLocation(declaration) });
-    if (local) this.privateTo.set(declaration.id, scope);
-    return declaration;
+
+  private declare(source: SourceIndex, node: InspectionNode, scope: Scope, local: boolean): void {
+    if (!('name' in node.payload)) throw new Error('A declaration must have a name.');
+    this.introduce(scope, source.name(node.payload.name), { target: node, at: node.origin });
+    if (local) this.privateTo.set(node.id, scope);
+    if (node.payload.kind === 'capability') this.capabilityOwners.set(node.id, scope);
   }
-  private parameters(ids: readonly SourceNodeId[], scope: Scope): void {
+
+  private parameters(source: SourceIndex, ids: readonly NodeId[], scope: Scope): void {
     const names = new Set(ids.map(id => {
-      const parameter = this.source.node(id);
-      if (parameter.payload.kind !== 'parameter') throw new Error('Accepted parameter list contains a non-parameter.');
-      return this.source.name(parameter.payload.name);
+      const parameter = source.node(id);
+      if (parameter.payload.kind !== 'parameter') throw new Error('Inspected parameter list contains a non-parameter.');
+      return source.name(parameter.payload.name);
     }));
-    for (const id of ids) this.walk(this.source.node(id), scope, false, names);
+    for (const id of ids) this.walk(source, source.node(id), scope, false, names);
   }
-  private walk(node: InspectionNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
-    this.nodeScopes.set(nodeKey(node.id), scope);
+
+  private walk(source: SourceIndex, node: InspectionNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
+    this.nodeScopes.set(node.id, scope);
     const p = node.payload;
     switch (p.kind) {
-      case 'local': this.walk(this.source.node(p.declaration), scope, true); return;
+      case 'local': this.walk(source, source.node(p.declaration), scope, true); return;
       case 'concept': case 'component': case 'class': case 'interface': {
-        const declaration = this.declare(node, this.source.name(p.name), p.kind, scope, local);
-        const inside = this.childScope(scope, declaration.id);
-        this.members.set(declaration.id, inside);
-        this.walk(this.source.node(p.name), scope);
-        for (const member of p.members) this.walk(this.source.node(member), inside);
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
         return;
       }
       case 'record-type-declaration': case 'alias-type-declaration': case 'opaque-type-declaration': {
-        const declaration = this.declare(node, this.source.name(p.name), ({ 'record-type-declaration': 'record-type', 'alias-type-declaration': 'alias-type', 'opaque-type-declaration': 'opaque-type' } as const)[p.kind], scope, local);
-        const inside = this.childScope(scope, declaration.id);
-        this.members.set(declaration.id, inside);
-        this.walk(this.source.node(p.name), scope);
-        for (const parameter of p.typeParameters) {
-          const name = this.source.node(parameter);
-          this.nodeScopes.set(nodeKey(parameter), inside);
-          this.declare(name, this.source.name(parameter), 'type-parameter', inside, true);
-        }
-        if (p.kind === 'record-type-declaration') for (const field of p.fields) this.walk(this.source.node(field), inside);
-        if (p.kind === 'alias-type-declaration') this.walk(this.source.node(p.targetType), inside);
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        for (const parameter of p.typeParameters) this.walk(source, source.node(parameter), inside, true);
+        if (p.kind === 'record-type-declaration') for (const field of p.fields) this.walk(source, source.node(field), inside);
+        if (p.kind === 'alias-type-declaration') this.walk(source, source.node(p.targetType), inside);
         return;
       }
       case 'capability': case 'function': case 'setup': case 'action': case 'observation': case 'check': {
-        const declaration = this.declare(node, this.source.name(p.name), p.kind, scope, local);
-        const inside = this.childScope(scope, declaration.id);
-        this.members.set(declaration.id, inside);
-        this.walk(this.source.node(p.name), scope);
-        this.parameters(p.parameters, inside);
-        if (p.returnType) this.walk(this.source.node(p.returnType), inside);
-        if (p.body) this.walk(this.source.node(p.body), inside);
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        this.parameters(source, p.parameters, inside);
+        if (p.returnType) this.walk(source, source.node(p.returnType), inside);
+        if (p.body.kind === 'available') this.walk(source, source.node(p.body.node), inside);
         return;
       }
-      case 'construction': {
-        // A constructor input is a signature parameter, not an implicit field
-        // introduced throughout its concept's capabilities.
-        this.parameters(p.parameters, this.childScope(scope));
-        return;
-      }
+      case 'construction': this.parameters(source, p.parameters, this.childScope(scope)); return;
       case 'parameter': {
-        this.declare(node, this.source.name(p.name), 'parameter', scope, true);
-        this.walk(this.source.node(p.name), scope);
-        this.walk(this.source.node(p.declaredType), scope);
-        if (p.defaultValue) this.walk(this.source.node(p.defaultValue), this.childScope(scope, scope.owner, parameterNames));
+        this.declare(source, node, scope, true);
+        this.walk(source, source.node(p.name), scope);
+        this.walk(source, source.node(p.declaredType), scope);
+        if (p.defaultValue) this.walk(source, source.node(p.defaultValue), this.childScope(scope, scope.owner, parameterNames));
         return;
       }
-      case 'field': case 'fixture': case 'participant':
-        this.declare(node, this.source.name(p.name), p.kind, scope, local);
+      case 'field': case 'fixture': case 'participant': case 'type-parameter':
+        this.declare(source, node, scope, local); break;
+      case 'public': {
+        const names = this.publicNames.get(scope) ?? new Set<string>();
+        for (const reference of p.references) {
+          const path = source.reference(reference);
+          if (path.length === 1) names.add(path[0]!);
+        }
+        this.publicNames.set(scope, names);
         break;
+      }
       case 'examples': {
         if (p.subject) {
-          this.walk(this.source.node(p.subject), scope);
-          this.attachedExamples.push({ subject: p.subject, members: p.members, scope });
+          this.walk(source, source.node(p.subject), scope);
+          this.attachedExamples.push({ source, subject: p.subject, members: p.members, scope });
           return;
         }
         const inside = this.childScope(scope);
-        for (const member of p.members) this.walk(this.source.node(member), inside);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
         return;
       }
       case 'contract-body': case 'helper-body': case 'check-body': {
         const ordered = new Set<string>();
         for (const member of p.members) {
-          const child = this.source.node(member);
-          if (child.payload.kind === 'let') ordered.add(this.source.name(child.payload.name));
+          const child = source.node(member);
+          if (child.payload.kind === 'let') ordered.add(source.name(child.payload.name));
         }
         const inside = this.childScope(scope, scope.owner, ordered);
-        for (const member of p.members) this.walk(this.source.node(member), inside);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
         return;
       }
       case 'scenario': {
         const ordered = new Set<string>();
         for (const step of p.steps) {
-          const child = this.source.node(step);
+          const child = source.node(step);
           if ((child.payload.kind === 'given' || child.payload.kind === 'when' || child.payload.kind === 'then') && child.payload.capture) {
-            ordered.add(this.source.name(child.payload.capture));
+            ordered.add(source.name(child.payload.capture));
           }
         }
         const inside = this.childScope(scope, scope.owner, ordered);
-        for (const child of children(node)) this.walk(this.source.node(child), inside);
+        for (const child of children(node)) this.walk(source, source.node(child), inside);
         return;
       }
       case 'interaction': {
         const ordered = new Set<string>();
         for (const member of p.members) {
-          const child = this.source.node(member);
-          if (child.payload.kind === 'message' && child.payload.capture) ordered.add(this.source.name(child.payload.capture));
+          const child = source.node(member);
+          if (child.payload.kind === 'message' && child.payload.capture) ordered.add(source.name(child.payload.capture));
         }
         const inside = this.childScope(scope, scope.owner, ordered);
-        this.walk(this.source.node(p.title), inside);
-        this.parameters(p.parameters, inside);
-        for (const member of p.members) this.walk(this.source.node(member), inside);
+        this.walk(source, source.node(p.title), inside);
+        this.parameters(source, p.parameters, inside);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
         return;
       }
       case 'extend': {
-        this.walk(this.source.node(p.target), scope);
+        this.walk(source, source.node(p.target), scope);
         const inside = this.childScope(scope, scope.owner, undefined, true);
-        for (const member of p.members) this.walk(this.source.node(member), inside);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
         return;
       }
     }
-    for (const child of children(node)) this.walk(this.source.node(child), scope);
+    for (const child of children(node)) this.walk(source, source.node(child), scope);
   }
 }

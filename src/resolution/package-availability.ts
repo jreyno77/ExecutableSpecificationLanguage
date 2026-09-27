@@ -27,7 +27,7 @@ export class PackageAvailability {
       const previous = this.packages.get(input.alias);
       if (previous) {
         const problem: ResolutionProblem = {
-          code: 'invalid-dependency-catalog', message: `Duplicate package alias ${input.alias}.`,
+          code: 'invalid-dependency-input', message: `Duplicate package alias ${input.alias}.`,
           at: { kind: 'dependency', path: ['packages', index, 'alias'] },
           related: [{ kind: 'dependency', path: ['packages', previous.index, 'alias'] }],
         };
@@ -43,12 +43,12 @@ export class PackageAvailability {
         let problem: ResolutionProblem | undefined;
         if (!phases.has(phase)) {
           problem = {
-            code: 'invalid-dependency-catalog', message: `Unknown package phase ${phase}.`,
+            code: 'invalid-dependency-input', message: `Unknown package phase ${phase}.`,
             at: { kind: 'dependency', path: ['packages', index, 'phases', ordinal] }, related: [],
           };
         } else if (earlier !== undefined) {
           problem = {
-            code: 'invalid-dependency-catalog', message: `Duplicate package phase ${phase}.`,
+            code: 'invalid-dependency-input', message: `Duplicate package phase ${phase}.`,
             at: { kind: 'dependency', path: ['packages', index, 'phases', ordinal] },
             related: [{ kind: 'dependency', path: ['packages', index, 'phases', earlier] }],
           };

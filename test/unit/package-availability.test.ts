@@ -22,7 +22,7 @@ describe('configured package availability', () => {
       { kind: 'dependency', path: ['packages', 1, 'alias'] },
     ]));
     expect(packages.check('vite')).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'invalid-dependency-catalog' }),
+      expect.objectContaining({ code: 'invalid-dependency-input' }),
     ]));
   });
 
@@ -31,7 +31,7 @@ describe('configured package availability', () => {
     const packages = new PackageAvailability(malformed);
 
     expect(packages.problems).toEqual([expect.objectContaining({
-      code: 'invalid-dependency-catalog',
+      code: 'invalid-dependency-input',
       at: { kind: 'dependency', path: ['packages', 0, 'phases', 0] },
     })]);
     expect(packages.check('vite')).toEqual(packages.problems);
