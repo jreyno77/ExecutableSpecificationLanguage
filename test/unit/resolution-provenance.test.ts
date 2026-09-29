@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { AntlrSyntaxReader } from '../../src/grammar/reader.js';
-import { DescriptionInspection, ExternalInspection } from '../../src/inspection.js';
-import { Resolver } from '../../src/resolution/resolve.js';
+import { DescriptionInspection, ExternalInspection } from '../../src/index.js';
+import { Resolver } from '../../src/resolution.js';
 
 it('keeps external provenance relative to its definition input when module inventory order changes', () => {
   const shopping = new ExternalInspection('shopping', [{ kind: 'record-type', name: 'Cart', fields: [

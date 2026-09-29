@@ -1,9 +1,24 @@
-import type { InspectionKind, InspectionNode, NodeId, ReferenceResolution } from '../inspection.js';
-import { deferredReference, type DeferredReason, type DeferredReference } from './reference.js';
+import type { InspectionKind, InspectionNode, NodeId, Origin, ReferenceResolution } from '../inspection.js';
 import type { PackageAvailability } from './package-availability.js';
 import type { ResolutionProblem } from './problem.js';
 import type { Scope, ScopeGraph, Lookup } from './scopes.js';
 import type { SourceIndex } from './source-index.js';
+
+export type DeferredReason = 'receiver-type' | 'contextual-result' | 'ordered-scope' | 'composition' | 'interaction';
+export interface DeferredReference {
+  readonly occurrence: NodeId;
+  readonly origin: Origin;
+  readonly reason: DeferredReason;
+  readonly requires: string;
+}
+
+const requirements: Record<DeferredReason, string> = {
+  'receiver-type': 'Expression typing must identify the receiver and its available members.',
+  'contextual-result': 'Contract checking must establish whether a result is available in this context.',
+  'ordered-scope': 'Helper, scenario, or default checking must establish ordered local and capture visibility.',
+  composition: 'Source composition must supply the declarations and ownership of the combined document.',
+  interaction: 'Interaction checking must identify participants and select the recipient operation.',
+};
 
 const typeKinds: ReadonlySet<InspectionKind> = new Set([
   'concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration',
@@ -191,8 +206,8 @@ export class ReferenceResolver {
     return false;
   }
 
-  private defer(reference: InspectionNode<'reference'>, reason: DeferredReason, requires?: string): void {
-    const requirement = deferredReference(reference, reason, requires);
+  private defer(reference: InspectionNode<'reference'>, reason: DeferredReason, requires = requirements[reason]): void {
+    const requirement = { occurrence: reference.id, origin: reference.origin, reason, requires };
     this.deferred.push(requirement);
     this.bindings.set(reference.id, { status: 'deferred', requirement });
   }

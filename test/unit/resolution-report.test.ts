@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AntlrSyntaxReader } from '../../src/grammar/reader.js';
-import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/inspection.js';
-import { Resolver } from '../../src/resolution/resolve.js';
+import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/index.js';
+import { Resolver } from '../../src/resolution.js';
 
 function source(text: string): ModuleInspection {
   const read = new AntlrSyntaxReader().read({ sourceId: 'report.expec', text });

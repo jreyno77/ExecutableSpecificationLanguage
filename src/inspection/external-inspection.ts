@@ -1,18 +1,48 @@
-import { builtinNames, type BuiltinName } from './builtins.js';
-import { InspectionInputError, type InspectionInputProblem } from './external-definition.js';
-import type { InspectionNode, NodeId, ReferenceLookup } from './model.js';
-import { createNodeId } from './view.js';
+import { builtinNames, InspectionView, createNodeId, type BuiltinName, type InspectionNode, type ModuleInspection, type NodeId, type Origin, type ReferenceLookup } from '../inspection.js';
+
+type DefinitionName = { readonly name: string; readonly local?: boolean };
+type TypeParameters = { readonly typeParameters?: readonly string[] };
+export interface ExternalField extends DefinitionName {
+  readonly kind: 'field'; readonly type: TypeExpression; readonly hasDefault?: boolean;
+}
+export interface ExternalParameter { readonly name: string; readonly type: TypeExpression; readonly hasDefault?: boolean }
+export type ExternalDefinition = DefinitionName & (
+  | ({ readonly kind: 'record-type'; readonly fields: readonly ExternalField[] } & TypeParameters)
+  | ({ readonly kind: 'alias-type'; readonly target: TypeExpression } & TypeParameters)
+  | ({ readonly kind: 'opaque-type' } & TypeParameters)
+  | { readonly kind: 'concept' | 'component' | 'class' | 'interface'; readonly members: readonly (ExternalDefinition | ExternalField)[];
+      readonly public: readonly string[]; readonly construction?: readonly ExternalParameter[] }
+  | { readonly kind: 'function' | 'capability'; readonly parameters: readonly ExternalParameter[]; readonly result?: TypeExpression }
+);
+export type TypeExpression =
+  | { readonly kind: 'named'; readonly path: readonly string[]; readonly module?: string; readonly arguments?: readonly TypeExpression[] }
+  | { readonly kind: 'builtin'; readonly name: BuiltinName; readonly arguments?: readonly TypeExpression[] }
+  | { readonly kind: 'parameter'; readonly name: string }
+  | { readonly kind: 'tuple'; readonly elements: readonly TypeExpression[] }
+  | { readonly kind: 'union'; readonly alternatives: readonly TypeExpression[] }
+  | { readonly kind: 'optional'; readonly inner: TypeExpression }
+  | { readonly kind: 'literal'; readonly value:
+      { readonly kind: 'text'; readonly value: string } | { readonly kind: 'boolean'; readonly value: boolean }
+      | { readonly kind: 'number'; readonly decimal: string } };
+export interface InspectionInputProblem { readonly message: string; readonly at: Extract<Origin, { kind: 'external' }> }
+export class InspectionInputError extends Error {
+  override readonly name = 'InspectionInputError';
+  readonly code = 'invalid-dependency-input';
+  constructor(readonly problems: readonly InspectionInputProblem[]) { super('External definitions have invalid structure.'); }
+}
 
 type Path = readonly (string | number)[];
 type Data = Record<string, unknown>;
 type Placement = 'root' | 'member' | 'field';
 
 /** The external input boundary validates and adapts a finite definition tree once. */
-export function externalNodes(locator: string, definitions: unknown): { roots: NodeId[]; nodes: InspectionNode[] } {
-  const adapter = new ExternalNodes(locator);
-  const roots = adapter.collection(definitions, [], (value, path) => adapter.definition(value, path, 'root'));
-  if (adapter.problems.length) throw new InspectionInputError(adapter.problems);
-  return { roots, nodes: adapter.nodes };
+export class ExternalInspection extends InspectionView implements ModuleInspection {
+  constructor(readonly locator: string, definitions: readonly ExternalDefinition[]) {
+    const adapter = new ExternalNodes(locator);
+    const roots = adapter.collection(definitions, [], (value, path) => adapter.definition(value, path, 'root'));
+    if (adapter.problems.length) throw new InspectionInputError(adapter.problems);
+    super(roots, adapter.nodes);
+  }
 }
 
 class ExternalNodes {

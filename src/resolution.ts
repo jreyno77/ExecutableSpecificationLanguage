@@ -1,15 +1,20 @@
-import type { InspectionNode, ModuleInspection, NodeId, ReferenceResolution } from '../inspection.js';
-import { builtinInspection } from './builtins.js';
-import { Modules } from './modules.js';
-import { PackageAvailability, type DependencyPackage } from './package-availability.js';
-import { ResolvedInspection, type Resolution } from './resolved-inspection.js';
-import { ScopeGraph } from './scopes.js';
-import { ReferenceResolver } from './reference-resolver.js';
-import type { DeferredReference } from './reference.js';
+import { builtinNames, createNodeId, InspectionView, type Inspection, type InspectionNode, type ModuleInspection, type NodeId, type ReferenceResolution } from './inspection.js';
+import { Modules } from './resolution/modules.js';
+import { PackageAvailability, type DependencyPackage } from './resolution/package-availability.js';
+import { ScopeGraph } from './resolution/scopes.js';
+import { ReferenceResolver, type DeferredReference } from './resolution/reference-resolver.js';
+import type { ResolutionProblem } from './resolution/problem.js';
 
 export interface ResolutionDependencies {
   readonly modules: readonly ModuleInspection[];
   readonly packages: readonly DependencyPackage[];
+}
+
+/** The original inspected facts enriched with this call's reference outcomes. */
+export interface Resolution extends Inspection {
+  readonly entry: string;
+  readonly problems: readonly ResolutionProblem[];
+  readonly deferred: readonly DeferredReference[];
 }
 
 /** Adds reference facts to supplied inspections without changing their snapshots. */
@@ -40,4 +45,29 @@ export class Resolver {
       });
     return new ResolvedInspection(entry.locator, roots, nodes, [...new Set(problems)], deferred, modules.unanalyzed);
   }
+}
+
+/** Captures this analysis; subsequent queries never revisit the supplied modules. */
+class ResolvedInspection extends InspectionView implements Resolution {
+  constructor(
+    readonly entry: string,
+    roots: readonly NodeId[],
+    nodes: readonly InspectionNode[],
+    readonly problems: readonly ResolutionProblem[],
+    readonly deferred: readonly DeferredReference[],
+    unanalyzed: ReadonlySet<NodeId>,
+  ) { super(roots, nodes, unanalyzed); }
+}
+
+/** Primitive declarations participate in the common inspection graph. */
+export function builtinInspection(): InspectionView {
+  const nodes: InspectionNode[] = [];
+  const roots = builtinNames.map(name => {
+    const origin = { kind: 'builtin' as const, name };
+    const id = createNodeId(), nameId = createNodeId();
+    nodes.push({ id, origin, payload: { kind: 'builtin-type', name: nameId } },
+      { id: nameId, origin, payload: { kind: 'name', decoded: name } });
+    return id;
+  });
+  return new InspectionView(roots, nodes);
 }

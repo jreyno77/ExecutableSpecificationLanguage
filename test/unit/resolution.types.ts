@@ -1,6 +1,6 @@
 import type { InspectionNode, NodeId, SourceNodeId } from '../../src/index.js';
-import type { ResolutionDependencies } from '../../src/resolution/resolve.js';
-import type { Resolution } from '../../src/resolution/resolved-inspection.js';
+import type { ResolutionDependencies } from '../../src/resolution.js';
+import type { Resolution } from '../../src/resolution.js';
 
 // Compile-time consumers: one inspected representation carries readonly resolution facts.
 function readonlyContracts(resolution: Resolution, declaration: InspectionNode<'record-type-declaration'>,

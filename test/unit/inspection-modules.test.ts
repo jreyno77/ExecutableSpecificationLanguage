@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSyntaxReader } from '../../src/index.js';
 import { DescriptionInspection, ExternalInspection, InspectionInputError,
-  type ExternalDefinition, type Inspection, type NodeId } from '../../src/inspection.js';
+  type ExternalDefinition, type Inspection, type NodeId } from '../../src/index.js';
 import { describeType } from '../support/type-description.js';
 
 function source(text: string) {

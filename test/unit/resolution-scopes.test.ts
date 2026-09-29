@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AntlrSyntaxReader } from '../../src/grammar/reader.js';
-import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/inspection.js';
-import { builtinInspection } from '../../src/resolution/builtins.js';
+import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/index.js';
+import { builtinInspection } from '../../src/resolution.js';
 import { ScopeGraph, type Lookup } from '../../src/resolution/scopes.js';
 import { SourceIndex } from '../../src/resolution/source-index.js';
 
