@@ -1,6 +1,6 @@
-import type { Inspection, SourceNodeId } from '../../src/index.js';
+import type { Inspection, NodeId } from '../../src/index.js';
 
-export function describeReference(source: Inspection, id: Readonly<SourceNodeId>): string {
+export function describeReference(source: Inspection, id: NodeId): string {
   return source.node(id, 'reference').payload.segments.map(segment => {
     const name = source.node(segment, 'name').payload;
     return name.quoted ? '`' + name.decoded.replaceAll('\\', '\\\\').replaceAll('`', '\\`') + '`' : name.decoded;
@@ -8,9 +8,9 @@ export function describeReference(source: Inspection, id: Readonly<SourceNodeId>
 }
 
 // A consumer presentation of syntax, not resolution or the original whitespace.
-export function describeType(source: Inspection, id: Readonly<SourceNodeId>): string {
+export function describeType(source: Inspection, id: NodeId): string {
   const type = source.node(id).payload;
-  const describe = (child: Readonly<SourceNodeId>) => describeType(source, child);
+  const describe = (child: NodeId) => describeType(source, child);
   switch (type.kind) {
     case 'named-type': {
       const argumentsText = type.arguments.map(describe);
@@ -32,4 +32,3 @@ export function describeType(source: Inspection, id: Readonly<SourceNodeId>): st
     default: throw new Error(`Expected a type description, found ${type.kind}`);
   }
 }
-

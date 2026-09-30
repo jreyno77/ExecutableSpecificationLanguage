@@ -1,0 +1,380 @@
+import type { Inspection, InspectionNode, NodeId, ReferenceResolution } from '../inspection.js';
+import type { ProblemLocation, ResolutionProblem } from './problem.js';
+import { children, SourceIndex } from './source-index.js';
+
+export type Introduction = {
+  readonly at: ProblemLocation;
+  readonly importKey?: string;
+} & (
+  | { readonly target: InspectionNode; readonly problems?: never }
+  | { readonly problems: readonly ResolutionProblem[]; readonly target?: never }
+);
+
+export class Scope {
+  readonly names = new Map<string, Introduction[]>();
+  constructor(
+    readonly parent: Scope | undefined,
+    readonly owner: NodeId | undefined,
+    readonly composition = false,
+    readonly orderedNames: ReadonlySet<string> = new Set(),
+    readonly blockedSubject: NodeId | undefined = undefined,
+  ) {}
+}
+
+export type Lookup =
+  | { readonly status: 'found'; readonly declaration: InspectionNode }
+  | { readonly status: 'missing' }
+  | { readonly status: 'inaccessible'; readonly declaration: InspectionNode }
+  | { readonly status: 'subject-context'; readonly subject: NodeId }
+  | { readonly status: 'ambiguous'; readonly introductions: readonly Introduction[] }
+  | { readonly status: 'invalid'; readonly problems: readonly ResolutionProblem[] };
+
+/** Ready lexical/module scopes over common nodes. Construction owns the indexing order. */
+export class ScopeGraph {
+  readonly problems: ResolutionProblem[] = [];
+  readonly imports = new Map<NodeId, ReferenceResolution>();
+  private readonly builtinScope = new Scope(undefined, undefined);
+  private readonly outside = new Scope(undefined, undefined);
+  private readonly scopes: Scope[] = [];
+  private readonly moduleRoots = new Map<string, Scope>();
+  private readonly nodeScopes = new Map<NodeId, Scope>();
+  private readonly indices = new Map<NodeId, SourceIndex>();
+  private readonly members = new Map<NodeId, Scope>();
+  private readonly privateTo = new Map<NodeId, Scope>();
+  private readonly capabilityOwners = new Map<NodeId, Scope>();
+  private readonly publicNames = new Map<Scope, Set<string>>();
+  private readonly attachedExamples: {
+    readonly source: SourceIndex;
+    readonly subject: NodeId;
+    readonly members: readonly NodeId[];
+    readonly scope: Scope;
+  }[] = [];
+
+  constructor(
+    sources: readonly SourceIndex[],
+    builtinInspection: Inspection,
+    private readonly moduleFailures: ReadonlyMap<string, readonly ResolutionProblem[]> = new Map(),
+  ) {
+    for (const builtin of builtinInspection.nodes('builtin-type')) {
+      this.introduce(this.builtinScope, builtinInspection.name(builtin.payload.name), { target: builtin, at: builtin.origin });
+    }
+    // All declarations exist before imports: cyclic modules select actual identities.
+    for (const source of sources) {
+      const root = this.childScope(this.builtinScope, undefined);
+      this.moduleRoots.set(source.locator, root);
+      for (const node of source.nodes) this.indices.set(node.id, source);
+      for (const node of source.roots) this.walk(source, node, root);
+    }
+    for (const source of sources) this.importModuleNames(source);
+    this.attachExamples();
+    this.finishIntroductions();
+  }
+
+  scope(id: NodeId): Scope {
+    const scope = this.nodeScopes.get(id);
+    if (!scope) throw new Error('Inspected occurrence has no lexical scope.');
+    return scope;
+  }
+
+  builtin(name: string): Lookup { return this.lookup(this.builtinScope, [name], true); }
+
+  /** Select authored declarations; imported aliases and builtins are not exports. */
+  select(locator: string, path: readonly string[], requester = this.outside): Lookup {
+    const failures = this.moduleFailures.get(locator);
+    if (failures?.length) return { status: 'invalid', problems: failures };
+    const root = this.moduleRoots.get(locator);
+    if (!root) return { status: 'invalid', problems: [{
+      code: 'unavailable-module', message: 'No supplied module has locator ' + locator + '.',
+      at: { kind: 'dependency', path: ['modules', locator] }, related: [],
+    }] };
+    const first = path[0];
+    if (first === undefined) return { status: 'missing' };
+    let found = this.choose(root, first, requester, true);
+    for (const segment of path.slice(1)) {
+      if (found.status !== 'found') return found;
+      const inside = this.members.get(found.declaration.id);
+      if (!inside) return { status: 'missing' };
+      found = this.choose(inside, segment, requester, true);
+    }
+    return found;
+  }
+
+  lookup(scope: Scope, path: readonly string[], ownOnly = false): Lookup {
+    const first = path[0];
+    if (first === undefined) return { status: 'missing' };
+    let selected: Scope | undefined = scope;
+    while (selected && !selected.names.has(first)) {
+      if (selected.blockedSubject) {
+        // A missing subject may supply a nearer name. Only unshadowable builtins
+        // can safely bypass that context.
+        if (this.builtinScope.names.has(first)) { selected = this.builtinScope; break; }
+        return { status: 'subject-context', subject: selected.blockedSubject };
+      }
+      selected = ownOnly ? undefined : selected.parent;
+    }
+    if (!selected) return { status: 'missing' };
+    let found = this.choose(selected, first, scope);
+    for (const segment of path.slice(1)) {
+      if (found.status !== 'found') return found;
+      const inside = this.members.get(found.declaration.id);
+      if (!inside) return { status: 'missing' };
+      found = this.choose(inside, segment, scope);
+    }
+    return found;
+  }
+
+  hasOrderedName(scope: Scope, name: string): boolean {
+    for (let current: Scope | undefined = scope; current; current = current.parent) {
+      if (current.orderedNames.has(name)) return true;
+    }
+    return false;
+  }
+
+  isWithinDeclaration(scope: Scope, declaration: NodeId): boolean {
+    const inside = this.members.get(declaration);
+    return inside !== undefined && this.within(scope, inside);
+  }
+
+  private introduce(scope: Scope, name: string, introduction: Introduction): void {
+    const introductions = scope.names.get(name) ?? [];
+    introductions.push(introduction);
+    scope.names.set(name, introductions);
+  }
+
+  private conflicts(name: string, authored: readonly Introduction[]): readonly ResolutionProblem[] {
+    const builtin = this.builtinScope.names.get(name)?.[0];
+    const introductions = builtin && !authored.includes(builtin) ? [builtin, ...authored] : authored;
+    const problems: ResolutionProblem[] = [];
+    for (let index = 1; index < introductions.length; index++) {
+      const current = introductions[index]!;
+      const duplicate = introductions.slice(0, index).find(previous =>
+        !current.importKey || !previous.importKey || current.importKey === previous.importKey
+        || (current.target && current.target.id === previous.target?.id));
+      // Distinct imports are ambiguous when used, not duplicate declarations.
+      if (duplicate) problems.push({
+        code: 'duplicate-declaration', message: 'The name ' + name + ' is introduced more than once in this scope.',
+        at: current.at, related: [duplicate.at],
+      });
+    }
+    return problems;
+  }
+
+  private finishIntroductions(): void {
+    for (const scope of this.scopes) {
+      for (const [name, introductions] of scope.names) this.problems.push(...this.conflicts(name, introductions));
+    }
+  }
+
+  private choose(scope: Scope, name: string, from: Scope, exportsOnly = false): Lookup {
+    const introductions = (scope.names.get(name) ?? []).filter(item => !exportsOnly || (
+      item.importKey === undefined && item.target
+      && item.target.payload.kind !== 'builtin-type'
+      && item.target.payload.kind !== 'parameter' && item.target.payload.kind !== 'type-parameter'
+    ));
+    if (!introductions.length) return { status: 'missing' };
+    const conflicts = this.conflicts(name, introductions);
+    if (conflicts.length) return { status: 'invalid', problems: conflicts };
+    const problems = introductions.flatMap(item => item.problems ?? []);
+    if (problems.length) return { status: 'invalid', problems };
+    const targets = [...new Map(introductions.flatMap(({ target }) => target ? [[target.id, target] as const] : [])).values()];
+    if (targets.length > 1) return { status: 'ambiguous', introductions };
+    const declaration = targets[0];
+    if (!declaration) return { status: 'missing' };
+    const privateScope = this.privateTo.get(declaration.id);
+    if (privateScope && !this.within(from, privateScope)) return { status: 'inaccessible', declaration };
+    const owner = this.capabilityOwners.get(declaration.id);
+    if (owner && declaration.payload.kind === 'capability' && !this.within(from, owner)) {
+      const name = this.indices.get(declaration.id)!.name(declaration.payload.name);
+      if (!this.publicNames.get(owner)?.has(name)) return { status: 'inaccessible', declaration };
+    }
+    return { status: 'found', declaration };
+  }
+
+  private importModuleNames(source: SourceIndex): void {
+    const root = this.moduleRoots.get(source.locator)!;
+    for (const use of source.of('use')) {
+      const locator = source.node(use.payload.locator);
+      if (locator.payload.kind !== 'string-literal') throw new Error('Inspected import locator is not text.');
+      for (const id of use.payload.imports) {
+        const item = source.node(id);
+        if (item.payload.kind !== 'import-item') throw new Error('Inspected import item is malformed.');
+        const reference = source.node(item.payload.imported);
+        const path = source.reference(reference.id);
+        const name = item.payload.alias ? source.name(item.payload.alias) : path.at(-1)!;
+        const found = this.select(locator.payload.value, path, root);
+        const introduction = { at: item.origin, importKey: JSON.stringify([locator.payload.value, path]) };
+        if (found.status === 'found') {
+          this.introduce(root, name, { ...introduction, target: found.declaration });
+          this.imports.set(reference.id, { status: 'bound', target: found.declaration.id });
+        } else {
+          const problems = this.importProblems(reference, path, found);
+          this.introduce(root, name, { ...introduction, problems });
+          this.imports.set(reference.id, { status: 'invalid', problems });
+          this.problems.push(...problems);
+        }
+      }
+    }
+  }
+
+  private importProblems(reference: InspectionNode, path: readonly string[], found: Exclude<Lookup, { status: 'found' }>): readonly ResolutionProblem[] {
+    if (found.status === 'invalid') return found.problems.map(problem => ({
+      ...problem, at: reference.origin, related: [problem.at, ...problem.related],
+    }));
+    const inaccessible = found.status === 'inaccessible';
+    return [{
+      code: inaccessible ? 'inaccessible-reference' : found.status === 'ambiguous' ? 'ambiguous-reference' : 'unresolved-reference',
+      message: 'The module does not provide an accessible unambiguous declaration for ' + path.join('.') + '.',
+      at: reference.origin,
+      related: inaccessible ? [found.declaration.origin]
+        : found.status === 'ambiguous' ? found.introductions.map(item => item.at) : [],
+    }];
+  }
+
+  private attachExamples(): void {
+    for (const examples of this.attachedExamples) {
+      const target = this.lookup(examples.scope, examples.source.reference(examples.subject));
+      // Same-module subjects supply lexical ownership. Cross-module example
+      // attachment requires composition, independent of the module's producer.
+      const subjectScope = target.status === 'found' && this.indices.get(target.declaration.id) === examples.source
+        ? this.members.get(target.declaration.id) : undefined;
+      const inside = subjectScope
+        ? this.childScope(subjectScope)
+        : this.childScope(examples.scope, examples.scope.owner, undefined, undefined, examples.subject);
+      for (const member of examples.members) this.walk(examples.source, examples.source.node(member), inside);
+    }
+  }
+
+  private within(scope: Scope, ancestor: Scope): boolean {
+    for (let current: Scope | undefined = scope; current; current = current.parent) if (current === ancestor) return true;
+    return false;
+  }
+
+  private childScope(parent: Scope, owner = parent.owner, orderedNames: ReadonlySet<string> = new Set(),
+    composition = parent.composition, blockedSubject?: NodeId): Scope {
+    const scope = new Scope(parent, owner, composition, orderedNames, blockedSubject);
+    this.scopes.push(scope);
+    return scope;
+  }
+
+  private declare(source: SourceIndex, node: InspectionNode, scope: Scope, local: boolean): void {
+    if (!('name' in node.payload)) throw new Error('A declaration must have a name.');
+    this.introduce(scope, source.name(node.payload.name), { target: node, at: node.origin });
+    if (local) this.privateTo.set(node.id, scope);
+    if (node.payload.kind === 'capability') this.capabilityOwners.set(node.id, scope);
+  }
+
+  private parameters(source: SourceIndex, ids: readonly NodeId[], scope: Scope): void {
+    const names = new Set(ids.map(id => {
+      const parameter = source.node(id);
+      if (parameter.payload.kind !== 'parameter') throw new Error('Inspected parameter list contains a non-parameter.');
+      return source.name(parameter.payload.name);
+    }));
+    for (const id of ids) this.walk(source, source.node(id), scope, false, names);
+  }
+
+  private walk(source: SourceIndex, node: InspectionNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
+    this.nodeScopes.set(node.id, scope);
+    const p = node.payload;
+    switch (p.kind) {
+      case 'local': this.walk(source, source.node(p.declaration), scope, true); return;
+      case 'concept': case 'component': case 'class': case 'interface': {
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
+        return;
+      }
+      case 'record-type-declaration': case 'alias-type-declaration': case 'opaque-type-declaration': {
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        for (const parameter of p.typeParameters) this.walk(source, source.node(parameter), inside, true);
+        if (p.kind === 'record-type-declaration') for (const field of p.fields) this.walk(source, source.node(field), inside);
+        if (p.kind === 'alias-type-declaration') this.walk(source, source.node(p.targetType), inside);
+        return;
+      }
+      case 'capability': case 'function': case 'setup': case 'action': case 'observation': case 'check': {
+        this.declare(source, node, scope, local);
+        const inside = this.childScope(scope, node.id);
+        this.members.set(node.id, inside);
+        this.walk(source, source.node(p.name), scope);
+        this.parameters(source, p.parameters, inside);
+        if (p.returnType) this.walk(source, source.node(p.returnType), inside);
+        if (p.body.kind === 'available') this.walk(source, source.node(p.body.node), inside);
+        return;
+      }
+      case 'construction': this.parameters(source, p.parameters, this.childScope(scope)); return;
+      case 'parameter': {
+        this.declare(source, node, scope, true);
+        this.walk(source, source.node(p.name), scope);
+        this.walk(source, source.node(p.declaredType), scope);
+        if (p.defaultValue) this.walk(source, source.node(p.defaultValue), this.childScope(scope, scope.owner, parameterNames));
+        return;
+      }
+      case 'field': case 'fixture': case 'participant': case 'type-parameter':
+        this.declare(source, node, scope, local); break;
+      case 'public': {
+        const names = this.publicNames.get(scope) ?? new Set<string>();
+        for (const reference of p.references) {
+          const path = source.reference(reference);
+          if (path.length === 1) names.add(path[0]!);
+        }
+        this.publicNames.set(scope, names);
+        break;
+      }
+      case 'examples': {
+        if (p.subject) {
+          this.walk(source, source.node(p.subject), scope);
+          this.attachedExamples.push({ source, subject: p.subject, members: p.members, scope });
+          return;
+        }
+        const inside = this.childScope(scope);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
+        return;
+      }
+      case 'contract-body': case 'helper-body': case 'check-body': {
+        const ordered = new Set<string>();
+        for (const member of p.members) {
+          const child = source.node(member);
+          if (child.payload.kind === 'let') ordered.add(source.name(child.payload.name));
+        }
+        const inside = this.childScope(scope, scope.owner, ordered);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
+        return;
+      }
+      case 'scenario': {
+        const ordered = new Set<string>();
+        for (const step of p.steps) {
+          const child = source.node(step);
+          if ((child.payload.kind === 'given' || child.payload.kind === 'when' || child.payload.kind === 'then') && child.payload.capture) {
+            ordered.add(source.name(child.payload.capture));
+          }
+        }
+        const inside = this.childScope(scope, scope.owner, ordered);
+        for (const child of children(node)) this.walk(source, source.node(child), inside);
+        return;
+      }
+      case 'interaction': {
+        const ordered = new Set<string>();
+        for (const member of p.members) {
+          const child = source.node(member);
+          if (child.payload.kind === 'message' && child.payload.capture) ordered.add(source.name(child.payload.capture));
+        }
+        const inside = this.childScope(scope, scope.owner, ordered);
+        this.walk(source, source.node(p.title), inside);
+        this.parameters(source, p.parameters, inside);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
+        return;
+      }
+      case 'extend': {
+        this.walk(source, source.node(p.target), scope);
+        const inside = this.childScope(scope, scope.owner, undefined, true);
+        for (const member of p.members) this.walk(source, source.node(member), inside);
+        return;
+      }
+    }
+    for (const child of children(node)) this.walk(source, source.node(child), scope);
+  }
+}

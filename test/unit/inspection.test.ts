@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InspectionError } from '../../src/index.js';
+import { InspectionError, type NodeId } from '../../src/index.js';
 import { capabilityNames, inspectText } from '../support/query-inspection.js';
 
 describe('an inspection caller consumes independent queries', () => {
@@ -55,7 +55,7 @@ describe('an inspection caller consumes independent queries', () => {
     const name = inspection.node(concept.payload.name, 'name');
 
     expect(name.payload.decoded).toBe('🛒 Store');
-    expect(name.range).toEqual({
+    expect(name.origin.kind === 'source' ? name.origin.range : undefined).toEqual({
       sourceId: 'unicode.expec',
       start: { offset: 8, line: 1, column: 9 },
       end: { offset: 17, line: 1, column: 18 },
@@ -79,21 +79,21 @@ describe('an inspection caller receives checked access errors', () => {
     }));
   });
 
-  it('rejects an identifier from another source even when its ordinal exists here', () => {
+  it('rejects an handle from another inspection', () => {
     const inspection = inspectText('concept StoreGame {}', 'store.expec');
     const other = inspectText('concept Storage {}', 'storage.expec');
     const foreign = Array.from(other.nodes('concept'))[0]!.id;
 
     expect(() => inspection.node(foreign)).toThrowError(expect.objectContaining({
-      code: 'foreign-source', nodeId: foreign,
+      code: 'foreign-node', nodeId: foreign,
     }));
   });
 
-  it('rejects absent, negative and fractional ordinals instead of returning undefined', () => {
+  it('rejects raw source identifiers instead of treating them as inspection handles', () => {
     const inspection = inspectText('concept StoreGame {}');
-    expect(() => inspection.node({ sourceId: 'store.expec', ordinal: 100 })).toThrowError(expect.objectContaining({ code: 'missing-node' }));
-    expect(() => inspection.name({ sourceId: 'store.expec', ordinal: -1 })).toThrowError(expect.objectContaining({ code: 'missing-node' }));
-    expect(() => inspection.reference({ sourceId: 'store.expec', ordinal: 0.5 })).toThrowError(expect.objectContaining({ code: 'missing-node' }));
-    expect(() => inspection.node({ sourceId: 'store.expec', ordinal: NaN })).toThrowError(expect.objectContaining({ code: 'missing-node' }));
+    expect(() => inspection.node({ sourceId: 'store.expec', ordinal: 100 } as unknown as NodeId)).toThrowError(expect.objectContaining({ code: 'missing-node' }));
+    expect(() => inspection.name({ sourceId: 'store.expec', ordinal: -1 } as unknown as NodeId)).toThrowError(expect.objectContaining({ code: 'missing-node' }));
+    expect(() => inspection.reference({ sourceId: 'store.expec', ordinal: 0.5 } as unknown as NodeId)).toThrowError(expect.objectContaining({ code: 'missing-node' }));
+    expect(() => inspection.node({ sourceId: 'store.expec', ordinal: NaN } as unknown as NodeId)).toThrowError(expect.objectContaining({ code: 'missing-node' }));
   });
 });

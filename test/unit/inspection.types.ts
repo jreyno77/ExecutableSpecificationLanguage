@@ -14,11 +14,13 @@ export function inspectionTypeExamples(inspection: Inspection, input: Inspection
     capability.payload.kind = 'capability';
     // @ts-expect-error Nested arrays are readonly.
     parameters.push(name.id);
-    // @ts-expect-error IDs are readonly.
+    // @ts-expect-error Inspection identities expose no source ordinal.
     name.id.ordinal = 0;
-    // @ts-expect-error Positions are readonly.
-    name.range.start.line = 0;
-    // @ts-expect-error Referenced identifiers are readonly.
+    if (name.origin.kind === 'source') {
+      // @ts-expect-error Source positions remain readonly.
+      name.origin.range.start.line = 0;
+    }
+    // @ts-expect-error Inspection identities expose no source identifier.
     capability.payload.name.sourceId = 'changed';
   }
   for (const concept of inspection.nodes('concept')) {
@@ -30,6 +32,6 @@ export function inspectionTypeExamples(inspection: Inspection, input: Inspection
   }
   // @ts-expect-error Input views are deeply readonly.
   input.nodes.push({} as InspectionNode);
-  // @ts-expect-error Only actual source kinds are selectable.
+  // @ts-expect-error Only common inspected kinds are selectable.
   inspection.nodes('made-up-kind');
 }

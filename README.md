@@ -2,11 +2,11 @@
 
 An experimental language for readable software specifications.
 
-The package provides an ANTLR grammar, a source reader, and typed inspection of accepted source. Callers can inspect authored declarations and locations through repeatable queries. Semantic validation and project generation are subsequent work.
+The package provides an ANTLR grammar, a source reader, typed inspection, and declaration/dependency resolution. Full type and behavior validation, compiler composition, and project generation are subsequent work.
 
 ## Inspect declarations
 
-`DescriptionInspection` implements `Inspection` over an accepted reader result:
+`DescriptionInspection` captures an accepted reader result at an explicit module locator:
 
 ```ts
 import { createSyntaxReader, DescriptionInspection, type Inspection } from 'executable-specification-language';
@@ -17,7 +17,7 @@ const result = createSyntaxReader().read({
 });
 
 if (result.status === 'accepted') {
-  const inspection: Inspection = new DescriptionInspection(result.description);
+  const inspection: Inspection = new DescriptionInspection('store', result.description);
   const capabilities = inspection.nodes('capability');
   const names = Array.from(capabilities, node => inspection.name(node.payload.name));
   // names: ['saveGame']
@@ -27,11 +27,58 @@ if (result.status === 'accepted') {
 ```
 
 Each iterator starts fresh, including repeated iteration of the same iterable.
-Inspection exposes a deeply readonly TypeScript view of the supplied description;
-keep that input unchanged and reacquire identifiers after a new read. It preserves
-authored facts and locations without resolving references. Checked lookup throws
-`InspectionError` with `foreign-source`, `missing-node`, or `unexpected-kind`;
-these access errors are separate from reader syntax diagnostics.
+Inspection captures a readonly snapshot with opaque node handles. It preserves
+authored facts and source locations without resolving references. `ExternalInspection`
+adapts an authored library contract into the same nodes, with external data paths
+as provenance. Invalid external structure throws `InspectionInputError`.
+
+## Resolve declarations
+
+`Resolver` enriches a module inspection with reference outcomes. Both input producers
+use the same query and resolution operations:
+
+```ts
+import { createSyntaxReader, DescriptionInspection, ExternalInspection, Resolver } from 'executable-specification-language';
+
+const shopping = new ExternalInspection('shopping', [
+  { kind: 'record-type', name: 'Cart', fields: [
+    { kind: 'field', name: 'title', type: { kind: 'builtin', name: 'Text' } },
+  ] },
+]);
+
+const read = createSyntaxReader().read({
+  sourceId: 'store.expec',
+  text: 'use Cart as Basket from "shopping"\nfunction save(cart: Basket)',
+});
+
+if (read.status === 'accepted') {
+  const store = new DescriptionInspection('store', read.description);
+  const resolved = new Resolver().resolve(store, { modules: [shopping], packages: [] });
+  for (const reference of resolved.nodes('reference')) {
+    console.log(resolved.reference(reference.id)); // Preserves Cart or Basket spelling.
+    const outcome = reference.payload.resolution;
+    if (outcome.status === 'bound') {
+      const declaration = resolved.node(outcome.target); // Actual declaration and children.
+      console.log(declaration.payload.kind, declaration.origin);
+    }
+  }
+  console.log(resolved.problems, resolved.deferred);
+}
+```
+
+Original inspections stay unchanged. Reacquire a reference by its original handle
+from the resolved view to read its `bound`, `invalid` or `deferred` outcome. The view
+contains the entry, reached modules and builtins; queries do not call input providers.
+Aliases share declaration identity, and a missing field type does not erase its record.
+Supplying a module does not import its names. Package configuration checks availability
+and requested phases, without performing installation.
+
+Checked lookup throws `InspectionError`: `foreign-node`, `missing-node`,
+`unexpected-kind`, or `not-analyzed` for a supplied but unreached module. Handles
+survive into derived resolution views, but not an independent reread. Deferred
+references identify composition, expression or interaction work still required;
+an empty problem list does not establish whole-compiler acceptance.
+
 
 ## Development
 
