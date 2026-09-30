@@ -16,3 +16,7 @@ export type { BuiltinName } from './inspection.js';
 export type { DeferredReference, DeferredReason } from './resolution/reference-resolver.js';
 export type { ResolutionProblem, ResolutionProblemCode, ProblemLocation } from './resolution/problem.js';
 export type { DependencyPackage, PackagePhase } from './resolution/package-availability.js';
+export { TypeDescriber } from './type-catalog.js';
+export { TypeQueryError } from './type-description.js';
+export type { TypeId, TypeDescription, TypeFact, TypeProblem } from './type-description.js';
+export type { TypeCatalog, TypedSlot, FieldShape, ResultDescription, CallableDescription, ConstructionDescription } from './type-catalog.js';
