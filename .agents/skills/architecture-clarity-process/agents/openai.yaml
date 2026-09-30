@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architecture Clarity Process"
+  short_description: "Force API contract and boundary discussion before coding."
+  default_prompt: "Use this skill to run a contract-first architecture discussion (APIs, boundaries, A->B flow, risks, options, and approval gate) before writing code."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rugged Code Hardening"
+  short_description: "Make every change survivable, defensible, and stress-tested."
+  default_prompt: "Apply rugged hardening to this change: model threats, define defenses, write adversarial tests, add survivability controls, verify telemetry, and ship only with evidence."

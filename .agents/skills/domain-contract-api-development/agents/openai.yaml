@@ -1,0 +1,4 @@
+interface:
+  display_name: "Domain-Contract Delivery"
+  short_description: "Blend DDD, API-first, and CDD into one delivery loop."
+  default_prompt: "Use a domain-first, contract-first approach: define bounded contexts, author executable contracts, and drive implementation with contract tests and TDD."

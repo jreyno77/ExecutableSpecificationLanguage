@@ -1,0 +1,4 @@
+interface:
+  display_name: "Batch Runner"
+  short_description: "Run bounded refactor batches with worker-prompt discipline"
+  default_prompt: "Use $batch-runner-orchestrator to run the selected bounded batch through drift check, challenge, planning, implementation, validation, calibration, and metrics."
