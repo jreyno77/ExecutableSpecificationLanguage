@@ -1,6 +1,6 @@
-import type { Inspection, InspectionNode, NodeId, ReferenceResolution } from '../inspection.js';
+import { children, type Inspection, type InspectionNode, type NodeId, type ReferenceResolution } from '../inspection.js';
 import type { ProblemLocation, ResolutionProblem } from './problem.js';
-import { children, SourceIndex } from './source-index.js';
+import { SourceIndex } from './source-index.js';
 
 export type Introduction = {
   readonly at: ProblemLocation;

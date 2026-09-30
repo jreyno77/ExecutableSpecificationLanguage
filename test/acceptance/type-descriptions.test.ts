@@ -96,7 +96,7 @@ type B = A`);
     types.analyze();
     types.expectProblem('circular-alias');
     types.describe('A');
-    types.expectAliasProblem('circular-alias', 'B');
+    types.expectCircularAliasAtLines([1, 2]);
   });
 
   it('allows a transparent alias to reach a recursive nominal declaration', () => {
@@ -345,7 +345,7 @@ type Mixed = [Wrong, ImportedType]`);
     types.expectMixedAliasFailure('wrong-reference-kind', 'composition');
   });
 
-  it('enumerates unused, nested and imported declarations in reached source order', () => {
+  it('enumerates unused, nested and imported declarations in inspection order', () => {
     const types = new TypeDescriptions();
     types.source(`use Remote from "remote"
 use External from "external"
@@ -358,7 +358,7 @@ concept Store {
 function remotely()`);
     types.externalModule('external', [{ kind: 'opaque-type', name: 'External' }]);
     types.analyze();
-    types.expectDeclarations(['Unused', 'Store', 'Inner', 'Remote', 'External'], ['save', 'load', 'remotely']);
+    types.expectDeclarations(['Unused', 'Store', 'Inner', 'External', 'Remote'], ['save', 'load', 'remotely']);
     types.expectNoProblems();
   });
 

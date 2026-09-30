@@ -93,7 +93,7 @@ export class TypeDescriptions {
     expect(alias.target.status).toBe('deferred');
     if (alias.target.status !== 'deferred') throw new Error('Expected a deferred alias target');
     expect(alias.target.requirements.map(item => item.reason)).toContain(reason);
-    expect(this.catalog.deferred).toEqual(expect.arrayContaining(alias.target.requirements));
+    for (const requirement of alias.target.requirements) expect(this.catalog.deferred).toContain(requirement);
   }
   expectMixedAliasFailure(code: string, reason: string): void {
     const alias = this.catalog.describe(this.selected);
@@ -152,6 +152,13 @@ export class TypeDescriptions {
     const problem = this.catalog.problems.find(problem => problem.code === code && (!at || this.textAt(problem.at) === at));
     expect(problem, `Expected ${code}${at ? ` at ${at}` : ''}`).toBeDefined();
     if (related) expect(problem!.related.map(location => this.textAt(location))).toContain(related);
+  }
+  expectCircularAliasAtLines(lines: number[]): void {
+    const alias = this.catalog.describe(this.selected);
+    if (alias.kind !== 'alias' || alias.target.status !== 'invalid') throw new Error('Expected an invalid alias target');
+    const cycle = alias.target.problems.find(problem => problem.code === 'circular-alias');
+    expect(cycle).toBeDefined();
+    expect([...new Set([cycle!.at, ...cycle!.related].flatMap(location => location.kind === 'source' ? [location.range.start.line] : []))].sort()).toEqual(lines);
   }
   expectNoProblems(): void { expect(this.catalog.problems).toEqual([]); expect(this.resolution.problems).toEqual([]); }
   expectNoTypeProblems(): void { expect(this.catalog.problems).toEqual([]); }

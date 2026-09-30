@@ -2,7 +2,7 @@
 
 An experimental language for readable software specifications.
 
-The package provides an ANTLR grammar, a source reader, typed inspection, and declaration/dependency resolution. Full type and behavior validation, compiler composition, and project generation are subsequent work.
+The package provides an ANTLR grammar, a source reader, typed inspection, declaration/dependency resolution, and type and callable descriptions. Expression checking, behavior validation, compiler composition, and project generation are subsequent work.
 
 ## Inspect declarations
 
@@ -79,6 +79,31 @@ survive into derived resolution views, but not an independent reread. Deferred
 references identify composition, expression or interaction work still required;
 an empty problem list does not establish whole-compiler acceptance.
 
+## Describe types and signatures
+
+Pass the resolved inspection above to `TypeDescriber`:
+
+```ts
+import { TypeDescriber } from 'executable-specification-language';
+
+const types = new TypeDescriber().describe(resolved);
+for (const declaration of types.callableDeclarations()) {
+  const signature = types.callable(declaration);
+  for (const parameter of signature.parameters) {
+    const name = resolved.name(resolved.node(parameter.declaration, 'parameter').payload.name);
+    console.log(name, parameter.type); // A known type, invalid causes, or deferred prerequisites.
+  }
+  console.log(signature.result); // Unspecified, explicitly none, or a described value type.
+}
+```
+
+The catalog retains the exact resolved inspection and original declaration handles.
+`declaredType`, `typeOf`, `describe` and `fields` expose nominal identities, alias
+targets and substituted generic fields. A bad slot leaves its valid neighbors
+readable; opaque declarations remain distinct from empty records. Type handles
+belong to one catalog. Findings are complete before queries and remain unchanged
+as callers inspect recursive types. Inspect both resolution and type findings;
+neither phase claims whole-program validity.
 
 ## Development
 
