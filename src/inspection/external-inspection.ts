@@ -130,14 +130,12 @@ class ExternalNodes {
         switch (kind) {
           case 'record-type': {
             this.keys(data, path, [...shared, 'typeParameters', 'fields']);
-            const typeParameters = this.generics(data, path);
-            const fields = this.collection(data.fields, [...path, 'fields'], (field, at) => this.definition(field, at, 'field'));
-            return { kind: 'record-type-declaration', name, typeParameters, fields };
+            return { kind: 'record-type-declaration', name, typeParameters: this.generics(data, path),
+              fields: this.collection(data.fields, [...path, 'fields'], (field, at) => this.definition(field, at, 'field')) };
           }
           case 'alias-type': {
             this.keys(data, path, [...shared, 'typeParameters', 'target']);
-            const typeParameters = this.generics(data, path);
-            return { kind: 'alias-type-declaration', name, typeParameters, targetType: this.type(data.target, [...path, 'target'])! };
+            return { kind: 'alias-type-declaration', name, typeParameters: this.generics(data, path), targetType: this.type(data.target, [...path, 'target'])! };
           }
           case 'opaque-type':
             this.keys(data, path, [...shared, 'typeParameters']);
@@ -182,14 +180,14 @@ class ExternalNodes {
         case 'named': {
           this.keys(data, path, ['kind', 'path', 'module', 'arguments']);
           const lookup: ReferenceLookup | undefined = data.module === undefined ? undefined : { kind: 'module', locator: this.text(data.module, [...path, 'module']) };
-          const reference = this.reference(data.path, path, lookup);
-          return { kind: 'named-type', reference, arguments: this.typeList(data.arguments === undefined ? [] : data.arguments, [...path, 'arguments']) };
+          return { kind: 'named-type', reference: this.reference(data.path, path, lookup),
+            arguments: this.typeList(data.arguments === undefined ? [] : data.arguments, [...path, 'arguments']) };
         }
         case 'builtin': {
           this.keys(data, path, ['kind', 'name', 'arguments']);
           if (!builtinNames.includes(data.name as BuiltinName)) this.problem([...path, 'name'], 'Unknown builtin name.');
-          const reference = this.singleReference(data.name, path, { kind: 'builtin' }, [...path, 'name']);
-          return { kind: 'named-type', reference, arguments: this.typeList(data.arguments === undefined ? [] : data.arguments, [...path, 'arguments']) };
+          return { kind: 'named-type', reference: this.singleReference(data.name, path, { kind: 'builtin' }, [...path, 'name']),
+            arguments: this.typeList(data.arguments === undefined ? [] : data.arguments, [...path, 'arguments']) };
         }
         case 'parameter':
           this.keys(data, path, ['kind', 'name']);

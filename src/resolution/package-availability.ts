@@ -40,20 +40,13 @@ export class PackageAvailability {
       const seen = new Map<PackagePhase, number>();
       input.phases.forEach((phase, ordinal) => {
         const earlier = seen.get(phase);
-        let problem: ResolutionProblem | undefined;
-        if (!phases.has(phase)) {
-          problem = {
-            code: 'invalid-dependency-input', message: `Unknown package phase ${phase}.`,
-            at: { kind: 'dependency', path: ['packages', index, 'phases', ordinal] }, related: [],
-          };
-        } else if (earlier !== undefined) {
-          problem = {
-            code: 'invalid-dependency-input', message: `Duplicate package phase ${phase}.`,
+        const known = phases.has(phase);
+        if (!known || earlier !== undefined) {
+          const problem: ResolutionProblem = {
+            code: 'invalid-dependency-input', message: `${known ? 'Duplicate' : 'Unknown'} package phase ${phase}.`,
             at: { kind: 'dependency', path: ['packages', index, 'phases', ordinal] },
-            related: [{ kind: 'dependency', path: ['packages', index, 'phases', earlier] }],
+            related: known && earlier !== undefined ? [{ kind: 'dependency', path: ['packages', index, 'phases', earlier] }] : [],
           };
-        }
-        if (problem) {
           configured.problems.push(problem);
           problems.push(problem);
         }

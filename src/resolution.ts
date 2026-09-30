@@ -31,10 +31,9 @@ export class Resolver {
       new ReferenceResolver(module, scopes, packages, bindings, problems, deferred).analyze();
     }
 
-    const primitiveRoots = [...builtins.roots()];
     const primitiveNodes = [...builtins.nodes('builtin-type')].flatMap(node => [node, builtins.node(node.payload.name)]);
     const [main, ...reached] = modules.reached;
-    const roots = [...main!.roots.map(node => node.id), ...primitiveRoots,
+    const roots = [...main!.roots.map(node => node.id), ...builtins.roots(),
       ...reached.flatMap(module => module.roots.map(node => node.id))];
     const nodes = [...main!.nodes, ...primitiveNodes, ...reached.flatMap(module => module.nodes)]
       .map((node): InspectionNode => {

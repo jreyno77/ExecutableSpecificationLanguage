@@ -102,8 +102,8 @@ export class ReferenceResolver {
 
   private locateFailures(node: InspectionNode, causes: readonly ResolutionProblem[]): readonly ResolutionProblem[] {
     return causes.map(cause => {
-      if (cause.code === 'invalid-dependency-input') { this.problems.push(cause); return cause; }
-      const problem = { ...cause, at: node.origin, related: [cause.at, ...cause.related] };
+      const problem = cause.code === 'invalid-dependency-input' ? cause
+        : { ...cause, at: node.origin, related: [cause.at, ...cause.related] };
       this.problems.push(problem);
       return problem;
     });

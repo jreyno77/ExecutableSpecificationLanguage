@@ -176,7 +176,7 @@ export class ScopeGraph {
     if (conflicts.length) return { status: 'invalid', problems: conflicts };
     const problems = introductions.flatMap(item => item.problems ?? []);
     if (problems.length) return { status: 'invalid', problems };
-    const targets = [...new Map(introductions.filter(item => item.target).map(item => [item.target!.id, item.target!])).values()];
+    const targets = [...new Map(introductions.flatMap(({ target }) => target ? [[target.id, target] as const] : [])).values()];
     if (targets.length > 1) return { status: 'ambiguous', introductions };
     const declaration = targets[0];
     if (!declaration) return { status: 'missing' };
