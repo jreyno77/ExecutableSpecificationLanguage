@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update User Guide Docs"
+  short_description: "Update KALM user-guide docs from code-backed research."
+  default_prompt: "Update ide/UserGuide.md with simple, code-backed content and recommended image insert comments."

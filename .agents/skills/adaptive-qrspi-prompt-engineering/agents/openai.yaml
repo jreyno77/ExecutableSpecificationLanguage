@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adaptive QRSPI Prompt Engineering"
+  short_description: "Turn vague asks into strong prompts"
+  default_prompt: "Use $adaptive-qrspi-prompt-engineering to turn this vague ask into a right-sized prompt packet."

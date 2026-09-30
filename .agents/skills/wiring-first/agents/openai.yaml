@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wiring First"
+  short_description: "Prove composable wiring before component implementation"
+  default_prompt: "Use $wiring-first to establish and test skeletal contracts and application wiring before implementing the components."

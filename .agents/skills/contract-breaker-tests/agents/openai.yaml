@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contract Breaker Tests"
+  short_description: "Write adversarial contract tests and harden breakages."
+  default_prompt: "Use only on explicit slash invocation or when creating a new source file. Write adversarial tests to break API/contracts/args, then implement minimal fixes for any confirmed failures."

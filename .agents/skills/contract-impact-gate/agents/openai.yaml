@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contract Impact Gate"
+  short_description: "Gate major changes with contract and dependency review."
+  default_prompt: "Before implementing major changes, identify explicit and implicit contractual impacts, explain system fit, flag non-standard dependency changes, and pause for user approval before proceeding."

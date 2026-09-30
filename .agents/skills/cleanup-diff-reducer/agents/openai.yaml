@@ -1,0 +1,4 @@
+interface:
+  display_name: "Joshwork Cleanup Enforcer"
+  short_description: "Deletion-first functional cleanup with strict diff and test rules"
+  default_prompt: "Run a deletion-first cleanup pass in kalm-ide with remote-diff accounting, no test edits, and required check/test verification."
