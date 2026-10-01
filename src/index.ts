@@ -18,3 +18,7 @@ export { TypeDescriber } from './type-catalog.js';
 export { TypeQueryError } from './type-description.js';
 export type { TypeId, TypeDescription, TypeFact, TypeProblem } from './type-description.js';
 export type { TypeCatalog, TypedSlot, FieldShape, ResultDescription, CallableDescription, ConstructionDescription } from './type-catalog.js';
+export { Types } from './types.js';
+export { ExpressionChecker } from './expression-checker.js';
+export type { ExpressionChecking, ValueScope } from './expression-checker.js';
+export type { Check, Diagnostic, Requirement } from './checking.js';

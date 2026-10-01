@@ -2,9 +2,9 @@ import { QueryError, type Model, type ModelNode, type NodeId } from './model.js'
 import type { DeferredReference } from './resolution/reference-resolver.js';
 import type { ProblemLocation, ResolutionProblem } from './resolution/problem.js';
 import type { FieldShape } from './type-catalog.js';
+import { Types, TypeQueryError, type TypeDescription, type TypeId } from './types.js';
+export { TypeQueryError, type TypeDescription, type TypeId } from './types.js';
 
-declare const identity: unique symbol;
-export type TypeId = { readonly [identity]: true };
 export type TypeFact<T> =
   | { readonly status: 'known'; readonly value: T }
   | { readonly status: 'invalid'; readonly problems: readonly (ResolutionProblem | TypeProblem)[]; readonly deferred: readonly DeferredReference[] }
@@ -15,19 +15,6 @@ export interface TypeProblem {
   readonly at: ProblemLocation;
   readonly related: readonly ProblemLocation[];
 }
-export type TypeDescription =
-  | { readonly kind: 'builtin' | 'declared'; readonly declaration: NodeId; readonly arguments: readonly TypeId[] }
-  | { readonly kind: 'parameter'; readonly declaration: NodeId }
-  | { readonly kind: 'alias'; readonly declaration: NodeId; readonly arguments: readonly TypeId[]; readonly target: TypeFact<TypeId> }
-  | { readonly kind: 'tuple'; readonly elements: readonly TypeId[] }
-  | { readonly kind: 'union'; readonly alternatives: readonly TypeId[] }
-  | { readonly kind: 'optional'; readonly inner: TypeId }
-  | { readonly kind: 'literal'; readonly expression: NodeId };
-export class TypeQueryError extends Error {
-  override readonly name = 'TypeQueryError';
-  constructor(readonly code: 'unknown-type' | 'wrong-kind', readonly typeId: TypeId, message: string) { super(message); }
-}
-
 type Substitution = ReadonlyMap<NodeId, TypeId>;
 const declarations = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration',
   'alias-type-declaration', 'opaque-type-declaration', 'type-parameter', 'builtin-type']);
@@ -38,10 +25,10 @@ export class TypeDescriptions {
   readonly ordered: readonly ModelNode[];
   readonly problems: TypeProblem[] = [];
   readonly deferred: DeferredReference[] = [];
-  private readonly descriptions = new Map<TypeId, TypeDescription>();
-  private readonly interned = new Map<string, TypeId>();
+  readonly types = new Types();
   private readonly ordinals = new Map<NodeId | TypeId, number>();
   private readonly findings = new Map<string, TypeProblem>();
+  private readonly applications = new Map<string, TypeId>();
   private readonly facts = new Map<NodeId, TypeFact<TypeId>>();
 
   constructor(protected readonly model: Model) {
@@ -76,11 +63,7 @@ export class TypeDescriptions {
     if (!fact) { fact = this.evaluate(expression, new Map(), [], this.allowsNothing(expression)); this.facts.set(expression, fact); }
     return fact;
   }
-  describe(type: TypeId): TypeDescription {
-    const description = this.descriptions.get(type);
-    if (!description) throw new TypeQueryError('unknown-type', type, 'This catalog did not issue the type handle.');
-    return description;
-  }
+  describe(type: TypeId): TypeDescription { return this.types.describe(type); }
   fields(type: TypeId): TypeFact<FieldShape> {
     let meaning = this.describe(type);
     while (meaning.kind === 'alias') {
@@ -113,22 +96,16 @@ export class TypeDescriptions {
       return this.ordinals.get(id);
     }).join(',');
   }
-  private intern(key: string, description: () => TypeDescription): TypeId {
-    const existing = this.interned.get(key);
-    if (existing) return existing;
-    const id = Object.freeze({}) as TypeId;
-    this.interned.set(key, id);
-    this.descriptions.set(id, description());
-    return id;
-  }
   private apply(declaration: NodeId, arguments_: readonly TypeId[], aliases: readonly NodeId[]): TypeId {
+    const key = this.key('application', [declaration, ...arguments_]), existing = this.applications.get(key);
+    if (existing) return existing;
     const p = this.model.node(declaration);
-    return this.intern(this.key('declaration', [declaration, ...arguments_]), () => {
-      if (p.kind === 'type-parameter') return { kind: 'parameter', declaration };
-      if (p.kind === 'alias-type-declaration') return { kind: 'alias', declaration, arguments: arguments_,
-        target: this.evaluate(p.targetType, new Map(p.typeParameters.map((id, index) => [id, arguments_[index]!])), [...aliases, declaration], true) };
-      return { kind: p.kind === 'builtin-type' ? 'builtin' : 'declared', declaration, arguments: arguments_ };
-    });
+    const type = this.types.intern(p.kind === 'type-parameter' ? { kind: 'parameter', declaration }
+      : p.kind === 'alias-type-declaration' ? { kind: 'alias', declaration, arguments: arguments_,
+        target: this.evaluate(p.targetType, new Map(p.typeParameters.map((id, index) => [id, arguments_[index]!])), [...aliases, declaration], true) }
+      : { kind: p.kind === 'builtin-type' ? 'builtin' : 'declared', declaration, arguments: arguments_ });
+    this.applications.set(key, type);
+    return type;
   }
   private failure(code: TypeProblem['code'], id: NodeId, message: string, related: readonly NodeId[] = []): TypeFact<never> {
     const key = this.key(code, [id]);
@@ -169,17 +146,17 @@ export class TypeDescriptions {
         const failed = failures(parts);
         if (failed) return failed;
         const types = parts.map(part => (part as { status: 'known'; value: TypeId }).value);
-        fact = { status: 'known', value: this.intern(this.key(p.kind, types), () => p.kind === 'tuple-type'
+        fact = { status: 'known', value: this.types.intern(p.kind === 'tuple-type'
           ? { kind: 'tuple', elements: types } : { kind: 'union', alternatives: types }) };
         break;
       }
       case 'optional-type': {
         const inner = this.evaluate(p.inner, substitution, aliases, false);
         if (inner.status !== 'known') return inner;
-        fact = { status: 'known', value: this.intern(this.key('optional', [inner.value]), () => ({ kind: 'optional', inner: inner.value })) };
+        fact = { status: 'known', value: this.types.intern({ kind: 'optional', inner: inner.value }) };
         break;
       }
-      case 'literal-type': fact = { status: 'known', value: this.intern(this.key('literal', [id]), () => ({ kind: 'literal', expression: id })) }; break;
+      case 'literal-type': fact = { status: 'known', value: this.types.intern({ kind: 'literal', expression: id }) }; break;
       default: throw new QueryError('unexpected-kind', id, 'Expected a type expression.');
     }
     if (fact.status === 'known' && !allowNothing) {

@@ -1,4 +1,5 @@
 import { QueryError, type ModelNode, type NodeId } from './model.js';
+import type { Types } from './types.js';
 import type { Inspection } from './inspection.js';
 import { QueryInspection } from './query-inspection.js';
 import type { Resolution } from './resolution.js';
@@ -20,6 +21,7 @@ export interface ConstructionDescription {
   readonly problems: readonly TypeProblem[];
 }
 export interface TypeCatalog {
+  readonly types: Types;
   readonly inspection: Inspection;
   typeDeclarations(): Iterable<NodeId>;
   callableDeclarations(): Iterable<NodeId>;
