@@ -11,7 +11,11 @@ function source(text: string) {
 }
 function recordFields(model: Model): string[] {
   const record = Array.from(new QueryInspection(model).query('record-type-declaration'))[0]!;
-  return record.fields.map(field => `${field.name}: ${describeType(field.declaredType)}`);
+  return record.fields.map(item => {
+    const field = item.kind === 'local' ? item.declaration : item;
+    if (field.kind !== 'field') throw new Error('Expected a record field declaration');
+    return `${field.name}: ${describeType(field.declaredType)}`;
+  });
 }
 function inspectableKinds(model: Model, ids: Iterable<NodeId>): string[] {
   return Array.from(ids, id => model.node(id).kind);

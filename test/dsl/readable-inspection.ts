@@ -18,6 +18,13 @@ function namedType(item: Item): Item<'named-type'> {
   return item;
 }
 
+function fieldDeclaration(item: Item<'field' | 'local'>): Item<'field'> {
+  const field = item.kind === 'local' ? item.declaration : item;
+  expect(field.kind).toBe('field');
+  if (field.kind !== 'field') throw new Error('Expected a record field declaration');
+  return field;
+}
+
 export class ReadableInspection {
   private readonly driver = new ReadableInspectionDriver();
   private resolved: Inspection | undefined;
@@ -81,14 +88,14 @@ export class ReadableInspection {
   }
   expectRecordContract(expected: { name: string; fields: { name: string; type: string[] }[] }[]): void {
     expect(this.driver.records().map(record => ({ name: record.name,
-      fields: record.fields.map(field => ({ name: field.name, type: namedType(field.declaredType).reference.segments })) }))).toEqual(expected);
+      fields: record.fields.map(fieldDeclaration).map(field => ({ name: field.name, type: namedType(field.declaredType).reference.segments })) }))).toEqual(expected);
   }
   expectSourceField(name: string, sourceId: string, at: Position): void {
-    const field = this.driver.records().flatMap(record => record.fields).find(field => field.name === name)!;
+    const field = this.driver.records().flatMap(record => record.fields.map(fieldDeclaration)).find(field => field.name === name)!;
     expect(sourceOrigin(field.origin).range).toMatchObject({ sourceId, start: at });
   }
   expectExternalField(name: string, module: string, path: (string | number)[]): void {
-    const field = this.driver.records().flatMap(record => record.fields).find(field => field.name === name)!;
+    const field = this.driver.records().flatMap(record => record.fields.map(fieldDeclaration)).find(field => field.name === name)!;
     expect(field.origin).toEqual({ kind: 'external', module, path });
     expect(field.origin).not.toHaveProperty('range');
   }

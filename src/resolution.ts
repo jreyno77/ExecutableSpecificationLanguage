@@ -44,9 +44,10 @@ export class Resolver {
     const containment = new Map(modules.reached.flatMap(module => module.nodes.map(node =>
       [node.id, [...module.children(node.id)]] as const)));
     for (const node of primitiveNodes) containment.set(node.id, [...builtins.children(node.id)]);
-    const outcomes = new Map([...bindings].map(([id, outcome]) => [id, capture(outcome)]));
-    return { entry: entry.locator, model: new IndexedModel(roots, nodes.map(capture), outcomes, modules.unanalyzed, containment),
-      problems: capture([...new Set(problems)]), deferred: capture(deferred) };
+    const captured = new WeakMap<object, unknown>();
+    const outcomes = new Map([...bindings].map(([id, outcome]) => [id, capture(outcome, captured)]));
+    return { entry: entry.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes, modules.unanalyzed, containment),
+      problems: capture([...new Set(problems)], captured), deferred: capture(deferred, captured) };
   }
 }
 
@@ -64,8 +65,13 @@ export function builtinModel(): Model {
 }
 
 /** Materialize supplied getters and nested facts while retaining opaque identity handles. */
-function capture<T>(value: T): T {
+function capture<T>(value: T, captured: WeakMap<object, unknown>): T {
   if (!value || typeof value !== 'object' || isNodeId(value)) return value;
-  if (Array.isArray(value)) return value.map(capture) as T;
-  return Object.fromEntries(propertyNames(value).map(key => [key, capture((value as Record<string, unknown>)[key])])) as T;
+  if (captured.has(value)) return captured.get(value) as T;
+  const copy: object = Array.isArray(value) ? [] : {};
+  captured.set(value, copy);
+  for (const key of propertyNames(value)) {
+    (copy as Record<string, unknown>)[key] = capture((value as Record<string, unknown>)[key], captured);
+  }
+  return copy as T;
 }

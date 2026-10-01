@@ -15,6 +15,11 @@ type Details<K extends NodeKind> =
   : K extends 'promises' ? { readonly text: string; readonly textOrigin: Origin }
   : K extends 'capability' | 'function' | 'setup' | 'action' | 'observation' | 'check' ? Omit<Named<LanguageFields<K>>, 'body'> & { readonly body: Body }
   : K extends 'field' | 'parameter' ? Named<LanguageFields<K>> & { readonly hasDefault: boolean }
+  : K extends 'record-type-declaration' ? Omit<Named<LanguageFields<K>>, 'fields'> & { readonly fields: readonly Item<'field' | 'local'>[] }
+  : K extends 'local' ? Omit<Named<LanguageFields<K>>, 'declaration'> & {
+      readonly declaration: Views<LanguageFields<'local'>['declaration']> | Item<'field' | 'capability' | 'function'> }
+  : K extends 'concept' | 'component' | 'class' | 'interface' ? Omit<Named<LanguageFields<K>>, 'members'> & {
+      readonly members: readonly (Views<LanguageFields<'concept'>['members'][number]> | Views<LanguageFields<'local'>['declaration']> | Item<'field'>)[] }
   : Named<LanguageFields<K>>;
 export type Item<K extends NodeKind = NodeKind> = K extends NodeKind
   ? { readonly id: NodeId; readonly kind: K; readonly origin: Origin } & Details<K> : never;

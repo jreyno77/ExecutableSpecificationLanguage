@@ -6,6 +6,12 @@ import {
 
 export type Target = { name: string; kind: NodeKind; origin: Origin };
 
+function fieldDeclaration(item: Item<'field' | 'local'>): Item<'field'> {
+  const field = item.kind === 'local' ? item.declaration : item;
+  if (field.kind !== 'field') throw new Error('Expected a record field declaration');
+  return field;
+}
+
 /** Calls real model, inspection, and resolution APIs for declaration examples. */
 export class ResolutionDriver {
   private readonly resolver = new Resolver();
@@ -84,7 +90,7 @@ export class ResolutionDriver {
     return found;
   }
   field(module: string, record: string, field: string): Item<'field'> {
-    const found = this.declaration(module, 'record-type-declaration', record).fields.find(node => node.name === field);
+    const found = this.declaration(module, 'record-type-declaration', record).fields.map(fieldDeclaration).find(node => node.name === field);
     if (!found) throw new Error(`Expected field ${module}.${record}.${field}`);
     return found;
   }
@@ -93,7 +99,7 @@ export class ResolutionDriver {
     return type;
   }
   recordFields(module: string, name: string, resolved: boolean): Record<string, string> {
-    return Object.fromEntries(this.declaration(module, 'record-type-declaration', name, resolved).fields
+    return Object.fromEntries(this.declaration(module, 'record-type-declaration', name, resolved).fields.map(fieldDeclaration)
       .map(field => [field.name, this.typeText(field.declaredType)]));
   }
   functionDetails(module: string, name: string, resolved: boolean) {
