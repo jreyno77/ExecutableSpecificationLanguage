@@ -1,6 +1,6 @@
 # .expec
 
-An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, and describes types and callable contracts.
+An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, describes types and callable contracts, and checks expressions.
 
 ## Inspect declarations
 
@@ -22,7 +22,7 @@ if (result.status === 'accepted') {
 }
 ```
 
-`Inspection` has two operations: `query(kind)` selects readable items; `read(id, kind?)` follows a known identity. Items retain source locations or external provenance. Iterators are independent. `Model` supplies indexed structural facts beneath these views; alternative models can implement the same contract.
+`Inspection.query(kind)` selects readable items; `read(id, kind?)` follows a known identity; `parent(id)` returns authored containment. Items retain source locations or external provenance. Iterators are independent. `Model` supplies indexed structural facts beneath these views; alternative models can implement the same contract.
 
 ## Resolve declarations
 
@@ -49,11 +49,11 @@ Pass the resolution above to `TypeDescriber`:
 ```ts
 import { TypeDescriber } from 'executable-specification-language';
 
-const types = new TypeDescriber().describe(resolution);
-for (const declaration of types.callableDeclarations()) {
-  const signature = types.callable(declaration);
+const catalog = new TypeDescriber().describe(resolution);
+for (const declaration of catalog.callableDeclarations()) {
+  const signature = catalog.callable(declaration);
   for (const parameter of signature.parameters) {
-    const name = types.inspection.read(parameter.declaration, 'parameter').name;
+    const name = catalog.inspection.read(parameter.declaration, 'parameter').name;
     console.log(name, parameter.type); // A known type, invalid causes, or deferred prerequisites.
   }
   console.log(signature.result); // Unspecified, explicitly none, or a described value type.
@@ -67,6 +67,26 @@ readable; opaque declarations remain distinct from empty records. Type handles
 belong to one catalog. Findings are complete before queries and remain unchanged
 as callers inspect recursive types. Inspect both resolution and type findings;
 neither phase claims whole-program validity.
+
+## Check expressions and contracts
+
+```ts
+import { ExpressionChecker } from 'executable-specification-language';
+
+const checker = new ExpressionChecker(catalog);
+for (const callable of catalog.inspection.query('function')) {
+  const checked = checker.checkContract(callable.id);
+  console.log(checked.problems, checked.deferred);
+}
+```
+
+`typeOf`, `checkValue`, `checkCall`, `checkCondition`, `checkExpectation` and
+`checkDefault` answer individual questions. A type result has a `value` only when
+valid and complete; inspect both `problems` and `deferred`. Supplied value scopes
+describe availability for that call. Defaults are checked separately from their
+uses. Contracts check declared conditions without executing them or verifying
+prose promises. Shared `catalog.types` owns declared and inferred type identities;
+checking leaves source facts and earlier reports unchanged.
 
 ## Development and delivery
 

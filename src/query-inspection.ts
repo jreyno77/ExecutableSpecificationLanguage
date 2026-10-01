@@ -6,6 +6,10 @@ import { isNodeId, propertyNames, type Model, type ModelNode, type NodeId, type 
 export class QueryInspection implements Inspection {
   private readonly views = new Map<NodeId, Item>();
   constructor(private readonly model: Model) {}
+  parent(id: NodeId): Item | undefined {
+    const parent = this.model.parent(id);
+    return parent === undefined ? undefined : this.read(parent);
+  }
   query<K extends NodeKind>(kind: K): Iterable<Item<K>> {
     const nodes = this.model.nodes(kind);
     const inspection = this;

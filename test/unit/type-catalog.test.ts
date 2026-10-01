@@ -5,6 +5,32 @@ import {
 } from '../../src/index.js';
 
 describe('a type catalog caller uses checked, stable queries', () => {
+  it('shares inferred collection types with signature and field queries', () => {
+    const { catalog } = describeText('type Box<T> { value: T }');
+    const builtin = (name: string) => [...catalog.inspection.query('builtin-type')].find(type => type.name === name)!;
+    const number = catalog.declaredType(builtin('Number').id), text = catalog.declaredType(builtin('Text').id);
+    const union = catalog.types.unionOf([number, text]);
+    const list = catalog.types.intern({ kind: 'builtin', declaration: builtin('List').id, arguments: [union] });
+    const box = catalog.types.intern({ kind: 'declared', declaration: [...catalog.typeDeclarations()][0]!, arguments: [list] });
+    const fields = known(catalog.fields(box));
+    if (fields.kind !== 'available') throw new Error('Expected Box fields');
+    expect(known(fields.fields[0]!.type)).toBe(list);
+    expect(catalog.describe(list)).toEqual({ kind: 'builtin', declaration: builtin('List').id, arguments: [union] });
+    expect(catalog.describe(union)).toEqual({ kind: 'union', alternatives: [number, text] });
+    expect(catalog.problems).toEqual([]);
+    expect(catalog.deferred).toEqual([]);
+  });
+
+  it('keeps inferred type handles local to the catalog snapshot that owns them', () => {
+    const { resolution, catalog } = describeText('type Cart {}');
+    const cart = catalog.declaredType([...catalog.typeDeclarations()][0]!);
+    const inferred = catalog.types.intern({ kind: 'optional', inner: cart });
+    const other = new TypeDescriber().describe(resolution);
+    expect(other.types).not.toBe(catalog.types);
+    expect(() => other.describe(inferred)).toThrow(expect.objectContaining({ code: 'unknown-type', typeId: inferred }));
+    expect(catalog.describe(inferred)).toEqual({ kind: 'optional', inner: cart });
+  });
+
   it('rejects a declaration where a type expression is required', () => {
     const { resolution, catalog } = describeText('type Cart {}');
     const declaration = [...resolution.model.nodes('record-type-declaration')][0]!.id;
