@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import type { PackagePhase } from '../../src/index.js';
-import { DeclarationResolution } from '../support/declaration-resolution.js';
+import { DeclarationResolution } from '../dsl/declaration-resolution.js';
 
 describe('one inspection acquires resolution facts', () => {
   it('keeps an imported alias and adds its actual declaration target', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QueryInspection } from '../support/query-inspection.js';
+import { QueryInspection } from '../dsl/query-inspection.js';
 
 describe('inspection observations cannot imply work that has not run', () => {
   it('distinguishes uncollected capabilities from a collected empty result', () => {
@@ -43,4 +43,3 @@ describe('inspection observations cannot imply work that has not run', () => {
     expect(() => inspection.expectSourceUnchanged()).toThrow('Read source before checking it');
   });
 });
-

@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 .vitest/
-src/grammar/generated/
+src/langium/generated/
 .local-docs/
 /AGENTS.md
 *.tsbuildinfo

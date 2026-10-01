@@ -1,0 +1,5 @@
+{
+  "projectName": "Expec",
+  "languages": [{ "id": "expec", "grammar": "src/langium/Expec.langium", "fileExtensions": [".expec"] }],
+  "out": "src/langium/generated"
+}

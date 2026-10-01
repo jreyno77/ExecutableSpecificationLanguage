@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { SourceReading } from "../support/source-reading.js";
+import { SourceReading } from "../dsl/source-reading.js";
 
 describe("an author reads a specification", () => {
   it("preserves a plain concept name at its authored location", () => {

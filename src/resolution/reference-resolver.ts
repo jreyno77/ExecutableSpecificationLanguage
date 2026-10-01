@@ -1,4 +1,4 @@
-import type { InspectionKind, InspectionNode, NodeId, Origin, ReferenceResolution } from '../inspection.js';
+import type { NodeKind, ModelNode, NodeId, Origin, ReferenceResolution } from '../model.js';
 import type { PackageAvailability } from './package-availability.js';
 import type { ResolutionProblem } from './problem.js';
 import type { Scope, ScopeGraph, Lookup } from './scopes.js';
@@ -20,14 +20,14 @@ const requirements: Record<DeferredReason, string> = {
   interaction: 'Interaction checking must identify participants and select the recipient operation.',
 };
 
-const typeKinds: ReadonlySet<InspectionKind> = new Set([
+const typeKinds: ReadonlySet<NodeKind> = new Set([
   'concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration',
   'opaque-type-declaration', 'type-parameter', 'builtin-type',
 ]);
-const subjectKinds: ReadonlySet<InspectionKind> = new Set([
+const subjectKinds: ReadonlySet<NodeKind> = new Set([
   ...typeKinds, 'capability', 'function', 'setup', 'action', 'observation', 'check',
 ]);
-const capabilityKind: ReadonlySet<InspectionKind> = new Set(['capability']);
+const capabilityKind: ReadonlySet<NodeKind> = new Set(['capability']);
 
 /** Resolves each authored use in its lexical context; it never loads or rewrites declarations. */
 export class ReferenceResolver {
@@ -45,7 +45,7 @@ export class ReferenceResolver {
     this.ownerContracts();
     this.packagesAndComposition();
     for (const examples of this.source.of('examples')) {
-      if (examples.payload.subject) this.resolve(this.source.node(examples.payload.subject) as InspectionNode<'reference'>);
+      if (examples.subject) this.resolve(this.source.node(examples.subject) as ModelNode<'reference'>);
     }
     for (const reference of this.source.of('reference')) {
       if (!this.bindings.has(reference.id)) this.resolve(reference);
@@ -53,7 +53,7 @@ export class ReferenceResolver {
   }
 
   private ownerContracts(): void {
-    const constructions = new Map<Scope, InspectionNode>();
+    const constructions = new Map<Scope, ModelNode>();
     for (const construction of this.source.of('construction')) {
       const scope = this.scopes.scope(construction.id);
       const previous = constructions.get(scope);
@@ -63,12 +63,12 @@ export class ReferenceResolver {
       });
       else constructions.set(scope, construction);
     }
-    const publicNames = new Map<Scope, Map<string, InspectionNode>>();
+    const publicNames = new Map<Scope, Map<string, ModelNode>>();
     for (const entry of this.source.of('public')) {
       const scope = this.scopes.scope(entry.id);
-      const seen = publicNames.get(scope) ?? new Map<string, InspectionNode>();
+      const seen = publicNames.get(scope) ?? new Map<string, ModelNode>();
       publicNames.set(scope, seen);
-      for (const id of entry.payload.references) {
+      for (const id of entry.references) {
         const reference = this.source.node(id);
         const name = JSON.stringify(this.source.reference(id));
         const previous = seen.get(name);
@@ -86,12 +86,12 @@ export class ReferenceResolver {
 
   private packagesAndComposition(): void {
     for (const requirement of this.source.of('requires-package')) {
-      const locator = this.source.node(requirement.payload.locator);
-      if (locator.payload.kind !== 'string-literal') throw new Error('A package locator must be a string literal.');
-      this.locateFailures(locator, this.packages.check(locator.payload.value, requirement.payload.phase));
+      const locator = this.source.node(requirement.locator);
+      if (locator.kind !== 'string-literal') throw new Error('A package locator must be a string literal.');
+      this.locateFailures(locator, this.packages.check(locator.value, requirement.phase));
     }
     for (const node of this.source.nodes) {
-      if (node.payload.kind === 'include' || node.payload.kind === 'extend' || node.payload.kind === 'examples-attachment') {
+      if (node.kind === 'include' || node.kind === 'extend' || node.kind === 'examples-attachment') {
         this.problems.push({
           code: 'composition-required', message: 'This declaration needs supplied source composition.',
           at: node.origin, related: [],
@@ -100,7 +100,7 @@ export class ReferenceResolver {
     }
   }
 
-  private locateFailures(node: InspectionNode, causes: readonly ResolutionProblem[]): readonly ResolutionProblem[] {
+  private locateFailures(node: ModelNode, causes: readonly ResolutionProblem[]): readonly ResolutionProblem[] {
     return causes.map(cause => {
       const problem = cause.code === 'invalid-dependency-input' ? cause
         : { ...cause, at: node.origin, related: [cause.at, ...cause.related] };
@@ -109,22 +109,22 @@ export class ReferenceResolver {
     });
   }
 
-  private resolve(reference: InspectionNode<'reference'>): void {
+  private resolve(reference: ModelNode<'reference'>): void {
     const parent = this.source.parent(reference.id);
     if (!parent) throw new Error('An inspected reference needs a containing construct.');
     const scope = this.scopes.scope(reference.id);
     const path = this.source.reference(reference.id);
-    const instruction = reference.payload.lookup;
+    const instruction = reference.lookup;
     if (instruction) {
       const found = instruction.kind === 'module'
         ? this.scopes.select(instruction.locator, path, scope)
         : instruction.kind === 'builtin' ? this.scopes.builtin(path[0]!) : this.scopes.lookup(scope, path);
-      const required = instruction.kind === 'builtin' ? new Set<InspectionKind>(['builtin-type'])
-        : instruction.kind === 'type-parameter' ? new Set<InspectionKind>(['type-parameter']) : typeKinds;
+      const required = instruction.kind === 'builtin' ? new Set<NodeKind>(['builtin-type'])
+        : instruction.kind === 'type-parameter' ? new Set<NodeKind>(['type-parameter']) : typeKinds;
       this.accept(reference, path, scope, found, required, instruction.kind === 'module');
       return;
     }
-    switch (parent.payload.kind) {
+    switch (parent.kind) {
       case 'extend': case 'examples-attachment': this.defer(reference, 'composition'); return;
       case 'member-expression': this.defer(reference, 'receiver-type'); return;
       case 'message': this.defer(reference, 'interaction'); return;
@@ -137,22 +137,22 @@ export class ReferenceResolver {
       case 'public':
         if (scope.composition) { this.defer(reference, 'composition'); return; }
         this.lookup(reference, path, scope, capabilityKind, true); return;
-      default: throw new Error(`Reference owner ${parent.payload.kind} has no resolution rule.`);
+      default: throw new Error(`Reference owner ${parent.kind} has no resolution rule.`);
     }
   }
 
-  private lookup(reference: InspectionNode<'reference'>, path: readonly string[], scope: Scope,
-    required?: ReadonlySet<InspectionKind>, ownOnly = false): void {
+  private lookup(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,
+    required?: ReadonlySet<NodeKind>, ownOnly = false): void {
     this.accept(reference, path, scope, this.scopes.lookup(scope, path, ownOnly), required);
   }
 
-  private accept(reference: InspectionNode<'reference'>, path: readonly string[], scope: Scope,
-    found: Lookup, required?: ReadonlySet<InspectionKind>, moduleLookup = false): void {
+  private accept(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,
+    found: Lookup, required?: ReadonlySet<NodeKind>, moduleLookup = false): void {
     const at = reference.origin;
     let problem: ResolutionProblem;
     switch (found.status) {
       case 'found':
-        if (!required || required.has(found.declaration.payload.kind)) {
+        if (!required || required.has(found.declaration.kind)) {
           this.bindings.set(reference.id, { status: 'bound', target: found.declaration.id });
           return;
         }
@@ -190,7 +190,7 @@ export class ReferenceResolver {
   private requiresComposition(scope: Scope, path: readonly string[]): boolean {
     if (this.hasIncludes || scope.composition) return true;
     for (const extension of this.source.of('extend')) {
-      const targetPath = this.source.reference(extension.payload.target);
+      const targetPath = this.source.reference(extension.target);
       const target = this.scopes.lookup(this.scopes.scope(extension.id), targetPath);
       if (target.status === 'found') {
         if (this.scopes.isWithinDeclaration(scope, target.declaration.id)) return true;
@@ -206,7 +206,7 @@ export class ReferenceResolver {
     return false;
   }
 
-  private defer(reference: InspectionNode<'reference'>, reason: DeferredReason, requires = requirements[reason]): void {
+  private defer(reference: ModelNode<'reference'>, reason: DeferredReason, requires = requirements[reason]): void {
     const requirement = { occurrence: reference.id, origin: reference.origin, reason, requires };
     this.deferred.push(requirement);
     this.bindings.set(reference.id, { status: 'deferred', requirement });
