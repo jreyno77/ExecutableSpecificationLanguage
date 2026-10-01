@@ -1,4 +1,5 @@
-import type { Inspection, Item } from './inspection.js';
+import type { Inspection } from './inspection.js';
+import type { Item } from './inspection-item.js';
 import { isNodeId, propertyNames, type Model, type ModelNode, type NodeId, type NodeKind } from './model.js';
 
 /** Presents indexed model facts as readable views; child access stays lazy. */
