@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { AntlrSyntaxReader } from '../../src/grammar/reader.js';
-import { DescriptionInspection, ExternalInspection, type ModuleInspection } from '../../src/index.js';
-import { builtinInspection } from '../../src/resolution.js';
+import { LangiumReader } from '../../src/langium/reader.js';
+import { LangiumModel, ExternalModel, type ModuleModel } from '../../src/index.js';
+import { builtinModel } from '../../src/resolution.js';
 import { ScopeGraph, type Lookup } from '../../src/resolution/scopes.js';
 import { SourceIndex } from '../../src/resolution/source-index.js';
 
 function source(locator: string, text: string): SourceIndex {
-  const read = new AntlrSyntaxReader().read({ sourceId: locator + '.expec', text });
+  const read = new LangiumReader().read({ sourceId: locator + '.expec', text });
   if (read.status !== 'accepted') throw new Error('Scope example must be grammatical: ' + JSON.stringify(read.diagnostics));
-  return new SourceIndex(new DescriptionInspection(locator, read.description));
+  return new SourceIndex(new LangiumModel(locator, read.document));
 }
-function external(inspection: ModuleInspection): SourceIndex { return new SourceIndex(inspection); }
-function scopes(...modules: SourceIndex[]): ScopeGraph { return new ScopeGraph(modules, builtinInspection()); }
+function external(inspection: ModuleModel): SourceIndex { return new SourceIndex(inspection); }
+function scopes(...modules: SourceIndex[]): ScopeGraph { return new ScopeGraph(modules, builtinModel()); }
 function occurrence(module: SourceIndex, path: readonly string[], index = 0) {
   const found = module.of('reference').filter(node => JSON.stringify(module.reference(node.id)) === JSON.stringify(path))[index];
   if (!found) throw new Error('Example does not contain reference ' + path.join('.'));
@@ -35,7 +35,7 @@ describe('scope consumers follow the declared public contract', () => {
   it('selects a capability listed by its owner', () => {
     const store = source('store', 'concept Store { public save\ncapability save() }');
     const graph = scopes(store);
-    expect(target(graph.select('store', ['Store', 'save'])).payload.kind).toBe('capability');
+    expect(target(graph.select('store', ['Store', 'save'])).kind).toBe('capability');
   });
 
   it('keeps owner-local capability calls available without a public listing', () => {
@@ -44,11 +44,11 @@ describe('scope consumers follow the declared public contract', () => {
   capability exercise() { requires save() }
 }`);
     const graph = scopes(store);
-    expect(target(selectAt(graph, store, ['save'])).payload.kind).toBe('capability');
+    expect(target(selectAt(graph, store, ['save'])).kind).toBe('capability');
   });
 
   it('applies the same public visibility to external and source module declarations', () => {
-    const store = external(new ExternalInspection('store', [{
+    const store = external(new ExternalModel('store', [{
       kind: 'concept', name: 'Store', public: ['save'],
       members: [
         { kind: 'capability', name: 'save', parameters: [] },
@@ -56,7 +56,7 @@ describe('scope consumers follow the declared public contract', () => {
       ],
     }]));
     const graph = scopes(store);
-    expect(target(graph.select('store', ['Store', 'save'])).payload.kind).toBe('capability');
+    expect(target(graph.select('store', ['Store', 'save'])).kind).toBe('capability');
     expect(graph.select('store', ['Store', 'reset']).status).toBe('inaccessible');
   });
 });
@@ -118,8 +118,8 @@ describe('lexical scope consumers retain local and generic identity', () => {
     const graph = scopes(library);
     const pairT = target(selectAt(graph, library, ['T'], 0));
     const pageT = target(selectAt(graph, library, ['T'], 1));
-    expect(pairT.payload.kind).toBe('type-parameter');
-    expect(pageT.payload.kind).toBe('type-parameter');
+    expect(pairT.kind).toBe('type-parameter');
+    expect(pageT.kind).toBe('type-parameter');
     expect(pairT.id).not.toBe(pageT.id);
     expect(graph.select('library', ['Pair', 'T']).status).toBe('missing');
   });
@@ -128,7 +128,7 @@ describe('lexical scope consumers retain local and generic identity', () => {
     const library = source('library', 'type T {}\nfunction save(item: T)');
     const graph = scopes(library);
     const where = graph.scope(occurrence(library, ['T']).id);
-    expect(target(graph.lookup(where, ['T'])).payload.kind).toBe('record-type-declaration');
+    expect(target(graph.lookup(where, ['T'])).kind).toBe('record-type-declaration');
   });
 
   it('keeps local declarations visible within their owner and inaccessible outside', () => {
@@ -137,7 +137,7 @@ describe('lexical scope consumers retain local and generic identity', () => {
   capability save(value: SessionState)
 }`);
     const graph = scopes(library);
-    expect(target(selectAt(graph, library, ['SessionState'])).payload.kind).toBe('record-type-declaration');
+    expect(target(selectAt(graph, library, ['SessionState'])).kind).toBe('record-type-declaration');
     expect(graph.select('library', ['Store', 'SessionState']).status).toBe('inaccessible');
   });
 
@@ -145,7 +145,7 @@ describe('lexical scope consumers retain local and generic identity', () => {
     const library = source('library', 'type Text {}');
     const graph = scopes(library);
     expect(graph.problems).toMatchObject([{ code: 'duplicate-declaration', related: [{ kind: 'builtin', name: 'Text' }] }]);
-    expect(target(graph.builtin('Text')).payload.kind).toBe('builtin-type');
+    expect(target(graph.builtin('Text')).kind).toBe('builtin-type');
   });
 
   it('does not introduce construction parameters throughout capabilities', () => {
@@ -168,7 +168,7 @@ concept Store {
   capability save(snapshot: SessionState) returns Nothing
 }`);
     const graph = scopes(store);
-    expect(target(selectAt(graph, store, ['save'])).payload.kind).toBe('capability');
+    expect(target(selectAt(graph, store, ['save'])).kind).toBe('capability');
     expect(target(selectAt(graph, store, ['SessionState'], 0)).id)
       .toBe(target(selectAt(graph, store, ['SessionState'], 1)).id);
     const exercise = store.of('action')[0]!;
@@ -190,7 +190,7 @@ examples for Missing { action exercise() returns Nothing { do save() } }`);
     expect(selectAt(graph, store, ['save'])).toEqual({
       status: 'subject-context', subject: occurrence(store, ['Missing']).id,
     });
-    expect(target(selectAt(graph, store, ['Nothing'], 1)).payload.kind).toBe('builtin-type');
+    expect(target(selectAt(graph, store, ['Nothing'], 1)).kind).toBe('builtin-type');
   });
 
   it('does not bypass a local subject accessibility to attach its examples', () => {
@@ -213,7 +213,7 @@ examples for Store { action exercise() returns Nothing { do save() } }`);
     const store = source('store', 'concept Store { public save\ncapability save() }');
     const graph = scopes(examples, store);
     expect(selectAt(graph, examples, ['save']).status).toBe('subject-context');
-    expect(target(selectAt(graph, examples, ['Nothing'])).payload.kind).toBe('builtin-type');
+    expect(target(selectAt(graph, examples, ['Nothing'])).kind).toBe('builtin-type');
   });
 
   it('keeps extension composition scoped to the extension', () => {

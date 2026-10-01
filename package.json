@@ -11,7 +11,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "description": "A compiler for readable executable software specifications.",
   "engines": {
     "node": ">=24.19.0 <25",
@@ -19,7 +22,7 @@
   },
   "packageManager": "npm@11.20.0",
   "scripts": {
-    "grammar:generate": "node scripts/generate-parser.mjs -D language=TypeScript --generate-listener false --generate-visitor false --exact-output-dir true --warnings-are-errors true --output-directory src/grammar/generated -- src/grammar/Expec.g4",
+    "grammar:generate": "langium generate",
     "build": "npm run grammar:generate && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -31,11 +34,11 @@
     "release": "npm pack"
   },
   "dependencies": {
-    "antlr4ng": "3.0.16"
+    "langium": "4.4.0"
   },
   "devDependencies": {
     "@types/node": "24.13.6",
-    "antlr-ng": "1.0.10",
+    "langium-cli": "4.4.0",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
   }

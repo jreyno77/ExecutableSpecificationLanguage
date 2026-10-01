@@ -1,4 +1,5 @@
-import { builtinNames, InspectionView, createNodeId, type BuiltinName, type InspectionNode, type ModuleInspection, type NodeId, type Origin, type ReferenceLookup } from '../inspection.js';
+import { builtinNames, createNodeId, type BuiltinName, type ModelNode, type ModuleModel, type NodeId, type Origin, type ReferenceLookup } from './model.js';
+import { IndexedModel } from './model-index.js';
 
 type DefinitionName = { readonly name: string; readonly local?: boolean };
 type TypeParameters = { readonly typeParameters?: readonly string[] };
@@ -25,8 +26,8 @@ export type TypeExpression =
       { readonly kind: 'text'; readonly value: string } | { readonly kind: 'boolean'; readonly value: boolean }
       | { readonly kind: 'number'; readonly decimal: string } };
 export interface InspectionInputProblem { readonly message: string; readonly at: Extract<Origin, { kind: 'external' }> }
-export class InspectionInputError extends Error {
-  override readonly name = 'InspectionInputError';
+export class ExternalInputError extends Error {
+  override readonly name = 'ExternalInputError';
   readonly code = 'invalid-dependency-input';
   constructor(readonly problems: readonly InspectionInputProblem[]) { super('External definitions have invalid structure.'); }
 }
@@ -34,19 +35,20 @@ export class InspectionInputError extends Error {
 type Path = readonly (string | number)[];
 type Data = Record<string, unknown>;
 type Placement = 'root' | 'member' | 'field';
+type Fields<T = ModelNode> = T extends ModelNode ? Omit<T, 'id' | 'origin'> : never;
 
 /** The external input boundary validates and adapts a finite definition tree once. */
-export class ExternalInspection extends InspectionView implements ModuleInspection {
+export class ExternalModel extends IndexedModel implements ModuleModel {
   constructor(readonly locator: string, definitions: readonly ExternalDefinition[]) {
     const adapter = new ExternalNodes(locator);
     const roots = adapter.collection(definitions, [], (value, path) => adapter.definition(value, path, 'root'));
-    if (adapter.problems.length) throw new InspectionInputError(adapter.problems);
+    if (adapter.problems.length) throw new ExternalInputError(adapter.problems);
     super(roots, adapter.nodes);
   }
 }
 
 class ExternalNodes {
-  readonly nodes: InspectionNode[] = [];
+  readonly nodes: ModelNode[] = [];
   readonly problems: InspectionInputProblem[] = [];
   private readonly ancestors = new WeakSet<object>();
   constructor(private readonly locator: string) {}
@@ -87,12 +89,12 @@ class ExternalNodes {
   private keys(data: Data, path: Path, allowed: readonly string[]): void {
     for (const key of Object.keys(data)) if (!allowed.includes(key)) this.problem([...path, key], `Unsupported property ${key}.`);
   }
-  private add(path: Path, payload: () => InspectionNode['payload']): NodeId {
+  private add(path: Path, fields: () => Fields): NodeId {
     const id = createNodeId();
     const index = this.nodes.length;
     // Reserve the parent's position before creating any children.
-    this.nodes.push(undefined as unknown as InspectionNode);
-    this.nodes[index] = { id, origin: { kind: 'external', module: this.locator, path: [...path] }, payload: payload() } as InspectionNode;
+    this.nodes.push(undefined as unknown as ModelNode);
+    this.nodes[index] = { id, origin: { kind: 'external', module: this.locator, path: [...path] }, ...fields() } as ModelNode;
     return id;
   }
   private name(value: unknown, path: Path): NodeId {
@@ -102,12 +104,12 @@ class ExternalNodes {
     return this.add(path, () => {
       const names = this.collection(segments, [...path, 'path'], (segment, location) => this.name(segment, location));
       if (!names.length) this.problem([...path, 'path'], 'A reference requires at least one name.');
-      return { kind: 'reference', segments: names, ...(lookup ? { lookup } : {}), resolution: { status: 'not-analyzed' } };
+      return { kind: 'reference', segments: names, ...(lookup ? { lookup } : {}) };
     });
   }
   private singleReference(value: unknown, path: Path, lookup?: ReferenceLookup, namePath = path): NodeId {
     return this.add(path, () => ({ kind: 'reference', segments: [this.name(value, namePath)],
-      ...(lookup ? { lookup } : {}), resolution: { status: 'not-analyzed' } }));
+      ...(lookup ? { lookup } : {}) }));
   }
   private generics(data: Data, path: Path): NodeId[] {
     return this.collection(data.typeParameters === undefined ? [] : data.typeParameters, [...path, 'typeParameters'], (name, at) =>

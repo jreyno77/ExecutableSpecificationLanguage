@@ -1,4 +1,4 @@
-import type { Origin } from '../inspection.js';
+import type { Origin } from '../model.js';
 
 export type ProblemLocation =
   | Origin

@@ -1,12 +1,12 @@
-import type { Inspection, InspectionNode, NodeId, ReferenceResolution } from '../inspection.js';
+import type { Model, ModelNode, NodeId, ReferenceResolution } from '../model.js';
 import type { ProblemLocation, ResolutionProblem } from './problem.js';
-import { children, SourceIndex } from './source-index.js';
+import { SourceIndex } from './source-index.js';
 
 export type Introduction = {
   readonly at: ProblemLocation;
   readonly importKey?: string;
 } & (
-  | { readonly target: InspectionNode; readonly problems?: never }
+  | { readonly target: ModelNode; readonly problems?: never }
   | { readonly problems: readonly ResolutionProblem[]; readonly target?: never }
 );
 
@@ -22,9 +22,9 @@ export class Scope {
 }
 
 export type Lookup =
-  | { readonly status: 'found'; readonly declaration: InspectionNode }
+  | { readonly status: 'found'; readonly declaration: ModelNode }
   | { readonly status: 'missing' }
-  | { readonly status: 'inaccessible'; readonly declaration: InspectionNode }
+  | { readonly status: 'inaccessible'; readonly declaration: ModelNode }
   | { readonly status: 'subject-context'; readonly subject: NodeId }
   | { readonly status: 'ambiguous'; readonly introductions: readonly Introduction[] }
   | { readonly status: 'invalid'; readonly problems: readonly ResolutionProblem[] };
@@ -52,11 +52,11 @@ export class ScopeGraph {
 
   constructor(
     sources: readonly SourceIndex[],
-    builtinInspection: Inspection,
+    builtinModel: Model,
     private readonly moduleFailures: ReadonlyMap<string, readonly ResolutionProblem[]> = new Map(),
   ) {
-    for (const builtin of builtinInspection.nodes('builtin-type')) {
-      this.introduce(this.builtinScope, builtinInspection.name(builtin.payload.name), { target: builtin, at: builtin.origin });
+    for (const builtin of builtinModel.nodes('builtin-type')) {
+      this.introduce(this.builtinScope, builtinModel.node(builtin.name, 'name').decoded, { target: builtin, at: builtin.origin });
     }
     // All declarations exist before imports: cyclic modules select actual identities.
     for (const source of sources) {
@@ -168,8 +168,8 @@ export class ScopeGraph {
   private choose(scope: Scope, name: string, from: Scope, exportsOnly = false): Lookup {
     const introductions = (scope.names.get(name) ?? []).filter(item => !exportsOnly || (
       item.importKey === undefined && item.target
-      && item.target.payload.kind !== 'builtin-type'
-      && item.target.payload.kind !== 'parameter' && item.target.payload.kind !== 'type-parameter'
+      && item.target.kind !== 'builtin-type'
+      && item.target.kind !== 'parameter' && item.target.kind !== 'type-parameter'
     ));
     if (!introductions.length) return { status: 'missing' };
     const conflicts = this.conflicts(name, introductions);
@@ -183,8 +183,8 @@ export class ScopeGraph {
     const privateScope = this.privateTo.get(declaration.id);
     if (privateScope && !this.within(from, privateScope)) return { status: 'inaccessible', declaration };
     const owner = this.capabilityOwners.get(declaration.id);
-    if (owner && declaration.payload.kind === 'capability' && !this.within(from, owner)) {
-      const name = this.indices.get(declaration.id)!.name(declaration.payload.name);
+    if (owner && declaration.kind === 'capability' && !this.within(from, owner)) {
+      const name = this.indices.get(declaration.id)!.name(declaration.name);
       if (!this.publicNames.get(owner)?.has(name)) return { status: 'inaccessible', declaration };
     }
     return { status: 'found', declaration };
@@ -193,16 +193,16 @@ export class ScopeGraph {
   private importModuleNames(source: SourceIndex): void {
     const root = this.moduleRoots.get(source.locator)!;
     for (const use of source.of('use')) {
-      const locator = source.node(use.payload.locator);
-      if (locator.payload.kind !== 'string-literal') throw new Error('Inspected import locator is not text.');
-      for (const id of use.payload.imports) {
+      const locator = source.node(use.locator);
+      if (locator.kind !== 'string-literal') throw new Error('Inspected import locator is not text.');
+      for (const id of use.imports) {
         const item = source.node(id);
-        if (item.payload.kind !== 'import-item') throw new Error('Inspected import item is malformed.');
-        const reference = source.node(item.payload.imported);
+        if (item.kind !== 'import-item') throw new Error('Inspected import item is malformed.');
+        const reference = source.node(item.imported);
         const path = source.reference(reference.id);
-        const name = item.payload.alias ? source.name(item.payload.alias) : path.at(-1)!;
-        const found = this.select(locator.payload.value, path, root);
-        const introduction = { at: item.origin, importKey: JSON.stringify([locator.payload.value, path]) };
+        const name = item.alias ? source.name(item.alias) : path.at(-1)!;
+        const found = this.select(locator.value, path, root);
+        const introduction = { at: item.origin, importKey: JSON.stringify([locator.value, path]) };
         if (found.status === 'found') {
           this.introduce(root, name, { ...introduction, target: found.declaration });
           this.imports.set(reference.id, { status: 'bound', target: found.declaration.id });
@@ -216,7 +216,7 @@ export class ScopeGraph {
     }
   }
 
-  private importProblems(reference: InspectionNode, path: readonly string[], found: Exclude<Lookup, { status: 'found' }>): readonly ResolutionProblem[] {
+  private importProblems(reference: ModelNode, path: readonly string[], found: Exclude<Lookup, { status: 'found' }>): readonly ResolutionProblem[] {
     if (found.status === 'invalid') return found.problems.map(problem => ({
       ...problem, at: reference.origin, related: [problem.at, ...problem.related],
     }));
@@ -256,25 +256,25 @@ export class ScopeGraph {
     return scope;
   }
 
-  private declare(source: SourceIndex, node: InspectionNode, scope: Scope, local: boolean): void {
-    if (!('name' in node.payload)) throw new Error('A declaration must have a name.');
-    this.introduce(scope, source.name(node.payload.name), { target: node, at: node.origin });
+  private declare(source: SourceIndex, node: ModelNode, scope: Scope, local: boolean): void {
+    if (!('name' in node)) throw new Error('A declaration must have a name.');
+    this.introduce(scope, source.name(node.name), { target: node, at: node.origin });
     if (local) this.privateTo.set(node.id, scope);
-    if (node.payload.kind === 'capability') this.capabilityOwners.set(node.id, scope);
+    if (node.kind === 'capability') this.capabilityOwners.set(node.id, scope);
   }
 
   private parameters(source: SourceIndex, ids: readonly NodeId[], scope: Scope): void {
     const names = new Set(ids.map(id => {
       const parameter = source.node(id);
-      if (parameter.payload.kind !== 'parameter') throw new Error('Inspected parameter list contains a non-parameter.');
-      return source.name(parameter.payload.name);
+      if (parameter.kind !== 'parameter') throw new Error('Inspected parameter list contains a non-parameter.');
+      return source.name(parameter.name);
     }));
     for (const id of ids) this.walk(source, source.node(id), scope, false, names);
   }
 
-  private walk(source: SourceIndex, node: InspectionNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
+  private walk(source: SourceIndex, node: ModelNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
     this.nodeScopes.set(node.id, scope);
-    const p = node.payload;
+    const p = node;
     switch (p.kind) {
       case 'local': this.walk(source, source.node(p.declaration), scope, true); return;
       case 'concept': case 'component': case 'class': case 'interface': {
@@ -338,7 +338,7 @@ export class ScopeGraph {
         const ordered = new Set<string>();
         for (const member of p.members) {
           const child = source.node(member);
-          if (child.payload.kind === 'let') ordered.add(source.name(child.payload.name));
+          if (child.kind === 'let') ordered.add(source.name(child.name));
         }
         const inside = this.childScope(scope, scope.owner, ordered);
         for (const member of p.members) this.walk(source, source.node(member), inside);
@@ -348,19 +348,19 @@ export class ScopeGraph {
         const ordered = new Set<string>();
         for (const step of p.steps) {
           const child = source.node(step);
-          if ((child.payload.kind === 'given' || child.payload.kind === 'when' || child.payload.kind === 'then') && child.payload.capture) {
-            ordered.add(source.name(child.payload.capture));
+          if ((child.kind === 'given' || child.kind === 'when') && child.capture) {
+            ordered.add(source.name(child.capture));
           }
         }
         const inside = this.childScope(scope, scope.owner, ordered);
-        for (const child of children(node)) this.walk(source, source.node(child), inside);
+        for (const child of source.children(node.id)) this.walk(source, source.node(child), inside);
         return;
       }
       case 'interaction': {
         const ordered = new Set<string>();
         for (const member of p.members) {
           const child = source.node(member);
-          if (child.payload.kind === 'message' && child.payload.capture) ordered.add(source.name(child.payload.capture));
+          if (child.kind === 'message' && child.capture) ordered.add(source.name(child.capture));
         }
         const inside = this.childScope(scope, scope.owner, ordered);
         this.walk(source, source.node(p.title), inside);
@@ -375,6 +375,6 @@ export class ScopeGraph {
         return;
       }
     }
-    for (const child of children(node)) this.walk(source, source.node(child), scope);
+    for (const child of source.children(node.id)) this.walk(source, source.node(child), scope);
   }
 }

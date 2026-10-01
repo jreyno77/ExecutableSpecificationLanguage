@@ -1,4 +1,4 @@
-import type { ModuleInspection, NodeId } from '../inspection.js';
+import type { ModuleModel, NodeId } from '../model.js';
 import type { ResolutionProblem, ProblemLocation } from './problem.js';
 import { SourceIndex } from './source-index.js';
 
@@ -9,7 +9,7 @@ export class Modules {
   readonly failures = new Map<string, readonly ResolutionProblem[]>();
   readonly problems: ResolutionProblem[] = [];
 
-  constructor(entry: ModuleInspection, supplied: readonly ModuleInspection[]) {
+  constructor(entry: ModuleModel, supplied: readonly ModuleModel[]) {
     const inputs = [entry, ...supplied].map(inspection => new SourceIndex(inspection));
     const locations = inputs.map((_, index): ProblemLocation => ({
       kind: 'dependency', path: index === 0 ? ['entry', 'locator'] : ['modules', index - 1, 'locator'],
@@ -55,11 +55,11 @@ export class Modules {
       reached.set(input.locator, input);
       const targets = new Set<string>();
       for (const use of input.of('use')) {
-        const locator = input.node(use.payload.locator);
-        if (locator.payload.kind === 'string-literal') targets.add(locator.payload.value);
+        const locator = input.node(use.locator);
+        if (locator.kind === 'string-literal') targets.add(locator.value);
       }
       for (const reference of input.of('reference')) {
-        if (reference.payload.lookup?.kind === 'module') targets.add(reference.payload.lookup.locator);
+        if (reference.lookup?.kind === 'module') targets.add(reference.lookup.locator);
       }
       for (const target of targets) {
         const dependency = byLocator.get(target);
