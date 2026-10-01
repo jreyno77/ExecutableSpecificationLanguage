@@ -13,7 +13,7 @@ export interface AcceptedDocument {
 }
 export type ReadResult =
   | { readonly status: 'accepted'; readonly grammarVersion: 'candidate-0.1'; readonly document: AcceptedDocument }
-  | { readonly status: 'rejected'; readonly grammarVersion: 'candidate-0.1'; readonly document: Readonly<SourceDocument>; readonly diagnostics: readonly SyntaxDiagnostic[] };
+  | { readonly status: 'rejected'; readonly grammarVersion: 'candidate-0.1'; readonly diagnostics: readonly SyntaxDiagnostic[] };
 
 interface ParsedDocument {
   readonly ast: Source;
@@ -36,7 +36,7 @@ export class LangiumReader {
     const source = Object.freeze({ ...input });
     const coordinates = new Coordinates(source);
     const diagnostics = literalDiagnostics(source, coordinates);
-    const reject = (): ReadResult => ({ status: 'rejected', grammarVersion: 'candidate-0.1', document: source, diagnostics });
+    const reject = (): ReadResult => ({ status: 'rejected', grammarVersion: 'candidate-0.1', diagnostics });
     if (diagnostics.length) return reject();
     const lexed = this.services.parser.Lexer.tokenize(source.text);
     for (const error of lexed.errors) diagnostics.push({ category: 'invalid-character', explanation: error.message,
