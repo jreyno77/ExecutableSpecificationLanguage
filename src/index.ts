@@ -22,3 +22,5 @@ export { Types } from './types.js';
 export { ExpressionChecker } from './expression-checker.js';
 export type { ExpressionChecking, ValueScope } from './expression-checker.js';
 export type { Check, Diagnostic, Requirement } from './checking.js';
+export { FixtureChecker } from './fixture-checker.js';
+export type { FixtureChecking } from './fixture-checker.js';

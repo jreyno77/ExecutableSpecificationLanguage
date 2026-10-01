@@ -129,7 +129,7 @@ export class ReferenceResolver {
       case 'member-expression': this.defer(reference, 'receiver-type'); return;
       case 'message': this.defer(reference, 'interaction'); return;
       case 'name-expression':
-        if (path[0] === 'result') { this.defer(reference, 'contextual-result'); return; }
+        if (path[0] === 'result' && !this.inFixture(reference.id)) { this.defer(reference, 'contextual-result'); return; }
         if (this.scopes.hasOrderedName(scope, path[0]!)) { this.defer(reference, 'ordered-scope'); return; }
         this.lookup(reference, path, scope); return;
       case 'named-type': case 'depends-on': this.lookup(reference, path, scope, typeKinds); return;
@@ -139,6 +139,13 @@ export class ReferenceResolver {
         this.lookup(reference, path, scope, capabilityKind, true); return;
       default: throw new Error(`Reference owner ${parent.kind} has no resolution rule.`);
     }
+  }
+
+  private inFixture(id: NodeId): boolean {
+    for (let parent = this.source.parent(id); parent; parent = this.source.parent(parent.id)) {
+      if (parent.kind === 'fixture') return true;
+    }
+    return false;
   }
 
   private lookup(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,

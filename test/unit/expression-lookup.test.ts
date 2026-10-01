@@ -45,6 +45,35 @@ describe('expression lookup respects actual availability and the resolved source
     expect(lookup.value(references[0]!, lookup.parameters(callable)).value).toBe(builtin(catalog, 'Number'));
   });
 
+  it('resolves an ordinary fixture named result before asking for its available value', () => {
+    const { catalog, lookup, references } = read(`examples {
+  fixture result: Number = 2
+  fixture total: Number = result + 1
+}`);
+    const fixture = [...catalog.inspection.query('fixture')].find(node => node.name === 'result')!, reference = references[0]!;
+
+    expect(reference.resolution).toEqual({ status: 'bound', target: fixture.id });
+    expect(lookup.value(reference, use => use.resolution.status === 'bound' && use.resolution.target === fixture.id
+      ? { value: builtin(catalog, 'Number'), problems: [], deferred: [] } : undefined))
+      .toEqual({ value: builtin(catalog, 'Number'), problems: [], deferred: [] });
+  });
+
+  it('does not borrow a fixture named result from another examples block', () => {
+    const { catalog, lookup, resolution, references } = read(`examples { fixture result: Number = 2 }
+examples { fixture total: Number = result + 1 }`);
+
+    expect(references[0]!.resolution.status).toBe('invalid');
+    expect(lookup.value(references[0]!, () => ({ value: builtin(catalog, 'Number'), problems: [], deferred: [] })))
+      .toEqual({ problems: [resolution.problems[0]], deferred: [] });
+    expect(resolution.problems[0]).toMatchObject({ code: 'unresolved-reference', at: references[0]!.origin });
+  });
+
+  it('does not grant a later parameter named result to an earlier default', () => {
+    const { catalog, lookup, references } = read('function count(first: Number = result, result: Number = 1)');
+    expect(lookup.value(references[0]!, () => ({ value: builtin(catalog, 'Number'), problems: [], deferred: [] })).problems)
+      .toContainEqual(expect.objectContaining({ code: 'unavailable-value', at: references[0]!.origin }));
+  });
+
   it('keeps an unspecified contextual result incomplete', () => {
     const { lookup, references } = read('function count() {\n ensures result > 0\n}');
     const checked = lookup.value(references[0]!);
