@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  readSyntax,
-  readAcceptedSource,
-  expectRejectedSyntax,
-  nodesOfKind,
-  nodeFor,
-  expectNavigableSourceForest,
-} from '../support/syntax-reading.js';
+import { readSyntax, nodesOfKind, nodeFor } from '../driver/syntax-reading.js';
+import { readAcceptedSource, expectRejectedSyntax, expectNavigableSourceForest } from '../dsl/syntax-reading.js';
 
 describe('authoring software declarations and examples', () => {
   it("reads Store Game contracts with public capabilities and dependencies", () => {

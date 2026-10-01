@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InspectionError, type NodeId } from '../../src/index.js';
-import { capabilityNames, inspectText } from '../support/query-inspection.js';
+import { capabilityNames, inspectText } from '../driver/query-inspection.js';
 
 describe('an inspection caller consumes independent queries', () => {
   it('obtains fresh iterators from the same iterable and can replay it', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSyntaxReader } from '../../src/index.js';
 import { DescriptionInspection, ExternalInspection, InspectionInputError,
   type ExternalDefinition, type Inspection, type NodeId } from '../../src/index.js';
-import { describeType } from '../support/type-description.js';
+import { describeType } from '../driver/type-description.js';
 
 function source(text: string) {
   const read = createSyntaxReader().read({ sourceId: 'library.expec', text });

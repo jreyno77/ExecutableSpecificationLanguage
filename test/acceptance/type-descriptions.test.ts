@@ -1,5 +1,5 @@
 import { describe, it } from 'vitest';
-import { TypeDescriptions } from '../support/type-descriptions.js';
+import { TypeDescriptions } from '../dsl/type-descriptions.js';
 
 describe('a checker and contract viewer describe resolved types', () => {
   it('describes a pair using its supplied element type', () => {

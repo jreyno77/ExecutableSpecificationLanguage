@@ -1,4 +1,3 @@
-import { expect } from 'vitest';
 import {
   capabilitySummaries, namedTypeOccurrences, promiseDescriptions,
   type Capability, type TypeUse, type PromiseText,
@@ -10,10 +9,10 @@ function recorded<T>(value: T | undefined, message: string): T {
   return value;
 }
 
-export class QueryInspection {
+export class QueryInspectionDriver {
   private result: ReadResult | undefined;
-  private original!: ReadResult;
-  private inspection: Inspection | undefined;
+  original!: ReadResult;
+  inspection: Inspection | undefined;
   private capabilities: Capability[] | undefined;
   private typeUses: TypeUse[] | undefined;
   private typeIds: object[] = [];
@@ -43,49 +42,25 @@ export class QueryInspection {
     this.promises = promiseDescriptions(this.acceptedInspection());
   }
 
-  expectCapabilities(expected: Capability[]): void {
-    const actual = recorded(this.capabilities, 'Collect capabilities before checking them');
-    expect(actual, 'Capability declarations in authored order').toEqual(expected);
+  collectedCapabilities(): Capability[] {
+    return recorded(this.capabilities, 'Collect capabilities before checking them');
   }
 
-  expectCapabilityNames(expected: string[]): void {
-    const actual = recorded(this.capabilities, 'Collect capabilities before checking them');
-    expect(actual.map(item => item.name), 'Capability names in authored order').toEqual(expected);
+  collectedTypes(): TypeUse[] {
+    return recorded(this.typeUses, 'Collect named types before checking them');
   }
 
-  expectNamedTypes(expected: TypeUse[]): void {
-    const actual = recorded(this.typeUses, 'Collect named types before checking them');
-    expect(actual, 'Named type occurrences in authored order').toEqual(expected);
+  collectedTypeIds(): object[] {
+    this.collectedTypes();
+    return this.typeIds;
   }
 
-  expectTypeNames(expected: string[]): void {
-    const actual = recorded(this.typeUses, 'Collect named types before checking them');
-    expect(actual.map(item => item.name), 'Named type spellings in authored order').toEqual(expected);
+  collectedPromises(): PromiseText[] {
+    return recorded(this.promises, 'Collect promises before checking them');
   }
 
-  expectDistinctTypeOccurrences(count: number): void {
-    recorded(this.typeUses, 'Collect named types before checking them');
-    expect(this.typeIds).toHaveLength(count);
-    expect(new Set(this.typeIds).size).toBe(count);
-  }
-
-  expectPromises(expected: PromiseText[]): void {
-    const actual = recorded(this.promises, 'Collect promises before checking them');
-    expect(actual, 'Authored prose promises').toEqual(expected);
-  }
-
-  expectSourceUnchanged(): void {
-    const actual = recorded(this.result, 'Read source before checking it');
-    expect(actual, 'Source read result after inspection').toEqual(this.original);
-  }
-
-  expectRejectedWithDiagnostics(): void {
-    const result = recorded(this.result, 'Read source before checking it');
-    expect(result.status).toBe('rejected');
-    if (result.status !== 'rejected') throw new Error('Expected syntax rejection');
-    expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(this.inspection).toBeUndefined();
-    expect(result.diagnostics).toEqual(this.original.status === 'rejected' ? this.original.diagnostics : []);
+  readResult(): ReadResult {
+    return recorded(this.result, 'Read source before checking it');
   }
 
   private acceptedInspection(): Inspection {

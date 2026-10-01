@@ -1,5 +1,5 @@
 import { describe, it } from 'vitest';
-import { QueryInspection } from '../support/query-inspection.js';
+import { QueryInspection } from '../dsl/query-inspection.js';
 
 describe('an analysis author inspects declared source through queries', () => {
   it('keeps capabilities and their inputs in authored order with declaration and name locations', () => {
