@@ -1,5 +1,4 @@
-import { children, InspectionError, type InspectionNode, type NodeId } from './inspection.js';
-import type { Resolution } from './resolution.js';
+import { QueryError, type Model, type ModelNode, type NodeId } from './model.js';
 import type { DeferredReference } from './resolution/reference-resolver.js';
 import type { ProblemLocation, ResolutionProblem } from './resolution/problem.js';
 import type { FieldShape } from './type-catalog.js';
@@ -36,8 +35,7 @@ const expressions = new Set(['named-type', 'tuple-type', 'union-type', 'optional
 
 /** Interprets finite syntax; nominal fields are substituted only when requested. */
 export class TypeDescriptions {
-  readonly ordered: readonly InspectionNode[];
-  readonly parents = new Map<NodeId, NodeId>();
+  readonly ordered: readonly ModelNode[];
   readonly problems: TypeProblem[] = [];
   readonly deferred: DeferredReference[] = [];
   private readonly descriptions = new Map<TypeId, TypeDescription>();
@@ -46,19 +44,19 @@ export class TypeDescriptions {
   private readonly findings = new Map<string, TypeProblem>();
   private readonly facts = new Map<NodeId, TypeFact<TypeId>>();
 
-  constructor(readonly inspection: Resolution) {
-    const nodes = new Map<NodeId, InspectionNode>();
+  constructor(protected readonly model: Model) {
+    const nodes = new Map<NodeId, ModelNode>();
     const visit = (id: NodeId): void => {
       if (nodes.has(id)) return;
-      const node = inspection.node(id);
+      const node = model.node(id);
       nodes.set(id, node);
-      for (const child of children(node)) { this.parents.set(child, id); visit(child); }
+      for (const child of model.children(id)) visit(child);
     };
-    for (const root of inspection.roots()) visit(root);
+    for (const root of model.roots()) visit(root);
     this.ordered = [...nodes.values()];
     for (const node of this.ordered) {
-      if (declarations.has(node.payload.kind)) this.declaredType(node.id);
-      if (expressions.has(node.payload.kind)) this.typeOf(node.id);
+      if (declarations.has(node.kind)) this.declaredType(node.id);
+      if (expressions.has(node.kind)) this.typeOf(node.id);
     }
     for (const fact of this.facts.values()) {
       const requirements = fact.status === 'deferred' ? fact.requirements : fact.status === 'invalid' ? fact.deferred : [];
@@ -67,13 +65,13 @@ export class TypeDescriptions {
   }
 
   declaredType(declaration: NodeId): TypeId {
-    const node = this.inspection.node(declaration);
-    if (!declarations.has(node.payload.kind)) throw new InspectionError('unexpected-kind', declaration, 'Expected a type declaration.');
-    const parameters = 'typeParameters' in node.payload ? node.payload.typeParameters : [];
+    const node = this.model.node(declaration);
+    if (!declarations.has(node.kind)) throw new QueryError('unexpected-kind', declaration, 'Expected a type declaration.');
+    const parameters = 'typeParameters' in node ? node.typeParameters : [];
     return this.apply(declaration, parameters.map(id => this.declaredType(id)), []);
   }
   typeOf(expression: NodeId): TypeFact<TypeId> {
-    this.inspection.node(expression);
+    this.model.node(expression);
     let fact = this.facts.get(expression);
     if (!fact) { fact = this.evaluate(expression, new Map(), [], this.allowsNothing(expression)); this.facts.set(expression, fact); }
     return fact;
@@ -90,22 +88,22 @@ export class TypeDescriptions {
       meaning = this.describe(meaning.target.value);
     }
     if (meaning.kind !== 'declared') throw new TypeQueryError('wrong-kind', type, 'Expected a field-bearing declaration.');
-    const declaration = this.inspection.node(meaning.declaration).payload;
+    const declaration = this.model.node(meaning.declaration);
     if (declaration.kind === 'opaque-type-declaration') return { status: 'known', value: { kind: 'opaque' } };
     const fields = ('fields' in declaration ? declaration.fields : 'members' in declaration ? declaration.members : [])
-      .map(id => { const node = this.inspection.node(id); return node.payload.kind === 'local' ? node.payload.declaration : id; })
-      .filter(id => this.inspection.node(id).payload.kind === 'field');
+      .map(id => { const node = this.model.node(id); return node.kind === 'local' ? node.declaration : id; })
+      .filter(id => this.model.node(id).kind === 'field');
     const parameters = 'typeParameters' in declaration ? declaration.typeParameters : [];
     const arguments_ = meaning.arguments;
     const substitution = new Map(parameters.map((id, index) => [id, arguments_[index]!]));
     return { status: 'known', value: { kind: 'available', fields: fields.map(id => ({ declaration: id,
-      type: this.evaluate(this.inspection.node(id, 'field').payload.declaredType, substitution, [], false) })) } };
+      type: this.evaluate(this.model.node(id, 'field').declaredType, substitution, [], false) })) } };
   }
 
   private allowsNothing(id: NodeId): boolean {
-    const parentId = this.parents.get(id);
+    const parentId = this.model.parent(id);
     if (!parentId) return false;
-    const parent = this.inspection.node(parentId).payload;
+    const parent = this.model.node(parentId);
     return parent.kind === 'grouped-type' ? this.allowsNothing(parentId)
       : parent.kind === 'alias-type-declaration' || ('returnType' in parent && parent.returnType === id);
   }
@@ -124,7 +122,7 @@ export class TypeDescriptions {
     return id;
   }
   private apply(declaration: NodeId, arguments_: readonly TypeId[], aliases: readonly NodeId[]): TypeId {
-    const p = this.inspection.node(declaration).payload;
+    const p = this.model.node(declaration);
     return this.intern(this.key('declaration', [declaration, ...arguments_]), () => {
       if (p.kind === 'type-parameter') return { kind: 'parameter', declaration };
       if (p.kind === 'alias-type-declaration') return { kind: 'alias', declaration, arguments: arguments_,
@@ -136,24 +134,24 @@ export class TypeDescriptions {
     const key = this.key(code, [id]);
     let problem = this.findings.get(key);
     if (!problem) {
-      problem = { code, message, at: this.inspection.node(id).origin, related: related.map(id => this.inspection.node(id).origin) };
+      problem = { code, message, at: this.model.node(id).origin, related: related.map(id => this.model.node(id).origin) };
       this.findings.set(key, problem); this.problems.push(problem);
     }
     return { status: 'invalid', problems: [problem], deferred: [] };
   }
   private evaluate(id: NodeId, substitution: Substitution, aliases: readonly NodeId[], allowNothing: boolean): TypeFact<TypeId> {
-    const p = this.inspection.node(id).payload;
+    const p = this.model.node(id);
     let fact: TypeFact<TypeId>;
     switch (p.kind) {
       case 'named-type': {
         const args = p.arguments.map(id => this.evaluate(id, substitution, aliases, false));
-        const reference = this.inspection.node(p.reference, 'reference').payload.resolution;
-        if (reference.status === 'not-analyzed') throw new InspectionError('not-analyzed', p.reference, 'Resolve the type reference before describing it.');
+        const reference = this.model.resolution(p.reference);
+        if (reference.status === 'not-analyzed') throw new QueryError('not-analyzed', p.reference, 'Resolve the type reference before describing it.');
         if (reference.status === 'invalid') return failures([...args, { status: 'invalid', problems: reference.problems, deferred: [] }])!;
         if (reference.status === 'deferred') return failures([...args, { status: 'deferred', requirements: [reference.requirement] }])!;
-        const target = this.inspection.node(reference.target).payload;
+        const target = this.model.node(reference.target);
         const arity = 'typeParameters' in target ? target.typeParameters.length
-          : target.kind === 'builtin-type' && this.inspection.name(target.name) === 'List' ? 1 : 0;
+          : target.kind === 'builtin-type' && this.model.node(target.name, 'name').decoded === 'List' ? 1 : 0;
         if (arity !== args.length) args.push(this.failure('wrong-type-argument-count', id, `Expected ${arity} type arguments, received ${args.length}.`));
         const failed = failures(args);
         if (failed) return failed;
@@ -182,12 +180,12 @@ export class TypeDescriptions {
         break;
       }
       case 'literal-type': fact = { status: 'known', value: this.intern(this.key('literal', [id]), () => ({ kind: 'literal', expression: id })) }; break;
-      default: throw new InspectionError('unexpected-kind', id, 'Expected a type expression.');
+      default: throw new QueryError('unexpected-kind', id, 'Expected a type expression.');
     }
     if (fact.status === 'known' && !allowNothing) {
       let meaning = this.describe(fact.value);
       while (meaning.kind === 'alias' && meaning.target.status === 'known') meaning = this.describe(meaning.target.value);
-      if (meaning.kind === 'builtin' && this.inspection.name(this.inspection.node(meaning.declaration, 'builtin-type').payload.name) === 'Nothing') {
+      if (meaning.kind === 'builtin' && this.model.node(this.model.node(meaning.declaration, 'builtin-type').name, 'name').decoded === 'Nothing') {
         return this.failure('invalid-nothing-use', id, 'Nothing is permitted only as a complete callable result or alias target.');
       }
     }

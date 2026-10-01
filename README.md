@@ -1,103 +1,66 @@
 # .expec
 
-An experimental language for readable software specifications.
-
-The package provides an ANTLR grammar, a source reader, typed inspection, declaration/dependency resolution, and type and callable descriptions. Expression checking, behavior validation, compiler composition, and project generation are subsequent work.
+An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, and describes types and callable contracts.
 
 ## Inspect declarations
 
-`DescriptionInspection` captures an accepted reader result at an explicit module locator:
-
 ```ts
-import { createSyntaxReader, DescriptionInspection, type Inspection } from 'executable-specification-language';
+import { LangiumReader, LangiumModel, QueryInspection } from 'executable-specification-language';
 
-const result = createSyntaxReader().read({
+const result = new LangiumReader().read({
   sourceId: 'store.expec',
-  text: 'concept StoreGame { capability saveGame() }',
+  text: 'concept StoreGame { capability saveGame(snapshot: Text) }',
 });
-
 if (result.status === 'accepted') {
-  const inspection: Inspection = new DescriptionInspection('store', result.description);
-  const capabilities = inspection.nodes('capability');
-  const names = Array.from(capabilities, node => inspection.name(node.payload.name));
-  // names: ['saveGame']
+  const model = new LangiumModel('store', result.document);
+  const inspection = new QueryInspection(model);
+  for (const capability of inspection.query('capability')) {
+    console.log(capability.name, capability.parameters.map(parameter => parameter.name));
+  }
 } else {
   console.error(result.diagnostics);
 }
 ```
 
-Each iterator starts fresh, including repeated iteration of the same iterable.
-Inspection captures a readonly snapshot with opaque node handles. It preserves
-authored facts and source locations without resolving references. `ExternalInspection`
-adapts an authored library contract into the same nodes, with external data paths
-as provenance. Invalid external structure throws `InspectionInputError`.
+`Inspection` has two operations: `query(kind)` selects readable items; `read(id, kind?)` follows a known identity. Items retain source locations or external provenance. Iterators are independent. `Model` supplies indexed structural facts beneath these views; alternative models can implement the same contract.
 
 ## Resolve declarations
 
-`Resolver` enriches a module inspection with reference outcomes. Both input producers
-use the same query and resolution operations:
-
 ```ts
-import { createSyntaxReader, DescriptionInspection, ExternalInspection, Resolver } from 'executable-specification-language';
+import { ExternalModel, Resolver, QueryInspection } from 'executable-specification-language';
 
-const shopping = new ExternalInspection('shopping', [
-  { kind: 'record-type', name: 'Cart', fields: [
-    { kind: 'field', name: 'title', type: { kind: 'builtin', name: 'Text' } },
-  ] },
-]);
-
-const read = createSyntaxReader().read({
-  sourceId: 'store.expec',
-  text: 'use Cart as Basket from "shopping"\nfunction save(cart: Basket)',
-});
-
-if (read.status === 'accepted') {
-  const store = new DescriptionInspection('store', read.description);
-  const resolved = new Resolver().resolve(store, { modules: [shopping], packages: [] });
-  for (const reference of resolved.nodes('reference')) {
-    console.log(resolved.reference(reference.id)); // Preserves Cart or Basket spelling.
-    const outcome = reference.payload.resolution;
-    if (outcome.status === 'bound') {
-      const declaration = resolved.node(outcome.target); // Actual declaration and children.
-      console.log(declaration.payload.kind, declaration.origin);
-    }
+const library = new ExternalModel('library', [{ kind: 'opaque-type', name: 'Token' }]);
+// entry is a LangiumModel whose source imports Token from "library".
+const resolution = new Resolver().resolve(entry, { modules: [library], packages: [] });
+const inspection = new QueryInspection(resolution.model);
+for (const reference of inspection.query('reference')) {
+  if (reference.resolution.status === 'bound') {
+    console.log(inspection.read(reference.resolution.target));
   }
-  console.log(resolved.problems, resolved.deferred);
 }
 ```
 
-Original inspections stay unchanged. Reacquire a reference by its original handle
-from the resolved view to read its `bound`, `invalid` or `deferred` outcome. The view
-contains the entry, reached modules and builtins; queries do not call input providers.
-Aliases share declaration identity, and a missing field type does not erase its record.
-Supplying a module does not import its names. Package configuration checks availability
-and requested phases, without performing installation.
-
-Checked lookup throws `InspectionError`: `foreign-node`, `missing-node`,
-`unexpected-kind`, or `not-analyzed` for a supplied but unreached module. Handles
-survive into derived resolution views, but not an independent reread. Deferred
-references identify composition, expression or interaction work still required;
-an empty problem list does not establish whole-compiler acceptance.
+Source and external models share query and resolution contracts. Resolution returns a captured enriched model and leaves its inputs unchanged. Handles survive enrichment, but not an independent reread. Invalid external structure throws `ExternalInputError`; invalid queries throw `QueryError` with `foreign-node`, `missing-node`, `unexpected-kind`, or `not-analyzed`. Deferred references remain explicit: an empty problem list does not establish full compiler acceptance.
 
 ## Describe types and signatures
 
-Pass the resolved inspection above to `TypeDescriber`:
+Pass the resolution above to `TypeDescriber`:
 
 ```ts
 import { TypeDescriber } from 'executable-specification-language';
 
-const types = new TypeDescriber().describe(resolved);
+const types = new TypeDescriber().describe(resolution);
 for (const declaration of types.callableDeclarations()) {
   const signature = types.callable(declaration);
   for (const parameter of signature.parameters) {
-    const name = resolved.name(resolved.node(parameter.declaration, 'parameter').payload.name);
+    const name = types.inspection.read(parameter.declaration, 'parameter').name;
     console.log(name, parameter.type); // A known type, invalid causes, or deferred prerequisites.
   }
   console.log(signature.result); // Unspecified, explicitly none, or a described value type.
 }
 ```
 
-The catalog retains the exact resolved inspection and original declaration handles.
+The catalog exposes readable inspection and preserves original declaration handles.
 `declaredType`, `typeOf`, `describe` and `fields` expose nominal identities, alias
 targets and substituted generic fields. A bad slot leaves its valid neighbors
 readable; opaque declarations remain distinct from empty records. Type handles
@@ -105,7 +68,7 @@ belong to one catalog. Findings are complete before queries and remain unchanged
 as callers inspect recursive types. Inspect both resolution and type findings;
 neither phase claims whole-program validity.
 
-## Development
+## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
 
@@ -115,19 +78,12 @@ npm run check
 npm run dev
 ```
 
-`check` generates the parser, checks types, runs unit and BDD acceptance tests, and builds the package. `dev` generates the parser once and starts Vitest's watch mode. After editing `src/grammar/Expec.g4`, run `npm run grammar:generate` to regenerate the TypeScript parser; Vitest watches the generated code. Tests use Vitest's `describe`/`it` API; fixtures live in `test/resources`.
+`check` generates the AST/parser services, checks types, runs unit and acceptance tests, and builds. `dev` generates once and starts Vitest watch. After editing `src/langium/Expec.langium`, run `npm run grammar:generate`; generated files are ignored. Tests use `test/acceptance`, `test/dsl`, `test/driver`, `test/unit`, and fixtures in `test/resources`.
 
 `test/acceptance` contains domain scenarios; `test/unit` checks focused component contracts.
 `test/dsl` provides domain actions and expectations; `test/driver` invokes the real APIs
 and returns observations. Drivers contain no test assertions or expected answers.
 
-## Package
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. npm publication, full type/behavior validation and project generation remain subsequent work.
 
-```sh
-npm run build
-npm run release
-```
-
-`release` runs `npm pack`. GitHub Actions builds a package for each task PR merged into the default branch, attaches it to a GitHub Release, and records its deployment. Report incidents through GitHub Issues. npm registry publication is not configured.
-
-Planning, language specifications and project documentation live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).
+Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).

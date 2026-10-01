@@ -4,8 +4,8 @@ import { describeType } from '../driver/type-description.js';
 
 function declaredType(text: string): string {
   const inspection = inspectText(text);
-  const declaration = Array.from(inspection.nodes('alias-type-declaration'))[0]!;
-  return describeType(inspection, declaration.payload.targetType);
+  const declaration = Array.from(inspection.query('alias-type-declaration'))[0]!;
+  return describeType(declaration.targetType);
 }
 
 describe('a consumer describes complete authored type structure', () => {

@@ -308,6 +308,14 @@ opaque type Secret`);
     types.expectNoTypeProblems();
   });
 
+  it('keeps an unresolved field location after an astral declaration name', () => {
+    const types = new TypeDescriptions();
+    types.source('type `📚` { item: Missing }');
+    types.describe('📚');
+    types.expectFieldProblem('item', 'unresolved-reference', 'Missing');
+    types.expectNoTypeProblems();
+  });
+
   it('keeps valid parameters and the result beside an invalid parameter', () => {
     const types = new TypeDescriptions();
     types.source('function save(title: Text, item: Missing) returns Number');

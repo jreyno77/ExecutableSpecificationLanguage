@@ -1,48 +1,33 @@
-import { children, type InspectionKind, type InspectionNode, type ModuleInspection, type NodeId } from '../inspection.js';
+import type { NodeKind, ModelNode, ModuleModel, NodeId } from '../model.js';
 
-/** Index common containment once; consumers never need to distinguish producers. */
+/** Lexical analysis reads the model's indexed structural facts without rebuilding their schema. */
 export class SourceIndex {
   readonly locator: string;
-  readonly nodes: readonly InspectionNode[];
-  readonly roots: readonly InspectionNode[];
-  private readonly byId = new Map<NodeId, InspectionNode>();
-  private readonly parents = new Map<NodeId, NodeId>();
+  readonly nodes: readonly ModelNode[];
+  readonly roots: readonly ModelNode[];
 
-  constructor(inspection: ModuleInspection) {
-    this.locator = inspection.locator;
-    const visit = (node: InspectionNode): void => {
-      if (this.byId.has(node.id)) return;
-      this.byId.set(node.id, node);
-      for (const child of children(node)) {
-        this.parents.set(child, node.id);
-        visit(inspection.node(child));
-      }
+  constructor(private readonly model: ModuleModel) {
+    this.locator = model.locator;
+    this.roots = model.roots().map(id => model.node(id));
+    const nodes = new Map<NodeId, ModelNode>();
+    const visit = (node: ModelNode): void => {
+      if (nodes.has(node.id)) return;
+      nodes.set(node.id, node);
+      for (const child of model.children(node.id)) visit(model.node(child));
     };
-    this.roots = [...inspection.roots()].map(id => inspection.node(id));
     for (const root of this.roots) visit(root);
-    this.nodes = [...this.byId.values()];
+    this.nodes = [...nodes.values()];
   }
 
-  node(id: NodeId): InspectionNode {
-    const node = this.byId.get(id);
-    if (!node) throw new Error('Accepted source contains an unreachable node handle.');
-    return node;
+  node(id: NodeId): ModelNode { return this.model.node(id); }
+  of<K extends NodeKind>(kind: K): readonly ModelNode<K>[] { return this.model.nodes(kind); }
+  children(id: NodeId): readonly NodeId[] { return this.model.children(id); }
+  parent(id: NodeId): ModelNode | undefined {
+    const parent = this.model.parent(id);
+    return parent ? this.model.node(parent) : undefined;
   }
-  of<K extends InspectionKind>(kind: K): readonly InspectionNode<K>[] {
-    return this.nodes.filter(node => node.payload.kind === kind) as InspectionNode<K>[];
-  }
-  parent(id: NodeId): InspectionNode | undefined {
-    const parent = this.parents.get(id);
-    return parent ? this.node(parent) : undefined;
-  }
-  name(id: NodeId): string {
-    const node = this.node(id);
-    if (node.payload.kind !== 'name') throw new Error('Accepted source requires a name handle.');
-    return node.payload.decoded;
-  }
+  name(id: NodeId): string { return this.model.node(id, 'name').decoded; }
   reference(id: NodeId): readonly string[] {
-    const node = this.node(id);
-    if (node.payload.kind !== 'reference') throw new Error('Accepted source requires a reference handle.');
-    return node.payload.segments.map(segment => this.name(segment));
+    return this.model.node(id, 'reference').segments.map(segment => this.name(segment));
   }
 }

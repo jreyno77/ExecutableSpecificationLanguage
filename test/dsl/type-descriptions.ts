@@ -107,11 +107,14 @@ export class TypeDescriptions {
     expect(this.driver.findings().deferred).toEqual([]);
   }
   expectUnchangedAfterQueries(): void {
-    const { declarations, findings, references, inspection, resolution } = this.driver.afterQueries();
+    const { declarations, findings, references, inspectedDeclarations } = this.driver.afterQueries();
     for (const declaration of declarations) expect(declaration.after).toBe(declaration.before);
     expect(findings.after).toBe(findings.before);
     expect(references.after).toBe(references.before);
-    expect(inspection).toBe(resolution);
+    for (const { original, inspected } of inspectedDeclarations) {
+      expect(inspected.id).toBe(original.id);
+      expect(inspected.origin).toEqual(original.origin);
+    }
   }
   expectIndependentCatalog(): void {
     const { error, selected, original, description, type } = this.driver.independentCatalog();

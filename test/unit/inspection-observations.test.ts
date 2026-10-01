@@ -43,4 +43,3 @@ describe('inspection observations cannot imply work that has not run', () => {
     expect(() => inspection.expectSourceUnchanged()).toThrow('Read source before checking it');
   });
 });
-

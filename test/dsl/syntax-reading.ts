@@ -1,31 +1,44 @@
 import { expect } from 'vitest';
-import type { AcceptedSource, SourceDescription } from '../../src/grammar/source.js';
-import { childrenOf, nodeFor, readSyntax } from '../driver/syntax-reading.js';
+import type { Model, ModelNode, NodeId } from '../../src/index.js';
+import { modelOf, readSyntax } from '../driver/syntax-reading.js';
+export { readSyntax } from '../driver/syntax-reading.js';
 
-export function readAcceptedSource(text: string, sourceId = 'memory:example'): AcceptedSource {
+export function readAcceptedSource(text: string, sourceId = 'memory:example') {
   const result = readSyntax(text, sourceId);
   expect(result.status, result.status === 'rejected' ? JSON.stringify(result.diagnostics) : '').toBe('accepted');
   if (result.status !== 'accepted') throw new Error('Expected accepted source');
-  expect(result.document).toEqual({ sourceId, text });
-  return result;
+  expect(result.document.source).toEqual({ sourceId, text });
+  return { ...result, model: modelOf(result.document) };
 }
+
 export function expectRejectedSyntax(text: string): void {
   const result = readSyntax(text);
   expect(result.status).toBe('rejected');
   if (result.status !== 'rejected') throw new Error('Expected malformed syntax to be rejected');
   expect(result.diagnostics.length).toBeGreaterThan(0);
 }
-export function expectNavigableSourceForest(source: SourceDescription): void {
-  const parents = new Map<number, number>();
-  for (const [index, node] of source.nodes.entries()) {
-    expect(node.id).toEqual({ sourceId: source.sourceId, ordinal: index });
-    for (const childId of childrenOf(node)) {
-      const child = nodeFor(source, childId);
-      expect(child.range.start.offset).toBeGreaterThanOrEqual(node.range.start.offset);
-      expect(child.range.end.offset).toBeLessThanOrEqual(node.range.end.offset);
-      expect(parents.has(childId.ordinal)).toBe(false);
-      parents.set(childId.ordinal, index);
+
+export function sourceRange(node: ModelNode) {
+  if (node.origin.kind !== 'source') throw new Error('Expected an authored source location');
+  return node.origin.range;
+}
+
+export function expectNavigableSourceForest(model: Model): void {
+  const visited = new Set<NodeId>();
+  let ordinal = 0;
+  const visit = (id: NodeId, parent?: NodeId) => {
+    const node = model.node(id);
+    expect(visited.has(id)).toBe(false);
+    visited.add(id);
+    if (node.origin.kind !== 'source') throw new Error('Expected source provenance');
+    expect(node.origin.node.ordinal).toBe(ordinal++);
+    expect(model.parent(id)).toBe(parent);
+    if (parent) {
+      const container = sourceRange(model.node(parent));
+      expect(sourceRange(node).start.offset).toBeGreaterThanOrEqual(container.start.offset);
+      expect(sourceRange(node).end.offset).toBeLessThanOrEqual(container.end.offset);
     }
-  }
-  expect(parents.size + source.roots.length).toBe(source.nodes.length);
+    for (const child of model.children(id)) visit(child, id);
+  };
+  for (const root of model.roots()) visit(root);
 }

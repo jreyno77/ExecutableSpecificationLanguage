@@ -1,13 +1,13 @@
 import {
-  AntlrSyntaxReader, DescriptionInspection, ExternalInspection, Resolver, TypeDescriber,
-  type ExternalDefinition, type ModuleInspection, type NodeId, type ProblemLocation,
+  LangiumReader, LangiumModel, ExternalModel, Resolver, TypeDescriber,
+  type ExternalDefinition, type ModuleModel, type NodeId, type ProblemLocation,
   type Resolution, type TypeCatalog, type TypeId, type TypeFact, type TypedSlot,
 } from '../../src/index.js';
 
 /** Reads and projects actual results from the public type-analysis API. */
 export class TypeDescriptionsDriver {
-  private entry!: ModuleInspection;
-  private readonly modules: ModuleInspection[] = [];
+  private entry!: ModuleModel;
+  private readonly modules: ModuleModel[] = [];
   private readonly texts = new Map<string, string>();
   private resolution!: Resolution;
   private catalog!: TypeCatalog;
@@ -16,13 +16,13 @@ export class TypeDescriptionsDriver {
 
   source(text: string, locator = 'types.expec'): void { this.entry = this.read(text, locator); }
   module(locator: string, text: string): void { this.modules.push(this.read(text, locator)); }
-  external(definitions: readonly ExternalDefinition[]): void { this.entry = new ExternalInspection('external', definitions); }
+  external(definitions: readonly ExternalDefinition[]): void { this.entry = new ExternalModel('external', definitions); }
   externalModule(locator: string, definitions: readonly ExternalDefinition[]): void {
-    this.modules.push(new ExternalInspection(locator, definitions));
+    this.modules.push(new ExternalModel(locator, definitions));
   }
   analyze(): void {
     this.resolution = new Resolver().resolve(this.entry, { modules: this.modules, packages: [] });
-    this.originalReferences = JSON.stringify([...this.resolution.nodes('reference')]);
+    this.originalReferences = JSON.stringify(this.referenceFacts());
     this.catalog = new TypeDescriber().describe(this.resolution);
   }
   describe(name: string): void {
@@ -49,7 +49,7 @@ export class TypeDescriptionsDriver {
     const parameter = this.catalog.describe(one.elements[0]!);
     const other = this.catalog.describe(two.arguments[0]!);
     if (parameter.kind !== 'parameter' || other.kind !== 'parameter') throw new Error('Expected parameters');
-    return { elements: one.elements, parameter, other, node: this.resolution.node(parameter.declaration, 'type-parameter') };
+    return { elements: one.elements, parameter, other, node: this.catalog.inspection.read(parameter.declaration, 'type-parameter') };
   }
   declared(name: string) {
     const declaration = this.declaration(name);
@@ -76,7 +76,7 @@ export class TypeDescriptionsDriver {
     if (fields.kind !== 'available') throw new Error('Expected readable fields');
     const field = fields.fields.find(slot => this.name(slot.declaration) === name);
     if (!field) throw new Error(`Expected field ${name}`);
-    if (!this.resolution.node(field.declaration, 'field')) throw new Error('Expected a field declaration');
+    this.catalog.inspection.read(field.declaration, 'field');
     return field;
   }
   parameters(name: string): string[] { return this.catalog.callable(this.declaration(name)).parameters.map(slot => this.slotLabel(slot)); }
@@ -94,16 +94,16 @@ export class TypeDescriptionsDriver {
   construction(name: string) {
     const fact = this.catalog.construction(this.declaration(name));
     return fact.status === 'known'
-      ? { ...fact, value: fact.value && { parameters: fact.value.parameters.map(slot => this.slotLabel(slot)), node: this.resolution.node(fact.value.declaration, 'construction') } }
+      ? { ...fact, value: fact.value && { parameters: fact.value.parameters.map(slot => this.slotLabel(slot)), node: this.catalog.inspection.read(fact.value.declaration, 'construction') } }
       : fact;
   }
   externalDefault(callable: string, parameter: string) {
-    return this.resolution.node(this.parameter(callable, parameter).declaration, 'parameter').payload;
+    return this.catalog.inspection.read(this.parameter(callable, parameter).declaration, 'parameter');
   }
   body(callable: string): string {
-    const node = this.resolution.node(this.declaration(callable));
-    if (!('body' in node.payload)) throw new Error('Expected a callable');
-    return node.payload.body.kind;
+    const node = this.catalog.inspection.read(this.declaration(callable));
+    if (!('body' in node)) throw new Error('Expected a callable');
+    return node.body.kind;
   }
   declarations() {
     return {
@@ -121,8 +121,10 @@ export class TypeDescriptionsDriver {
     return {
       declarations: declared.reverse().map(([id, type]) => ({ before: type, after: this.catalog.declaredType(id) })),
       findings: { before, after: JSON.stringify([this.catalog.problems, this.catalog.deferred]) },
-      references: { before: this.originalReferences, after: JSON.stringify([...this.resolution.nodes('reference')]) },
-      inspection: this.catalog.inspection, resolution: this.resolution,
+      references: { before: this.originalReferences, after: JSON.stringify(this.referenceFacts()) },
+      inspectedDeclarations: [...this.catalog.typeDeclarations(), ...this.catalog.callableDeclarations()].map(id => ({
+        original: this.resolution.model.node(id), inspected: this.catalog.inspection.read(id),
+      })),
     };
   }
   independentCatalog() {
@@ -143,7 +145,7 @@ export class TypeDescriptionsDriver {
     return type.elements.map(id => {
       const literal = this.catalog.describe(id);
       if (literal.kind !== 'literal') throw new Error('Expected literal type');
-      return this.textAt(this.resolution.node(literal.expression, 'literal-type').origin);
+      return this.textAt(this.catalog.inspection.read(literal.expression, 'literal-type').origin);
     });
   }
   label(id: TypeId): string {
@@ -154,19 +156,22 @@ export class TypeDescriptionsDriver {
       case 'tuple': return `[${type.elements.map(id => this.label(id)).join(', ')}]`;
       case 'union': return type.alternatives.map(id => this.label(id)).join(' | ');
       case 'optional': return `${this.label(type.inner)}?`;
-      case 'literal': return this.textAt(this.resolution.node(type.expression).origin);
+      case 'literal': return this.textAt(this.catalog.inspection.read(type.expression).origin);
       default: throw new Error('Expected a described type');
     }
   }
   textAt(location: ProblemLocation): string {
-    return location.kind === 'source' ? this.texts.get(location.module)!.slice(location.range.start.offset, location.range.end.offset) : JSON.stringify(location);
+    return location.kind === 'source' ? Array.from(this.texts.get(location.module)!).slice(location.range.start.offset, location.range.end.offset).join('') : JSON.stringify(location);
   }
 
-  private read(text: string, locator: string): ModuleInspection {
-    const result = new AntlrSyntaxReader().read({ sourceId: locator, text });
+  private referenceFacts() {
+    return this.resolution.model.nodes('reference').map(node => ({ node, resolution: this.resolution.model.resolution(node.id) }));
+  }
+  private read(text: string, locator: string): ModuleModel {
+    const result = new LangiumReader().read({ sourceId: locator, text });
     if (result.status !== 'accepted') throw new Error('Acceptance source must be grammatical: ' + JSON.stringify(result.diagnostics));
     this.texts.set(locator, text);
-    return new DescriptionInspection(locator, result.description);
+    return new LangiumModel(locator, result.document);
   }
   private declaration(name: string): NodeId {
     const found = [...this.catalog.typeDeclarations(), ...this.catalog.callableDeclarations()].find(id => this.name(id) === name);
@@ -174,9 +179,9 @@ export class TypeDescriptionsDriver {
     return found;
   }
   private name(id: NodeId): string {
-    const node = this.resolution.node(id);
-    if (!('name' in node.payload)) throw new Error('Expected a named declaration');
-    return this.resolution.name(node.payload.name);
+    const node = this.catalog.inspection.read(id);
+    if (!('name' in node)) throw new Error('Expected a named declaration');
+    return node.name;
   }
   private slotLabel(slot: TypedSlot): string { return `${this.name(slot.declaration)}: ${this.label(known(slot.type))}`; }
   private meaning(id: TypeId): TypeId {

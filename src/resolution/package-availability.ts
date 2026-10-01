@@ -1,7 +1,7 @@
-import type { PackageRequirementNode } from '../grammar/source.js';
+import type { ModelNode } from '../model.js';
 import type { ResolutionProblem } from './problem.js';
 
-export type PackagePhase = NonNullable<PackageRequirementNode['phase']>;
+export type PackagePhase = NonNullable<ModelNode<'requires-package'>['phase']>;
 export interface DependencyPackage {
   readonly alias: string;
   readonly phases: readonly PackagePhase[];

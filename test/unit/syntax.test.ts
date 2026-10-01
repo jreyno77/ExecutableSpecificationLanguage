@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { readSyntax, nodesOfKind, nodeFor } from '../driver/syntax-reading.js';
-import { readAcceptedSource, expectRejectedSyntax, expectNavigableSourceForest } from '../dsl/syntax-reading.js';
+import {
+  readSyntax,
+  readAcceptedSource,
+  expectRejectedSyntax,
+  sourceRange,
+  expectNavigableSourceForest,
+} from '../dsl/syntax-reading.js';
 
 describe('authoring software declarations and examples', () => {
   it("reads Store Game contracts with public capabilities and dependencies", () => {
@@ -306,47 +311,47 @@ describe('recognizing malformed declarations and examples', () => {
 
 describe('preserving authored meaning and source locations', () => {
   it('keeps public references distinct from declarations and does not resolve them', () => {
-    const { description } = readAcceptedSource('concept StoreGame {\n public saveGame\n capability save() returns Nothing\n}');
-    const names = nodesOfKind(description, 'name').map(node => node.payload.decoded);
+    const { model } = readAcceptedSource('concept StoreGame {\n public saveGame\n capability save() returns Nothing\n}');
+    const names = model.nodes('name').map(node => node.decoded);
     expect(names).toEqual(['StoreGame', 'saveGame', 'save', 'Nothing']);
-    expect(nodesOfKind(description, 'capability')).toHaveLength(1);
+    expect(model.nodes('capability')).toHaveLength(1);
   });
   it('preserves literal expectations separately from explicit prose', () => {
-    const { description } = readAcceptedSource('examples {\n example "value": title() => "Dune"\n example "prose": title() => satisfies "a book title"\n}');
-    const examples = nodesOfKind(description, 'example');
+    const { model } = readAcceptedSource('examples {\n example "value": title() => "Dune"\n example "prose": title() => satisfies "a book title"\n}');
+    const examples = model.nodes('example');
     expect(examples).toHaveLength(2);
-    const expectedKinds = examples.map(node => nodeFor(description, node.payload.expected).payload.kind);
+    const expectedKinds = examples.map(node => model.node(node.expected).kind);
     expect(expectedKinds).toEqual(['string-literal', 'prose-expectation']);
   });
   it('preserves omitted versus empty helper bodies and omitted versus explicit results', () => {
-    const { description } = readAcceptedSource('examples {\n action first()\n action second() returns Nothing {}\n}');
-    const callables = nodesOfKind(description, 'action');
-    expect(callables[0]!.payload).not.toHaveProperty('body');
-    expect(callables[0]!.payload).not.toHaveProperty('returnType');
-    expect(callables[1]!.payload).toHaveProperty('body');
-    expect(callables[1]!.payload).toHaveProperty('returnType');
+    const { model } = readAcceptedSource('examples {\n action first()\n action second() returns Nothing {}\n}');
+    const callables = model.nodes('action');
+    expect(callables[0]!.body).toEqual({ kind: 'absent' });
+    expect(callables[0]!).not.toHaveProperty('returnType');
+    expect(callables[1]!.body.kind).toBe('available');
+    expect(callables[1]!).toHaveProperty('returnType');
   });
   it('uses Unicode scalar offsets, CRLF line boundaries, and original BOM positions', () => {
     const text = '\uFEFFtype `📚` {\r\n\tlabel: Text\r\n}';
-    const { description } = readAcceptedSource(text);
-    const name = nodesOfKind(description, 'name').find(node => node.payload.decoded === '📚')!;
-    expect(name.range).toEqual({ sourceId: 'memory:example', start: { offset: 6, line: 1, column: 7 }, end: { offset: 9, line: 1, column: 10 } });
-    const [field] = nodesOfKind(description, 'field');
-    expect(field!.range.start).toEqual({ offset: 14, line: 2, column: 2 });
+    const { model } = readAcceptedSource(text);
+    const name = model.nodes('name').find(node => node.decoded === '📚')!;
+    expect(sourceRange(name)).toEqual({ sourceId: 'memory:example', start: { offset: 6, line: 1, column: 7 }, end: { offset: 9, line: 1, column: 10 } });
+    const [field] = model.nodes('field');
+    expect(sourceRange(field!).start).toEqual({ offset: 14, line: 2, column: 2 });
   });
   it('places multiplication inside addition so callers can preserve expression precedence', () => {
-    const { description } = readAcceptedSource('examples { example "arithmetic": 2 + 3 * 4 => 14 }');
-    const operations = nodesOfKind(description, 'binary-expression');
-    expect(operations.map(node => node.payload.operator)).toEqual(['+', '*']);
+    const { model } = readAcceptedSource('examples { example "arithmetic": 2 + 3 * 4 => 14 }');
+    const operations = model.nodes('binary-expression');
+    expect(operations.map(node => node.operator)).toEqual(['+', '*']);
     const [addition, multiplication] = operations;
-    expect(nodeFor(description, addition!.payload.left).payload).toEqual({ kind: 'number-literal', token: '2' });
-    expect(addition!.payload.right).toEqual(multiplication!.id);
-    expect(nodeFor(description, multiplication!.payload.left).payload).toEqual({ kind: 'number-literal', token: '3' });
-    expect(nodeFor(description, multiplication!.payload.right).payload).toEqual({ kind: 'number-literal', token: '4' });
+    expect(model.node(addition!.left)).toMatchObject({ kind: 'number-literal', token: '2' });
+    expect(addition!.right).toBe(multiplication!.id);
+    expect(model.node(multiplication!.left)).toMatchObject({ kind: 'number-literal', token: '3' });
+    expect(model.node(multiplication!.right)).toMatchObject({ kind: 'number-literal', token: '4' });
   });
   it('gives callers a navigable source forest with unique preorder IDs and contained ranges', () => {
-    const { description } = readAcceptedSource('type Pair<T> = [T, T]\nconcept Store {\n construction(count: Number)\n public save\n capability save(value: Pair<Number>) returns Nothing\n}');
-    expectNavigableSourceForest(description);
+    const { model } = readAcceptedSource('type Pair<T> = [T, T]\nconcept Store {\n construction(count: Number)\n public save\n capability save(value: Pair<Number>) returns Nothing\n}');
+    expectNavigableSourceForest(model);
   });
   it("rejects semicolon statement separators", () => {
     expectRejectedSyntax("type Cart { count: Number; label: Text }");
@@ -416,8 +421,8 @@ describe('preserving authored meaning and source locations', () => {
     readAcceptedSource('type Result = List<catalog\n.\nItem>\nfunction choose(value: [\n-\n1, catalog\n.\nItem]) returns Text\nexamples {\n example "member": (catalog\n.\nlookup\n(\n)) => "Dune"\n}');
   });
   it('decodes escaped names and paired Unicode string escapes', () => {
-    const { description } = readAcceptedSource('type `a\\`b` = "\\uD83D\\uDCDA"');
-    expect(nodesOfKind(description, 'name')[0]!.payload).toMatchObject({ decoded: 'a`b', quoted: true });
-    expect(nodesOfKind(description, 'string-literal')[0]!.payload).toMatchObject({ value: '📚' });
+    const { model } = readAcceptedSource('type `a\\`b` = "\\uD83D\\uDCDA"');
+    expect(model.nodes('name')[0]!).toMatchObject({ decoded: 'a`b', quoted: true });
+    expect(model.nodes('string-literal')[0]!).toMatchObject({ value: '📚' });
   });
 });
