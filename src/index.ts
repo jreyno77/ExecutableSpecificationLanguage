@@ -26,3 +26,5 @@ export { FixtureChecker } from './fixture-checker.js';
 export type { FixtureChecking } from './fixture-checker.js';
 export { ScenarioChecker } from './scenario-checker.js';
 export type { ScenarioChecking } from './scenario-checker.js';
+export { InteractionChecker } from './interaction-checker.js';
+export type { InteractionChecking, Communication } from './interaction-checker.js';

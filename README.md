@@ -128,6 +128,32 @@ An unspecified captured result remains deferred. The report contains validation
 findings; original steps and expected values remain readable through Inspection.
 No steps execute, and prose expectations remain verification work for generation.
 
+## Check declared communications
+
+```ts
+import { InteractionChecker } from 'executable-specification-language';
+
+const interactions = new InteractionChecker(catalog, checker);
+for (const interaction of catalog.inspection.query('interaction')) {
+  const checked = interactions.check(interaction.id);
+  console.log(checked.problems, checked.deferred);
+  for (const member of interaction.members) {
+    if (member.kind === 'message') console.log(interactions.message(member.id));
+  }
+}
+```
+
+`check` validates participant types, public capabilities, arguments and ordered
+replies. `message` independently returns participant and capability identities,
+plus a captured reply's type when valid and complete. Inspection keeps authored
+order and arguments. Duplicate names are invalid throughout the interaction;
+failed producers retain their causes at later uses. An unspecified captured
+result remains deferred. Dependencies and captures never invent messages.
+
+Expression checking supplies `publicCapability` for explicitly public lookup and
+`checkArguments` for shared call/message argument rules. Neither operation runs
+the software; source and supplied external declarations use the same contracts.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
