@@ -88,6 +88,25 @@ uses. Contracts check declared conditions without executing them or verifying
 prose promises. Shared `catalog.types` owns declared and inferred type identities;
 checking leaves source facts and earlier reports unchanged.
 
+## Check reusable fixture data
+
+```ts
+import { FixtureChecker } from 'executable-specification-language';
+
+const fixtures = new FixtureChecker(catalog, checker);
+for (const fixture of catalog.inspection.query('fixture')) {
+  const checked = fixtures.check(fixture.id);
+  console.log(checked.value, checked.problems, checked.deferred);
+}
+```
+
+A fixture returns its declared type only when its data and referenced fixtures
+are valid and complete. Forward references are allowed; cycles retain their
+source locations. Calls are rejected, including inside records and lists.
+Required fields must be supplied explicitly even when their type declares a
+default; optional fields can be absent. Checking does not materialize data or
+run setup. DSL/driver discovery and test generation belong after project sync.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
