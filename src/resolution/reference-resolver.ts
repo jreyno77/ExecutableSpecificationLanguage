@@ -129,7 +129,7 @@ export class ReferenceResolver {
       case 'member-expression': this.defer(reference, 'receiver-type'); return;
       case 'message': this.defer(reference, 'interaction'); return;
       case 'name-expression':
-        if (path[0] === 'result' && !this.inFixture(reference.id)) { this.defer(reference, 'contextual-result'); return; }
+        if (path[0] === 'result' && !this.inExample(reference.id)) { this.defer(reference, 'contextual-result'); return; }
         if (this.scopes.hasOrderedName(scope, path[0]!)) { this.defer(reference, 'ordered-scope'); return; }
         this.lookup(reference, path, scope); return;
       case 'named-type': case 'depends-on': this.lookup(reference, path, scope, typeKinds); return;
@@ -141,9 +141,9 @@ export class ReferenceResolver {
     }
   }
 
-  private inFixture(id: NodeId): boolean {
+  private inExample(id: NodeId): boolean {
     for (let parent = this.source.parent(id); parent; parent = this.source.parent(parent.id)) {
-      if (parent.kind === 'fixture') return true;
+      if (parent.kind === 'fixture' || parent.kind === 'example' || parent.kind === 'scenario') return true;
     }
     return false;
   }

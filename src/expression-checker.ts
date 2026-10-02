@@ -8,6 +8,7 @@ import { ExpressionLookup } from './expression-lookup.js';
 
 export type ValueScope = (reference: Item<'reference'>) => Check<TypeId> | undefined;
 export interface ExpressionChecking {
+  calledOperation(call: NodeId, scope?: ValueScope): Check<NodeId>;
   typeOf(expression: NodeId, scope?: ValueScope): Check<TypeId>;
   checkValue(expression: NodeId, expected: TypeId, scope?: ValueScope): Check;
   checkCall(expression: NodeId, scope?: ValueScope): Check;
@@ -25,6 +26,14 @@ export class ExpressionChecker implements ExpressionChecking {
     this.lookup = new ExpressionLookup(declarations);
   }
   typeOf(expression: NodeId, scope?: ValueScope): Check<TypeId> { return this.infer(this.read(expression), scope); }
+  calledOperation(call: NodeId, scope?: ValueScope): Check<NodeId> {
+    const node = ungroup(this.read(call));
+    if (node.kind !== 'call-expression') return problem('invalid-purpose', node, 'Expected an operation call.');
+    const selected = this.select(node.callee, scope);
+    if (!selected.value) return mergeChecks(selected);
+    return isCallable(selected.value.declaration) ? answer(selected.value.declaration.id, selected)
+      : problem('invalid-purpose', node.callee, 'The selected declaration is not callable.');
+  }
   checkValue(expression: NodeId, expected: TypeId, scope?: ValueScope): Check {
     this.declarations.types.describe(expected);
     const node = this.read(expression);
@@ -190,6 +199,13 @@ export class ExpressionChecker implements ExpressionChecking {
     if (node.kind === 'grouped-expression') return this.select(node.inner, scope);
     if (node.kind === 'name-expression') {
       const target = this.lookup.target(node.reference);
+      const binding = node.reference.resolution;
+      if (binding.status === 'deferred' && ['ordered-scope', 'contextual-result'].includes(binding.requirement.reason)
+        || target.value && ['parameter', 'field', 'fixture', 'participant', 'let'].includes(target.value.kind)) {
+        const value = this.lookup.value(node.reference, scope);
+        return !value.value || value.problems.length || value.deferred.length ? mergeChecks(value)
+          : problem('invalid-purpose', node, 'An available value is not callable.');
+      }
       return answer(target.value ? { declaration: target.value } : undefined, target);
     }
     if (node.kind !== 'member-expression') return problem('invalid-purpose', node, 'Expected a callable name or member.');

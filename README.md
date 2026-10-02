@@ -1,6 +1,6 @@
 # .expec
 
-An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, describes types and callable contracts, and checks expressions.
+An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, describes types and callable contracts, and checks expressions, fixtures and scenarios.
 
 ## Inspect declarations
 
@@ -87,6 +87,8 @@ describe availability for that call. Defaults are checked separately from their
 uses. Contracts check declared conditions without executing them or verifying
 prose promises. Shared `catalog.types` owns declared and inferred type identities;
 checking leaves source facts and earlier reports unchanged.
+`calledOperation` identifies a call's selected declaration independently of its
+argument and result validity, using the same lookup and visibility rules.
 
 ## Check reusable fixture data
 
@@ -106,6 +108,25 @@ source locations. Calls are rejected, including inside records and lists.
 Required fields must be supplied explicitly even when their type declares a
 default; optional fields can be absent. Checking does not materialize data or
 run setup. DSL/driver discovery and test generation belong after project sync.
+
+## Check examples and scenarios
+
+```ts
+import { ScenarioChecker } from 'executable-specification-language';
+
+const scenarios = new ScenarioChecker(catalog.inspection, checker, fixtures);
+for (const scenario of catalog.inspection.query('scenario')) {
+  const checked = scenarios.check(scenario.id);
+  console.log(scenario.title.value, checked.problems, checked.deferred);
+}
+```
+
+`check` accepts an example or scenario identity. It checks step roles, argument
+types, ordered captures and authored expectations. Captures stay local to one
+scenario; invalid fixture data and failed producers retain their original causes.
+An unspecified captured result remains deferred. The report contains validation
+findings; original steps and expected values remain readable through Inspection.
+No steps execute, and prose expectations remain verification work for generation.
 
 ## Development and delivery
 
