@@ -28,3 +28,5 @@ export { ScenarioChecker } from './scenario-checker.js';
 export type { ScenarioChecking } from './scenario-checker.js';
 export { InteractionChecker } from './interaction-checker.js';
 export type { InteractionChecking, Communication } from './interaction-checker.js';
+export { Compiler } from './compiler.js';
+export type { CompilationInput, Compilation, Specification } from './compiler.js';
