@@ -1,6 +1,35 @@
 # .expec
 
-An experimental language for readable software specifications. The package reads `.expec` with Langium, exposes typed queries, resolves declarations and dependencies, describes types and callable contracts, and checks expressions, fixtures and scenarios.
+An experimental language for readable software specifications. The compiler composes Langium reading, resolution, type descriptions and expression, fixture, scenario and communication checks over supplied inputs.
+
+## Compile a specification
+
+```ts
+import { Compiler } from 'executable-specification-language';
+
+const result = new Compiler().compile({
+  source: { sourceId: 'store.expec', text: `concept StoreGame {
+  public saveGame
+  capability saveGame(snapshot: Text) returns Nothing
+}` },
+  locator: 'store',
+  dependencies: { modules: [], packages: [] },
+});
+if (result.value) {
+  for (const capability of result.value.inspection.query('capability')) {
+    console.log(capability.name, result.value.types.callable(capability.id));
+  }
+} else console.error(result.syntax, result.problems, result.deferred);
+```
+
+`value` exists only when static checking completes without findings. It shares
+the existing Inspection, type catalog and `message(id)` query. Reachable source
+modules are checked; external metadata supplies signatures. Queries retain
+dependency origins, so consumers can distinguish entry-owned declarations.
+Syntax errors, semantic errors and missing analysis remain separate. Source
+composition and authored helper/check bodies remain incomplete. Compilation
+does not execute expectations, discover implementations or change a project;
+bodyless declarations and prose remain authored intent.
 
 ## Inspect declarations
 
