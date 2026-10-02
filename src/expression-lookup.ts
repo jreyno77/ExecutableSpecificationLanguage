@@ -54,22 +54,29 @@ export class ExpressionLookup {
     };
   }
 
-  member(owner: Item, name: string, at: Pick<Item, 'id' | 'origin'>, receiver?: TypeId): Check<{ declaration: Item; type?: TypeId }> {
+  member(owner: Item, name: string, at: Pick<Item, 'id' | 'origin'>, receiver?: TypeId, publicOnly = false): Check<{ declaration: Item; type?: TypeId }> {
     owner = this.declarations.inspection.read(owner.id);
     const occurrence = this.declarations.inspection.read(at.id);
     if (occurrence.kind === 'reference') {
       const resolution = this.target(occurrence);
-      if (resolution.problems.length || occurrence.resolution.status === 'deferred' && occurrence.resolution.requirement.reason !== 'receiver-type') return mergeChecks(resolution);
+      if (resolution.problems.length || occurrence.resolution.status === 'deferred'
+        && occurrence.resolution.requirement.reason !== 'receiver-type'
+        && !(publicOnly && occurrence.resolution.requirement.reason === 'interaction')) return mergeChecks(resolution);
     }
     const members: readonly Item[] = 'members' in owner ? owner.members : 'fields' in owner ? owner.fields : [];
     const candidates = members.map(member => member.kind === 'local' ? member.declaration : member)
       .filter(member => 'name' in member && member.name === name);
-    if (!candidates.length && [...this.declarations.inspection.query('include'), ...this.declarations.inspection.query('extend')]
+    const exposed = publicOnly ? members.flatMap(member => member.kind === 'public'
+      ? member.references.filter(reference => reference.segments.length === 1 && reference.segments[0] === name).map(reference => this.target(reference)) : []) : [];
+    const visibility = mergeChecks(...exposed);
+    if (visibility.problems.length || visibility.deferred.length) return visibility;
+    if ((!candidates.length || publicOnly && !exposed.length) && [...this.declarations.inspection.query('include'), ...this.declarations.inspection.query('extend')]
       .some(pending => sameModule(pending, owner) || sameModule(pending, at))) return {
       problems: [], deferred: [{ reason: 'composition', origin: at.origin, requires: 'Finish source composition before deciding whether this member exists.' }],
     };
     const declaration = candidates[0];
-    if (candidates.length !== 1 || !declaration || !this.accessible(declaration, at)) return {
+    if (candidates.length !== 1 || !declaration || !this.accessible(declaration, at)
+      || publicOnly && (declaration.kind !== 'capability' || !exposed.some(entry => entry.value?.id === declaration.id))) return {
       problems: [{ code: 'invalid-member', message: 'No unambiguous accessible member supplies ' + name + '.', at: at.origin, related: candidates.map(candidate => candidate.origin) }], deferred: [],
     };
     if (declaration.kind !== 'field') return { value: { declaration }, problems: [], deferred: [] };

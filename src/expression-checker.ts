@@ -1,7 +1,7 @@
 import type { Item } from './inspection-item.js';
 import { QueryError, type NodeId } from './model.js';
 import type { ResultDescription, TypeCatalog } from './type-catalog.js';
-import type { TypeDescription, TypeId } from './type-description.js';
+import type { TypeDescription, TypeId, TypeProblem } from './type-description.js';
 import { fromFact, mergeChecks, type Check } from './checking.js';
 import { TypeCompatibility } from './type-compatibility.js';
 import { ExpressionLookup } from './expression-lookup.js';
@@ -9,6 +9,8 @@ import { ExpressionLookup } from './expression-lookup.js';
 export type ValueScope = (reference: Item<'reference'>) => Check<TypeId> | undefined;
 export interface ExpressionChecking {
   calledOperation(call: NodeId, scope?: ValueScope): Check<NodeId>;
+  publicCapability(receiver: TypeId, reference: NodeId): Check<NodeId>;
+  checkArguments(operation: NodeId, arguments_: readonly NodeId[], at: NodeId, scope?: ValueScope): Check;
   typeOf(expression: NodeId, scope?: ValueScope): Check<TypeId>;
   checkValue(expression: NodeId, expected: TypeId, scope?: ValueScope): Check;
   checkCall(expression: NodeId, scope?: ValueScope): Check;
@@ -26,6 +28,37 @@ export class ExpressionChecker implements ExpressionChecking {
     this.lookup = new ExpressionLookup(declarations);
   }
   typeOf(expression: NodeId, scope?: ValueScope): Check<TypeId> { return this.infer(this.read(expression), scope); }
+  publicCapability(receiver: TypeId, reference: NodeId): Check<NodeId> {
+    const selector = this.declarations.inspection.read(reference, 'reference'), shape = this.meaning(receiver);
+    const binding = selector.resolution;
+    const selectedName = binding.status === 'deferred' && ['interaction', 'receiver-type'].includes(binding.requirement.reason)
+      ? empty() : this.lookup.target(selector);
+    if (!shape.value || selectedName.problems.length || selectedName.deferred.length) return mergeChecks(shape, selectedName);
+    const owner = shape.value.kind === 'declared' ? this.declarations.inspection.read(shape.value.declaration) : undefined;
+    if (!owner || !['concept', 'component', 'class', 'interface'].includes(owner.kind) || selector.segments.length !== 1) {
+      return problem('invalid-member', selector, 'A public capability requires one selector and a single concept-like receiver.');
+    }
+    const selected = this.lookup.member(owner, selector.segments[0]!, selector, receiver, true);
+    return answer(selected.value?.declaration.id, selected);
+  }
+  checkArguments(operation: NodeId, arguments_: readonly NodeId[], at: NodeId, scope?: ValueScope): Check {
+    const target = this.declarations.inspection.read(operation), invocation = this.declarations.inspection.read(at);
+    if (!isCallable(target)) throw new QueryError('unexpected-kind', operation, 'Expected a callable declaration.');
+    if (invocation.kind !== 'call-expression' && invocation.kind !== 'message') throw new QueryError('unexpected-kind', at, 'Expected a call or message.');
+    const signature = this.declarations.callable(operation);
+    const inputs = new Set(target.parameters.flatMap(parameter => [locationKey(parameter.origin), locationKey(parameter.declaredType.origin)]));
+    const problems = signature.problems.filter(problem => inputs.has(locationKey(problem.at)));
+    const checks: Check<unknown>[] = [{ problems, deferred: [] }];
+    const missing = target.parameters.slice(arguments_.length).some(parameter => !parameter.hasDefault);
+    if (missing || arguments_.length > signature.parameters.length) checks.push(problem('invalid-arity', invocation, 'The arguments do not match the callable parameters.', [target]));
+    for (let index = 0; index < Math.max(arguments_.length, signature.parameters.length); index++) {
+      const parameter = signature.parameters[index], argument = arguments_[index];
+      const expected = parameter ? fromFact(parameter.type) : undefined;
+      if (expected) checks.push(expected);
+      if (argument) checks.push(this.infer(this.read(argument), scope, expected?.value));
+    }
+    return mergeChecks(...checks);
+  }
   calledOperation(call: NodeId, scope?: ValueScope): Check<NodeId> {
     const node = ungroup(this.read(call));
     if (node.kind !== 'call-expression') return problem('invalid-purpose', node, 'Expected an operation call.');
@@ -181,19 +214,11 @@ export class ExpressionChecker implements ExpressionChecking {
     if (!isCallable(target)) return mergeChecks(problem('invalid-purpose', node.callee, 'The selected declaration is not callable.'),
       ...node.arguments.map(argument => this.infer(argument, scope)));
     const signature = this.declarations.callable(target.id);
-    const checks: Check<unknown>[] = [selected, { problems: signature.problems, deferred: [] }];
-    const missing = target.parameters.slice(node.arguments.length).some(parameter => !parameter.hasDefault);
-    if (missing || node.arguments.length > signature.parameters.length) checks.push(problem('invalid-arity', node, 'The arguments do not match the callable parameters.', [target]));
-    for (let index = 0; index < Math.max(node.arguments.length, signature.parameters.length); index++) {
-      const parameter = signature.parameters[index], argument = node.arguments[index];
-      const expected = parameter ? fromFact(parameter.type) : undefined;
-      if (expected) checks.push(expected);
-      if (argument) checks.push(this.infer(argument, scope, expected?.value));
-    }
+    const checked = this.checkArguments(target.id, node.arguments.map(argument => argument.id), node.id, scope);
     const result = fromFact(signature.result);
     // Keep the declared result available even when arguments fail: its own missing facts still matter.
     const value = target.kind === 'check' ? { kind: 'check' as const } : result.value;
-    return { ...mergeChecks(...checks, result), ...(value ? { value } : {}) };
+    return { ...mergeChecks(selected, checked, result, { problems: signature.problems, deferred: [] }), ...(value ? { value } : {}) };
   }
   private select(node: Item, scope?: ValueScope): Check<{ declaration: Item; type?: TypeId }> {
     if (node.kind === 'grouped-expression') return this.select(node.inner, scope);
@@ -320,6 +345,11 @@ function isCallable(node: Item): node is Item<'capability' | 'function' | 'setup
   return 'parameters' in node && 'body' in node;
 }
 function ungroup(node: Item): Item { return node.kind === 'grouped-expression' ? ungroup(node.inner) : node; }
+function locationKey(at: TypeProblem['at']): string {
+  return JSON.stringify(at.kind === 'source' ? ['source', at.module, at.node.sourceId, at.node.ordinal]
+    : at.kind === 'external' ? ['external', at.module, at.path]
+    : at.kind === 'builtin' ? ['builtin', at.name] : ['dependency', at.path]);
+}
 function empty(): Check { return { problems: [], deferred: [] }; }
 function answer<T>(value: T | undefined, ...checks: readonly Check<unknown>[]): Check<T> {
   const result = mergeChecks(...checks);
