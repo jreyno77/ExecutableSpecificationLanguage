@@ -24,3 +24,5 @@ export type { ExpressionChecking, ValueScope } from './expression-checker.js';
 export type { Check, Diagnostic, Requirement } from './checking.js';
 export { FixtureChecker } from './fixture-checker.js';
 export type { FixtureChecking } from './fixture-checker.js';
+export { ScenarioChecker } from './scenario-checker.js';
+export type { ScenarioChecking } from './scenario-checker.js';
