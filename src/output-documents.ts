@@ -65,39 +65,46 @@ export class ListDocuments {
   }
   private issue(path: string, message: string): void { this.problems.push(outputProblem('invalid-output-document', path, message)); }
   private markdown(file: ProjectFile, links: Link[]): void {
-    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; outputId: string; depth?: number }[] = [];
+    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; outputId: string; fragment: boolean; anchors: number; depth?: number }[] = [];
     const references = new Map<string, string>(), pending: { node: RootContent; owners: string[] }[] = [];
     let root: string | undefined, waiting = false;
     const rememberAnchor = (): void => {
       const current = stack.at(-1);
-      if (current) this.anchors.add(file.path + '#' + anchor(current.id));
+      if (current) {
+        current.anchors++;
+        if (current.fragment && current.anchors > 1) this.issue(file.path, 'A leaf fragment requires exactly one actual anchor.');
+        this.anchors.add(file.path + '#' + anchor(current.id));
+      }
     };
     const visit = (node: RootContent): void => {
       if (node.type === 'code' || node.type === 'inlineCode' || node.type === 'image' || node.type === 'imageReference') return;
       if (node.type === 'paragraph' && node.children.length === 2 && node.children[0]?.type === 'html' && node.children[1]?.type === 'html'
         && node.children[0].value === `<a id="${anchor(stack.at(-1)?.id ?? '')}">` && node.children[1].value === '</a>') { rememberAnchor(); return; }
       if (node.type === 'html') {
-        const start = /^<!-- expec-section:([a-f0-9]+) -->$/.exec(node.value), end = /^<!-- expec-end:([a-f0-9]+) -->$/.exec(node.value);
+        const start = /^<!-- expec-(section|fragment):([a-f0-9]+) -->$/.exec(node.value), end = /^<!-- expec-end:([a-f0-9]+) -->$/.exec(node.value);
         if (start) {
           try {
-            const data = JSON.parse(Buffer.from(start[1]!, 'hex').toString('utf8'));
+            const data = JSON.parse(Buffer.from(start[2]!, 'hex').toString('utf8')), fragment = start[1] === 'fragment';
             if (typeof data.outputId !== 'string' || !data.outputId.trim() || !identifier.safeParse(data.specId).success || Object.keys(data).sort().join(',') !== 'outputId,specId') throw new Error('Invalid metadata');
-            if (waiting || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
-            const ancestors = stack.map(item => item.id); stack.push({ id: data.specId, outputId: data.outputId }); waiting = true;
+            if (waiting || stack.at(-1)?.fragment || fragment && !stack.length || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
+            const ancestors = stack.map(item => item.id); stack.push({ id: data.specId, outputId: data.outputId, fragment, anchors: 0 }); waiting = !fragment;
             if (data.outputId === this.id) {
               root ??= data.specId;
               this.definitions.push({ id: data.specId, at: artifact(this.id, this.format, file.path, data.specId), file, ancestors });
             }
           } catch { this.issue(file.path, 'Malformed or unbalanced identity metadata.'); }
         } else if (end) {
-          if (waiting || stack.pop()?.id !== Buffer.from(end[1]!, 'hex').toString('utf8')) this.issue(file.path, 'Unbalanced identity metadata.');
+          const current = stack.pop();
+          if (waiting || current?.id !== Buffer.from(end[1]!, 'hex').toString('utf8')) this.issue(file.path, 'Unbalanced identity metadata.');
+          if (current?.fragment && current.anchors !== 1) this.issue(file.path, 'A leaf fragment requires exactly one actual anchor.');
         } else if (node.value === `<a id="${anchor(stack.at(-1)?.id ?? '')}"></a>`) rememberAnchor();
         else this.issue(file.path, 'Unsupported HTML or malformed identity metadata.');
         return;
       }
       if (node.type === 'heading' && stack.length) {
         const current = stack.at(-1)!;
-        if (waiting) {
+        if (current.fragment) this.issue(file.path, 'A leaf fragment cannot contain a heading.');
+        else if (waiting) {
           const parent = stack.at(-2)?.depth;
           if (parent !== undefined && node.depth <= parent && !(parent === 6 && node.depth === 6)) this.issue(file.path, 'Section headings disagree with identity nesting.');
           current.depth = node.depth; waiting = false;
