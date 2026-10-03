@@ -2,7 +2,6 @@ import { mkdtempSync, realpathSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawn, execFile } from 'node:child_process';
-import { once } from 'node:events';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { vi } from 'vitest';
@@ -12,6 +11,10 @@ import { ConfigurationReader, ProjectConnector, FileProjectWriter,
 
 /** Owns real temporary files and public writer calls; never simulates their effects. */
 export class WritingDriver {
+  static async prepare(): Promise<void> {
+    await promisify(execFile)(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
+      { windowsHide: true, timeout: 25000 });
+  }
   readonly directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'expec-writes-')));
   readonly root = join(this.directory, 'project');
   context!: ProjectContext;
@@ -74,12 +77,23 @@ export class WritingDriver {
     const script = "$ErrorActionPreference='Stop'; $file=[IO.File]::Open($env:EXPEC_WRITE_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); try { [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); [Console]::In.ReadLine() | Out-Null } finally { $file.Dispose() }";
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
       { windowsHide: true, env: { ...process.env, EXPEC_WRITE_FILE: this.path(path) }, stdio: ['pipe', 'pipe', 'pipe'] });
-    this.releases.push(async () => { if (child.exitCode === null) { const exit = once(child, 'exit'); child.stdin.end('\n'); await exit; } });
+    const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
+    child.stdin.on('error', () => { /* A child that exited before cleanup has no writable input. */ });
+    this.releases.push(async () => {
+      const kill = setTimeout(() => child.kill(), 5000);
+      let deadline: ReturnType<typeof setTimeout>;
+      try {
+        child.stdin.end('\n');
+        await Promise.race([closed, new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('File-lock child did not terminate after cleanup')), 10000);
+        })]);
+      } finally { clearTimeout(kill); clearTimeout(deadline!); }
+    });
     await new Promise<void>((accept, reject) => {
       const timeout = setTimeout(() => { child.kill(); reject(new Error('File lock did not become ready')); }, 10000);
       child.stdout.on('data', data => { if (String(data).includes('READY')) { clearTimeout(timeout); accept(); } });
       child.once('error', error => { clearTimeout(timeout); reject(error); });
-      child.once('exit', code => { clearTimeout(timeout); if (code) reject(new Error('File lock exited ' + code)); });
+      child.once('exit', code => { clearTimeout(timeout); reject(new Error('File lock exited before readiness: ' + code)); });
     });
   }
   failRemoval(path: string): void {
@@ -102,7 +116,6 @@ export class WritingDriver {
     });
   }
   async competingWriters(): Promise<void> {
-    await promisify(execFile)(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'], { windowsHide: true });
     let attempted = false;
     const context: ProjectContext = { root: this.context.root, readSnapshot: async () => {
       if (!attempted) { attempted = true; this.second = await this.childWriter(); }

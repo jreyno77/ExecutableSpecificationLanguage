@@ -1,5 +1,7 @@
-import { describe, it } from 'vitest';
+import { beforeAll, describe, it } from 'vitest';
 import { ProjectWrites } from '../dsl/project-writing.js';
+
+beforeAll(() => ProjectWrites.prepare(), 30_000);
 
 describe('applying changes to an observed project', () => {
   it('creates a requested file and keeps an unrelated handwritten file', async () => {
@@ -213,7 +215,7 @@ describe('stopping and recovering from partial application', () => {
     await project.expectFile('src/first.ts', 'new first');
     await project.expectFile('src/second.ts', 'second');
     project.expectPreviousBytes('src/first.ts', 'first');
-  });
+  }, 20_000);
 
   it('stops after observing cancellation between operations', async () => {
     const project = await ProjectWrites.create({ 'src/first.ts': 'first', 'src/second.ts': 'second' });
@@ -305,7 +307,7 @@ describe('stopping and recovering from partial application', () => {
     project.expectFirstCompleted();
     project.expectSecondStopped('stale-project');
     await project.expectFile('src/book.ts', 'first update');
-  });
+  }, 20_000);
 
   it('does not steal an existing writer marker', async () => {
     const project = await ProjectWrites.create({ 'src/book.ts': 'book' });

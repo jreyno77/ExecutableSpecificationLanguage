@@ -5,6 +5,7 @@ import type { WriteResult } from '../../src/index.js';
 import { WritingDriver } from '../driver/project-writing.js';
 
 export class ProjectWrites {
+  static prepare(): Promise<void> { return WritingDriver.prepare(); }
   private constructor(private readonly driver: WritingDriver) { onTestFinished(() => driver.dispose()); }
   static async create(files: Record<string, string>): Promise<ProjectWrites> {
     const driver = new WritingDriver(), examples = new ProjectWrites(driver);
