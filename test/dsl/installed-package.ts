@@ -16,7 +16,7 @@ export class PackageExamples {
 
   expectInstalledPackageUsed(): void {
     expect(this.driver.location.insidePackage).toBe(true);
-    expect(this.driver.location.real).toBe(this.driver.location.entry);
+    expect(this.driver.location.real).toBe(this.driver.location.expected);
   }
   expectProblem(code: string, text: string): void {
     this.expectConsumerRan();

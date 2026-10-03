@@ -30,7 +30,7 @@ export class PackageDriver {
   result!: ProcessResult;
   declarations!: ProcessResult;
   report!: ConsumerReport;
-  location!: { entry: string; real: string; insidePackage: boolean };
+  location!: Awaited<ReturnType<typeof packageLocation>>;
 
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
@@ -75,8 +75,7 @@ export class PackageDriver {
     try { this.report = JSON.parse(this.result.stdout); }
     catch { throw new Error(`Consumer did not return observations. ${output(this.result)}`); }
     if (this.report.packageUrl) {
-      const entry = fileURLToPath(this.report.packageUrl), installed = join(this.consumer, 'node_modules', packageName);
-      this.location = { entry, real: await realpath(entry), insidePackage: contained(installed, entry) };
+      this.location = await packageLocation(this.consumer, fileURLToPath(this.report.packageUrl));
     }
   }
   async checkTypeScript(): Promise<void> {
@@ -101,6 +100,11 @@ export class PackageDriver {
     }
   }
   async dispose(): Promise<void> { if (this.directory) await cleanup(this.directory); }
+}
+
+export async function packageLocation(consumer: string, entry: string) {
+  const installed = join(await realpath(consumer), 'node_modules', packageName), real = await realpath(entry);
+  return { expected: join(installed, 'dist/index.js'), real, insidePackage: contained(installed, real) };
 }
 
 async function pack(directory: string, destination: string, release = false): Promise<string> {
