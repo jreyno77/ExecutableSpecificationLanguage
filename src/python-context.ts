@@ -1,8 +1,10 @@
 import type { ProjectContext, ProjectRoot, ProjectSnapshot } from './project-connection.js';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { pythonConfiguration, pythonPath, pythonReportPath } from './python-profile.js';
+import { pythonConfiguration, pythonPath } from './python-profile.js';
 import { outputProblem } from './output-documents.js';
+import { PythonInputs, pythonEnvironment } from './python-inputs.js';
+import { isDeepStrictEqual } from 'node:util';
 
 /** Adds Python's captured native inputs to the caller's live project boundary. */
 export class PythonContext implements ProjectContext {
@@ -28,8 +30,13 @@ export class PythonContext implements ProjectContext {
         } catch { /* Missing or changing entries cannot establish a harmless cache. */ }
         if (!cache) problems.push(outputProblem('excluded-python-input', excluded, 'A selected Python source entry is excluded or unavailable.'));
       }
-      if (!snapshot.files.some(file => file.path === pythonReportPath)) problems.push(outputProblem('python-install-required', pythonReportPath, 'Run an explicit Python install before using native project analysis.'));
-      else problems.push(outputProblem('python-capture-unavailable', pythonReportPath, 'Native Python input capture is not implemented yet.'));
+      const environment = pythonEnvironment(snapshot, checked.value, this.options.configFile); problems.push(...environment.problems);
+      if (!problems.length && environment.value) {
+        const inputs = new PythonInputs(); await inputs.capture(environment.value, checked.value); problems.push(...inputs.problems);
+        const fresh = await this.project.readSnapshot();
+        if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(outputProblem('stale-project', '', 'Project inputs changed during Python capture.'));
+        return { ...snapshot, nativeInputs: inputs.evidence(), complete: snapshot.complete && problems.length === 0, problems };
+      }
     }
     return { ...snapshot, complete: snapshot.complete && problems.length === 0, problems };
   }

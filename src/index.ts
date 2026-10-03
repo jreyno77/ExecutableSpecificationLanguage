@@ -56,3 +56,4 @@ export { markdownOutput } from './output-markdown.js';
 export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';
 export { pythonOutput } from './output-python.js';
 export { PythonContext } from './python-context.js';
+export { PythonProject } from './python-project.js';
