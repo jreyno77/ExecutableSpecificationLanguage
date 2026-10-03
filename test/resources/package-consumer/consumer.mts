@@ -62,3 +62,7 @@ export async function loadSources(manifestLocation: string, configuration: Confi
   }
   return { ...loaded, captures };
 }
+
+export function describeFailures(specification: Specification, operation: NodeId): readonly import('executable-specification-language').TypeFact<import('executable-specification-language').ErrorDescription>[] {
+  return specification.types.callable(operation).failures.map(fact => fact.status === 'known' ? specification.types.error(fact.value) : fact);
+}

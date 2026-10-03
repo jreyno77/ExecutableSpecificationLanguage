@@ -5,6 +5,19 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('exposes the same error declaration and checked signature to installed public consumers', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.check('type Account { id: Text }\nerror type AccountError {\ncode: "duplicate-account" | "invalid-account"\nemail: Text\n}\nfunction createAccount(email: Text) returns Account fails with AccountError');
+    consumer.expectInstalledPackageUsed();
+    consumer.expectSpecificationAccepted();
+    consumer.expectDomainFailures('createAccount', 'Account', [
+      { family: 'AccountError', codes: ['duplicate-account', 'invalid-account'], payload: ['email: Text'] },
+    ]);
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('checks an unavailable type through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
@@ -64,6 +77,32 @@ assert actual == copies
 
     consumer.expectInstalledPackageUsed();
     consumer.expectProjectFileChanged('original book', 'updated book');
+  });
+
+  it('uses an independently authored installed output to write, read and discover a new consumer', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.registerCountOutput();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+    await consumer.createCountReport(`concept Storage {}
+type Snapshot { title: Text }
+concept StoreGame {
+  depends on Storage, Snapshot
+  public save
+  capability save(snapshot: Snapshot) returns Nothing
+}`, 'reports');
+    consumer.expectDeclarationCounts({ concepts: 2, recordTypes: 1, capabilities: 1 });
+    consumer.expectCountReportWritten('applied');
+
+    await consumer.readCountReport('StoreGame');
+    consumer.expectWholeCountReport('reports/counts.json', '"capabilities": 1');
+    await consumer.writeCountConsumer('Release checklist');
+    await consumer.searchCountReport();
+    consumer.expectCountDefinition('reports/counts.json');
+    consumer.expectCountConsumer('notes/release.counts.json', 'Release checklist');
+    consumer.expectCompleteCountCoverage('declaration-count report definitions and references');
+    consumer.expectInstalledPackageUsed();
   });
 
   it('detects an undeclared runtime dependency in a packed artifact', async () => {
