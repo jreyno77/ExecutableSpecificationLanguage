@@ -5,6 +5,20 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('compiles every configured workspace entry with one shared Book through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.compileWorkspace({
+      'game.expec': 'use Book from "./catalog.expec"\nfunction save(book: Book) returns Nothing',
+      'checkout.expec': 'use Book from "./catalog.expec"\nfunction price(book: Book) returns Number',
+      'catalog.expec': 'type Book { title: Text }',
+    }, ['game.expec', 'checkout.expec']);
+
+    consumer.expectWorkspaceFunctions(['price', 'save']);
+    consumer.expectSharedWorkspaceType('Book', 2);
+    consumer.expectInstalledPackageUsed();
+  });
+
   it('generates a natively checked callable scaffold through the installed TypeScript output', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
