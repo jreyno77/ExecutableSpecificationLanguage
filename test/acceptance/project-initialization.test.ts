@@ -306,7 +306,7 @@ describe('effects, failure and retry are observable', () => {
   });
 });
 
-describe('the starter is a real native project', () => {
+describe('the starter is a real native project', { timeout: 30_000 }, () => {
   it('builds with the explicitly supplied pinned TypeScript compiler', async () => {
     const project = await InitializationExamples.withUnconnectedManifest();
     await project.prepare('../chosen-game', 'typescript');
@@ -319,6 +319,21 @@ describe('the starter is a real native project', () => {
     await project.expectFile('dist/index.d.ts', 'export {};\n');
   });
 
+
+  it('accepts actual subsequent TypeScript output without generating it during initialization', async () => {
+    const project = await InitializationExamples.withUnconnectedManifest();
+    await project.prepare('../chosen-game', 'typescript');
+    await project.apply(true);
+    await project.expectAbsentFiles(['src/StoreGame.ts']);
+    await project.generateTypeScript('class StoreGame { public save\ncapability save() returns Nothing }');
+    await project.supplyInstalledTypeScript('5.9.3');
+    await project.runNativeBuildScript();
+    project.expectNativeBuildExit(0);
+    await project.runConsumer("import { StoreGame } from './dist/StoreGame.js'; new StoreGame().save();");
+    project.expectThrownError('Not implemented: StoreGame.save');
+    await project.expectFile('src/index.ts', 'export {};\n');
+    await project.expectNoGeneratedTests();
+  });
 
   it('does not emit new native output after a real type error', async () => {
     const project = await InitializationExamples.withUnconnectedManifest();

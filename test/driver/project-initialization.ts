@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import processTools from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
@@ -11,7 +12,7 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'no
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { vi } from 'vitest';
-import { Compiler, ConfigurationReader, Outputs, ProjectConnector, ProjectInitializer, type Check, type Configuration,
+import { Compiler, ConfigurationReader, Outputs, ProjectConnector, ProjectInitializer, FileProjectWriter, LangiumReader, LangiumModel, SourceComposer, SpecificationIdentity, typescriptOutput, type Check, type Configuration,
   type InitializationPlan, type InitializationResult, type ProjectConnection } from '../../src/index.js';
 
 export class InitializationDriver {
@@ -29,6 +30,31 @@ export class InitializationDriver {
   readonly forbidden: string[] = [];
   native: { code: number; text: string } | undefined;
   compilerDirectory: string | undefined;
+  runtime: { code: number; text: string } | undefined;
+  async generateTypeScript(text: string): Promise<void> {
+    const read = new LangiumReader().read({ sourceId: 'store.expec', text });
+    if (read.status !== 'accepted') throw new Error(JSON.stringify(read));
+    const checked = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('store', read.document), { modules: [], packages: [] }) });
+    if (!checked.value) throw new Error(JSON.stringify(checked));
+    const identified = new SpecificationIdentity(randomUUID).associate(checked.value);
+    if (!identified.value || !this.result?.value) throw new Error('Need checked contracts and a successful initialized connection.');
+    const { context, configuration } = this.result.value, outputs = new Outputs(); outputs.register(typescriptOutput);
+    const opened = outputs.open('typescript', configuration.outputs.find(output => output.id === 'typescript')!.options, context, new FileProjectWriter(context));
+    if (!opened.value) throw new Error(JSON.stringify(opened));
+    const written = await opened.value.create(identified.value);
+    if (written.problems.length || written.receipt?.status !== 'applied') throw new Error(JSON.stringify(written));
+  }
+  async runConsumer(text: string): Promise<void> {
+    try {
+      const result = await promisify(processTools.execFile)(process.execPath, ['--input-type=module', '--eval', text],
+        { cwd: this.destination, windowsHide: true, timeout: 10000 });
+      this.runtime = { code: 0, text: result.stdout + result.stderr };
+    } catch (error) {
+      const result = error as { code?: unknown; stdout?: string; stderr?: string };
+      if (typeof result.code !== 'number') throw error;
+      this.runtime = { code: result.code, text: (result.stdout ?? '') + (result.stderr ?? '') };
+    }
+  }
   async initialize(input?: Record<string, unknown>): Promise<void> {
     this.directory = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'expec-init-')));
     this.manifest = join(this.directory, 'spec', 'expec.json');

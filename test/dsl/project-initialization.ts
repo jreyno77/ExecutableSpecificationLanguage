@@ -98,6 +98,9 @@ export class InitializationExamples {
   async expectJsonProperty(path: string, keys: string[], value: unknown): Promise<void> { expect(at(JSON.parse(await fs.readFile(this.driver.target(path), 'utf8')), keys)).toEqual(value); }
   async expectNoCopiedSpecificationWorkspace(): Promise<void> { await this.expectAbsentFiles(['expec.json', 'spec', 'store.expec']); }
   async expectNoGeneratedTests(): Promise<void> { await this.expectAbsentFiles(['test', 'tests']); }
+  generateTypeScript(text: string): Promise<void> { return this.driver.generateTypeScript(text); }
+  runConsumer(text: string): Promise<void> { return this.driver.runConsumer(text); }
+  expectThrownError(message: string): void { expect(this.driver.runtime?.code).toBe(1); expect(this.driver.runtime?.text).toContain('Error: ' + message); }
   supplyInstalledTypeScript(version: string): Promise<void> { return this.driver.supplyCompiler(version); }
   runNativeBuildScript(): Promise<void> { return this.driver.build(); }
   writeImplementation(path: string, text: string): Promise<void> { return this.driver.file(relative(this.driver.directory, this.driver.target(path)), text); }
