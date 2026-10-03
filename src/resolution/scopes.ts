@@ -1,6 +1,7 @@
 import type { Model, ModelNode, NodeId, ReferenceResolution } from '../model.js';
 import type { ProblemLocation, ResolutionProblem } from './problem.js';
 import { SourceIndex } from './source-index.js';
+import type { Modules } from './modules.js';
 
 export type Introduction = {
   readonly at: ProblemLocation;
@@ -53,7 +54,7 @@ export class ScopeGraph {
   constructor(
     sources: readonly SourceIndex[],
     builtinModel: Model,
-    private readonly moduleFailures: ReadonlyMap<string, readonly ResolutionProblem[]> = new Map(),
+    private readonly modules?: Modules,
   ) {
     for (const builtin of builtinModel.nodes('builtin-type')) {
       this.introduce(this.builtinScope, builtinModel.node(builtin.name, 'name').decoded, { target: builtin, at: builtin.origin });
@@ -65,6 +66,7 @@ export class ScopeGraph {
       for (const node of source.nodes) this.indices.set(node.id, source);
       for (const node of source.roots) this.walk(source, node, root);
     }
+    this.includeModuleNames();
     for (const source of sources) this.importModuleNames(source);
     this.attachExamples();
     this.finishIntroductions();
@@ -80,7 +82,7 @@ export class ScopeGraph {
 
   /** Select authored declarations; imported aliases and builtins are not exports. */
   select(locator: string, path: readonly string[], requester = this.outside): Lookup {
-    const failures = this.moduleFailures.get(locator);
+    const failures = this.modules?.failures.get(locator);
     if (failures?.length) return { status: 'invalid', problems: failures };
     const root = this.moduleRoots.get(locator);
     if (!root) return { status: 'invalid', problems: [{
@@ -97,6 +99,15 @@ export class ScopeGraph {
       found = this.choose(inside, segment, requester, true);
     }
     return found;
+  }
+
+  selectFrom(owner: string, authored: string, path: readonly string[], requester: Scope): Lookup {
+    const locator = this.modules ? this.modules.locate(owner, authored) : authored;
+    if (locator !== undefined) return this.select(locator, path, requester);
+    return { status: 'invalid', problems: [{
+      code: 'unavailable-module', message: 'No supplied module maps ' + authored + ' from ' + owner + '.',
+      at: { kind: 'dependency', path: ['modules', authored] }, related: [],
+    }] };
   }
 
   lookup(scope: Scope, path: readonly string[], ownOnly = false): Lookup {
@@ -201,7 +212,7 @@ export class ScopeGraph {
         const reference = source.node(item.imported);
         const path = source.reference(reference.id);
         const name = item.alias ? source.name(item.alias) : path.at(-1)!;
-        const found = this.select(locator.value, path, root);
+        const found = this.selectFrom(source.locator, locator.value, path, root);
         const introduction = { at: item.origin, importKey: JSON.stringify([locator.value, path]) };
         if (found.status === 'found') {
           this.introduce(root, name, { ...introduction, target: found.declaration });
@@ -214,6 +225,27 @@ export class ScopeGraph {
         }
       }
     }
+  }
+
+  private includeModuleNames(): void {
+    const completed = new Set<string>();
+    const include = (locator: string): void => {
+      if (completed.has(locator)) return;
+      const root = this.moduleRoots.get(locator)!;
+      for (const edge of this.modules?.includes.get(locator) ?? []) {
+        include(edge.target);
+        for (const [name, introductions] of this.moduleRoots.get(edge.target)!.names) {
+          for (const introduction of introductions) {
+            if (!introduction.target || this.privateTo.has(introduction.target.id)) continue;
+            if (!root.names.get(name)?.some(existing => existing.target?.id === introduction.target!.id)) {
+              this.introduce(root, name, introduction);
+            }
+          }
+        }
+      }
+      completed.add(locator);
+    };
+    for (const locator of this.moduleRoots.keys()) include(locator);
   }
 
   private importProblems(reference: ModelNode, path: readonly string[], found: Exclude<Lookup, { status: 'found' }>): readonly ResolutionProblem[] {

@@ -7,7 +7,7 @@ import { InteractionChecker, type Communication } from './interaction-checker.js
 import { LangiumModel } from './langium-model.js';
 import { LangiumReader } from './langium/reader.js';
 import type { NodeId, NodeKind } from './model.js';
-import { Resolver, type ResolutionDependencies } from './resolution.js';
+import { Resolver, type Resolution, type ResolutionDependencies } from './resolution.js';
 import type { ProblemLocation } from './resolution/problem.js';
 import { ScenarioChecker } from './scenario-checker.js';
 import { TypeDescriber, type TypeCatalog } from './type-catalog.js';
@@ -30,10 +30,16 @@ export interface Specification {
 export class Compiler {
   private readonly reader = new LangiumReader();
 
-  compile(input: CompilationInput): Compilation {
-    const read = this.reader.read(input.source);
-    if (read.status === 'rejected') return { syntax: read.diagnostics, problems: [], deferred: [] };
-    const resolution = new Resolver().resolve(new LangiumModel(input.locator, read.document), input.dependencies);
+  compile(input: CompilationInput): Compilation;
+  compile(input: { readonly resolution: Resolution }): Compilation;
+  compile(input: CompilationInput | { readonly resolution: Resolution }): Compilation {
+    let resolution: Resolution;
+    if ('resolution' in input) resolution = input.resolution;
+    else {
+      const read = this.reader.read(input.source);
+      if (read.status === 'rejected') return { syntax: read.diagnostics, problems: [], deferred: [] };
+      resolution = new Resolver().resolve(new LangiumModel(input.locator, read.document), input.dependencies);
+    }
     const types = new TypeDescriber().describe(resolution), inspection = types.inspection;
     const expressions = new ExpressionChecker(types), fixtures = new FixtureChecker(types, expressions);
     const scenarios = new ScenarioChecker(inspection, expressions, fixtures), interactions = new InteractionChecker(types, expressions);
