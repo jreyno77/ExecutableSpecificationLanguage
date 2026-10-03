@@ -16,6 +16,7 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  workspace?: { functions: string[]; books: string[]; parameters: number; bothParametersUseBook: boolean; bookIdentityRecords: number };
   nativeContext?: {
     complete: boolean; problems: unknown[]; search: ProjectSearch;
     editable: string[]; readonly: { path: string; version: string }[];
@@ -135,6 +136,11 @@ export class PackageDriver {
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
+  }
+  async compileWorkspace(files: Record<string, string>, entries: string[]): Promise<void> {
+    await cp(join(resources, 'workspace-consumer.mjs'), join(this.consumer, 'workspace-consumer.mjs'));
+    await writeFile(join(this.consumer, 'workspace.json'), JSON.stringify({ files, entries }));
+    this.result = await run(process.execPath, ['workspace-consumer.mjs'], this.consumer); await this.readReport();
   }
   async captureNativeDependencies(packages: Record<string, string>): Promise<void> {
     const installed = await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock',
