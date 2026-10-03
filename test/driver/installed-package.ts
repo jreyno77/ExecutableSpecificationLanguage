@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
 
 const execute = promisify(execFile), require = createRequire(import.meta.url);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -13,6 +14,9 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  domainFailures?: { operation: string; result: string; code: { family: string; codes: string[]; payload: string[] }[];
+    documented: { family: string; codes: string[]; payload: string[] }[]; sameDeclaration: boolean; fieldsAgree: boolean; earlierUnchanged: boolean }[];
+
   accepted?: boolean;
   syntax?: unknown[];
   deferred?: unknown[];
@@ -22,8 +26,18 @@ interface ConsumerReport {
   writing?: { status: string; problems: unknown[]; outcomes: string[]; before: string[];
     file: string; handwritten: string; markerPresent: boolean };
   operations?: string[];
+  bodies?: { name: string; generation: string[]; documentation: string[]; statements: string[]; earlierUnchanged: boolean }[];
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
+  output?: CountReport;
+}
+interface CountReport {
+  write?: OutputWrite;
+  counts?: { concepts: number; recordTypes: number; capabilities: number; subjects: { id: string; name: string }[] };
+  file?: string;
+  handwritten?: string;
+  read?: Omit<ProjectRead, 'artifacts'> & { artifacts: { path: string; text: string; disk: string }[] };
+  search?: ProjectSearch;
 }
 
 /** Native packing, isolated installation, and observations from separate consumer processes. */
@@ -36,6 +50,8 @@ export class PackageDriver {
   declarations!: ProcessResult;
   report!: ConsumerReport;
   location!: Awaited<ReturnType<typeof packageLocation>>;
+  countReports: Record<string, CountReport> = {};
+  private countInput: Record<string, unknown> = {};
 
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
@@ -85,6 +101,33 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['writer.mjs', 'write.json'], this.consumer);
     await this.readReport();
   }
+  async registerCountOutput(): Promise<void> {
+    for (const name of ['count-adapter.mts', 'output-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+  }
+  async createCountReport(text: string, directory: string): Promise<void> {
+    this.countInput = { text, options: { directory } };
+    await mkdir(join(this.consumer, 'project'));
+    await writeFile(join(this.consumer, 'project/handwritten.txt'), 'Keep my notes.');
+    await this.countCommand('create');
+  }
+  async readCountReport(subject: string): Promise<void> {
+    const definition = this.countReports.create?.counts?.subjects.find(item => item.name === subject);
+    if (!definition) throw Error('The generated report did not define ' + subject);
+    this.countInput.subjectId = definition.id;
+    await this.countCommand('read');
+  }
+  async writeCountConsumer(title: string): Promise<void> {
+    this.countInput.title = title;
+    await this.countCommand('consumer');
+  }
+  searchCountReport(): Promise<void> { return this.countCommand('search'); }
+  private async countCommand(command: string): Promise<void> {
+    await writeFile(join(this.consumer, 'output.json'), JSON.stringify(this.countInput));
+    this.result = await run(process.execPath, ['output-consumer.mjs', command], this.consumer);
+    await this.readReport();
+    if (this.result.code !== 0 || !this.report.output) throw Error('Installed output consumer failed. ' + output(this.result));
+    this.countReports[command] = this.report.output;
+  }
   private async readReport(): Promise<void> {
     try { this.report = JSON.parse(this.result.stdout); }
     catch { throw new Error(`Consumer did not return observations. ${output(this.result)}`); }
@@ -93,11 +136,11 @@ export class PackageDriver {
     }
   }
   async checkTypeScript(): Promise<void> {
-    await cp(join(resources, 'consumer.mts'), join(this.consumer, 'consumer.mts'));
+    for (const name of ['consumer.mts', 'count-adapter.mts']) await cp(join(resources, name), join(this.consumer, name));
     await writeFile(join(this.consumer, 'tsconfig.json'), JSON.stringify({
       compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2022', strict: true,
         exactOptionalPropertyTypes: true, skipLibCheck: true, noEmit: true, types: [] },
-      files: ['consumer.mts'],
+      files: ['consumer.mts', 'count-adapter.mts'],
     }));
     this.declarations = await run(process.execPath, [require.resolve('typescript/bin/tsc'), '--pretty', 'false', '-p', 'tsconfig.json'], this.consumer);
   }

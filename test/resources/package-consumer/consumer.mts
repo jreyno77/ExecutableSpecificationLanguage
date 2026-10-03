@@ -4,6 +4,7 @@ import {
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
   type NodeId, type ScenarioCapture, type ScenarioStep,
+  TestOperationChecker, ExpressionChecker, FixtureChecker, type TestOperationChecking,
 } from 'executable-specification-language';
 
 const input: CompilationInput = {
@@ -31,6 +32,11 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
 export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
   return [...specification.inspection.query('call-expression')].map(call => specification.call(call.id));
 }
+export function checkTestOperations(specification: Specification): readonly Check[] {
+  const expressions = new ExpressionChecker(specification.types);
+  const checker: TestOperationChecking = new TestOperationChecker(specification.types, expressions, new FixtureChecker(specification.types, expressions));
+  return [...specification.inspection.query('check')].map(operation => checker.check(operation.id));
+}
 export function capturedValues(specification: Specification): readonly ScenarioCapture[] {
   return [...specification.inspection.query('when')].flatMap(step => {
     const result: Check<ScenarioStep> = specification.step(step.id);
@@ -55,4 +61,8 @@ export async function loadSources(manifestLocation: string, configuration: Confi
     new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(entry, dependencies) });
   }
   return { ...loaded, captures };
+}
+
+export function describeFailures(specification: Specification, operation: NodeId): readonly import('executable-specification-language').TypeFact<import('executable-specification-language').ErrorDescription>[] {
+  return specification.types.callable(operation).failures.map(fact => fact.status === 'known' ? specification.types.error(fact.value) : fact);
 }

@@ -1,5 +1,5 @@
 import type { AstNode } from 'langium';
-import type { Callable } from './langium/generated/ast.js';
+import type { Callable, TypeExpression } from './langium/generated/ast.js';
 import type { KindOf, LanguageFields, ModelNode, NodeId, NodeKind, Origin, ReferenceLookup, ReferenceResolution } from './model.js';
 
 type Views<T> = T extends AstNode ? Item<Extract<KindOf<T>, NodeKind>>
@@ -13,7 +13,7 @@ type Details<K extends NodeKind> =
   : K extends 'builtin-type' | 'type-parameter' ? { readonly name: string; readonly nameOrigin: Origin }
   : K extends 'reference' ? { readonly segments: readonly string[]; readonly segmentOrigins: readonly Origin[]; readonly lookup?: ReferenceLookup; readonly resolution: ReferenceResolution }
   : K extends 'promises' ? { readonly text: string; readonly textOrigin: Origin }
-  : K extends 'capability' | 'function' | 'setup' | 'action' | 'observation' | 'check' ? Omit<Named<LanguageFields<K>>, 'body'> & { readonly body: Body }
+  : K extends 'capability' | 'function' | 'setup' | 'action' | 'observation' | 'check' ? Omit<Named<LanguageFields<K>>, 'body' | 'failures'> & { readonly body: Body; readonly failures: readonly Item<KindOf<TypeExpression>>[] }
   : K extends 'field' | 'parameter' ? Named<LanguageFields<K>> & { readonly hasDefault: boolean }
   : K extends 'record-type-declaration' ? Omit<Named<LanguageFields<K>>, 'fields'> & { readonly fields: readonly Item<'field' | 'local'>[] }
   : K extends 'local' ? Omit<Named<LanguageFields<K>>, 'declaration'> & {

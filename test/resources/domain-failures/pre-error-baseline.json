@@ -1,0 +1,151 @@
+{
+  "artifacts": [],
+  "context": "sha256:067db91afb68559d989846a0d3645eebc880dfcb087b62836da3653ccbfee0ba",
+  "elements": [
+    {
+      "address": {
+        "kind": "record-type-declaration",
+        "module": "entry",
+        "name": "Account",
+        "owner": null
+      },
+      "capture": "sha256:50cf3b754e116ed323615f6a934a1d7ad827cf55635d05051af08fb7f841872c",
+      "id": "pre-error-1",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "entry",
+        "node": {
+          "ordinal": 0,
+          "sourceId": "entry"
+        },
+        "range": {
+          "end": {
+            "column": 26,
+            "line": 1,
+            "offset": 25
+          },
+          "sourceId": "entry",
+          "start": {
+            "column": 1,
+            "line": 1,
+            "offset": 0
+          }
+        }
+      },
+      "references": [],
+      "structure": "sha256:c1461618363173415fd62054877ff532941ee0d4272e5f586ffe28ab4dad239d"
+    },
+    {
+      "address": {
+        "kind": "field",
+        "module": "entry",
+        "name": "id",
+        "owner": "pre-error-1"
+      },
+      "capture": "sha256:e7d543c579d95268ddc1b15ee20fa1530fb0dc71d98f7cf4f31f4e4d46f6ac81",
+      "id": "pre-error-2",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "entry",
+        "node": {
+          "ordinal": 2,
+          "sourceId": "entry"
+        },
+        "range": {
+          "end": {
+            "column": 24,
+            "line": 1,
+            "offset": 23
+          },
+          "sourceId": "entry",
+          "start": {
+            "column": 16,
+            "line": 1,
+            "offset": 15
+          }
+        }
+      },
+      "references": [],
+      "structure": "sha256:b33343585b08207902ff5d801acc0c586a7db3b61efdb42e926dea6c32b71854"
+    },
+    {
+      "address": {
+        "kind": "function",
+        "module": "entry",
+        "name": "findAccount",
+        "owner": null
+      },
+      "capture": "sha256:e1de9f0b549d73d9257f2128994eee620c10d30477dbfc1c4effe0326e153404",
+      "id": "pre-error-3",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "entry",
+        "node": {
+          "ordinal": 7,
+          "sourceId": "entry"
+        },
+        "range": {
+          "end": {
+            "column": 47,
+            "line": 2,
+            "offset": 72
+          },
+          "sourceId": "entry",
+          "start": {
+            "column": 1,
+            "line": 2,
+            "offset": 26
+          }
+        }
+      },
+      "references": [
+        "pre-error-1"
+      ],
+      "structure": "sha256:06535d775244428d2107dbb3d183068d2e49c994071c941f00a979e33220d4cd"
+    },
+    {
+      "address": {
+        "kind": "parameter",
+        "module": "entry",
+        "name": "id",
+        "owner": "pre-error-3"
+      },
+      "capture": "sha256:9c8a1a43aa1481bd1a96247e5ee108c166c85c1a4d2a761e455c73ad70e72c30",
+      "id": "pre-error-4",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "entry",
+        "node": {
+          "ordinal": 9,
+          "sourceId": "entry"
+        },
+        "range": {
+          "end": {
+            "column": 30,
+            "line": 2,
+            "offset": 55
+          },
+          "sourceId": "entry",
+          "start": {
+            "column": 22,
+            "line": 2,
+            "offset": 47
+          }
+        }
+      },
+      "references": [],
+      "structure": "sha256:4043d1758e3fd46fde4cc68650a00cf385b0fbe545b572768f4b5333243bc2d2"
+    }
+  ],
+  "entry": "entry",
+  "format": 1,
+  "modules": [
+    "entry"
+  ],
+  "projection": "expec-structure-1",
+  "retired": []
+}
