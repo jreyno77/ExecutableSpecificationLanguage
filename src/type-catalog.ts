@@ -1,10 +1,13 @@
+import { ErrorDescriptions, type ErrorDescription } from './error-description.js';
+import { TypeCompatibility } from './type-compatibility.js';
+import { TypeQueryError } from './types.js';
 import { QueryError, type ModelNode, type NodeId } from './model.js';
 import type { Types } from './types.js';
 import type { Inspection } from './inspection.js';
 import { QueryInspection } from './query-inspection.js';
 import type { Resolution } from './resolution.js';
 import type { DeferredReference } from './resolution/reference-resolver.js';
-import { TypeDescriptions, type TypeDescription, type TypeFact, type TypeId, type TypeProblem } from './type-description.js';
+import { TypeDescriptions, failures, type TypeDescription, type TypeFact, type TypeId, type TypeProblem } from './type-description.js';
 
 export interface TypedSlot { readonly declaration: NodeId; readonly type: TypeFact<TypeId> }
 export type FieldShape = { readonly kind: 'available'; readonly fields: readonly TypedSlot[] } | { readonly kind: 'opaque' };
@@ -13,6 +16,7 @@ export interface CallableDescription {
   readonly declaration: NodeId;
   readonly parameters: readonly TypedSlot[];
   readonly result: TypeFact<ResultDescription>;
+  readonly failures: readonly TypeFact<TypeId>[];
   readonly problems: readonly TypeProblem[];
 }
 export interface ConstructionDescription {
@@ -29,6 +33,7 @@ export interface TypeCatalog {
   typeOf(expression: NodeId): TypeFact<TypeId>;
   describe(type: TypeId): TypeDescription;
   fields(type: TypeId): TypeFact<FieldShape>;
+  error(type: TypeId): TypeFact<ErrorDescription>;
   callable(declaration: NodeId): CallableDescription;
   construction(owner: NodeId): TypeFact<ConstructionDescription | undefined>;
   readonly problems: readonly TypeProblem[];
@@ -48,10 +53,13 @@ class DescribedCatalog extends TypeDescriptions implements TypeCatalog {
   private readonly callables = new Map<NodeId, CallableDescription>();
   private readonly constructions = new Map<NodeId, TypeFact<ConstructionDescription | undefined>>();
   private readonly local = new Set<NodeId>();
+  private readonly errors: ErrorDescriptions;
 
   constructor(resolution: Resolution) {
     super(resolution.model);
     this.inspection = new QueryInspection(resolution.model);
+    this.errors = new ErrorDescriptions(this);
+    for (const node of this.ordered) if (node.kind === 'record-type-declaration' && node.error) this.retain(this.error(this.declaredType(node.id)));
     const model = resolution.model;
     for (const node of model.nodes('local')) this.local.add(node.declaration);
     const publicCapabilities = new Set([...model.nodes('public')].flatMap(node => node.references.flatMap(id => {
@@ -64,13 +72,27 @@ class DescribedCatalog extends TypeDescriptions implements TypeCatalog {
       if ('parameters' in p && 'body' in p) {
         const signature = this.parameters(p.parameters);
         if (publicCapabilities.has(node.id)) {
-          const expressions = [...p.parameters.map(id => model.node(id, 'parameter').declaredType), ...(p.returnType ? [p.returnType] : [])];
+          const expressions = [...p.parameters.map(id => model.node(id, 'parameter').declaredType), ...(p.returnType ? [p.returnType] : []), ...p.failures];
           for (const expression of expressions) for (const declaration of this.exposed(expression)) signature.problems.push({
             code: 'private-type-exposure', message: 'A public capability signature exposes a local type.',
             at: model.node(expression).origin, related: [model.node(declaration).origin],
           });
         }
-        this.callables.set(node.id, { declaration: node.id, ...signature,
+        const declaredFailures = p.failures.map(id => this.failureType(id));
+        const compatibility = new TypeCompatibility(this);
+        for (let index = 0; index < declaredFailures.length; index++) {
+          const fact = declaredFailures[index]!;
+          if (fact.status !== 'known') continue;
+          const previous = declaredFailures.slice(0, index).findIndex(prior => prior.status === 'known'
+            && compatibility.assignable(prior.value, fact.value).value === true
+            && compatibility.assignable(fact.value, prior.value).value === true);
+          if (previous >= 0) declaredFailures[index] = { status: 'invalid', deferred: [], problems: [{
+            code: 'duplicate-failure', message: 'This error type is already declared as a failure.',
+            at: model.node(p.failures[index]!).origin, related: [model.node(p.failures[previous]!).origin],
+          }] };
+        }
+        declaredFailures.forEach(fact => this.retain(fact));
+        this.callables.set(node.id, { declaration: node.id, ...signature, failures: declaredFailures,
           result: p.returnType ? this.result(this.typeOf(p.returnType)) : { status: 'known', value: { kind: 'unspecified' } } });
         this.problems.push(...signature.problems);
       }
@@ -91,6 +113,30 @@ class DescribedCatalog extends TypeDescriptions implements TypeCatalog {
           }
         }
       }
+    }
+  }
+
+  error(type: TypeId): TypeFact<ErrorDescription> { return this.errors.error(type); }
+  private failureType(expression: NodeId): TypeFact<TypeId> {
+    const type = this.typeOf(expression);
+    if (type.status !== 'known') return type;
+    try {
+      const error = this.error(type.value);
+      return failures([error, ...(error.status === 'known' ? error.value.fields.map(field => field.type) : [])]) ?? type;
+    } catch (error) {
+      if (!(error instanceof TypeQueryError) || error.code !== 'wrong-kind') throw error;
+      return { status: 'invalid', deferred: [], problems: [{ code: 'invalid-failure-type',
+        message: 'A declared failure must name an error type.', at: this.model.node(expression).origin, related: [] }] };
+    }
+  }
+  private retain(fact: TypeFact<unknown>): void {
+    if (fact.status === 'invalid') for (const problem of fact.problems) {
+      if (problem.code === 'invalid-error-code' || problem.code === 'invalid-failure-type' || problem.code === 'duplicate-failure') {
+        if (!this.problems.includes(problem)) this.problems.push(problem);
+      }
+    }
+    for (const requirement of fact.status === 'known' ? [] : fact.status === 'invalid' ? fact.deferred : fact.requirements) {
+      if (!this.deferred.includes(requirement)) this.deferred.push(requirement);
     }
   }
 

@@ -12,6 +12,7 @@ function suppliedGetterContract(): Model {
     readonly kind = 'capability' as const;
     readonly origin = origin;
     get name(): NodeId { return nameId; }
+    get failures(): readonly NodeId[] { return []; }
     get parameters(): readonly NodeId[] { return []; }
     get body() { return { kind: 'absent' as const }; }
   }();

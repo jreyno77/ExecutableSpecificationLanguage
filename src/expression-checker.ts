@@ -48,7 +48,7 @@ export class ExpressionChecker implements ExpressionChecking {
     const signature = this.declarations.callable(operation);
     const inputs = new Set(target.parameters.flatMap(parameter => [locationKey(parameter.origin), locationKey(parameter.declaredType.origin)]));
     const problems = signature.problems.filter(problem => inputs.has(locationKey(problem.at)));
-    const checks: Check<unknown>[] = [{ problems, deferred: [] }];
+    const checks: Check<unknown>[] = [{ problems, deferred: [] }, ...signature.failures.map(fromFact)];
     const missing = target.parameters.slice(arguments_.length).some(parameter => !parameter.hasDefault);
     if (missing || arguments_.length > signature.parameters.length) checks.push(problem('invalid-arity', invocation, 'The arguments do not match the callable parameters.', [target]));
     for (let index = 0; index < Math.max(arguments_.length, signature.parameters.length); index++) {
@@ -106,7 +106,7 @@ export class ExpressionChecker implements ExpressionChecking {
     const node = this.declarations.inspection.read(callable);
     if (node.kind !== 'function' && node.kind !== 'capability') throw new QueryError('unexpected-kind', callable, 'Expected a function or capability contract.');
     const signature = this.declarations.callable(callable);
-    const checks: Check<unknown>[] = [fromFact(signature.result), ...signature.parameters.map(parameter => fromFact(parameter.type)),
+    const checks: Check<unknown>[] = [fromFact(signature.result), ...signature.failures.map(fromFact), ...signature.parameters.map(parameter => fromFact(parameter.type)),
       { problems: signature.problems, deferred: [] }];
     if (node.body.kind === 'unavailable') return mergeChecks(...checks, pending('contract-body', node, 'The external contract body is unavailable.'));
     if (node.body.kind === 'absent') return mergeChecks(...checks);

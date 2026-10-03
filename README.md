@@ -57,9 +57,30 @@ checking results without executing or rechecking source. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
 Syntax errors, semantic errors and missing analysis remain separate. Extensions
-and attached examples require SourceComposer; authored helper/check bodies remain incomplete. Compilation
+and attached examples require SourceComposer. Authored test operations check ordered
+locals, calls, returns and assertions through `TestOperationChecker`; their checked
+calls remain available through `call(id)`. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
+
+## Describe domain failures
+
+```expec
+type Account { id: Text }
+error type AccountError {
+  code: "duplicate-account" | "invalid-account"
+  email: Text
+}
+function createAccount(email: Text) returns Account fails with AccountError
+```
+
+An error is ordinary record data with a required closed set of text codes.
+`fails with` describes possible exceptional completion; it leaves the successful
+result unchanged and does not infer or execute exception handling. Query
+`types.callable(id).failures`, then `types.error(type)` for its declaration,
+codes and existing field slots. A known error description can retain invalid or
+deferred payload slots during standalone analysis; a successful compilation
+has no unresolved failure prerequisites. Native exception generation is separate.
 
 ## Load configured source files
 
@@ -340,6 +361,62 @@ per ID. `reconcileRelationships` compares supplied uses and preserves their scop
 and coverage. These operations do not scan or edit projects. Persist proposed
 baseline bytes only with successful project application. Inspection `roots()` and
 `children(id)` expose complete containment alongside `query`, `read` and `parent`.
+
+## Create and inspect output
+
+```ts
+import { Outputs, contractListOutput, structureListOutput,
+  FileProjectWriter } from 'executable-specification-language';
+
+const outputs = new Outputs();
+outputs.register(contractListOutput);
+outputs.register(structureListOutput);
+const output = outputs.open('contract-list', { directory: 'docs/contracts' },
+  context, new FileProjectWriter(context));
+if (output.value && current.value) {
+  const written = await output.value.create(current.value);
+  const present = await output.value.read(storeGameId);
+  const uses = await output.value.search(storeGameId);
+  console.log(written, present, uses);
+}
+```
+
+`current.value` is the identified specification above. Both profiles document source
+declarations in the checked view, including included/imported source. External
+metadata stays a reference. Markdown contract lists and structural JSON summaries
+share `create`, addition-only `insert(diff, current)`, `update(diff, current)`,
+`read`, `search`, and top-level `delete`. They summarize contracts; prose promises
+remain unverified. This documentation scope grants no implementation-code ownership.
+Error records retain their code/payload fields; declared failures are listed separately
+from an operation's unchanged successful result.
+
+An output keeps options and live context, captures fresh files for each operation,
+and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
+changes without effects. Hosts can combine disjoint plans from one snapshot, then
+apply them once. Successful association proposals cover only that output namespace;
+retain other namespaces before calling `withArtifacts`. Outputs do not save the
+global identity baseline.
+
+Generated files are owned whole files. Private `.expec/outputs/` records permit
+repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
+owned files conflict instead of being overwritten. Read still returns their actual
+complete content. Directory changes require an explicit future migration policy.
+A stopped write retains actual effects/preimages and makes no successful association
+proposal; inspect the receipt before planning recovery.
+
+Search observes current Markdown definitions/CommonMark links or versioned
+`*.structure.json` declaration/reference fields. It includes consumers absent from
+the specification and reports incomplete coverage. It does not analyze arbitrary
+code, runtime calls, or infer ownership/lifetime. Insufficient incoming-use coverage
+blocks removal. Shared `ProjectRead`/`ProjectSearch` values are also usable by
+independent scanners without an output registry.
+Valid foreign Markdown namespaces remain project-only consumers and targets; their
+opaque identities never become definitions owned by the selected output.
+
+Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
+returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a
+supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
+guarded application. No decorators, package loading, or inheritance are required.
 
 ## Development and delivery
 
