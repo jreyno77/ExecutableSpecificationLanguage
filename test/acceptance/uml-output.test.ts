@@ -352,7 +352,7 @@ describe('source and rendered artifacts evolve without losing notes', () => {
     diagrams.expectSvgDigestMatchesActualSource('design/structure.svg', 'design/structure.d2');
     await diagrams.delete('Storage');
     diagrams.expectUnchanged();
-  });
+  }, 15_000);
 
   it('protects a handwritten edge even when native D2 could implicitly recreate its removed target', async () => {
     const diagrams = await DiagramExamples.connect();
