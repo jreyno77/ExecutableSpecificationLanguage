@@ -96,4 +96,3 @@ export class ProjectWrites {
     expect(matches, 'Expected an actual outcome for ' + path).toHaveLength(1); return matches[0]!;
   }
 }
-

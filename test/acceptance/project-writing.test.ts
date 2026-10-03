@@ -348,4 +348,3 @@ describe('stopping and recovering from partial application', () => {
     await project.expectFile('src/book.ts', 'handwritten afterward');
   });
 });
-

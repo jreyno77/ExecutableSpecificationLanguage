@@ -169,4 +169,3 @@ function validate(root: ProjectRoot, baseline: ProjectSnapshot, changes: readonl
     }
   }
 }
-

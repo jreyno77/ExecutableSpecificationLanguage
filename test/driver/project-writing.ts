@@ -154,4 +154,3 @@ process.stdout.write(JSON.stringify(await new FileProjectWriter(connection.value
     await fs.rm(this.directory, { recursive: true, force: true });
   }
 }
-

@@ -34,4 +34,3 @@ try {
   process.stdout.write(JSON.stringify({ packageUrl, error: { code: error.code, message: error.message, url: error.url } }));
   process.exitCode = 1;
 }
-
