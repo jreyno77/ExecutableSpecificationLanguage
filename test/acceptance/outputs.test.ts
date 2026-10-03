@@ -1,6 +1,66 @@
 import { describe, it } from 'vitest';
 import { OutputsExample } from '../dsl/outputs.js';
 
+it('documents declared domain failures separately from the successful result', async () => {
+  const project = await OutputsExample.connect();
+  await project.specify(`type Account { id: Text }
+error type AccountError {
+  code: "duplicate-account" | "invalid-account"
+  email: Text
+}
+function createAccount(email: Text) returns Account fails with AccountError`);
+  await project.createWith('contract-list', { directory: 'contracts' });
+  await project.expectFileContains('contracts/AccountError.md', '# error type AccountError');
+  await project.expectFileContains('contracts/AccountError.md', 'code: "duplicate-account" | "invalid-account"');
+  await project.expectFileContains('contracts/AccountError.md', 'email: Text');
+  await project.expectFileContains('contracts/createAccount.md', 'createAccount(email: Text) returns Account');
+  await project.expectFileContains('contracts/createAccount.md', 'May fail with: [AccountError](');
+  await project.search('createAccount');
+  project.expectSpecifiedOutgoing(['Account', 'AccountError']);
+  project.expectCompleteWithinScope('Markdown');
+});
+
+it('preserves error data and failure roles in structural output', async () => {
+  const project = await OutputsExample.connect();
+  await project.specify(`type Account { id: Text }
+error type AccountError {
+  code: "duplicate-account" | "invalid-account"
+  email: Text
+}
+function createAccount(email: Text) returns Account fails with AccountError`);
+  await project.createWith('structure-list', { directory: 'structure' });
+  await project.expectStructuredError('AccountError', ['code: "duplicate-account" | "invalid-account"', 'email: Text']);
+  await project.expectStructuredCallable('createAccount', {
+    signature: 'createAccount(email: Text) returns Account', result: 'Account', failures: ['AccountError'],
+  });
+  await project.search('createAccount');
+  project.expectSpecifiedOutgoing(['Account', 'AccountError']);
+  project.expectCompleteWithinScope('expec-structure-1');
+});
+
+it('observes foreign Markdown links as project consumers and protects their targets', async () => {
+  const project = await OutputsExample.withContracts('concept StoreGame {}');
+  await project.writeForeignContract('guide/StoreGame.md', 'markdown', 'StoreGame', '../docs/contracts/StoreGame.md');
+  await project.search('StoreGame');
+  project.expectProjectConsumer('guide/StoreGame.md');
+  project.expectCompleteWithinScope('Markdown');
+  await project.rememberFiles();
+  await project.delete('StoreGame');
+  project.expectConflictAt('guide/StoreGame.md');
+  await project.expectFilesUnchanged();
+});
+
+it('keeps the same opaque identity in another Markdown output separate', async () => {
+  const project = await OutputsExample.withContracts('concept StoreGame {}');
+  await project.writeForeignContract('guide/StoreGame.md', 'markdown', 'StoreGame');
+  await project.read('StoreGame');
+  project.expectReadFiles(['docs/contracts/StoreGame.md']);
+  project.expectReadWithoutProblems();
+  await project.search('StoreGame');
+  project.expectCompleteWithinScope('Markdown');
+  project.expectNoObservedIncomingUses();
+});
+
 it('documents source declarations in the checked view while external declarations remain references', async () => {
   const project = await OutputsExample.connect();
   await project.specifyModules('entry', {
@@ -137,7 +197,8 @@ it('keeps unresolved observations and incomplete scope visible', async () => {
   await project.search('StoreGame');
   project.expectUnresolvedLink('Missing.md');
   project.expectIncompleteOutgoingCoverage();
-  project.expectNoGuessedTarget('Missing');
+  project.expectSpecifiedOutgoing(['Storage', 'Snapshot']);
+  project.expectNoProjectOutgoing();
 });
 
 it('read and search have no project effects', async () => {

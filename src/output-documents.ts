@@ -25,11 +25,11 @@ export function renderList(format: ListFormat, id: string, path: string, declara
   const section = (node: ListedDeclaration, depth: number): string => {
     const metadata = Buffer.from(JSON.stringify({ outputId: id, specId: node.specId })).toString('hex');
     const dependency = node.references.filter(reference => reference.role === 'dependency'), other = node.references.filter(reference => reference.role !== 'dependency');
-    return `<!-- expec-section:${metadata} -->\n\n${'#'.repeat(Math.min(depth, 6))} ${escape(node.kind)} ${escape(node.name)}\n\n<a id="${anchor(node.specId!)}"></a>\n\n`
+    return `<!-- expec-section:${metadata} -->\n\n${'#'.repeat(Math.min(depth, 6))} ${escape(node.error ? 'error type' : node.kind)} ${escape(node.name)}\n\n<a id="${anchor(node.specId!)}"></a>\n\n`
       + (depth === 1 ? 'Contract summary; declared behavior is not verified.\n\n' : '')
       + (node.signature ? '```expec\n' + node.signature.replace(/```/g, '` ` `') + '\n```\n\n' : '')
       + (dependency.length ? 'Depends on: ' + dependency.map(link).join(', ') + '\n\n' : '')
-      + other.map(reference => reference.role + ': ' + link(reference) + '\n\n').join('')
+      + other.map(reference => (reference.role === 'failure' ? 'May fail with' : reference.role) + ': ' + link(reference) + '\n\n').join('')
       + (node.promises ?? []).map(text => 'Unverified promise: ' + escape(text) + '\n\n').join('')
       + node.members.map(member => section(member, depth + 1)).join('')
       + `<!-- expec-end:${Buffer.from(node.specId!).toString('hex')} -->\n\n`;
@@ -45,6 +45,7 @@ export class ListDocuments {
   readonly definitions: Definition[] = [];
   readonly problems: Diagnostic[] = [];
   readonly edges: Edge[] = [];
+  private readonly anchors = new Set<string>();
   readonly scope: ArtifactLocator[];
   constructor(readonly format: ListFormat, readonly id: string, readonly snapshot: ProjectSnapshot) {
     this.problems.push(...snapshot.problems);
@@ -64,26 +65,34 @@ export class ListDocuments {
   }
   private issue(path: string, message: string): void { this.problems.push(outputProblem('invalid-output-document', path, message)); }
   private markdown(file: ProjectFile, links: Link[]): void {
-    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; depth?: number }[] = [];
+    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; outputId: string; depth?: number }[] = [];
     const references = new Map<string, string>(), pending: { node: RootContent; owners: string[] }[] = [];
     let root: string | undefined, waiting = false;
+    const rememberAnchor = (): void => {
+      const current = stack.at(-1);
+      if (current) this.anchors.add(file.path + '#' + anchor(current.id));
+    };
     const visit = (node: RootContent): void => {
       if (node.type === 'code' || node.type === 'inlineCode' || node.type === 'image' || node.type === 'imageReference') return;
       if (node.type === 'paragraph' && node.children.length === 2 && node.children[0]?.type === 'html' && node.children[1]?.type === 'html'
-        && node.children[0].value === `<a id="${anchor(stack.at(-1)?.id ?? '')}">` && node.children[1].value === '</a>') return;
+        && node.children[0].value === `<a id="${anchor(stack.at(-1)?.id ?? '')}">` && node.children[1].value === '</a>') { rememberAnchor(); return; }
       if (node.type === 'html') {
         const start = /^<!-- expec-section:([a-f0-9]+) -->$/.exec(node.value), end = /^<!-- expec-end:([a-f0-9]+) -->$/.exec(node.value);
         if (start) {
           try {
             const data = JSON.parse(Buffer.from(start[1]!, 'hex').toString('utf8'));
-            if (data.outputId !== this.id || !identifier.safeParse(data.specId).success || Object.keys(data).sort().join(',') !== 'outputId,specId') throw new Error('Invalid metadata');
-            if (waiting || stack.some(item => item.id === data.specId)) throw new Error('Unbalanced metadata');
-            const ancestors = stack.map(item => item.id); stack.push({ id: data.specId }); root ??= data.specId; waiting = true;
-            this.definitions.push({ id: data.specId, at: artifact(this.id, this.format, file.path, data.specId), file, ancestors });
+            if (typeof data.outputId !== 'string' || !data.outputId.trim() || !identifier.safeParse(data.specId).success || Object.keys(data).sort().join(',') !== 'outputId,specId') throw new Error('Invalid metadata');
+            if (waiting || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
+            const ancestors = stack.map(item => item.id); stack.push({ id: data.specId, outputId: data.outputId }); waiting = true;
+            if (data.outputId === this.id) {
+              root ??= data.specId;
+              this.definitions.push({ id: data.specId, at: artifact(this.id, this.format, file.path, data.specId), file, ancestors });
+            }
           } catch { this.issue(file.path, 'Malformed or unbalanced identity metadata.'); }
         } else if (end) {
           if (waiting || stack.pop()?.id !== Buffer.from(end[1]!, 'hex').toString('utf8')) this.issue(file.path, 'Unbalanced identity metadata.');
-        } else if (!/^<a id="expec-[a-f0-9]+"><\/a>$/.test(node.value)) this.issue(file.path, 'Unsupported HTML or malformed identity metadata.');
+        } else if (node.value === `<a id="${anchor(stack.at(-1)?.id ?? '')}"></a>`) rememberAnchor();
+        else this.issue(file.path, 'Unsupported HTML or malformed identity metadata.');
         return;
       }
       if (node.type === 'heading' && stack.length) {
@@ -95,7 +104,7 @@ export class ListDocuments {
         } else if (current.depth !== undefined && node.depth <= current.depth) this.issue(file.path, 'Heading escapes its identity section.');
       }
       if (node.type === 'definition') references.set(node.identifier.toUpperCase(), node.url);
-      if (node.type === 'link' || node.type === 'linkReference') pending.push({ node, owners: stack.length ? stack.map(item => item.id) : root ? [root] : [] });
+      if (node.type === 'link' || node.type === 'linkReference') pending.push({ node, owners: stack.length ? stack.filter(item => item.outputId === this.id).map(item => item.id) : root ? [root] : [] });
       if ('children' in node) for (const child of node.children) visit(child as RootContent);
     };
     tree.children.forEach(visit);
@@ -116,10 +125,11 @@ export class ListDocuments {
         const node = value as ListedDeclaration;
         if (!node || typeof node !== 'object' || typeof node.kind !== 'string' || typeof node.name !== 'string'
           || !Array.isArray(node.references) || !Array.isArray(node.members)
-          || node.specId !== undefined && !identifier.safeParse(node.specId).success) throw new Error('Malformed structural declaration.');
+          || node.specId !== undefined && !identifier.safeParse(node.specId).success
+          || node.error !== undefined && typeof node.error !== 'boolean') throw new Error('Malformed structural declaration.');
         if (node.specId) { this.definitions.push({ id: node.specId, at: artifact(this.id, this.format, file.path, node.specId), file, ancestors: owners }); owners = [...owners, node.specId]; }
         node.references.forEach((reference, index) => {
-          if (!reference || !['dependency', 'input', 'output', 'field', 'construction', 'use'].includes(reference.role)
+          if (!reference || !['dependency', 'input', 'output', 'failure', 'field', 'construction', 'use'].includes(reference.role)
             || (reference.specId === undefined) === (reference.path === undefined) || typeof (reference.specId ?? reference.path) !== 'string') throw new Error('Malformed structural reference.');
           links.push({ at: { outputId: this.id, format: 'structural-reference', value: { path: file.path, pointer: `${location}/references/${index}` } },
             path: file.path, projectId: file.path + '#' + location, source: node.specId, owners, destination: reference.specId ?? reference.path!, byId: reference.specId !== undefined });
@@ -144,7 +154,9 @@ export class ListDocuments {
       if (path === '..' || path.startsWith('../')) return unresolved('Link leaves project: ' + link.destination);
       const file = this.snapshot.files.find(file => file.path === path);
       if (!file) return unresolved('Missing project link: ' + link.destination);
+      if (this.format === 'markdown' && fragment && !this.anchors.has(path + '#' + fragment)) return unresolved('Missing project anchor: ' + link.destination);
       selected = this.definitions.filter(definition => definition.file.path === path && (fragment ? anchor(definition.id) === fragment : !definition.ancestors.length));
+      if (!selected.length && fragment && this.anchors.has(path + '#' + fragment)) return { ...link, target: { kind: 'project', id: path + '#' + fragment } };
       if (!selected.length && !fragment) return { ...link, target: { kind: 'project', id: path } };
     }
     if (selected.length !== 1 || this.definitions.filter(definition => definition.id === selected[0]!.id).length !== 1) return unresolved('Missing or ambiguous definition: ' + link.destination);

@@ -7,9 +7,10 @@ export interface ListedDeclaration {
   specId?: string;
   kind: string;
   name: string;
+  error?: boolean;
   signature?: string;
   promises?: string[];
-  references: { role: 'dependency' | 'input' | 'output' | 'field' | 'construction' | 'use'; specId?: string; path?: string }[];
+  references: { role: 'dependency' | 'input' | 'output' | 'failure' | 'field' | 'construction' | 'use'; specId?: string; path?: string }[];
   members: ListedDeclaration[];
 }
 const roots = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'function']);
@@ -48,6 +49,7 @@ export function listDeclarations(current: IdentifiedSpecification): ListedDeclar
         + (node.returnType ? ' returns ' + type(node.returnType) : '');
       result.members = node.parameters.map(parameter => describe(parameter, 'input'));
       if (node.returnType) result.references.push(...references(node.returnType, 'output'));
+      result.references.push(...node.failures.flatMap(failure => references(failure, 'failure')));
       result.promises = node.body.kind === 'available' ? node.body.content.members.filter(item => item.kind === 'promises').map(item => item.text) : [];
     } else if (node.kind === 'parameter' || node.kind === 'field') {
       result.signature = node.name + ': ' + type(node.declaredType); result.references = references(node.declaredType, role);
@@ -59,7 +61,10 @@ export function listDeclarations(current: IdentifiedSpecification): ListedDeclar
       result.references = references(node.targetType, 'field'); result.members = node.typeParameters.map(parameter => describe(parameter));
     } else if (node.kind === 'record-type-declaration' || node.kind === 'opaque-type-declaration') {
       result.signature = node.name + parameters(node.typeParameters); result.members = node.typeParameters.map(parameter => describe(parameter));
-      if (node.kind === 'record-type-declaration') result.members.push(...node.fields.map(field => describe(field.kind === 'local' ? field.declaration : field)));
+      if (node.kind === 'record-type-declaration') {
+        if (node.error) result.error = true;
+        result.members.push(...node.fields.map(field => describe(field.kind === 'local' ? field.declaration : field)));
+      }
     } else if (node.kind === 'concept' || node.kind === 'component' || node.kind === 'class' || node.kind === 'interface') {
       const publicIds = new Set<NodeId>(node.members.flatMap(member => member.kind === 'public'
         ? member.references.flatMap(reference => reference.resolution.status === 'bound' ? [reference.resolution.target] : []) : []));

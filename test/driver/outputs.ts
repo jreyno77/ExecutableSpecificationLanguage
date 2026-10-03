@@ -43,7 +43,13 @@ export class OutputsDriver {
   error: unknown;
   writerCalls = 0;
   restoreFailure: (() => void) | undefined;
-  constructor() { this.outputs.register(contractListOutput); this.outputs.register(structureListOutput); }
+  constructor() {
+    for (const registration of [contractListOutput, structureListOutput]) this.outputs.register({ ...registration, open: options => {
+      const adapter = registration.open(options);
+      return { id: adapter.id, read: (id, snapshot) => adapter.read(id, snapshot), search: (id, snapshot) => adapter.search(id, snapshot),
+        plan: (request, snapshot) => { if ('current' in request) this.captures.push(request.current.specification); return adapter.plan(request, snapshot); } };
+    } });
+  }
   async initialize(name = 'project-a'): Promise<void> {
     this.root = join(this.directory, name);
     await fs.mkdir(this.root); await fs.mkdir(join(this.directory, 'project-b'));
@@ -108,12 +114,18 @@ export class OutputsDriver {
     if (this.opened.value) { this.output = this.opened.value; this.selected = { id, options: options as { directory: string } }; }
   }
   async createWith(id: string, options: { directory: string }): Promise<void> { await this.open(id, options); await this.create(); }
-  async create(): Promise<void> { this.captures.push(this.current.specification); this.written = await this.output.create(this.current); }
+  async create(): Promise<void> { this.written = await this.output.create(this.current); }
   async update(): Promise<void> { this.written = await this.output.update(this.diff, this.current); }
   async insert(): Promise<void> { this.written = await this.output.insert(this.diff, this.current); }
   async delete(name: string): Promise<void> { this.written = await this.output.delete(this.identifier(name)); }
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.identifier(name)); }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.identifier(name)); }
+  async writeForeignContract(path: string, outputId: string, name: string, link?: string): Promise<void> {
+    const specId = this.identifier(name), encoded = Buffer.from(specId).toString('hex');
+    const metadata = Buffer.from(JSON.stringify({ outputId, specId })).toString('hex');
+    await this.write(path, `<!-- expec-section:${metadata} -->\n\n# ${name}\n\n<a id="expec-${encoded}"></a>\n\n`
+      + (link ? `[contract](${link})\n\n` : '') + `<!-- expec-end:${encoded} -->\n`);
+  }
   async reopenOutput(): Promise<void> { await this.open(this.selected.id, this.selected.options); }
   async reopenOutputWithoutSavingHostBaseline(): Promise<void> { await this.reopenOutput(); }
   rememberIdentifier(name: string): void { this.savedIdentifier = this.identifier(name); this.originalIdentifiers.set(name, this.savedIdentifier); }

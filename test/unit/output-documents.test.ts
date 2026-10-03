@@ -10,6 +10,50 @@ function snapshot(files: Record<string, string | Uint8Array>): ProjectSnapshot {
 }
 const store: ListedDeclaration = { specId: 'store', kind: 'concept', name: 'Store', references: [], members: [] };
 describe('Markdown definitions and links', () => {
+  it('keeps two rendered namespaces separate while following their actual links', () => {
+    const selected = renderList('markdown', 'contract-list', 'Store.md', store, new Map());
+    const foreign = renderList('markdown', 'guide', 'guide/Store.md', { ...store, references: [{ role: 'use', specId: 'store' }] },
+      new Map([['store', { path: 'Store.md', name: 'Store' }]]));
+    const files = snapshot({ 'Store.md': selected, 'guide/Store.md': foreign });
+    const found = new ListDocuments('markdown', 'contract-list', files).search('store');
+    expect(found.problems).toEqual([]); expect(found.definitions).toHaveLength(1);
+    expect(found.incoming.uses.map(use => use.target)).toEqual([{ kind: 'project', id: 'guide/Store.md' }]);
+  });
+  it('recognizes a valid foreign anchor as a project target without claiming its identity', () => {
+    const selected = renderList('markdown', 'contract-list', 'Store.md', store, new Map());
+    const foreign = renderList('markdown', 'guide', 'guide/Store.md', store, new Map());
+    const source = Buffer.from(selected).toString() + '\n[guide](guide/Store.md#expec-73746f7265)\n';
+    const result = new ListDocuments('markdown', 'contract-list', snapshot({ 'Store.md': source, 'guide/Store.md': foreign })).search('store');
+    expect(result.outgoing.uses.map(use => use.target)).toEqual([{ kind: 'project', id: 'guide/Store.md#expec-73746f7265' }]);
+    expect(result.outgoing.coverage.complete).toBe(true);
+  });
+  it('does not accept a blank foreign namespace or mixed nested namespaces', () => {
+    const blank = renderList('markdown', ' ', 'Blank.md', store, new Map());
+    const current = renderList('markdown', 'contract-list', 'Store.md', store, new Map());
+    const foreign = renderList('markdown', 'guide', 'Guide.md', { ...store, specId: 'guide' }, new Map());
+    const nested = Buffer.from(current).toString().replace('<!-- expec-end:', Buffer.from(foreign).toString() + '\n<!-- expec-end:');
+    for (const contents of [blank, nested]) {
+      const result = new ListDocuments('markdown', 'contract-list', snapshot({ 'Store.md': contents })).search('store');
+      expect(result.incoming.coverage.complete).toBe(false); expect(result.problems.length).toBeGreaterThan(0);
+    }
+  });
+  it('does not invent a foreign anchor from metadata when its actual HTML anchor is missing', () => {
+    const selected = renderList('markdown', 'contract-list', 'Store.md', store, new Map());
+    const foreign = Buffer.from(renderList('markdown', 'guide', 'guide/Store.md', store, new Map())).toString().replace('<a id="expec-73746f7265"></a>', '');
+    const source = Buffer.from(selected).toString() + '\n[guide](guide/Store.md#expec-73746f7265)\n';
+    const result = new ListDocuments('markdown', 'contract-list', snapshot({ 'Store.md': source, 'guide/Store.md': foreign })).search('store');
+    expect(result.outgoing.uses).toEqual([]); expect(result.outgoing.unresolved).toHaveLength(1);
+    expect(result.outgoing.coverage.complete).toBe(false);
+  });
+  it('keeps selected metadata readable but rejects a link to its missing native anchor', () => {
+    const selected = Buffer.from(renderList('markdown', 'contract-list', 'Store.md', store, new Map())).toString().replace('<a id="expec-73746f7265"></a>', '');
+    const documents = new ListDocuments('markdown', 'contract-list', snapshot({ 'Store.md': selected,
+      'notes.md': '[store](Store.md#expec-73746f7265)' }));
+    expect(documents.read('store').artifacts).toHaveLength(1);
+    const result = documents.search('store');
+    expect(result.incoming.uses).toEqual([]); expect(result.incoming.unresolved).toHaveLength(1);
+    expect(result.incoming.coverage.complete).toBe(false);
+  });
   it('reads emitted identity anchors as complete supported Markdown', () => {
     const file = renderList('markdown', 'contract-list', 'Store.md', store, new Map());
     const found = new ListDocuments('markdown', 'contract-list', snapshot({ 'Store.md': file })).search('store');

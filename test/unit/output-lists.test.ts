@@ -30,6 +30,17 @@ function fixture(id = 'contract-list') {
     remove(path: string) { snapshot = { ...snapshot, files: snapshot.files.filter(item => item.path !== path) }; } };
 }
 describe('whole-file output reconciliation', () => {
+  it('rejects an artifact-only transition without an identity record', async () => {
+    const caller = fixture(), current = caller.current('concept Store {}');
+    const result = await caller.output.plan({ operation: 'update', current,
+      diff: { contextChanged: false, affected: [], changes: [{ id: 'ghost', kinds: ['artifacts'] }] } }, caller.snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems[0]!.code).toBe('inconsistent-diff');
+  });
+  it('rejects foreign affected identities without guessing missing transition history', async () => {
+    const caller = fixture(), current = caller.current('concept Store {}'), diff = caller.identity.compare(undefined, current).value!;
+    const result = await caller.output.plan({ operation: 'update', current, diff: { ...diff, affected: [...diff.affected, 'ghost'] } }, caller.snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems[0]!.code).toBe('inconsistent-diff');
+  });
   it('refuses a complete-looking snapshot whose bytes disagree with its recorded version', async () => {
     const caller = fixture(), current = caller.current('concept Store {}');
     const snapshot = { ...empty, files: [{ ...file('notes.txt', bytes('old')), bytes: bytes('new') }] };

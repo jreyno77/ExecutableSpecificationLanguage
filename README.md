@@ -387,6 +387,8 @@ metadata stays a reference. Markdown contract lists and structural JSON summarie
 share `create`, addition-only `insert(diff, current)`, `update(diff, current)`,
 `read`, `search`, and top-level `delete`. They summarize contracts; prose promises
 remain unverified. This documentation scope grants no implementation-code ownership.
+Error records retain their code/payload fields; declared failures are listed separately
+from an operation's unchanged successful result.
 
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
@@ -408,6 +410,8 @@ the specification and reports incomplete coverage. It does not analyze arbitrary
 code, runtime calls, or infer ownership/lifetime. Insufficient incoming-use coverage
 blocks removal. Shared `ProjectRead`/`ProjectSearch` values are also usable by
 independent scanners without an output registry.
+Valid foreign Markdown namespaces remain project-only consumers and targets; their
+opaque identities never become definitions owned by the selected output.
 
 Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
 returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a

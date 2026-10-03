@@ -49,6 +49,7 @@ export class OutputsExample extends OutputsDriver {
   expectReadFiles(paths: string[]): void { expect([...new Set(this.readResult.artifacts.map(artifact => artifact.file.path))].sort()).toEqual([...paths].sort()); }
   expectAmbiguousDefinition(): void { expect(this.readResult.problems.map(problem => problem.code)).toContain('ambiguous-definition'); }
   expectReadNotFound(): void { expect(this.readResult.artifacts).toEqual([]); expect(this.readResult.problems.map(problem => problem.code)).toContain('output-not-found'); }
+  expectReadWithoutProblems(): void { expect(this.readResult.problems).toEqual([]); }
   expectDefinition(path: string): void { expect(this.searchResult.definitions.map(pathOf)).toContain(path); }
   expectProjectConsumer(path: string): void { expect(this.searchResult.incoming.uses.some(use => use.target.kind === 'project' && pathOf(use.at) === path)).toBe(true); }
   expectNoProjectConsumer(path: string): void { expect(this.searchResult.incoming.uses.some(use => pathOf(use.at) === path)).toBe(false); }
@@ -56,7 +57,7 @@ export class OutputsExample extends OutputsDriver {
   expectCompleteWithinScope(text: string): void { this.expectCoverageLimitedTo(text); expect(this.searchResult.incoming.coverage.complete).toBe(true); expect(this.searchResult.outgoing.coverage.complete).toBe(true); }
   expectUnresolvedLink(text: string): void { expect(JSON.stringify(this.searchResult.outgoing.unresolved)).toContain(text); }
   expectIncompleteOutgoingCoverage(): void { expect(this.searchResult.outgoing.coverage.complete).toBe(false); }
-  expectNoGuessedTarget(name: string): void { expect(this.searchResult.outgoing.uses.some(use => use.target.kind === 'specified' && use.target.id === name)).toBe(false); }
+  expectNoProjectOutgoing(): void { expect(this.searchResult.outgoing.uses.filter(use => use.target.kind === 'project')).toEqual([]); }
   expectNoObservedIncomingUses(): void { expect(this.searchResult.incoming.uses).toEqual([]); }
   expectIncompleteIncomingCoverageAt(path: string): void { expect(this.searchResult.incoming.coverage.complete).toBe(false); expect(JSON.stringify(this.searchResult)).toContain(path); }
   expectSpecifiedOutgoing(names: string[]): void { expect([...new Set(this.searchResult.outgoing.uses.flatMap(use => use.target.kind === 'specified' ? [use.target.id] : []))].sort()).toEqual(names.map(name => this.identifier(name)).sort()); }
@@ -100,4 +101,15 @@ export class OutputsExample extends OutputsDriver {
   }
   async expectStructuredCapability(owner: string, signature: string): Promise<void> { const actual = JSON.parse(await this.content(`${this.selected.options.directory}/${owner}.structure.json`)); expect(actual.declaration.members.map((item: { signature?: string }) => item.signature)).toContain(signature); }
   async expectNoStructuredCapability(owner: string, name: string): Promise<void> { const actual = JSON.parse(await this.content(`${this.selected.options.directory}/${owner}.structure.json`)); expect(actual.declaration.members.map((item: { name: string }) => item.name)).not.toContain(name); }
+  async expectStructuredError(name: string, fields: string[]): Promise<void> {
+    const actual = JSON.parse(await this.content(`${this.selected.options.directory}/${name}.structure.json`)).declaration;
+    expect(actual).toMatchObject({ kind: 'record-type', error: true, name });
+    expect(actual.members.map((field: { signature: string }) => field.signature)).toEqual(fields);
+  }
+  async expectStructuredCallable(name: string, expected: { signature: string; result: string; failures: string[] }): Promise<void> {
+    const actual = JSON.parse(await this.content(`${this.selected.options.directory}/${name}.structure.json`)).declaration;
+    expect(actual.signature).toBe(expected.signature);
+    expect(actual.references.filter((reference: { role: string }) => reference.role === 'output')).toEqual([{ role: 'output', specId: this.identifier(expected.result) }]);
+    expect(actual.references.filter((reference: { role: string }) => reference.role === 'failure')).toEqual(expected.failures.map(name => ({ role: 'failure', specId: this.identifier(name) })));
+  }
 }
