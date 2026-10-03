@@ -1,5 +1,6 @@
 import {
   Compiler, TypeScriptProject, Outputs, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  ProjectInitializer, type InitializationPlan, type InitializationResult,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -79,4 +80,10 @@ export function documentationProfiles() {
   const outputs = new Outputs();
   outputs.register(markdownOutput);
   return outputs.profiles;
+}
+
+export async function initializeProject(manifest: string, configuration: Configuration): Promise<InitializationResult | undefined> {
+  const initializer = new ProjectInitializer(manifest, configuration);
+  const preview: Check<InitializationPlan> = await initializer.prepare({ root: 'chosen-game', target: 'typescript' });
+  return preview.value ? initializer.apply(preview.value, true) : undefined;
 }

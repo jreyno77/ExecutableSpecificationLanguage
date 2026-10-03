@@ -5,6 +5,17 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('initializes the chosen project and builds its starter through installed public exports', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.initializeProject('chosen-game', 'typescript');
+    consumer.expectInstalledInitialization(['package.json', 'tsconfig.json', 'src/index.ts', '.gitignore']);
+    consumer.expectInstalledStarterBuild('5.9.3');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
