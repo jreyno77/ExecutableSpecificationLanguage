@@ -1,5 +1,5 @@
 import {
-  Compiler, ExternalModel, LangiumModel, LangiumReader, QueryInspection, SourceComposer, TypeDescriber,
+  Compiler, ExpressionChecker, ExternalModel, FixtureChecker, LangiumModel, LangiumReader, QueryInspection, SourceComposer, TypeDescriber,
   type Compilation, type ExternalDefinition, type Model, type ModelNode, type ModuleModel,
   type NodeId, type Resolution, type TypeCatalog, type TypeFact, type TypeId,
 } from '../../src/index.js';
@@ -39,12 +39,26 @@ export class CompositionDriver {
     this.compilation = new Compiler().compile({ resolution: this.resolution });
     this.types = this.compilation.value?.types ?? new TypeDescriber().describe(this.resolution);
   }
+  compileSource(): void {
+    this.compilation = new Compiler().compile({ locator: this.entryLocator,
+      source: { sourceId: this.entryLocator + '.expec', text: this.texts.get(this.entryLocator)! },
+      dependencies: { modules: [], packages: [] } });
+    if (!this.compilation.value) throw new Error('Inline source did not compile: ' + JSON.stringify(this.compilation));
+    this.types = this.compilation.value.types;
+  }
+  get inspection() { return this.types.inspection; }
 
   declaration(module: string, path: string): ModelNode {
+    if (module === 'builtin') return this.resolution.model.nodes('builtin-type').find(node => this.resolution.model.node(node.name, 'name').decoded === path)!;
     const model = this.modules.get(module)!;
     const node = allNodes(model).find(node => 'name' in node && this.namePath(model, node) === path);
-    if (!node) throw new Error('No authored declaration ' + module + ':' + path);
-    return node;
+    if (node) return node;
+    const [owner, ...members] = path.split('.');
+    let current = allNodes(model).find(node => 'name' in node && this.namePath(model, node) === owner);
+    for (const name of members) current = current && this.resolution.model.children(current.id).map(id => this.resolution.model.node(id))
+      .find(node => 'name' in node && this.resolution.model.node(node.name, 'name').decoded === name);
+    if (!current) throw new Error('No composed declaration ' + module + ':' + path);
+    return current;
   }
   private namePath(model: Model, node: ModelNode): string {
     const names: string[] = [];
@@ -92,6 +106,21 @@ export class CompositionDriver {
     this.remembered.set(name, { resolution: this.resolution, compilation: this.compilation,
       state: modelState(this.resolution.model), findings: JSON.stringify(this.compilation) });
   }
+  block(module: string, index: number) { return this.modules.get(module)!.nodes('examples')[index]!; }
+  example(module: string, title: string) {
+    const source = this.modules.get(module)!;
+    return source.nodes('example').find(node => source.node(node.title, 'string-literal').value === title)!;
+  }
+  scenario(title: string) {
+    return [...this.inspection.query('scenario')].find(node => node.title.value === title)!;
+  }
+  owner(id: NodeId) {
+    let parent = this.inspection.parent(id);
+    while (parent?.kind !== 'examples') parent = parent && this.inspection.parent(parent.id);
+    return parent && this.inspection.parent(parent.id);
+  }
+  calledOperation(call: NodeId) { return new ExpressionChecker(this.types).calledOperation(call); }
+  fixtureType(module: string, name: string) { return new FixtureChecker(this.types, new ExpressionChecker(this.types)).check(this.declaration(module, name).id); }
 }
 
 export function modelState(model: Model) {
@@ -103,7 +132,7 @@ export function modelState(model: Model) {
     facts: JSON.stringify({ nodes, bindings }) };
 }
 
-function allNodes(model: Model): ModelNode[] {
+export function allNodes(model: Model): ModelNode[] {
   const nodes = new Map<NodeId, ModelNode>();
   const visit = (id: NodeId): void => {
     if (nodes.has(id)) return;
