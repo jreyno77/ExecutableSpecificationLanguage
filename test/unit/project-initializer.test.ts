@@ -4,14 +4,14 @@ import { join, sep } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { ConfigurationReader, FileProjectWriter, ProjectInitializer, type Configuration } from '../../src/index.js';
 
-async function chosenProject() {
+async function chosenProject(packages: Configuration['packages'] = []) {
   const directory = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'expec-init-unit-')));
   onTestFinished(async () => {
     if (await fs.realpath(directory) !== directory || !directory.startsWith(await fs.realpath(tmpdir()) + sep)) throw new Error('Unexpected cleanup root.');
     await fs.rm(directory, { recursive: true, force: true });
   });
   const configuration = new ConfigurationReader([]).read({ sourceId: 'settings', text: JSON.stringify({ formatVersion: 1,
-    version: '0.1.0', build: { entries: ['store.expec'] } }) }).value!;
+    version: '0.1.0', build: { entries: ['store.expec'] }, packages }) }).value!;
   return { directory, configuration, initializer: new ProjectInitializer(join(directory, 'expec.json'), configuration) };
 }
 describe('an initialization preview belongs to one explicit application', () => {
@@ -195,5 +195,32 @@ describe('initialization receipts describe actual incomplete work', () => {
     expect(result.problems.map(problem => problem.code)).toContain('cleanup-failed');
     expect(result.write?.temporaryPaths).toEqual(['.expec/write.lock']);
     expect((await fs.lstat(marker)).isFile()).toBe(true);
+  });
+});
+
+describe('the selected starter toolchain', () => {
+  it('refuses a different exact compiler before offering a plan', async () => {
+    const { initializer, directory } = await chosenProject([{ alias: 'compiler', name: 'npm:typescript', version: '6.0.0', phases: ['build'] }]);
+    const prepared = await initializer.prepare({ root: 'project', target: 'typescript' });
+    expect(prepared.value).toBeUndefined();
+    expect(prepared.problems.map(problem => problem.code)).toContain('unsupported-initialization-toolchain');
+    expect(await fs.readdir(directory)).toEqual([]);
+  });
+  it('refuses test-only compiler availability as the starter build requirement', async () => {
+    const { initializer } = await chosenProject([{ alias: 'compiler', name: 'npm:typescript', version: '5.9.3', phases: ['test'] }]);
+    const prepared = await initializer.prepare({ root: 'project', target: 'typescript' });
+    expect(prepared.value).toBeUndefined();
+    expect(prepared.problems.map(problem => problem.code)).toContain('unsupported-initialization-toolchain');
+  });
+  it('retains agreeing physical compiler aliases and their author-supplied phases', async () => {
+    const packages: Configuration['packages'] = [
+      { alias: 'build-compiler', name: 'npm:typescript', version: '5.9.3', phases: ['build'] },
+      { alias: 'runtime-compiler', name: 'npm:typescript', version: '5.9.3', phases: ['runtime', 'test'] },
+    ];
+    const { initializer, configuration } = await chosenProject(packages);
+    const prepared = await initializer.prepare({ root: 'project', target: 'typescript' });
+    expect(prepared.problems).toEqual([]);
+    expect(prepared.value?.configuration.packages).toEqual(packages);
+    expect(configuration.packages).toEqual(packages);
   });
 });

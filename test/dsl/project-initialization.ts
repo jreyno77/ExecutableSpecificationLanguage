@@ -9,6 +9,10 @@ export class InitializationExamples {
   static async withManifest(input?: Record<string, unknown>): Promise<InitializationExamples> {
     const driver = new InitializationDriver(); await driver.initialize(input); return new InitializationExamples(driver);
   }
+  static withPackages(packages: Configuration['packages']): Promise<InitializationExamples> {
+    return this.withManifest({ formatVersion: 1, version: '0.1.0', build: { entries: ['store.expec'] }, packages });
+  }
+  expectProposedPackages(packages: Configuration['packages']): void { expect(this.driver.prepared.value?.configuration.packages).toEqual(packages); }
   static withUnconnectedManifest(): Promise<InitializationExamples> { return this.withManifest(); }
   prepare(root: string, target: string): Promise<void> { return this.driver.prepare(root, target); }
   apply(accepted: boolean): Promise<void> { return this.driver.apply(accepted); }
@@ -71,10 +75,10 @@ export class InitializationExamples {
   expectReturnedProjectRoot(root: string): void { expect(this.driver.result?.value?.configuration.project?.root).toBe(root); }
   expectReturnedBuild(build: Configuration['build']): void { expect(this.driver.result?.value?.configuration.build).toEqual(build); }
   expectReturnedOutputs(outputs: Configuration['outputs']): void { expect(this.driver.result?.value?.configuration.outputs).toEqual(outputs); }
-  expectOriginalLibrariesAndPackages(): void {
+  expectOriginalLibraries(): void {
     expect(this.driver.result?.value?.configuration.libraries).toEqual(this.driver.configuration.libraries);
-    expect(this.driver.result?.value?.configuration.packages).toEqual(this.driver.configuration.packages);
   }
+  expectReturnedPackages(packages: Configuration['packages']): void { expect(this.driver.result?.value?.configuration.packages).toEqual(packages); }
   expectInputConfigurationUnchanged(): void { expect(this.driver.configuration).toEqual(this.driver.remembered.get('configuration')); }
   expectSameConnectedRootIdentity(): void {
     expect(this.driver.connection.value?.status).toBe('connected');

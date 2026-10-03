@@ -17,7 +17,7 @@ type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
   initialization?: {
-    prepared: Check<InitializationPlan>; result?: InitializationResult;
+    prepared: Check<InitializationPlan>; result?: InitializationResult; acquisition?: PackageRead;
     connectedRoot?: { path: string; identity: string };
     selectedRoot?: { requested: string; actual: string };
     snapshot?: { complete: boolean; files: { path: string; text: string }[]; problems: unknown[]; excluded: string[] };
@@ -142,13 +142,14 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['dependency-consumer.mjs', command], this.consumer); await this.readReport();
   }
   typescriptInsideConsumer = false;
+  compilerInsideProject = false;
   async initializeProject(root: string, target: string): Promise<void> {
     await cp(join(resources, 'initialization-consumer.mjs'), join(this.consumer, 'initialization-consumer.mjs'));
     await writeFile(join(this.consumer, 'initialization.json'), JSON.stringify({ root, target, npm: npmExecutable() }));
     this.result = await run(process.execPath, ['initialization-consumer.mjs', 'initialization.json'], this.consumer);
     await this.readReport();
-    const path = this.report.initialization?.typescript?.location;
-    this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
+    const path = this.report.initialization?.typescript?.location, selectedRoot = this.report.initialization?.selectedRoot?.actual;
+    this.compilerInsideProject = !!path && !!selectedRoot && contained(join(selectedRoot, 'node_modules'), await realpath(path));
   }
   async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
     await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));

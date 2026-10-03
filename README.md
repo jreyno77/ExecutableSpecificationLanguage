@@ -572,7 +572,9 @@ The TypeScript starter contains package.json, tsconfig.json, src/index.ts and
 directory. Declining creates nothing; changed destinations stop application.
 Initialization neither installs dependencies nor generates contracts/tests or runs
 the build. The host explicitly saves the returned configuration when appropriate.
-After supplying pinned TypeScript 5.9.3, `npm run build` compiles the starter.
+The returned configuration declares the pinned TypeScript 5.9.3 build requirement.
+Pass its packages to `NpmDependencies.install` explicitly; then `npm run build`
+compiles the starter. Conflicting compiler requirements are rejected before creation.
 A stopped result preserves any created root and actual writer receipt; inspect it
 before recovery. Accepted previews are single-use, including failed attempts.
 ## Development and delivery
@@ -598,6 +600,6 @@ This separate suite runs in Windows/Linux CI and may need registry access; insta
 scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
 and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
-`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. npm publication, full type/behavior validation and project generation remain subsequent work.
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. The connected-build CLI, additional language targets and npm publication remain subsequent work.
 
 Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).

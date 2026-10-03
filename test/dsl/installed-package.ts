@@ -55,10 +55,18 @@ export class PackageExamples {
     expect(observed.beforeBuildEntries?.sort()).toEqual(['.gitignore', 'package.json', 'src', 'tsconfig.json']);
     expect(JSON.parse(observed.manifest)).toEqual({ formatVersion: 1, version: '0.1.0', build: { entries: ['store.expec'] } });
   }
+  expectInstalledToolchainAcquired(name: string, version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.acquisition).toMatchObject({ problems: [], deferred: [],
+      packages: [{ name: 'npm:' + name, requested: version, selected: version, installed: version }] });
+    expect(observed.result?.value?.configuration.packages).toEqual([
+      { alias: name, name: 'npm:' + name, version, phases: ['build'] },
+    ]);
+  }
   expectInstalledStarterBuild(version: string): void {
     const observed = this.driver.report.initialization!;
     expect(observed.typescript?.version).toBe(version);
-    expect(this.driver.typescriptInsideConsumer).toBe(true);
+    expect(this.driver.compilerInsideProject).toBe(true);
     expect(observed.build?.code, observed.build?.output).toBe(0);
     expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
   }

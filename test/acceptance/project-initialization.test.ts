@@ -1,6 +1,73 @@
 import { describe, it } from 'vitest';
 import { InitializationExamples } from '../dsl/project-initialization.js';
 
+describe('the starter declares its build requirement', () => {
+it('returns the exact build requirement needed by the generated TypeScript starter', async () => {
+  const project = await InitializationExamples.withUnconnectedManifest();
+  project.forbidProcessNetworkAndOutputExecution();
+  await project.prepare('../store-game', 'typescript');
+  project.expectProposedPackages([
+    { alias: 'typescript', name: 'npm:typescript', version: '5.9.3', phases: ['build'] }
+  ]);
+  await project.expectManifestUnchanged();
+  await project.expectDestinationAbsent();
+  project.expectNoForbiddenExecution();
+});
+
+it('retains an exact existing compiler alias and additional phases without duplication', async () => {
+  const project = await InitializationExamples.withPackages([
+    { alias: 'compiler', name: 'npm:typescript', version: '=5.9.3', phases: ['test', 'build'] },
+    { alias: 'storage', name: 'npm:store', version: '^1.0.0', phases: ['runtime'] }
+  ]);
+  await project.prepare('../store-game', 'typescript');
+  project.expectProposedPackages([
+    { alias: 'compiler', name: 'npm:typescript', version: '=5.9.3', phases: ['test', 'build'] },
+    { alias: 'storage', name: 'npm:store', version: '^1.0.0', phases: ['runtime'] }
+  ]);
+});
+
+it('rejects a broad compiler range that could escape the pinned starter profile', async () => {
+  const project = await InitializationExamples.withPackages([
+    { alias: 'compiler', name: 'npm:typescript', version: '^5.9.0', phases: ['build'] }
+  ]);
+  await project.prepare('../store-game', 'typescript');
+  project.expectProblem('unsupported-initialization-toolchain');
+  project.expectNoPlan();
+  await project.expectDestinationAbsent();
+});
+
+it('does not silently reclassify a runtime-only compiler requirement', async () => {
+  const project = await InitializationExamples.withPackages([
+    { alias: 'compiler', name: 'npm:typescript', version: '5.9.3', phases: ['runtime'] }
+  ]);
+  await project.prepare('../store-game', 'typescript');
+  project.expectProblem('unsupported-initialization-toolchain');
+  project.expectNoPlan();
+  await project.expectManifestUnchanged();
+});
+
+it('does not steal an existing package alias for the generated toolchain', async () => {
+  const project = await InitializationExamples.withPackages([
+    { alias: 'typescript', name: 'npm:other-package', version: '1.0.0', phases: ['build'] }
+  ]);
+  await project.prepare('../store-game', 'typescript');
+  project.expectProblem('unsupported-initialization-toolchain');
+  project.expectNoPlan();
+  await project.expectDestinationAbsent();
+});
+
+it('does not return compiler aliases that the native acquisition contract rejects', async () => {
+  const project = await InitializationExamples.withPackages([
+    { alias: 'build-compiler', name: 'npm:typescript', version: '5.9.3', phases: ['build'] },
+    { alias: 'test-compiler', name: 'npm:typescript', version: '=5.9.3', phases: ['test'] }
+  ]);
+  await project.prepare('../store-game', 'typescript');
+  project.expectProblem('unsupported-initialization-toolchain');
+  project.expectNoPlan();
+});
+
+});
+
 describe('the author controls initialization', () => {
   it('declines a prepared destination without creating anything', async () => {
     const project = await InitializationExamples.withUnconnectedManifest();
@@ -70,7 +137,11 @@ describe('the author controls initialization', () => {
       { id: 'markdown', options: { directory: 'docs' } },
       { id: 'typescript', options: { directory: 'src', configFile: 'tsconfig.json' } },
     ]);
-    project.expectOriginalLibrariesAndPackages();
+    project.expectOriginalLibraries();
+    project.expectReturnedPackages([
+      { alias: 'vite', name: 'vite', version: '^7.0.0', phases: ['build'] },
+      { alias: 'typescript', name: 'npm:typescript', version: '5.9.3', phases: ['build'] },
+    ]);
     await project.expectJsonProperty('package.json', ['version'], '2.3.4');
     await project.expectManifestUnchanged();
     await project.expectNoCopiedSpecificationWorkspace();
