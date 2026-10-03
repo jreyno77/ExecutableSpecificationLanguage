@@ -403,8 +403,11 @@ Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
 Register `typescriptOutput` to generate native TypeScript contracts and throwing
 implementation stubs. Pass `{ directory: 'src', concepts: 'class' }` as options;
 use `concepts: 'interface'` for signatures. Optional `names` and `imports` mappings
-make quoted names and external native dependencies explicit. `Nothing` returns
-`void`; an unspecified result remains documented as `unknown`. Defaults and prose
+make quoted names and external native dependencies explicit. Native identifiers
+currently use ASCII letters/digits, `_`, `$` and exclude
+reserved/contextual names. Unsupported spellings require explicit mapping; quoted
+field/method properties remain readable. Names are never silently transliterated.
+`Nothing` returns `void`; an unspecified result remains documented as `unknown`. Defaults and prose
 remain implementation obligations. Number uses JavaScript binary64, with lossy
 authored numeric literals refused. Error records retain their data and receive
 an `Error` companion; normal return types remain unchanged.

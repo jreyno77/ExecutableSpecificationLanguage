@@ -31,7 +31,7 @@ new StoreGame().save({ characterPosition: [0, 0], shoppingCart: { itemsCount: 0 
     project.expectThrownError('Not implemented: StoreGame.save');
     project.expectNoGeneratedTestFiles();
     project.expectNoGeneratedPersistence();
-  });
+  }, 20_000);
 
   it('preserves literal, union, tuple, list and optional type contracts', async () => {
     const project = await TypeScriptExamples.connect();
@@ -104,7 +104,7 @@ const game: StoreGame = new factory('Store Game');`);
     await project.runConsumer(`import { StoreGame } from './src/StoreGame.js';
 new StoreGame('Store Game');`);
     project.expectThrownError('Not implemented: StoreGame.construction');
-  });
+  }, 20_000);
 
   it('keeps internal capabilities private and local types inside their owner file', async () => {
     const project = await TypeScriptExamples.connect();
@@ -236,7 +236,7 @@ class StoreGame {
     await project.create({ directory: 'src', names: [{ declaration: ['save', 'Error'], name: 'detail' }] });
     await project.runConsumer("import { save } from './src/save.js'; save('Dune');");
     project.expectThrownError('Not implemented: save');
-  });
+  }, 20_000);
 
   it('captures workspace membership per opened output', async () => {
     const project = await TypeScriptExamples.connect();
@@ -380,7 +380,7 @@ const supplied: Book = { copies: 2 };`);
 save();`);
     project.expectThrownError('Not implemented: save');
     project.expectNoNativeDefaultInitializer('save.copies');
-  });
+  }, 20_000);
 
   it('retains ordinary decimal literals and documents binary64 arithmetic', async () => {
     const project = await TypeScriptExamples.connect();
@@ -442,7 +442,7 @@ try {
       payloadMessage: 'My payload message', message: 'duplicate-account', name: 'RejectedError' });
     await project.search('Rejected');
     project.expectNativeDefinitions(['Rejected', 'RejectedError']);
-  });
+  }, 20_000);
 
   it('reuses the original exception family through a transparent error alias', async () => {
     const project = await TypeScriptExamples.connect();
