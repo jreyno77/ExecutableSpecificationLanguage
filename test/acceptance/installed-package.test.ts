@@ -42,6 +42,21 @@ examples { scenario "count" {
     consumer.expectConsumerFailedFor('compiler.js');
   });
 
+  it('lets generation and documentation consumers read the same checked test body', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.check(`examples {
+observation quantity(title: Text) returns Number
+check expected(title: Text, copies: Number) {
+let actual = quantity(title)
+assert actual == copies
+}
+}`);
+    consumer.expectInstalledPackageUsed();
+    consumer.expectSpecificationAccepted();
+    consumer.expectTestBody('expected', ['quantity'], ['let actual = quantity(title)', 'assert actual == copies']);
+  });
+
   it('applies a guarded file change through the installed public writer', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

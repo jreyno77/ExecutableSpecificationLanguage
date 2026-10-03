@@ -12,6 +12,7 @@ import { Resolver, type Resolution, type ResolutionDependencies } from './resolu
 import type { ProblemLocation } from './resolution/problem.js';
 import { checkScenario, type ScenarioStep } from './scenario-checker.js';
 import { TypeDescriber, type TypeCatalog } from './type-catalog.js';
+import { TestOperationChecker } from './test-operation-checker.js';
 
 export interface CompilationInput {
   readonly source: Readonly<SourceDocument>;
@@ -45,6 +46,7 @@ export class Compiler {
     }
     const types = new TypeDescriber().describe(resolution), inspection = types.inspection;
     const expressions = new CheckedExpressions(types), fixtures = new FixtureChecker(types, expressions);
+    const operations = new TestOperationChecker(types, expressions, fixtures);
     const steps = new Map<NodeId, ScenarioStep>(), interactions = new InteractionChecker(types, expressions);
     const authored = <K extends NodeKind>(kind: K) => [...inspection.query(kind)].filter(node => node.origin.kind === 'source');
     const checks: Check<unknown>[] = [{ problems: resolution.problems, deferred: [] }, types];
@@ -69,12 +71,11 @@ export class Compiler {
     for (const node of authored('fixture')) check(node.value.id, fixtures.check(node.id));
     for (const kind of ['example', 'scenario'] as const) for (const node of authored(kind)) check(node.id, checkScenario(inspection, expressions, fixtures, node.id, steps));
     for (const node of authored('interaction')) check(node.id, interactions.check(node.id));
-    const deferred: Requirement[] = [];
     for (const kind of ['setup', 'action', 'observation', 'check'] as const) for (const node of authored(kind)) {
-      if (node.body.kind !== 'absent') deferred.push({ reason: 'helper-body',
-        origin: node.body.kind === 'available' ? node.body.content.origin : node.origin,
-        requires: 'Checking authored helper and check bodies is not implemented.' });
+      checks.push(operations.check(node.id));
+      if (node.body.kind === 'available') covered.add(node.body.content.id);
     }
+    const deferred: Requirement[] = [];
     for (const kind of ['include', 'extend', 'examples-attachment'] as const) for (const node of authored(kind)) {
       deferred.push({ reason: 'composition', origin: node.origin,
         requires: 'Source composition must supply the declarations and ownership of the combined document.' });

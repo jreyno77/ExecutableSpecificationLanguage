@@ -334,7 +334,7 @@ type Book { copies: Number = "many" }`);
     language.expectNoSpecification();
   });
 
-  it("does not certify an authored helper body whose checker was withdrawn", () => {
+  it("rejects an authored operation with the wrong returned value", () => {
     const language = new CompilationExamples();
     language.source(`examples {
   observation quantity() returns Number { return "many" }
@@ -342,7 +342,7 @@ type Book { copies: Number = "many" }`);
 
     language.compile();
 
-    language.expectDeferred("helper-body", '{ return "many" }', { line: 2 });
+    language.expectProblem("incompatible-type", '"many"', { line: 2 });
     language.expectNoSpecification();
   });
 
@@ -352,7 +352,7 @@ type Book { copies: Number = "many" }`);
 
     language.compile();
 
-    language.expectDeferred("helper-body", "{}", { within: "check quantityIsCorrect() {}" });
+    language.expectProblem("missing-assertion", "check quantityIsCorrect() {}", { line: 1 });
     language.expectNoSpecification();
   });
 

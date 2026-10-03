@@ -22,6 +22,7 @@ interface ConsumerReport {
   writing?: { status: string; problems: unknown[]; outcomes: string[]; before: string[];
     file: string; handwritten: string; markerPresent: boolean };
   operations?: string[];
+  bodies?: { name: string; generation: string[]; documentation: string[]; statements: string[]; earlierUnchanged: boolean }[];
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
 }

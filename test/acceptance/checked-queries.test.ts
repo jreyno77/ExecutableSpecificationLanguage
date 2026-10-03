@@ -348,7 +348,7 @@ extend Store {
     language.expectSelectedOperationOrigin('persist("snapshot")', { module: 'saving', sourceId: 'saving.expec' });
   });
 
-  it('does not erase unsupported authored helper bodies to expose a query facade', () => {
+  it('keeps an unspecified authored return pending before exposing call queries', () => {
     const language = new CheckedQueries();
     language.source('game', `examples {
   action save() { return 1 }
@@ -359,7 +359,7 @@ extend Store {
 }`);
     language.compile();
 
-    language.expectRequirement('helper-body');
+    language.expectRequirement('declared-result');
     language.expectNoSpecification();
   });
 });
