@@ -328,7 +328,7 @@ describe('an author compiles explicitly supplied modules and includes', () => {
     language.expectNotAnalyzed("store/types", "Item");
   });
 
-  it("keeps an extension pending after successfully handling an include", () => {
+  it("composes an extension alongside an included declaration", () => {
     const language = new CompositionExamples();
     language.entry("store", `include "shared"
   concept StoreGame {}
@@ -339,11 +339,12 @@ describe('an author compiles explicitly supplied modules and includes', () => {
     language.compile();
 
     language.expectOriginalDeclarationIdentity("shared", "Snapshot");
-    language.expectDeferred("composition", "store", { line: 3 });
-    language.expectNoSpecification();
+    language.expectCapabilities("store", "StoreGame", ["save"]);
+    language.expectNoPendingComposition();
+    language.expectCompiled();
   });
 
-  it("keeps an examples attachment pending after successfully handling an include", () => {
+  it("composes an examples attachment alongside an included declaration", () => {
     const language = new CompositionExamples();
     language.entry("store", `include "shared"
   concept StoreGame {}
@@ -355,8 +356,9 @@ describe('an author compiles explicitly supplied modules and includes', () => {
     language.compile();
 
     language.expectOriginalDeclarationIdentity("shared", "Snapshot");
-    language.expectDeferred("composition", "store", { line: 3 });
-    language.expectNoSpecification();
+    language.expectExampleSubject("saving", "number", "store", "StoreGame");
+    language.expectNoPendingComposition();
+    language.expectCompiled();
   });
 
   it("retains included facts and authored models across calls", () => {

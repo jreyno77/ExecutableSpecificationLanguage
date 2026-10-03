@@ -1,6 +1,6 @@
 import {
-  Compiler, type CompilationInput, type Compilation, type Specification,
-  type Inspection, type Item,
+  Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
 } from 'executable-specification-language';
 
@@ -25,3 +25,13 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
   const observation: FileObservation | undefined = result.outcomes[0]?.after[0];
   return result;
 }
+
+let issued = 0;
+const identities = new SpecificationIdentity(() => 'consumer-' + ++issued);
+const identified = compilation.value ? identities.associate(compilation.value) : undefined;
+export const baseline: IdentityBaseline | undefined = identified?.value?.baseline;
+export const changes: Check<SpecDiff> | undefined = identified?.value
+  ? identities.compare(undefined, identified.value) : undefined;
+export const saved = baseline ? identities.write(baseline) : undefined;
+export const restored = saved?.value
+  ? identities.read({ sourceId: '.expec/identity.json', text: saved.value }) : undefined;

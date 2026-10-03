@@ -6,6 +6,8 @@ import { isNodeId, propertyNames, type Model, type ModelNode, type NodeId, type 
 export class QueryInspection implements Inspection {
   private readonly views = new Map<NodeId, Item>();
   constructor(private readonly model: Model) {}
+  roots(): Iterable<Item> { return this.model.roots().map(id => this.read(id)); }
+  children(id: NodeId): Iterable<Item> { return this.model.children(id).map(child => this.read(child)); }
   parent(id: NodeId): Item | undefined {
     const parent = this.model.parent(id);
     return parent === undefined ? undefined : this.read(parent);

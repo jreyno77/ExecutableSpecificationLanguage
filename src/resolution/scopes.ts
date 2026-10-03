@@ -12,14 +12,16 @@ export type Introduction = {
 );
 
 export class Scope {
-  readonly names = new Map<string, Introduction[]>();
+  readonly names: Map<string, Introduction[]>;
   constructor(
     readonly parent: Scope | undefined,
     readonly owner: NodeId | undefined,
     readonly composition = false,
     readonly orderedNames: ReadonlySet<string> = new Set(),
     readonly blockedSubject: NodeId | undefined = undefined,
-  ) {}
+    readonly shared?: Scope,
+  ) { this.names = shared?.names ?? new Map(); }
+  get canonical(): Scope { return this.shared?.canonical ?? this; }
 }
 
 export type Lookup =
@@ -55,16 +57,22 @@ export class ScopeGraph {
     sources: readonly SourceIndex[],
     builtinModel: Model,
     private readonly modules?: Modules,
+    private readonly ownership: ReadonlyMap<NodeId, NodeId> = new Map(),
   ) {
     for (const builtin of builtinModel.nodes('builtin-type')) {
       this.introduce(this.builtinScope, builtinModel.node(builtin.name, 'name').decoded, { target: builtin, at: builtin.origin });
+      this.members.set(builtin.id, this.childScope(this.builtinScope, builtin.id));
     }
     // All declarations exist before imports: cyclic modules select actual identities.
     for (const source of sources) {
       const root = this.childScope(this.builtinScope, undefined);
       this.moduleRoots.set(source.locator, root);
       for (const node of source.nodes) this.indices.set(node.id, source);
-      for (const node of source.roots) this.walk(source, node, root);
+    }
+    for (const source of sources) for (const node of source.roots) this.walk(source, node, this.moduleRoots.get(source.locator)!);
+    for (const builtin of builtinModel.nodes('builtin-type')) for (const child of builtinModel.children(builtin.id)) {
+      const source = this.indices.get(child);
+      if (source) this.walk(source, source.node(child), this.members.get(builtin.id)!);
     }
     this.includeModuleNames();
     for (const source of sources) this.importModuleNames(source);
@@ -172,6 +180,7 @@ export class ScopeGraph {
 
   private finishIntroductions(): void {
     for (const scope of this.scopes) {
+      if (scope.shared) continue;
       for (const [name, introductions] of scope.names) this.problems.push(...this.conflicts(name, introductions));
     }
   }
@@ -277,7 +286,7 @@ export class ScopeGraph {
   }
 
   private within(scope: Scope, ancestor: Scope): boolean {
-    for (let current: Scope | undefined = scope; current; current = current.parent) if (current === ancestor) return true;
+    for (let current: Scope | undefined = scope; current; current = current.parent) if (current.canonical === ancestor.canonical) return true;
     return false;
   }
 
@@ -291,8 +300,8 @@ export class ScopeGraph {
   private declare(source: SourceIndex, node: ModelNode, scope: Scope, local: boolean): void {
     if (!('name' in node)) throw new Error('A declaration must have a name.');
     this.introduce(scope, source.name(node.name), { target: node, at: node.origin });
-    if (local) this.privateTo.set(node.id, scope);
-    if (node.kind === 'capability') this.capabilityOwners.set(node.id, scope);
+    if (local) this.privateTo.set(node.id, scope.canonical);
+    if (node.kind === 'capability') this.capabilityOwners.set(node.id, scope.canonical);
   }
 
   private parameters(source: SourceIndex, ids: readonly NodeId[], scope: Scope): void {
@@ -305,6 +314,11 @@ export class ScopeGraph {
   }
 
   private walk(source: SourceIndex, node: ModelNode, scope: Scope, local = false, parameterNames?: ReadonlySet<string>): void {
+    source = this.indices.get(node.id) ?? source;
+    if (this.ownership.has(node.id)) {
+      scope = new Scope(this.moduleRoots.get(source.locator), scope.owner, false, new Set(), undefined, scope.canonical);
+      this.scopes.push(scope);
+    }
     this.nodeScopes.set(node.id, scope);
     const p = node;
     switch (p.kind) {
@@ -325,6 +339,7 @@ export class ScopeGraph {
         for (const parameter of p.typeParameters) this.walk(source, source.node(parameter), inside, true);
         if (p.kind === 'record-type-declaration') for (const field of p.fields) this.walk(source, source.node(field), inside);
         if (p.kind === 'alias-type-declaration') this.walk(source, source.node(p.targetType), inside);
+        for (const id of source.children(node.id)) if (this.ownership.get(id) === node.id) this.walk(source, source.node(id), inside);
         return;
       }
       case 'capability': case 'function': case 'setup': case 'action': case 'observation': case 'check': {
@@ -335,6 +350,7 @@ export class ScopeGraph {
         this.parameters(source, p.parameters, inside);
         if (p.returnType) this.walk(source, source.node(p.returnType), inside);
         if (p.body.kind === 'available') this.walk(source, source.node(p.body.node), inside);
+        for (const id of source.children(node.id)) if (this.ownership.get(id) === node.id) this.walk(source, source.node(id), inside);
         return;
       }
       case 'construction': this.parameters(source, p.parameters, this.childScope(scope)); return;
@@ -348,15 +364,21 @@ export class ScopeGraph {
       case 'field': case 'fixture': case 'participant': case 'type-parameter':
         this.declare(source, node, scope, local); break;
       case 'public': {
-        const names = this.publicNames.get(scope) ?? new Set<string>();
+        const names = this.publicNames.get(scope.canonical) ?? new Set<string>();
         for (const reference of p.references) {
           const path = source.reference(reference);
           if (path.length === 1) names.add(path[0]!);
         }
-        this.publicNames.set(scope, names);
+        this.publicNames.set(scope.canonical, names);
         break;
       }
       case 'examples': {
+        if (this.ownership.has(node.id)) {
+          if (p.subject) this.walk(source, source.node(p.subject), this.moduleRoots.get(source.locator)!);
+          const inside = this.childScope(scope);
+          for (const member of p.members) this.walk(source, source.node(member), inside);
+          return;
+        }
         if (p.subject) {
           this.walk(source, source.node(p.subject), scope);
           this.attachedExamples.push({ source, subject: p.subject, members: p.members, scope });
@@ -403,7 +425,7 @@ export class ScopeGraph {
       case 'extend': {
         this.walk(source, source.node(p.target), scope);
         const inside = this.childScope(scope, scope.owner, undefined, true);
-        for (const member of p.members) this.walk(source, source.node(member), inside);
+        for (const member of p.members) if (!this.ownership.has(member)) this.walk(source, source.node(member), inside);
         return;
       }
     }

@@ -52,8 +52,8 @@ if (result.value) {
 the existing Inspection, type catalog and `message(id)` query. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
-Syntax errors, semantic errors and missing analysis remain separate. Extensions,
-attached examples and authored helper/check bodies remain incomplete. Compilation
+Syntax errors, semantic errors and missing analysis remain separate. Extensions
+and attached examples require SourceComposer; authored helper/check bodies remain incomplete. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
 
@@ -71,7 +71,15 @@ const result = new Compiler().compile({ resolution });
 keep the original module's scope. Imports remain selective; imported aliases are
 not re-exported by includes. Declarations retain their original identities and
 origins. Repeated include paths are idempotent; conflicting declarations and
-include cycles are diagnosed. Extensions and attached examples remain pending.
+include cycles are diagnosed.
+
+`extend Store { capability save() returns Nothing }` contributes original members
+to Store. `examples for Store from "saving"` attaches that file's direct examples
+blocks. Members keep their authoring file's imports while sharing their owner's
+declarations; attached blocks keep fixtures and test operations private. Effective
+parents and children preserve original handles and origins without changing inputs.
+Conflicting or invalid subjects remain diagnosed; their unowned subtrees are
+explicitly not analyzed. The real compiler checks the resulting combined contracts.
 
 The default locator uses exact supplied keys. Pass a pure `(owner, authored) =>
 suppliedKey | undefined` function to interpret relative locators; the owner is
@@ -99,7 +107,7 @@ if (result.status === 'accepted') {
 }
 ```
 
-`Inspection.query(kind)` selects readable items; `read(id, kind?)` follows a known identity; `parent(id)` returns authored containment. Items retain source locations or external provenance. Iterators are independent. `Model` supplies indexed structural facts beneath these views; alternative models can implement the same contract.
+`Inspection.query(kind)` selects readable items; `read(id, kind?)` follows a known identity; `parent(id)` returns containment (effective ownership after composition). Items retain source locations or external provenance. Iterators are independent. `Model` supplies indexed structural facts beneath these views; alternative models can implement the same contract.
 
 ## Resolve declarations
 
@@ -280,6 +288,33 @@ hard links. Existing ordinary permissions are preserved; snapshots do not captur
 all filesystem metadata. It never steals an existing marker or automatically rolls
 back partial writes. A process killed during application may leave a marker requiring
 inspection. Code ownership and preservation decisions belong to the caller's planner.
+
+## Compare specification changes
+
+```ts
+import { SpecificationIdentity } from 'executable-specification-language';
+
+const identities = new SpecificationIdentity(() => crypto.randomUUID());
+const current = identities.associate(specification, previousBaseline);
+if (current.value) {
+  const changes = identities.compare(previousBaseline, current.value);
+  const proposedBytes = identities.write(current.value.baseline);
+  console.log(changes, proposedBytes);
+}
+```
+
+`specification` is a successful Compiler result; omit `previousBaseline` on first
+use. `read({ sourceId, text })` validates saved baseline JSON. Exact addresses keep
+IDs; explicit `{ id, to: nodeId }` decisions establish renames/moves, and
+`{ retire: id }` retires a subtree except explicitly retained descendants. Ambiguous
+correspondence returns findings. Comparison reports coarse structural changes and
+affected declared references; current Inspection retains the full checked facts.
+
+`withArtifacts` records supplied exporter locators, including multiple fragments
+per ID. `reconcileRelationships` compares supplied uses and preserves their scope
+and coverage. These operations do not scan or edit projects. Persist proposed
+baseline bytes only with successful project application. Inspection `roots()` and
+`children(id)` expose complete containment alongside `query`, `read` and `parent`.
 
 ## Development and delivery
 

@@ -39,23 +39,32 @@ export class ReferenceResolver {
     private readonly bindings: Map<NodeId, ReferenceResolution>,
     private readonly problems: ResolutionProblem[],
     private readonly deferred: DeferredReference[],
+    private readonly contracts = { constructions: new Map<Scope, ModelNode>(), publicNames: new Map<Scope, Map<string, ModelNode>>() },
   ) { this.hasIncludes = source.of('include').length > 0; }
 
   analyze(): void {
     this.ownerContracts();
     this.packagesAndComposition();
     for (const examples of this.source.of('examples')) {
-      if (examples.subject) this.resolve(this.source.node(examples.subject) as ModelNode<'reference'>);
+      if (examples.subject && !this.bindings.has(examples.subject)) this.resolve(this.source.node(examples.subject) as ModelNode<'reference'>);
     }
     for (const reference of this.source.of('reference')) {
       if (!this.bindings.has(reference.id)) this.resolve(reference);
     }
   }
 
+  compositionTarget(reference: NodeId, extension: boolean): ReferenceResolution {
+    const node = this.source.node(reference) as ModelNode<'reference'>;
+    const path = this.source.reference(reference), scope = this.scopes.scope(reference);
+    this.accept(node, path, scope, this.scopes.lookup(scope, path), extension
+      ? new Set(['concept', 'component', 'class', 'interface']) : subjectKinds, false, true);
+    return this.bindings.get(reference)!;
+  }
+
   private ownerContracts(): void {
-    const constructions = new Map<Scope, ModelNode>();
+    const { constructions, publicNames } = this.contracts;
     for (const construction of this.source.of('construction')) {
-      const scope = this.scopes.scope(construction.id);
+      const scope = this.scopes.scope(construction.id).canonical;
       const previous = constructions.get(scope);
       if (previous) this.problems.push({
         code: 'duplicate-declaration', message: 'An owner can declare construction only once.',
@@ -63,9 +72,8 @@ export class ReferenceResolver {
       });
       else constructions.set(scope, construction);
     }
-    const publicNames = new Map<Scope, Map<string, ModelNode>>();
     for (const entry of this.source.of('public')) {
-      const scope = this.scopes.scope(entry.id);
+      const scope = this.scopes.scope(entry.id).canonical;
       const seen = publicNames.get(scope) ?? new Map<string, ModelNode>();
       publicNames.set(scope, seen);
       for (const id of entry.references) {
@@ -154,7 +162,7 @@ export class ReferenceResolver {
   }
 
   private accept(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,
-    found: Lookup, required?: ReadonlySet<NodeKind>, moduleLookup = false): void {
+    found: Lookup, required?: ReadonlySet<NodeKind>, moduleLookup = false, complete = false): void {
     const at = reference.origin;
     let problem: ResolutionProblem;
     switch (found.status) {
@@ -186,7 +194,7 @@ export class ReferenceResolver {
         at, related: [found.declaration.origin],
       }; break;
       case 'missing':
-        if (!moduleLookup && this.requiresComposition(scope, path)) { this.defer(reference, 'composition'); return; }
+        if (!complete && !moduleLookup && this.requiresComposition(scope, path)) { this.defer(reference, 'composition'); return; }
         problem = { code: 'unresolved-reference', message: `No visible declaration supplies ${path.join('.')}.`, at, related: [] };
         break;
     }
