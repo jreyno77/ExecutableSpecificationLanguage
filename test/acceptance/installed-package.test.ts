@@ -5,17 +5,34 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('preserves an adopted implementation and its caller through an installed native rename', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.preserveTypeScript({
+      source: 'class StoreGame { public save\ncapability save(snapshot: Text) returns Nothing }',
+      revised: 'class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }',
+      implementation: 'export class StoreGame { private saves = 0; save(snapshot: string): void { this.saves++; console.log(snapshot); } }\n',
+      caller: 'import { StoreGame } from "./game.js"; new StoreGame().save("Dune");\n',
+    });
+    consumer.expectAdoptedSourceUnchanged();
+    consumer.expectPreservedNativeSource('private saves = 0; saveGame(snapshot: string): void { this.saves++; console.log(snapshot); }');
+    consumer.expectPreservedCaller('new StoreGame().saveGame("Dune")');
+    consumer.expectPreservedRuntimeOutput('Dune');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
+  });
+
   it('generates a natively checked callable scaffold through the installed TypeScript output', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
     await consumer.generateTypeScript('function save(title: Text) returns Nothing',
       'import { save } from "./src/save.js"; save("Dune");',
       'import { save } from "./src/save.js"; save(64);',
-      'function save(title: Text, copies: Number) returns Nothing');
+      'function save(title: Text, copies: Number) returns Nothing', 'title: number');
 
     consumer.expectInstalledTypeScriptScaffold('Not implemented: save');
     consumer.expectInvalidNativeArgument('64');
-    consumer.expectHandwrittenNativeFileProtected();
+    consumer.expectConflictingNativeSignatureProtected();
     consumer.expectInstalledPackageUsed();
     await consumer.checkTypeScriptConsumer();
     consumer.expectDeclarationsAccepted();

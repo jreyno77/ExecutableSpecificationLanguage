@@ -14,6 +14,11 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  preservation?: {
+    adopted: OutputWrite; updated?: OutputWrite; original: string; afterAdoption: string;
+    source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
+    generatedDuplicate: boolean; retainedIdentity?: boolean;
+  };
   typescriptOutput?: {
     written: OutputWrite; typescript: { version: string; location: string }; source?: string;
     validDiagnostics?: unknown[]; invalidDiagnostics?: { code: number; file: string; text: string; message: string }[];
@@ -116,10 +121,16 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
   }
+  async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
+    await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
+    this.result = await run(process.execPath, ['preservation-consumer.mjs', 'preservation.json'], this.consumer);
+    await this.readReport();
+  }
   typescriptInsideConsumer = false;
-  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
+  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
     await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
-    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised }));
+    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised, handwrittenParameter }));
     this.result = await run(process.execPath, ['typescript-output-consumer.mjs', 'typescript-output.json'], this.consumer);
     await this.readReport();
     const path = this.report.typescriptOutput?.typescript.location;

@@ -15,6 +15,7 @@ const path = z.array(z.string().min(1)).min(1), name = z.string().min(1);
 export const typescriptOptions = z.strictObject({
   directory: z.string().refine(value => literal(value) && !/[\\:*?<>|\[\]{}]/.test(value) && !value.split('/').some(part => part.toLowerCase() === '.expec')),
   concepts: z.enum(['class', 'interface']).default('class'),
+  adoptExisting: z.boolean().default(false),
   configFile: z.string().refine(value => literal(value) && !value.includes('\\')).optional(),
   names: z.array(z.strictObject({ declaration: path, name, module: name.optional() })).default([]),
   imports: z.array(z.strictObject({ module: name, declaration: path, name, from: name.optional(), as: name.optional() })
@@ -175,7 +176,7 @@ export class TypeScriptDeclarations {
     return item.typeParameters.map(parameter => f.createTypeParameterDeclaration(undefined, this.name(parameter)));
   }
   private docs<T extends ts.Node>(node: T, lines: string[]): T {
-    if (lines.length) ts.addSyntheticLeadingComment(node, ts.SyntaxKind.MultiLineCommentTrivia, '*\n' + lines.map(line => ' * ' + line.replaceAll('*/', '* /')).join('\n') + '\n ', true); return node;
+    if (lines.length) ts.addSyntheticLeadingComment(node, ts.SyntaxKind.MultiLineCommentTrivia, '*\n * Unverified implementation obligation.\n' + lines.map(line => ' * ' + line.replaceAll('*/', '* /')).join('\n') + '\n ', true); return node;
   }
   private associate(item: Item, declaration: { kind: string; name: string; static?: boolean }[]): void {
     this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'typescript', format: 'typescript-symbol-1', value: { file: this.file, declaration } } });

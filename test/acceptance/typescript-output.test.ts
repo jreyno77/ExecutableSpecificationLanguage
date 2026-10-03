@@ -483,8 +483,11 @@ it('retains only generated syntax as its future comparison baseline', async () =
   await project.append('src/StoreGame.ts', '\n// Private handwritten implementation note.\n');
   project.change('class StoreGame { capability save(title: Text) returns Nothing }');
   await project.update();
-  project.expectConflictAt('src/StoreGame.ts');
-  await project.expectGeneratedBaselineUnchanged();
+  project.expectWriteStatus('applied');
+  project.expectNativeMethod('StoreGame.save', ['title: string'], 'void');
+  project.expectGeneratedBaselineContains('src/StoreGame.ts', 'save(title: string): void');
+  await project.read('StoreGame');
+  project.expectWholeCurrentFile('src/StoreGame.ts', ['Private handwritten implementation note.']);
   project.expectBaselineExcludes('Private handwritten implementation note.');
 });
 
@@ -574,7 +577,7 @@ describe('scaffold evolution is based on current native content and ownership', 
     project.expectNativeCheckPassed();
   });
 
-  it('refuses a rename that would break an unowned current caller', async () => {
+  it('renames the proven native uses in an unowned current caller', async () => {
     const project = await TypeScriptExamples.connect();
     project.source('class StoreGame {}');
     await project.create({ directory: 'src' });
@@ -582,8 +585,12 @@ describe('scaffold evolution is based on current native content and ownership', 
     await project.rememberProject();
     project.change('class Game {}', { rename: { StoreGame: 'Game' } });
     await project.update();
-    project.expectConflictAt('launcher.ts');
-    await project.expectProjectBytesUnchanged();
+    project.expectWriteStatus('applied');
+    await project.expectFile('launcher.ts', 'import { Game } from "./src/Game.js"; new Game();');
+    project.expectNoGeneratedFile('src/StoreGame.ts');
+    project.expectGeneratedFile('src/Game.ts');
+    await project.checkNativeTypes();
+    project.expectNativeCheckPassed();
   });
 
   it('keeps a handwritten save implementation and private helpers when a new promise needs work', async () => {
@@ -594,9 +601,12 @@ localStorage.setItem("store-game-save", JSON.stringify(snapshot));`);
     await project.rememberProject();
     project.renameSaveAndPromise('saveGame', 'Save the snapshot to Supabase.');
     await project.update();
-    project.expectConflictAt('src/StoreGame.ts');
-    project.expectNoAppliedReceipt();
-    await project.expectProjectBytesUnchanged();
+    project.expectWriteStatus('applied');
+    project.expectNativeMethod('StoreGame.saveGame', ['snapshot: Snapshot'], 'void');
+    project.expectMethodBody('StoreGame.saveGame', 'this.assertRunning();\nlocalStorage.setItem("store-game-save", JSON.stringify(snapshot));');
+    project.expectMethodBody('StoreGame.assertRunning', 'if (!this.running) throw new Error("Not running");');
+    project.expectDocumentation('StoreGame.saveGame', 'Save the snapshot to Supabase.');
+    project.expectDocumentation('StoreGame.saveGame', 'Unverified implementation obligation.');
   });
 
   it('does not adopt a pre-existing file simply because it has the expected class name', async () => {
@@ -659,5 +669,4 @@ localStorage.setItem("store-game-save", JSON.stringify(snapshot));`);
     await project.expectProjectBytesUnchanged();
   });
 });
-
 

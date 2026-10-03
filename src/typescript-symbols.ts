@@ -108,7 +108,7 @@ export class TypeScriptSymbols {
       if (ts.isImportDeclaration(owner) || ts.isExportDeclaration(owner)) break;
       if (ts.isConstructorDeclaration(owner)) { const id = this.claim(this.construction(owner)); if (id) return { kind: 'specified', id }; }
       if (kindOf(owner) && nameOf(owner) !== undefined) nearest ??= owner;
-      const name = named(owner), symbol = name && this.symbol(name), id = symbol && this.claim(symbol);
+      const name = kindOf(owner) ? named(owner) : undefined, symbol = name && this.symbol(name), id = symbol && this.claim(symbol);
       if (id) return { kind: 'specified', id };
     }
     return { kind: 'project', id: this.projectId(nearest ?? node.getSourceFile()) };
