@@ -18,6 +18,8 @@ interface ConsumerReport {
   deferred?: unknown[];
   problems?: { code: string; text?: string }[];
   capabilities?: string[];
+  operations?: string[];
+  steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
 }
 

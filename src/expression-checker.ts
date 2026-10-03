@@ -208,11 +208,9 @@ export class ExpressionChecker implements ExpressionChecking {
     return mergeChecks(...children.map(child => this.valueType(child, at)));
   }
   private call(node: Item<'call-expression'>, scope?: ValueScope): Check<ResultDescription | { kind: 'check' }> {
-    const selected = this.select(node.callee, scope);
+    const selected = this.calledOperation(node.id, scope);
     if (!selected.value) return mergeChecks(selected, ...node.arguments.map(argument => this.infer(argument, scope)));
-    const target = selected.value.declaration;
-    if (!isCallable(target)) return mergeChecks(problem('invalid-purpose', node.callee, 'The selected declaration is not callable.'),
-      ...node.arguments.map(argument => this.infer(argument, scope)));
+    const target = this.declarations.inspection.read(selected.value);
     const signature = this.declarations.callable(target.id);
     const checked = this.checkArguments(target.id, node.arguments.map(argument => argument.id), node.id, scope);
     const result = fromFact(signature.result);

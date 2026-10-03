@@ -18,10 +18,20 @@ describe('Installed package consumers', () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
     await consumer.checkTypeScriptConsumer();
-    await consumer.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }');
+    await consumer.check(`concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }
+function quantity() returns Number
+examples { scenario "count" {
+  when result = quantity()
+  then result == 1
+} }`);
     consumer.expectDeclarationsAccepted();
     consumer.expectSpecificationAccepted();
     consumer.expectCapabilities(['saveGame']);
+    consumer.expectCheckedCalls(['quantity']);
+    consumer.expectCapturedSteps([
+      { available: [], capture: { name: 'result', type: 'Number' } },
+      { available: [{ name: 'result', type: 'Number' }] },
+    ]);
   });
 
   it('detects a missing implementation file in a packed artifact', async () => {

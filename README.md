@@ -49,7 +49,11 @@ if (result.value) {
 ```
 
 `value` exists only when static checking completes without findings. It shares
-the existing Inspection, type catalog and `message(id)` query. Reachable source
+the existing Inspection, type catalog and `message(id)` query. `call(id)` returns
+the checked operation identity; `step(id)` returns preceding scenario captures
+and the value introduced by that step. Capture names are existing source handles
+and their TypeIds belong to the same catalog. These queries retain successful
+checking results without executing or rechecking source. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
 Syntax errors, semantic errors and missing analysis remain separate. Extensions
