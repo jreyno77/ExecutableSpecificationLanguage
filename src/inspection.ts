@@ -3,6 +3,8 @@ import type { NodeId, NodeKind } from './model.js';
 
 /** Readable views preserve authored facts and expose known identities through read(). */
 export interface Inspection {
+  roots(): Iterable<Item>;
+  children(id: NodeId): Iterable<Item>;
   parent(id: NodeId): Item | undefined;
   query<K extends NodeKind>(kind: K): Iterable<Item<K>>;
   read(id: NodeId): Item;

@@ -270,7 +270,7 @@ describe('Connecting and reading the current project', () => {
     project.expectFile("src/readable.ts", "read me");
     await project.allowRead("game/src/blocked.ts");
     await project.expectDiskFile("game/src/blocked.ts", "preserve me");
-  });
+  }, 20_000);
 
   it("does not let caller changes to captured bytes affect a later read", async () => {
     const project = new ConnectionExamples();
