@@ -341,6 +341,58 @@ and coverage. These operations do not scan or edit projects. Persist proposed
 baseline bytes only with successful project application. Inspection `roots()` and
 `children(id)` expose complete containment alongside `query`, `read` and `parent`.
 
+## Create and inspect output
+
+```ts
+import { Outputs, contractListOutput, structureListOutput,
+  FileProjectWriter } from 'executable-specification-language';
+
+const outputs = new Outputs();
+outputs.register(contractListOutput);
+outputs.register(structureListOutput);
+const output = outputs.open('contract-list', { directory: 'docs/contracts' },
+  context, new FileProjectWriter(context));
+if (output.value && current.value) {
+  const written = await output.value.create(current.value);
+  const present = await output.value.read(storeGameId);
+  const uses = await output.value.search(storeGameId);
+  console.log(written, present, uses);
+}
+```
+
+`current.value` is the identified specification above. Both profiles document source
+declarations in the checked view, including included/imported source. External
+metadata stays a reference. Markdown contract lists and structural JSON summaries
+share `create`, addition-only `insert(diff, current)`, `update(diff, current)`,
+`read`, `search`, and top-level `delete`. They summarize contracts; prose promises
+remain unverified. This documentation scope grants no implementation-code ownership.
+
+An output keeps options and live context, captures fresh files for each operation,
+and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
+changes without effects. Hosts can combine disjoint plans from one snapshot, then
+apply them once. Successful association proposals cover only that output namespace;
+retain other namespaces before calling `withArtifacts`. Outputs do not save the
+global identity baseline.
+
+Generated files are owned whole files. Private `.expec/outputs/` records permit
+repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
+owned files conflict instead of being overwritten. Read still returns their actual
+complete content. Directory changes require an explicit future migration policy.
+A stopped write retains actual effects/preimages and makes no successful association
+proposal; inspect the receipt before planning recovery.
+
+Search observes current Markdown definitions/CommonMark links or versioned
+`*.structure.json` declaration/reference fields. It includes consumers absent from
+the specification and reports incomplete coverage. It does not analyze arbitrary
+code, runtime calls, or infer ownership/lifetime. Insufficient incoming-use coverage
+blocks removal. Shared `ProjectRead`/`ProjectSearch` values are also usable by
+independent scanners without an output registry.
+
+Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
+returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a
+supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
+guarded application. No decorators, package loading, or inheritance are required.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.

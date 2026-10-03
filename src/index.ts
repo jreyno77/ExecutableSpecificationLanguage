@@ -42,3 +42,5 @@ export type { SpecIdentifier, JsonValue, ArtifactLocator, ArtifactAssociation, I
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
 export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad } from './source-loader.js';
 export * from './project-writer.js';
+export * from './output.js';
+export type { ProjectRead, ProjectSearch } from './project-inspection.js';
