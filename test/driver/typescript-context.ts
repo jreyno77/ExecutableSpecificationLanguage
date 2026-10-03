@@ -61,6 +61,7 @@ export class NativeContextDriver {
       await files.cp(directory, this.path('node_modules/' + name), { recursive: true, dereference: false });
       for (const dependency of Object.keys(metadata.dependencies ?? {})) await copy(dependency);
       for (const dependency of Object.keys(metadata.peerDependencies ?? {})) if (fs.existsSync(join(modules, dependency, 'package.json'))) await copy(dependency);
+      for (const dependency of Object.keys(metadata.optionalDependencies ?? {})) if (fs.existsSync(join(modules, dependency, 'package.json'))) await copy(dependency);
     };
     for (const [name, version] of Object.entries(packages)) await copy(name, version);
   }
