@@ -27,6 +27,7 @@ examples { scenario "count" {
     consumer.expectDeclarationsAccepted();
     consumer.expectSpecificationAccepted();
     consumer.expectCapabilities(['saveGame']);
+    consumer.expectSourceLoaded(['saveGame']);
     consumer.expectCheckedCalls(['quantity']);
     consumer.expectCapturedSteps([
       { available: [], capture: { name: 'result', type: 'Number' } },
