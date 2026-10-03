@@ -1,6 +1,7 @@
 import {
-  Compiler, type CompilationInput, type Compilation, type Specification,
-  type Inspection, type Item, type Check, type NodeId, type ScenarioCapture, type ScenarioStep,
+  Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
+  type NodeId, type ScenarioCapture, type ScenarioStep,
 } from 'executable-specification-language';
 
 const input: CompilationInput = {
@@ -26,3 +27,12 @@ export function capturedValues(specification: Specification): readonly ScenarioC
     return result.value ? [...result.value.available, ...result.value.capture ? [result.value.capture] : []] : [];
   });
 }
+let issued = 0;
+const identities = new SpecificationIdentity(() => 'consumer-' + ++issued);
+const identified = compilation.value ? identities.associate(compilation.value) : undefined;
+export const baseline: IdentityBaseline | undefined = identified?.value?.baseline;
+export const changes: Check<SpecDiff> | undefined = identified?.value
+  ? identities.compare(undefined, identified.value) : undefined;
+export const saved = baseline ? identities.write(baseline) : undefined;
+export const restored = saved?.value
+  ? identities.read({ sourceId: '.expec/identity.json', text: saved.value }) : undefined;
