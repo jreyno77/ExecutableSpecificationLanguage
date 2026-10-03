@@ -661,3 +661,66 @@ describe('rejecting unsafe identity proposals', () => {
   });
 });
 
+describe('identifying actually composed examples', () => {
+  it('sees a changed example attached to an external record without changing its fields', () => {
+    const project = new IdentityExamples();
+    project.externalModule('library', [{ kind: 'record-type', name: 'Book', fields: [
+      { kind: 'field', name: 'copies', type: { kind: 'builtin', name: 'Number' } }
+    ] }]);
+    project.source('game', `use Book from "library"
+    examples for Book from "saving"`);
+    project.module('saving', 'examples { example "copies": 1 => 1 }');
+    project.identify();
+    project.remember();
+
+    project.module('saving', 'examples { example "copies": 2 => 2 }');
+    project.identify();
+    project.compare();
+
+    project.expectSameIdentity('saving:examples[0].copies');
+    project.expectEffectiveOwner('saving:examples[0]', 'library:Book');
+    project.expectCurrentFieldNames('library:Book', ['copies']);
+    project.expectChanges({ 'library:Book': ['update'],
+      'saving:examples[0]': ['update'], 'saving:examples[0].copies': ['update'] });
+  });
+
+  it('sees changed callable examples without treating them as parameters or a contract body', () => {
+    const project = new IdentityExamples();
+    project.source('game', `function double(amount: Number) returns Number
+    examples for double from "doubling"`);
+    project.module('doubling', 'use double from "game"\nexamples { example "double one": double(1) => 2 }');
+    project.identify();
+    project.remember();
+
+    project.module('doubling', 'use double from "game"\nexamples { example "double one": double(1) => 3 }');
+    project.identify();
+    project.compare();
+
+    project.expectSameIdentity('doubling:examples[0].double one');
+    project.expectEffectiveOwner('doubling:examples[0]', 'game:double');
+    project.expectCurrentParameterNames('game:double', ['amount']);
+    project.expectCurrentBody('game:double', 'absent');
+    project.expectChanges({ 'game:double': ['update'],
+      'doubling:examples[0]': ['update'], 'doubling:examples[0].double one': ['update'] });
+  });
+
+  it('observes a changed effective builtin subject even when an ownerless block is unchanged', () => {
+    const project = new IdentityExamples();
+    project.source('game', 'examples for Text from "comparisons"');
+    project.module('comparisons', 'examples { example "equality": 1 == 1 => true }');
+    project.identify();
+    project.remember();
+
+    project.source('game', 'examples for Number from "comparisons"');
+    project.identify();
+    project.compare();
+
+    project.expectSameIdentity('comparisons:examples[0]');
+    project.expectSameIdentity('comparisons:examples[0].equality');
+    project.expectNoAuthoredSubject('comparisons:examples[0]');
+    project.expectEffectiveBuiltinOwner('comparisons:examples[0]', 'Number');
+    project.expectChanges({ 'comparisons:examples[0]': ['update'] });
+    project.expectNoIdentityForBuiltin('Text');
+    project.expectNoIdentityForBuiltin('Number');
+  });
+});

@@ -127,7 +127,8 @@ export class IdentityDriver {
     const colon = subject.indexOf(':'), module = colon < 0 ? undefined : subject.slice(0, colon), path = subject.slice(colon + 1);
     const found = this.nodes(prior).filter(node => node.kind !== 'name'
       && (!module || node.origin.kind !== 'builtin' && node.origin.module === module)
-      && (this.path(node, prior) === path || this.path(node, prior, true) === path))
+      && (this.path(node, prior) === path || this.path(node, prior, true) === path
+        || !!module && this.path(node, prior).endsWith('.' + path)))
       .filter(node => 'name' in node || 'title' in node || node.kind === 'examples');
     if (found.length !== 1) throw new Error('Expected one ' + subject + '; found ' + found.map(item => item.kind).join(', '));
     return found[0]!;
@@ -165,4 +166,3 @@ export class IdentityDriver {
       children: model.children(id).map(child => this.tree(child)) };
   }
 }
-

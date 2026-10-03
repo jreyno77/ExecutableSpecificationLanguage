@@ -164,5 +164,34 @@ export class IdentityExamples {
     };
     for (const root of inspection.roots()) visit(root);
   }
+  expectEffectiveOwner(subject: string, owner: string): void {
+    const d = this.driver;
+    expect(d.current().specification.inspection.parent(d.select(subject).id)?.id).toBe(d.select(owner).id);
+  }
+  expectCurrentFieldNames(subject: string, names: string[]): void {
+    const record = this.driver.select(subject);
+    if (record.kind !== 'record-type-declaration') throw new Error('Expected a record');
+    expect(record.fields.map(field => ({ kind: field.kind, name: 'name' in field ? field.name : undefined })))
+      .toEqual(names.map(name => ({ kind: 'field', name })));
+  }
+  expectCurrentParameterNames(subject: string, names: string[]): void {
+    const callable = this.driver.select(subject);
+    if (!('parameters' in callable)) throw new Error('Expected a callable');
+    expect(callable.parameters.map(parameter => ({ kind: parameter.kind, name: parameter.name })))
+      .toEqual(names.map(name => ({ kind: 'parameter', name })));
+  }
+  expectCurrentBody(subject: string, kind: string): void {
+    const callable = this.driver.select(subject);
+    expect('body' in callable ? callable.body.kind : undefined).toBe(kind);
+  }
+  expectNoAuthoredSubject(subject: string): void {
+    const block = this.driver.select(subject);
+    if (block.kind !== 'examples') throw new Error('Expected an examples block');
+    expect(block.subject).toBeUndefined();
+  }
+  expectEffectiveBuiltinOwner(subject: string, name: string): void {
+    const d = this.driver;
+    expect(d.current().specification.inspection.parent(d.select(subject).id)).toMatchObject({ kind: 'builtin-type', name });
+  }
 }
 function byId(a: { id: string }, b: { id: string }): number { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; }
