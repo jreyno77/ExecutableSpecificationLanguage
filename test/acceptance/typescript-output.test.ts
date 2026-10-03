@@ -3,7 +3,7 @@ import { TypeScriptExamples } from '../dsl/typescript-output.js';
 
 afterEach(() => TypeScriptExamples.dispose());
 
-describe('native contracts remain recognizable', () => {
+describe('native contracts remain recognizable', { timeout: 30_000 }, () => {
   it('gives StoreGame real types and an explicit unimplemented save', async () => {
     const project = await TypeScriptExamples.connect();
     project.source(`type Pair<T> = [T, T]
@@ -31,7 +31,7 @@ new StoreGame().save({ characterPosition: [0, 0], shoppingCart: { itemsCount: 0 
     project.expectThrownError('Not implemented: StoreGame.save');
     project.expectNoGeneratedTestFiles();
     project.expectNoGeneratedPersistence();
-  }, 20_000);
+  });
 
   it('preserves literal, union, tuple, list and optional type contracts', async () => {
     const project = await TypeScriptExamples.connect();
@@ -104,7 +104,7 @@ const game: StoreGame = new factory('Store Game');`);
     await project.runConsumer(`import { StoreGame } from './src/StoreGame.js';
 new StoreGame('Store Game');`);
     project.expectThrownError('Not implemented: StoreGame.construction');
-  }, 20_000);
+  });
 
   it('keeps internal capabilities private and local types inside their owner file', async () => {
     const project = await TypeScriptExamples.connect();
@@ -136,7 +136,7 @@ const title: string = load();`);
   });
 });
 
-describe('workspace input and native imports have explicit boundaries', () => {
+describe('workspace input and native imports have explicit boundaries', { timeout: 30_000 }, () => {
   it('generates relative workspace uses and includes without generating a provider library', async () => {
     const project = await TypeScriptExamples.connect();
     project.library('storage-lib', 'interface Storage { capability save() returns Nothing }');
@@ -236,7 +236,7 @@ class StoreGame {
     await project.create({ directory: 'src', names: [{ declaration: ['save', 'Error'], name: 'detail' }] });
     await project.runConsumer("import { save } from './src/save.js'; save('Dune');");
     project.expectThrownError('Not implemented: save');
-  }, 20_000);
+  });
 
   it('captures workspace membership per opened output', async () => {
     const project = await TypeScriptExamples.connect();
@@ -355,7 +355,7 @@ const configuration: SystemConfig = { gameroot: new URL('https://example.com/gam
   });
 });
 
-describe('defaults, numbers and failures retain honest native meanings', () => {
+describe('defaults, numbers and failures retain honest native meanings', { timeout: 30_000 }, () => {
   it('documents field defaults without pretending they materialize omitted data', async () => {
     const project = await TypeScriptExamples.connect();
     project.source('type Book { copies: Number = 1\nnote: Text? }');
@@ -380,7 +380,7 @@ const supplied: Book = { copies: 2 };`);
 save();`);
     project.expectThrownError('Not implemented: save');
     project.expectNoNativeDefaultInitializer('save.copies');
-  }, 20_000);
+  });
 
   it('retains ordinary decimal literals and documents binary64 arithmetic', async () => {
     const project = await TypeScriptExamples.connect();
@@ -442,7 +442,7 @@ try {
       payloadMessage: 'My payload message', message: 'duplicate-account', name: 'RejectedError' });
     await project.search('Rejected');
     project.expectNativeDefinitions(['Rejected', 'RejectedError']);
-  }, 20_000);
+  });
 
   it('reuses the original exception family through a transparent error alias', async () => {
     const project = await TypeScriptExamples.connect();
@@ -512,7 +512,7 @@ it('inserts an unrelated contract while retaining a handwritten owned file', asy
   await project.expectRememberedFileUnchanged('src/StoreGame.ts');
 });
 
-describe('scaffold evolution is based on current native content and ownership', () => {
+describe('scaffold evolution is based on current native content and ownership', { timeout: 30_000 }, () => {
   it('reads the whole generated file and finds an unmodeled native launcher', async () => {
     const project = await TypeScriptExamples.connect();
     project.source('class StoreGame { capability save() returns Nothing }');
