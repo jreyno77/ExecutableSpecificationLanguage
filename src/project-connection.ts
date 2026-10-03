@@ -8,6 +8,7 @@ export interface ProjectRoot { readonly path: string; readonly identity: string 
 export interface ProjectFile { readonly path: string; readonly bytes: Uint8Array; readonly version: string }
 export interface ProjectSnapshot {
   readonly readOnlyFiles?: readonly ProjectFile[];
+  readonly nativeInputs?: readonly { readonly uri: string; readonly version: string }[];
   readonly root: ProjectRoot;
   readonly complete: boolean;
   readonly files: readonly ProjectFile[];
