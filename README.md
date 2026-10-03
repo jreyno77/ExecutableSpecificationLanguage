@@ -458,10 +458,14 @@ For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
 The entry is always included. Other source modules are generated only when in
 that captured set; provider dependencies require native mappings. This keeps
 documentation visibility separate from authority to generate implementation code.
-Native `read` and `search` use `TypeScriptProject`. Updates preserve untouched
-files and refuse handwritten edits to files they would replace or remove. The
-private output state retains only last-generated text for later comparison;
-preservation-aware editing of handwritten bodies is a subsequent task.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve handwritten
+bodies, private helpers and comments while changing owned contracts and proven
+native references. Enable `adoptExisting: true` on `create` to adopt explicitly
+mapped declarations; every represented member needs its own native association.
+Shared adopted files retain their placement. Generated-only baselines stay separate
+from handwritten code. Competing signature edits, implemented removals, incomplete
+rename scope and unsafe overload signature changes return conflicts without writes.
+Overload renames update all signatures; changed promises remain unverified obligations.
 
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
