@@ -16,6 +16,11 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  nativeInputs?: {
+    complete: boolean; problems: unknown[]; evidence: { uri: string; version: string }[]; actualUri: string;
+    editable: string[]; before: string; after: string; laterVersion: string; targetExists: boolean; handwritten: string;
+    receipt: import('../../src/index.js').WriteResult;
+  };
   workspace?: { functions: string[]; books: string[]; parameters: number; bothParametersUseBook: boolean; bookIdentityRecords: number };
   nativeContext?: {
     complete: boolean; problems: unknown[]; search: ProjectSearch;
@@ -135,6 +140,12 @@ export class PackageDriver {
     const source = join(this.consumer, 'source.expec');
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
+    await this.readReport();
+  }
+  async applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
+    await cp(join(resources, 'native-input-consumer.mjs'), join(this.consumer, 'native-input-consumer.mjs'));
+    await writeFile(join(this.consumer, 'native-input.json'), JSON.stringify(input));
+    this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
     await this.readReport();
   }
   async compileWorkspace(files: Record<string, string>, entries: string[]): Promise<void> {

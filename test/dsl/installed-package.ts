@@ -9,6 +9,25 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
+    return this.driver.applyWriteAfterNativeReplacement(input);
+  }
+  expectExternalNativeChangeStopsWrite(file: string, before: string, after: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeInputs!;
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes).toMatchObject([{ change: { kind: 'write', path: file }, state: 'not-applied',
+      before: [{ path: file, state: 'absent' }], after: [{ path: file, state: 'absent' }] }]);
+    expect(native.targetExists).toBe(false);
+    expect(native.before).toBe(before); expect(native.after).toBe(after);
+    expect(native.evidence).toHaveLength(1);
+    expect(native.evidence[0]).toEqual({ uri: native.actualUri, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.laterVersion).not.toBe(native.evidence[0]!.version);
+    expect(native.editable).not.toContain(native.actualUri);
+    expect(native.handwritten).toBe('Keep this handwritten note.');
+  }
   compileWorkspace(files: Record<string, string>, entries: string[]) { return this.driver.compileWorkspace(files, entries); }
   expectWorkspaceFunctions(names: string[]) {
     this.expectConsumerRan(); expect(this.driver.report.workspace?.functions).toEqual(names);
