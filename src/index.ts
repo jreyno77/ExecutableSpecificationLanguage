@@ -52,3 +52,4 @@ export { TestOperationChecker, type TestOperationChecking } from './test-operati
 export { umlOutput } from './uml-output.js';
 export { TypeScriptProject, type TypeScriptProjectOptions } from './typescript-project.js';
 export { markdownOutput } from './output-markdown.js';
+export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';
