@@ -22,10 +22,15 @@ export interface Resolution {
 /** Adds reference facts to supplied models without changing their snapshots. */
 export class Resolver {
   resolve(entry: ModuleModel, dependencies: ResolutionDependencies): Resolution {
-    const modules = new Modules(entry, dependencies.modules);
+    return resolveModules(new Modules(entry, dependencies.modules), dependencies.packages);
+  }
+}
+
+/** Shared linking pipeline for ordinary resolution and explicitly composed modules. */
+export function resolveModules(modules: Modules, suppliedPackages: readonly DependencyPackage[]): Resolution {
     const builtins = builtinModel();
-    const scopes = new ScopeGraph(modules.reached, builtins, modules.failures);
-    const packages = new PackageAvailability(dependencies.packages);
+    const scopes = new ScopeGraph(modules.reached, builtins, modules);
+    const packages = new PackageAvailability(suppliedPackages);
     const bindings = new Map<NodeId, ReferenceResolution>(scopes.imports);
     const problems = [...modules.problems, ...scopes.problems, ...packages.problems];
     const deferred: DeferredReference[] = [];
@@ -46,9 +51,8 @@ export class Resolver {
     for (const node of primitiveNodes) containment.set(node.id, [...builtins.children(node.id)]);
     const captured = new WeakMap<object, unknown>();
     const outcomes = new Map([...bindings].map(([id, outcome]) => [id, capture(outcome, captured)]));
-    return { entry: entry.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes, modules.unanalyzed, containment),
+    return { entry: main!.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes, modules.unanalyzed, containment),
       problems: capture([...new Set(problems)], captured), deferred: capture(deferred, captured) };
-  }
 }
 
 /** Primitive declarations participate in the same structural model as authored declarations. */
