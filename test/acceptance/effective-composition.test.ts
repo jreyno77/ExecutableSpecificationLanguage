@@ -274,7 +274,7 @@ examples for Second from "shared-examples"`);
   language.expectNoSpecification();
 });
 
-it("does not call an authored test-operation body implemented by a later task", () => {
+it("checks an attached test-operation body without executing its call", () => {
   const language = new CompositionExamples();
   language.entry("store", `concept StoreGame { capability save() returns Nothing }
 examples for StoreGame from "saving"`);
@@ -289,9 +289,8 @@ examples for StoreGame from "saving"`);
   language.compose();
   language.compile();
 
-  language.expectDeferred("helper-body", "saving", { line: 2 });
+  language.expectCompiled();
   language.expectNoPendingComposition();
-  language.expectNoSpecification();
 });
 
 it("retains earlier composition results and authored models across calls", () => {
@@ -619,4 +618,3 @@ examples { example "number": 1 => 1 }`);
   language.expectNoPendingComposition();
 });
 });
-

@@ -151,7 +151,8 @@ export class ReferenceResolver {
 
   private ordinaryResult(id: NodeId): boolean {
     for (let parent = this.source.parent(id); parent; parent = this.source.parent(parent.id)) {
-      if (parent.kind === 'fixture' || parent.kind === 'example' || parent.kind === 'scenario' || parent.kind === 'interaction') return true;
+      if (parent.kind === 'fixture' || parent.kind === 'example' || parent.kind === 'scenario' || parent.kind === 'interaction'
+        || parent.kind === 'helper-body' || parent.kind === 'check-body') return true;
     }
     return false;
   }
