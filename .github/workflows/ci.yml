@@ -27,6 +27,12 @@ jobs:
           cache: npm
       - name: Use the pinned package manager
         run: npm install --global npm@11.20.0 --ignore-scripts
+      - name: Supply the explicit JVM toolchain
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
       - name: Install the locked dependencies
         run: npm ci
       - name: Regenerate, typecheck, test, and build
