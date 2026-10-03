@@ -9,6 +9,15 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  compileWorkspace(files: Record<string, string>, entries: string[]) { return this.driver.compileWorkspace(files, entries); }
+  expectWorkspaceFunctions(names: string[]) {
+    this.expectConsumerRan(); expect(this.driver.report.workspace?.functions).toEqual(names);
+  }
+  expectSharedWorkspaceType(name: string, parameters: number) {
+    const workspace = this.driver.report.workspace!;
+    expect(workspace.books).toEqual([name]); expect(workspace.parameters).toBe(parameters);
+    expect(workspace.bothParametersUseBook).toBe(true); expect(workspace.bookIdentityRecords).toBe(1);
+  }
   provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
   installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
   loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }

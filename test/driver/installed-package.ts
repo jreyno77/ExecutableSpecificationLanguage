@@ -21,6 +21,7 @@ interface ConsumerReport {
     source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
     generatedDuplicate: boolean; retainedIdentity?: boolean;
   };
+  workspace?: { functions: string[]; books: string[]; parameters: number; bothParametersUseBook: boolean; bookIdentityRecords: number };
   nativeContext?: {
     complete: boolean; problems: unknown[]; search: ProjectSearch;
     editable: string[]; readonly: { path: string; version: string }[];
@@ -146,6 +147,11 @@ export class PackageDriver {
     await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
     this.result = await run(process.execPath, ['preservation-consumer.mjs', 'preservation.json'], this.consumer);
     await this.readReport();
+  }
+  async compileWorkspace(files: Record<string, string>, entries: string[]): Promise<void> {
+    await cp(join(resources, 'workspace-consumer.mjs'), join(this.consumer, 'workspace-consumer.mjs'));
+    await writeFile(join(this.consumer, 'workspace.json'), JSON.stringify({ files, entries }));
+    this.result = await run(process.execPath, ['workspace-consumer.mjs'], this.consumer); await this.readReport();
   }
   async captureNativeDependencies(packages: Record<string, string>): Promise<void> {
     const installed = await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock',

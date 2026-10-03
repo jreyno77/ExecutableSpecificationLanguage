@@ -111,3 +111,7 @@ export function openTypeScriptOutput(project: ProjectContext, context: import('e
   outputs.register(typescriptOutput);
   return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
 }
+
+export function compileWorkspace(sources: LoadedSources): Compilation {
+  return new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(sources.entries) });
+}
