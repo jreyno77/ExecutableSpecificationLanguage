@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
+import type { Check, InitializationPlan, InitializationResult, OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
+import type { PackageRead } from '../../src/index.js';
+import { NativePackageDriver, npmCommand } from './native-packages.js';
 
 const execute = promisify(execFile), require = createRequire(import.meta.url);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -14,6 +16,35 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  preservation?: {
+    adopted: OutputWrite; updated?: OutputWrite; original: string; afterAdoption: string;
+    source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
+    generatedDuplicate: boolean; retainedIdentity?: boolean;
+  };
+  workspace?: { functions: string[]; books: string[]; parameters: number; bothParametersUseBook: boolean; bookIdentityRecords: number };
+  nativeContext?: {
+    complete: boolean; problems: unknown[]; search: ProjectSearch;
+    editable: string[]; readonly: { path: string; version: string }[];
+    files: Record<string, string>; versions: Record<string, string>;
+    receipt: import('../../src/index.js').WriteResult; notesExist: boolean;
+    capturedText: string; originalText: string; diskText: string;
+    packages: Record<string, string>;
+  };
+  initialization?: {
+    prepared: Check<InitializationPlan>; result?: InitializationResult; acquisition?: PackageRead;
+    connectedRoot?: { path: string; identity: string };
+    selectedRoot?: { requested: string; actual: string };
+    snapshot?: { complete: boolean; files: { path: string; text: string }[]; problems: unknown[]; excluded: string[] };
+    beforeBuildEntries?: string[]; typescript?: { version: string; location: string };
+    build?: { code: number; output: string }; emitted?: Record<string, string>; manifest: string;
+  };
+  acquisition?: { packages: PackageRead; fields?: { name: string; type: string }[]; workspace?: string[]; libraryOrigins?: string[]; problems?: unknown[]; syntax?: unknown[] };
+  typescriptOutput?: {
+    written: OutputWrite; typescript: { version: string; location: string }; source?: string;
+    validDiagnostics?: unknown[]; invalidDiagnostics?: { code: number; file: string; text: string; message: string }[];
+    runtime?: { name?: string; message?: string; returned?: boolean }; notes?: string;
+    baseline?: string; handwritten?: string; update?: OutputWrite; after?: string; stateBefore?: string; stateAfter?: string;
+  };
   projectReading?: {
     read: Omit<ProjectRead, 'artifacts'> & { artifacts: { at: unknown; file: string; text: string }[] };
     search: ProjectSearch; files: Record<string, string>; versions: Record<string, string>;
@@ -40,6 +71,11 @@ interface ConsumerReport {
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
   output?: CountReport;
+  diagram?: { written: OutputWrite; read: NonNullable<CountReport['read']>; search: ProjectSearch;
+    native: { label: string; methods?: { name: string; return: string }[] }[];
+    guards: { reads: string[]; denied: string[]; workers: { created: number; exited: number } };
+    canaries: { failures: boolean[]; denied: string[] }; private: string };
+
 }
 interface CountReport {
   write?: OutputWrite;
@@ -62,6 +98,7 @@ export class PackageDriver {
   location!: Awaited<ReturnType<typeof packageLocation>>;
   countReports: Record<string, CountReport> = {};
   private countInput: Record<string, unknown> = {};
+  private native: NativePackageDriver | undefined;
 
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
@@ -105,7 +142,56 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
   }
+  async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
+    await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
+    this.result = await run(process.execPath, ['preservation-consumer.mjs', 'preservation.json'], this.consumer);
+    await this.readReport();
+  }
+  async compileWorkspace(files: Record<string, string>, entries: string[]): Promise<void> {
+    await cp(join(resources, 'workspace-consumer.mjs'), join(this.consumer, 'workspace-consumer.mjs'));
+    await writeFile(join(this.consumer, 'workspace.json'), JSON.stringify({ files, entries }));
+    this.result = await run(process.execPath, ['workspace-consumer.mjs'], this.consumer); await this.readReport();
+  }
+  async captureNativeDependencies(packages: Record<string, string>): Promise<void> {
+    const installed = await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock',
+      ...Object.entries(packages).map(([name, version]) => name + '@' + version)]);
+    if (installed.code !== 0) throw Error(installed.stdout + installed.stderr);
+    await cp(join(resources, 'native-context.mjs'), join(this.consumer, 'native-context.mjs'));
+    this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
+    await this.readReport();
+  }
+  async provideDependencies(): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize();
+    await this.native.publish('example-storage', '2.1.0');
+    await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
+    await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
+    await this.native.file('libraries/books/types.expec', 'type Title = Text');
+    await cp(join(resources, 'dependency-consumer.mjs'), join(this.consumer, 'dependency-consumer.mjs'));
+  }
+  async acquireDependencies(command: 'install' | 'compile', source = ''): Promise<void> {
+    if (!this.native) throw Error('Prepare the actual library and native registry first.');
+    await writeFile(join(this.consumer, 'dependencies.json'), JSON.stringify({ root: this.native.root, command: npmCommand(), source }));
+    this.result = await run(process.execPath, ['dependency-consumer.mjs', command], this.consumer); await this.readReport();
+  }
   typescriptInsideConsumer = false;
+  compilerInsideProject = false;
+  async initializeProject(root: string, target: string): Promise<void> {
+    await cp(join(resources, 'initialization-consumer.mjs'), join(this.consumer, 'initialization-consumer.mjs'));
+    await writeFile(join(this.consumer, 'initialization.json'), JSON.stringify({ root, target, npm: npmExecutable() }));
+    this.result = await run(process.execPath, ['initialization-consumer.mjs', 'initialization.json'], this.consumer);
+    await this.readReport();
+    const path = this.report.initialization?.typescript?.location, selectedRoot = this.report.initialization?.selectedRoot?.actual;
+    this.compilerInsideProject = !!path && !!selectedRoot && contained(join(selectedRoot, 'node_modules'), await realpath(path));
+  }
+  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
+    await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
+    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised, handwrittenParameter }));
+    this.result = await run(process.execPath, ['typescript-output-consumer.mjs', 'typescript-output.json'], this.consumer);
+    await this.readReport();
+    const path = this.report.typescriptOutput?.typescript.location;
+    this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
+  }
   async readTypeScriptProject(files: Record<string, string>): Promise<void> {
     await cp(join(resources, 'project-reading.mjs'), join(this.consumer, 'project-reading.mjs'));
     await writeFile(join(this.consumer, 'project.json'), JSON.stringify({ files }));
@@ -126,6 +212,13 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['writer.mjs', 'write.json'], this.consumer);
     await this.readReport();
   }
+  async diagramProject(source: string): Promise<void> {
+    for (const name of ['diagram-guard.mjs', 'diagram-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'diagram.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['--import', './diagram-guard.mjs', 'diagram-consumer.mjs', 'diagram.json'], this.consumer);
+    await this.readReport();
+  }
+  diagramResourceInsidePackage(path: string): boolean { return contained(join(this.consumer, 'node_modules/@d2lang/d2'), path) || path === join(this.consumer, 'diagram-guard.mjs'); }
   async registerCountOutput(): Promise<void> {
     for (const name of ['count-adapter.mts', 'output-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
   }
@@ -181,7 +274,7 @@ export class PackageDriver {
       throw new Error(`Negative fixture can find ${name} at ${directory}`);
     }
   }
-  async dispose(): Promise<void> { if (this.directory) await cleanup(this.directory); }
+  async dispose(): Promise<void> { if (this.native) await this.native.dispose(); if (this.directory) await cleanup(this.directory); }
 }
 
 export async function packageLocation(consumer: string, entry: string) {

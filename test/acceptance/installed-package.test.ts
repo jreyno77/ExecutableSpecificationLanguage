@@ -5,6 +5,105 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('preserves an adopted implementation and its caller through an installed native rename', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.preserveTypeScript({
+      source: 'class StoreGame { public save\ncapability save(snapshot: Text) returns Nothing }',
+      revised: 'class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }',
+      implementation: 'export class StoreGame { private saves = 0; save(snapshot: string): void { this.saves++; console.log(snapshot); } }\n',
+      caller: 'import { StoreGame } from "./game.js"; new StoreGame().save("Dune");\n',
+    });
+    consumer.expectAdoptedSourceUnchanged();
+    consumer.expectPreservedNativeSource('private saves = 0; saveGame(snapshot: string): void { this.saves++; console.log(snapshot); }');
+    consumer.expectPreservedCaller('new StoreGame().saveGame("Dune")');
+    consumer.expectPreservedRuntimeOutput('Dune');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
+  });
+
+  it('compiles every configured workspace entry with one shared Book through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.compileWorkspace({
+      'game.expec': 'use Book from "./catalog.expec"\nfunction save(book: Book) returns Nothing',
+      'checkout.expec': 'use Book from "./catalog.expec"\nfunction price(book: Book) returns Number',
+      'catalog.expec': 'type Book { title: Text }',
+    }, ['game.expec', 'checkout.expec']);
+
+    consumer.expectWorkspaceFunctions(['price', 'save']);
+    consumer.expectSharedWorkspaceType('Book', 2);
+    consumer.expectInstalledPackageUsed();
+  });
+
+  it('queries actual installed Vitest declarations and refuses a write after they change', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.captureNativeDependencies({ vitest: '5.0.2', '@types/node': '24.13.6' });
+    consumer.expectInstalledMethodConsumer('test/manual.ts', 'expectQuantity');
+    consumer.expectReadOnlyNativeEvidence('node_modules/vitest/dist/index.d.ts');
+    consumer.expectChangedNativeEvidenceStopsWrite('notes.txt');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('initializes the chosen project and builds its starter through installed public exports', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.initializeProject('chosen-game', 'typescript');
+    consumer.expectInstalledInitialization(['package.json', 'tsconfig.json', 'src/index.ts', '.gitignore']);
+    consumer.expectInstalledToolchainAcquired('typescript', '5.9.3');
+    consumer.expectInstalledStarterBuild('5.9.3');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('generates a natively checked callable scaffold through the installed TypeScript output', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.generateTypeScript('function save(title: Text) returns Nothing',
+      'import { save } from "./src/save.js"; save("Dune");',
+      'import { save } from "./src/save.js"; save(64);',
+      'function save(title: Text, copies: Number) returns Nothing', 'title: number');
+
+    consumer.expectInstalledTypeScriptScaffold('Not implemented: save');
+    consumer.expectInvalidNativeArgument('64');
+    consumer.expectConflictingNativeSignatureProtected();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('renders and searches installed diagrams using only captured input and immutable package resources', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.diagramProject('concept Store { public save\ncapability save() returns Nothing }');
+    consumer.expectInstalledPackageUsed();
+    consumer.expectInstalledDiagramFiles(['design/structure.d2', 'design/structure.svg']);
+    consumer.expectInstalledNativeSignature('Store', 'save() → Nothing');
+    consumer.expectInstalledSvgLabel('Store');
+    consumer.expectInstalledDiagramCoverage();
+    consumer.expectOnlyInstalledDiagramResourcesUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('acquires packages and composes private library sources through the installed public product', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.provideLocalLibraryAndNativeRegistry();
+    await consumer.installConfiguredStorage();
+    consumer.expectSelectedAndInstalledStorage('2.1.0');
+    await consumer.loadAcquiredLibrary('use Book from "books"\nfunction save(book: Book) returns Nothing');
+    consumer.expectAcquiredFieldType('Book.title', 'Text');
+    consumer.expectSelectedAndInstalledStorage('2.1.0');
+    consumer.expectNoLibraryModuleInWorkspaceOwnership();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
   it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

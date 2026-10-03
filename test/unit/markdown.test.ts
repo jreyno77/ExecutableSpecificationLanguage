@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LangiumModel, LangiumReader, QueryInspection, type NodeKind } from '../../src/index.js';
-import { language } from '../../src/markdown-language.js';
+import { language } from '../../src/language-text.js';
 import { MarkdownPlans } from '../driver/markdown-plans.js';
 
 function syntax(text: string, kind: NodeKind): string {

@@ -1,4 +1,4 @@
-import { parseTree, type Node, type ParseError } from 'jsonc-parser';
+import { readJson } from './json-data.js';
 import type { Check, Diagnostic } from './checking.js';
 import type { SourceDocument } from './grammar/source.js';
 import { configurationSchema, type Configuration } from './configuration-schema.js';
@@ -21,17 +21,12 @@ export class ConfigurationReader {
     }
   }
   read(source: Readonly<SourceDocument>): Check<Configuration> {
-    const problems: Diagnostic[] = [], errors: ParseError[] = [];
+    const problems: Diagnostic[] = [];
     const at = (path: readonly (string | number)[]) => ({ kind: 'dependency' as const, path: ['manifest', source.sourceId, ...path] });
     const problem = (code: string, message: string, path: readonly (string | number)[], related?: readonly (string | number)[]) => {
       problems.push({ code, message, at: at(path), related: related ? [at(related)] : [] });
     };
-    const tree = parseTree(source.text, errors, { disallowComments: true, allowTrailingComma: false });
-    if (!tree || errors.length) {
-      problem('invalid-json', 'Provide a complete JSON document without comments or trailing commas.', []);
-      return { problems, deferred: [] };
-    }
-    const data = jsonValue(tree, [], problem);
+    const data = readJson(source.text, problem);
     if (problems.length) return { problems, deferred: [] };
     const checked = configurationSchema.safeParse(data);
     if (!checked.success) {
@@ -57,20 +52,4 @@ export class ConfigurationReader {
     });
     return { ...(!problems.length ? { value: { ...checked.data, sourceId: source.sourceId } } : {}), problems, deferred: [] };
   }
-}
-
-/** Retain every authored option key while detecting ambiguity before validation. */
-function jsonValue(node: Node, path: (string | number)[], problem: (code: string, message: string, path: (string | number)[]) => void): unknown {
-  if (node.type === 'object') {
-    const seen = new Set<string>();
-    return Object.fromEntries(node.children!.map(property => {
-      const key = property.children![0]!.value as string, at = [...path, key];
-      if (seen.has(key)) problem('duplicate-key', `Property ${key} occurs more than once.`, at);
-      seen.add(key);
-      return [key, jsonValue(property.children![1]!, at, problem)];
-    }));
-  }
-  if (node.type === 'array') return node.children!.map((child, index) => jsonValue(child, [...path, index], problem));
-  if (node.type === 'number' && !Number.isFinite(node.value)) problem('invalid-setting', 'Use a finite number.', path);
-  return node.value as unknown;
 }

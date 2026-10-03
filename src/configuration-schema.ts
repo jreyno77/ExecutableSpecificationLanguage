@@ -1,5 +1,6 @@
 import { valid, validRange } from 'semver';
 import { z } from 'zod';
+import { nativePath } from './source-files.js';
 
 export const fullVersion = (value: unknown): value is string => typeof value === 'string'
   && value === value.trim() && /^\d/.test(value) && valid(value, { loose: false }) !== null;
@@ -32,7 +33,8 @@ export const configurationSchema = z.strictObject({
   outputs: z.array(z.strictObject({ id: text,
     options: z.custom<Record<string, unknown>>(value => value !== null && typeof value === 'object' && !Array.isArray(value),
       'Provide an options object.').default(() => ({})) })).superRefine(unique(value => value.id, ['id'])).default(() => []),
-  libraries: z.array(z.strictObject({ module: text.refine(bareModule, 'Provide a bare library identity, not a local path or URI.'), version: range }))
+  libraries: z.array(z.strictObject({ module: text.refine(bareModule, 'Provide a bare library identity, not a local path or URI.'), version: range,
+    source: text.refine(value => nativePath(value) && !/[*?\[\]{}]/.test(value) && !/^[a-z]:(?![/\\])/i.test(value), 'Provide a literal native library root.').optional() }))
     .superRefine(unique(value => value.module, ['module'], 'duplicate-module')).default(() => []),
   packages: z.array(z.strictObject({ alias: text, name: text, version: range,
     phases: z.array(z.enum(['build', 'runtime', 'test'])).min(1, 'Provide at least one package phase.')

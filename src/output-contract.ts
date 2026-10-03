@@ -6,6 +6,7 @@ import type { ProjectSnapshot } from './project-connection.js';
 import type { ProjectRead, ProjectSearch } from './project-inspection.js';
 import type { RelationshipObservation } from './relationship-reconciliation.js';
 import { literal, marker } from './project-files.js';
+import { packagePath, validateReadOnly } from './project-readonly.js';
 const require = (condition: unknown, message: string): void => { if (!condition) throw new TypeError(message); };
 function diagnostics(value: readonly Diagnostic[]): void {
   require(Array.isArray(value) && value.every(item => item && typeof item.code === 'string' && typeof item.message === 'string'
@@ -24,6 +25,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   require(!result.deferred.length, 'An output plan cannot defer compiler requirements.');
   if (!result.value) { require(result.problems.length, 'A refused output plan must explain why.'); return; }
   const plan = result.value;
+  require(validateReadOnly(snapshot), 'Malformed read-only native evidence.');
   require(snapshot.complete && !snapshot.problems.length, 'A successful output plan requires complete input.');
   require(!result.problems.length && plan.outputId === id && canonical(plan.basedOn) === canonical(snapshot), 'A successful plan must retain its output, snapshot, and clean findings.');
   require(Array.isArray(plan.changes) && Array.isArray(plan.artifacts), 'Malformed file changes or associations.');
@@ -31,7 +33,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   for (const change of plan.changes) {
     require(change && ['write', 'remove', 'move'].includes(change.kind), 'Unknown output file operation.');
     for (const path of change.kind === 'move' ? [change.from, change.to] : [change.path]) {
-      require(literal(path) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
+      require(literal(path) && !packagePath(path) && !snapshot.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
         && path !== marker && !path.startsWith(marker + '/'), 'Output file path is not writable within this snapshot.');
       const key = process.platform === 'win32' ? path.toLowerCase() : path;
       require(!endpoints.some(other => key === other || key.startsWith(other + '/') || other.startsWith(key + '/')), 'Output changes overlap.'); endpoints.push(key);

@@ -103,6 +103,47 @@ and never scans, installs or writes. Descendant links and distinct physical-file
 aliases are rejected. Named libraries come from supplied dependencies; a library's
 diagnostic filename does not grant it a local source root.
 
+## Acquire declared dependencies
+
+Set `libraries[].source` to an explicit library directory. Its `package.json`
+declares a complete `version` and `expec: { entry: "./index.expec" }`, or
+`expec: { declarations: "./declarations.json" }` for existing ExternalDefinition
+JSON. Only the entry and its relative private imports are captured; library
+JavaScript and lifecycle scripts are never evaluated by the loader.
+
+```ts
+import { LibraryLoader, NpmDependencies, DependencyPlanner, SourceLoader } from 'executable-specification-language';
+
+const libraries = await new LibraryLoader(absoluteManifestFilename).load(configuration);
+const native = new NpmDependencies(absoluteProjectRoot);
+const packages = await native.read(configuration.packages);
+// Explicitly call native.install(configuration.packages) when installation is wanted.
+if (libraries.value && packages.value) {
+  const selected = new DependencyPlanner().resolve(configuration, {
+    modules: libraries.value.inventory, packages: packages.value,
+  });
+  if (selected.value) {
+    const sources = await new SourceLoader(absoluteManifestFilename)
+      .load(configuration, selected.value, libraries.value);
+  }
+}
+```
+
+Library captures keep their own model identities and ownership; they never become
+workspace output just because their source was loaded. Requirements without
+`source` continue to accept host-supplied models through the planner.
+
+`NpmDependencies` supports an existing ordinary npm11 project and qualified names
+such as `npm:example-storage`. Its observations distinguish requested ranges,
+locked selections and actual installed versions. A successful inventory requires
+the installed version to satisfy the range and match the lock. `read()` never
+installs or changes project files; its temporary cache must be outside the project.
+`install()` preserves unrelated manifest values,
+sets requested runtime dependencies or development tools, then runs native npm
+with scripts disabled. Native installation may change its lockfile and package
+files; a failure does not imply rollback. File presence does not prove lifecycle
+or runtime readiness. Neither operation creates a project or runs compilation.
+
 ## Compose supplied modules
 
 ```ts
@@ -400,14 +441,40 @@ regions, preserving exact prefix/notes bytes. Renames carry notes with their pag
 with handwritten content is refused. Actual edited files remain readable and searchable.
 Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
 
+Register `typescriptOutput` to generate native TypeScript contracts and throwing
+implementation stubs. Pass `{ directory: 'src', concepts: 'class' }` as options;
+use `concepts: 'interface'` for signatures. Optional `names` and `imports` mappings
+make quoted names and external native dependencies explicit. Native identifiers
+currently use ASCII letters/digits, `_`, `$` and exclude
+reserved/contextual names. Unsupported spellings require explicit mapping; quoted
+field/method properties remain readable. Names are never silently transliterated.
+`Nothing` returns `void`; an unspecified result remains documented as `unknown`. Defaults and prose
+remain implementation obligations. Number uses JavaScript binary64, with lossy
+authored numeric literals refused. Error records retain their data and receive
+an `Error` companion; normal return types remain unchanged.
+
+For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
+`Outputs.open` argument, using successful `SourceLoader` captures' model locators.
+The entry is always included. Other source modules are generated only when in
+that captured set; provider dependencies require native mappings. This keeps
+documentation visibility separate from authority to generate implementation code.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve handwritten
+bodies, private helpers and comments while changing owned contracts and proven
+native references. Enable `adoptExisting: true` on `create` to adopt explicitly
+mapped declarations; every represented member needs its own native association.
+Shared adopted files retain their placement. Generated-only baselines stay separate
+from handwritten code. Competing signature edits, implemented removals, incomplete
+rename scope and unsafe overload signature changes return conflicts without writes.
+Overload renames update all signatures; changed promises remain unverified obligations.
+
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
-changes without effects. Hosts can combine disjoint plans from one snapshot, then
+changes without project mutations. Hosts can combine disjoint plans from one snapshot, then
 apply them once. Successful association proposals cover only that output namespace;
 retain other namespaces before calling `withArtifacts`. Outputs do not save the
 global identity baseline.
 
-Summary profiles own whole generated files. Private `.expec/outputs/` records permit
+The two list profiles own whole files. Private `.expec/outputs/` records permit
 repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
 owned files conflict instead of being overwritten. Read still returns their actual
 complete content. Directory changes require an explicit future migration policy.
@@ -424,11 +491,50 @@ Valid foreign Markdown namespaces remain project-only consumers and targets; the
 opaque identities never become definitions owned by the selected output.
 
 Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
-returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a
+returns an `OutputAdapter` with `plan`, `read`, and `search` operations over a
 supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
 guarded application. No decorators, package loading, or inheritance are required.
 
+## Draw declared contracts and communications
+
+```ts
+import { umlOutput } from 'executable-specification-language';
+
+outputs.register(umlOutput);
+const diagrams = outputs.open('uml', {
+  directory: 'design', views: ['structure', 'interactions']
+}, project, new FileProjectWriter(project));
+if (diagrams.value && current.value) await diagrams.value.create(current.value);
+```
+
+The adapter writes native D2 and SVG: one shared structure view and one sequence
+file per authored interaction. Inputs, outputs, fields, dependencies and possible
+failures remain distinct; sequence messages come only from checked interactions.
+Omit `views` for structure alone. Requesting interactions without one is a finding.
+
+Generated D2 regions and derived SVGs are guarded by recorded hashes. Handwritten
+comments, unique root objects/edges and participant notes survive updates; a
+note-only update refreshes the SVG. `read` returns actual source/SVG bytes and
+reports stale renders. `search` parses current native references, including
+unmodeled consumers, with original source ranges. Imports, arbitrary nested
+scopes, boards and dynamic native syntax remain incomplete coverage; linked
+assets are unsupported. No labels are guessed to be code references.
+
+Native work lazily loads pinned D2 package resources and disposes its worker per
+operation. It uses captured project bytes; no CLI, downloads, ambient project
+reads or network access are part of rendering. D2 retains its MPL-2.0 notices.
+
 ## TypeScript project queries
+
+For projects with installed native dependencies, capture them through
+`new TypeScriptContext(connectedProject, { configFile: 'tsconfig.json', imports: ['vitest'] })`.
+Its `readSnapshot()` puts consulted package metadata/declarations in `readOnlyFiles`,
+separate from editable project files. Ordinary npm directories are supported;
+linked package layouts, runtime loading, parent fallback and installation are not.
+Use the same context for `FileProjectWriter` so every write guard rechecks dependency
+evidence. Seed imports used by planned additions/removals to keep that evidence
+stable; an unseeded closure change stops with an honest partial receipt. Native
+declarations resolve real symbols but never grant package write/adoption authority.
 
 ```ts
 import { TypeScriptProject } from 'executable-specification-language';
@@ -461,6 +567,30 @@ explicitly unsupported. Definitions and uses carry original UTF-16 offsets and f
 versions. Dynamic lookup, native diagnostics and missing inputs make coverage
 incomplete. The reader neither reconnects files nor authorizes or performs writes.
 
+## Initialize a chosen project
+
+```ts
+import { ProjectInitializer } from 'executable-specification-language';
+
+const initializer = new ProjectInitializer(manifestLocation, configuration);
+const preview = await initializer.prepare({ root: '../store-game', target: 'typescript' });
+if (preview.value) {
+  // Present the destination and exact file bytes before accepting.
+  const result = await initializer.apply(preview.value, authorAccepted);
+  if (result.value) useProject(result.value.context, result.value.configuration);
+}
+```
+
+The TypeScript starter contains package.json, tsconfig.json, src/index.ts and
+.gitignore. It requires an absent leaf below an existing parent or an empty ordinary
+directory. Declining creates nothing; changed destinations stop application.
+Initialization neither installs dependencies nor generates contracts/tests or runs
+the build. The host explicitly saves the returned configuration when appropriate.
+The returned configuration declares the pinned TypeScript 5.9.3 build requirement.
+Pass its packages to `NpmDependencies.install` explicitly; then `npm run build`
+compiles the starter. Conflicting compiler requirements are rejected before creation.
+A stopped result preserves any created root and actual writer receipt; inspect it
+before recovery. Accepted previews are single-use, including failed attempts.
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
@@ -484,6 +614,6 @@ This separate suite runs in Windows/Linux CI and may need registry access; insta
 scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
 and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
-`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. npm publication, full type/behavior validation and project generation remain subsequent work.
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. The connected-build CLI, additional language targets and npm publication remain subsequent work.
 
 Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).

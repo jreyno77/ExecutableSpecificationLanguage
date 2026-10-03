@@ -1,0 +1,154 @@
+{
+  "artifacts": [],
+  "context": "sha256:279e958b9dfd59553d44b2845430425ff68f902dcdc6e8060e704c02dfaac1f9",
+  "elements": [
+    {
+      "address": {
+        "kind": "function",
+        "module": "game",
+        "name": "save",
+        "owner": null
+      },
+      "capture": "sha256:bc4d6178b64872ad28422603d1f637cba8dd38335dbdee948433441c486fdcfd",
+      "id": "frozen-main-1",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "game",
+        "node": {
+          "ordinal": 5,
+          "sourceId": "game.expec"
+        },
+        "range": {
+          "end": {
+            "column": 42,
+            "line": 2,
+            "offset": 65
+          },
+          "sourceId": "game.expec",
+          "start": {
+            "column": 1,
+            "line": 2,
+            "offset": 24
+          }
+        }
+      },
+      "references": [
+        "frozen-main-3"
+      ],
+      "structure": "sha256:8ca0f17168555deb9eafe7e1000ae475b0d106a743f728020057258b133044a0"
+    },
+    {
+      "address": {
+        "kind": "parameter",
+        "module": "game",
+        "name": "book",
+        "owner": "frozen-main-1"
+      },
+      "capture": "sha256:fe431bffdd7c2661fe747a1237907dadf3428aa23b56f9a04c7a4fa8ec59d1d6",
+      "id": "frozen-main-2",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "game",
+        "node": {
+          "ordinal": 7,
+          "sourceId": "game.expec"
+        },
+        "range": {
+          "end": {
+            "column": 25,
+            "line": 2,
+            "offset": 48
+          },
+          "sourceId": "game.expec",
+          "start": {
+            "column": 15,
+            "line": 2,
+            "offset": 38
+          }
+        }
+      },
+      "references": [
+        "frozen-main-3"
+      ],
+      "structure": "sha256:f8e086d65e58413e61004b75c9e8603ae360fc1934edc07b6321aa0f6a21d8c6"
+    },
+    {
+      "address": {
+        "kind": "record-type-declaration",
+        "module": "catalog",
+        "name": "Book",
+        "owner": null
+      },
+      "capture": "sha256:6bc0e7b4ecd51ed21ecb35d993ff96c605c762a918b6c504b940dd8e89a036b6",
+      "id": "frozen-main-3",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "catalog",
+        "node": {
+          "ordinal": 0,
+          "sourceId": "catalog.expec"
+        },
+        "range": {
+          "end": {
+            "column": 26,
+            "line": 1,
+            "offset": 25
+          },
+          "sourceId": "catalog.expec",
+          "start": {
+            "column": 1,
+            "line": 1,
+            "offset": 0
+          }
+        }
+      },
+      "references": [],
+      "structure": "sha256:4e2d6eb9fd089f99d5ad451a14c9f025e096f3f9b72f8e5c65178e8f12ee9c85"
+    },
+    {
+      "address": {
+        "kind": "field",
+        "module": "catalog",
+        "name": "title",
+        "owner": "frozen-main-3"
+      },
+      "capture": "sha256:056913a014c2f8842705b43dbffc1cf55127e6150c4e1750d3b4e926799a13af",
+      "id": "frozen-main-4",
+      "occurrence": 0,
+      "origin": {
+        "kind": "source",
+        "module": "catalog",
+        "node": {
+          "ordinal": 2,
+          "sourceId": "catalog.expec"
+        },
+        "range": {
+          "end": {
+            "column": 24,
+            "line": 1,
+            "offset": 23
+          },
+          "sourceId": "catalog.expec",
+          "start": {
+            "column": 13,
+            "line": 1,
+            "offset": 12
+          }
+        }
+      },
+      "references": [],
+      "structure": "sha256:b33343585b08207902ff5d801acc0c586a7db3b61efdb42e926dea6c32b71854"
+    }
+  ],
+  "entry": "game",
+  "format": 1,
+  "modules": [
+    "catalog",
+    "game"
+  ],
+  "projection": "expec-structure-1",
+  "retired": []
+}
