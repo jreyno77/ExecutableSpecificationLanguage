@@ -31,3 +31,5 @@ jobs:
         run: npm ci
       - name: Regenerate, typecheck, test, and build
         run: npm run check
+      - name: Verify installed package consumers
+        run: npm run test:package
