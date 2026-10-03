@@ -11,7 +11,9 @@ try {
   await mkdir(root);
   const canary = join(root, 'private.txt');
   await writeFile(canary, 'Keep private.');
-  const canaries = await proveGuards(canary), outputs = new Outputs();
+  const unrelatedPackage = join(process.cwd(), 'node_modules/executable-specification-language/package.json');
+  await readFile(unrelatedPackage);
+  const canaries = await proveGuards(canary, unrelatedPackage), outputs = new Outputs();
   outputs.register({ ...umlOutput, open(options) {
     const adapter = umlOutput.open(options);
     return { id: adapter.id,

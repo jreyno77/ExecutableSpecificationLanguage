@@ -1,6 +1,6 @@
 import { D2, type CompileResponse } from '@d2lang/d2';
 import type { Diagnostic } from './checking.js';
-import { jsonData } from './identity-baseline.js';
+import { identifier, jsonData } from './identity-baseline.js';
 import { hash } from './project-files.js';
 import { outputProblem } from './output-documents.js';
 
@@ -17,6 +17,19 @@ export class NativeDiagrams {
       result.compiled = await this.engine.compile({ fs: files, inputPath: path, options: { layout: 'dagre', themeID: 0, sketch: false } });
       if (hasNative(result.compiled.graph.ast, ['import'])) result.limitations.push(path + ': imports');
       result.statements = this.statements(object(result.compiled.graph.ast), result);
+      const graph = object(result.compiled.graph), root = object(graph.root);
+      if (result.interaction && object(object(root.attributes).shape).value !== 'sequence_diagram') throw new Error('Interaction metadata requires an actual root sequence diagram.');
+      const attributes = new Set(['shape', 'label', 'near', 'style', 'width', 'height', 'direction', 'tooltip', 'icon', 'link']);
+      const objects = Array.isArray(graph.objects) ? graph.objects.map(object) : [];
+      for (const node of result.statements) {
+        const target = objects.find(value => value.id_val === node.key[0] && Array.isArray(value.references) && value.references.some(reference => {
+          const key = object(object(reference).key);
+          return segments(key).length === 1 && range(key.range, result).start === node.keyRange.start;
+        }));
+        const shape = object(object(target?.attributes).shape).value;
+        if (node.children.some(child => child.metadata?.member) && shape !== 'class') throw new Error('Member metadata requires an actual immediate root class compartment.');
+        if (!attributes.has(node.key[0]!) && node.children.some(child => child.edges.length || shape !== 'class' && !attributes.has(child.key[0]!))) result.limitations.push(path + ': nested native scope');
+      }
     } catch (error) { result.problems.push(outputProblem('invalid-output-document', path, String(error))); result.limitations.push(path + ': native syntax or provenance could not be read'); }
     return result;
   }
@@ -38,6 +51,8 @@ export class NativeDiagrams {
         const value: unknown = JSON.parse(Buffer.from(line.slice(11), 'base64url').toString('utf8')), data = object(value);
         if (!jsonData(value) || data.format !== 1 || typeof data.outputId !== 'string') throw new Error('Malformed diagram identity record.');
         if (data.outputId !== 'uml') continue;
+        if (['definition', 'reference', 'member', 'edge', 'message', 'interaction'].filter(key => key in data).length > 1
+          || ['definition', 'reference', 'member', 'interaction'].some(key => key in data && !identifier.safeParse(data[key]).success)) throw new Error('Contradictory or invalid native identity record.');
         if (data.interaction) { if (typeof data.interaction !== 'string' || result.interaction) throw new Error('Malformed interaction identity.'); result.interaction = data.interaction; }
         if (data.definition || data.reference || data.member || data.edge || data.message) {
           if (metadata) throw new Error('Two identity records claim one native statement.');

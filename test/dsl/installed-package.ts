@@ -149,8 +149,8 @@ export class PackageExamples {
   expectOnlyInstalledDiagramResourcesUsed(): void {
     this.expectConsumerRan();
     const diagram = this.driver.report.diagram!;
-    expect(diagram.canaries.failures).toEqual([true, true, true]);
-    expect(diagram.canaries.denied).toHaveLength(3);
+    expect(diagram.canaries.failures).toEqual([true, true, true, true]);
+    expect(diagram.canaries.denied).toHaveLength(4);
     expect(diagram.private).toBe('Keep private.');
     expect(diagram.guards.denied).toEqual([]);
     expect(diagram.guards.reads.length).toBeGreaterThan(0);

@@ -63,4 +63,33 @@ describe('native diagram source facts', () => {
     const documents = await inspect('shape: sequence_diagram\n' + metadata({ definition: 'a' }) + 'a: A\n' + metadata({ definition: 'b' }) + 'b: B\na -> b: ping\nb.note: Undecided\n');
     expect(documents.search('b').incoming.uses.some(use => use.at.format === 'd2-note' && use.target.kind === 'project')).toBe(true);
   });
+  it('does not fabricate a class member from identity metadata inside a plain container', async () => {
+    const documents = await inspect(metadata({ definition: 'store' }) + 'store: Store {\n'
+      + metadata({ member: 'save', owner: 'store', parameters: [] }) + 'save: Save\n}\n');
+    expect(documents.search('save').definitions).toEqual([]); expect(documents.coverage().complete).toBe(false);
+  });
+  it('does not turn a structural document into an interaction through a comment', async () => {
+    const documents = await inspect(metadata({ view: 'interaction', interaction: 'save' }) + 'store: Store\n');
+    expect(documents.search('save').definitions).toEqual([]); expect(documents.coverage().complete).toBe(false);
+  });
+  it('reports an ordinary nested object and its nested edge as incomplete native scope', async () => {
+    const documents = await inspect('container: {\n child: Child\n child -> other: uses\n}\n');
+    expect(documents.coverage().complete).toBe(false); expect(documents.coverage().limitations.some(value => value.includes('nested native scope'))).toBe(true);
+  });
+  it('keeps native class compartments and root style properties in the complete profile', async () => {
+    const documents = await inspect('style: { fill: white }\nstore: Store { shape: class; title: Text; style: { fill: white } }\n');
+    expect(documents.problems).toEqual([]); expect(documents.coverage().complete).toBe(true);
+  });
+  it('locates a real member under a quoted flat class key containing a dot', async () => {
+    const source = metadata({ definition: 'store' }) + '"store.game": Store {\n  shape: class\n'
+      + metadata({ member: 'save', owner: 'store.game', parameters: [] }) + '  "save()": Nothing\n}\n';
+    const documents = await inspect(source), definition = documents.search('save').definitions[0];
+    expect(documents.problems).toEqual([]); expect(documents.coverage().complete).toBe(true); expect(definition).toBeDefined();
+    const value = definition!.value as { range: { start: number; end: number } };
+    expect(source.slice(value.range.start, value.range.end)).toBe('"save()": Nothing');
+  });
+  it('rejects contradictory definition and reference identities in one record', async () => {
+    const documents = await inspect(metadata({ definition: 'store', reference: 'other' }) + 'store: Store\n');
+    expect(documents.definitions).toEqual([]); expect(documents.coverage().complete).toBe(false);
+  });
 });

@@ -4,7 +4,7 @@ import type { ProjectSnapshot } from './project-connection.js';
 import type { ArtifactAssociation } from './specification-identity.js';
 import { canonical, success } from './identity-baseline.js';
 import { hash, literal } from './project-files.js';
-import { structure, interactions, type Drawing } from './uml-projection.js';
+import { structure, interactions, nativeKey, type Drawing } from './uml-projection.js';
 import type { FileChange } from './project-writer.js';
 import { NativeDiagrams } from './uml-native.js';
 import { DiagramDocuments, diagramLocator } from './uml-documents.js';
@@ -77,7 +77,8 @@ class DiagramOutput implements OutputAdapter {
           const found = documents.problems.filter(problem => problem.at.kind === 'dependency' && problem.at.path.includes(prior.path));
           problems.push(...found.length ? found : [conflict(prior.path, 'Owned source is missing or unreadable.')]); continue;
         }
-        try { if (hash(Buffer.from(region(source.text).content)) !== prior.region) problems.push(conflict(prior.path, 'Generated source was edited.')); }
+        if (source.limitations.length) problems.push(outputProblem('unsupported-diagram-syntax', prior.path, source.limitations.join('; ')));
+        try { if (hash(Buffer.from(region(source.text).content)) !== prior.region) problems.push(conflict(prior.path, 'Generated source was edited.')); else problems.push(...handwritten(source)); }
         catch { problems.push(conflict(prior.path, 'Generated region is missing or ambiguous.')); }
         if (!svg || hash(svg.bytes) !== prior.svg) problems.push(conflict(svgPath(prior.path), 'Owned SVG was removed or edited.'));
       }
@@ -99,7 +100,8 @@ class DiagramOutput implements OutputAdapter {
           }
           const removed = new Set(prior === owned ? [request.id] : []);
           for (const subject of prior.subjects) if (subject.owner && removed.has(subject.owner)) removed.add(subject.id);
-          const ranges = source.statements.filter(node => removed.has(String(node.metadata?.definition)) || node.metadata?.edge && removed.has(String((node.metadata.edge as { subject?: unknown }).subject)))
+          const ranges = source.statements.filter(node => node.range.start >= span.start && node.range.end <= span.finish && (removed.has(String(node.metadata?.definition))
+            || node.metadata?.edge && removed.has(String((node.metadata.edge as { subject?: unknown }).subject)) || [...removed].some(id => node.key[0]?.startsWith(nativeKey(id) + '_promise_'))))
             .map(node => ({ start: node.metadataStart ?? node.range.start, end: node.range.end }));
           let text = source.text;
           for (const range of ranges.sort((a, b) => b.start - a.start)) text = text.slice(0, range.start) + text.slice(range.end);

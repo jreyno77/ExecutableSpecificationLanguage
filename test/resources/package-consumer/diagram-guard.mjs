@@ -9,7 +9,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const directory = dirname(fileURLToPath(import.meta.url)), modules = resolve(directory, 'node_modules');
+const directory = dirname(fileURLToPath(import.meta.url)), resources = resolve(directory, 'node_modules/@d2lang/d2');
 let active = !workers.isMainThread;
 const reads = [], denied = [], exits = [];
 let created = 0, exited = 0;
@@ -21,7 +21,7 @@ const reject = detail => { record('denied', detail); throw Error('INSTALLED GUAR
 const allowed = value => {
   if (value instanceof URL) value = fileURLToPath(value);
   if (typeof value !== 'string' && !Buffer.isBuffer(value)) return reject('non-path filesystem access');
-  const path = resolve(String(value)), inside = relative(modules, path);
+  const path = resolve(String(value)), inside = relative(resources, path);
   if (path === fileURLToPath(import.meta.url) || !isAbsolute(inside) && inside !== '..' && !inside.startsWith('..' + sep)) {
     record('read', path); return;
   }
@@ -76,9 +76,9 @@ export async function guarded(action) {
   const previous = active; active = true;
   try { return await action(); } finally { active = previous; }
 }
-export async function proveGuards(canary) {
+export async function proveGuards(canary, unrelatedPackage) {
   const failures = [];
-  for (const operation of [() => fs.readFileSync(canary), () => fs.writeFileSync(canary, 'changed'),
+  for (const operation of [() => fs.readFileSync(canary), () => fs.readFileSync(unrelatedPackage), () => fs.writeFileSync(canary, 'changed'),
     () => globalThis.fetch('https://example.invalid/expec-canary')]) {
     try { await guarded(operation); failures.push(false); }
     catch (error) { failures.push(error.message.startsWith('INSTALLED GUARD denied ')); }

@@ -91,4 +91,16 @@ describe('diagram planning boundaries', () => {
     try { const result = await plan.output.plan({ operation: 'create', current: plan.current }, plan.snapshot()); expect(result.value === undefined).toBe(true); expect(result.problems.map(problem => problem.code)).toContain('native-render-failed'); }
     finally { render.mockRestore(); }
   });
+  it('refuses a handwritten override before deleting the generated subject it changes', async () => {
+    const plan = new DiagramPlan(); plan.specify('concept Store {}'); await plan.create();
+    const definition = (await plan.output.search(plan.id('Store'), plan.snapshot())).definitions[0]!;
+    const key = (definition.value as { key: string }).key; plan.write('design/structure.d2', plan.text() + '\n' + key + ': Different\n');
+    const result = await plan.output.plan({ operation: 'delete', id: plan.id('Store') }, plan.snapshot());
+    expect(result.value === undefined).toBe(true); expect(result.problems.map(problem => problem.code)).toContain('handwritten-diagram-conflict');
+  });
+  it('removes owned promise annotations with their deleted contract', async () => {
+    const plan = new DiagramPlan(); plan.specify('concept Store { public save\ncapability save() returns Nothing { promises "Keeps player data" } }'); await plan.create();
+    const result = await plan.output.plan({ operation: 'delete', id: plan.id('Store') }, plan.snapshot()); expect(result.problems).toEqual([]); plan.apply(result.value!);
+    expect(plan.text()).not.toContain('Keeps player data'); expect(plan.text()).toContain('Declared contracts:');
+  });
 });
