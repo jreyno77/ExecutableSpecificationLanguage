@@ -5,6 +5,18 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('queries actual installed Vitest declarations and refuses a write after they change', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.captureNativeDependencies({ vitest: '5.0.2', '@types/node': '24.13.6' });
+    consumer.expectInstalledMethodConsumer('test/manual.ts', 'expectQuantity');
+    consumer.expectReadOnlyNativeEvidence('node_modules/vitest/dist/index.d.ts');
+    consumer.expectChangedNativeEvidenceStopsWrite('notes.txt');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('initializes the chosen project and builds its starter through installed public exports', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
