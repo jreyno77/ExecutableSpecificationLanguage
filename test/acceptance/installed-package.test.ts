@@ -22,6 +22,7 @@ describe('Installed package consumers', () => {
     consumer.expectDeclarationsAccepted();
     consumer.expectSpecificationAccepted();
     consumer.expectCapabilities(['saveGame']);
+    consumer.expectSourceLoaded(['saveGame']);
   });
 
   it('detects a missing implementation file in a packed artifact', async () => {
