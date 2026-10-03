@@ -1,6 +1,8 @@
 import {
   Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
+  FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
+  type NodeId, type ScenarioCapture, type ScenarioStep,
 } from 'executable-specification-language';
 
 const input: CompilationInput = {
@@ -17,6 +19,23 @@ function capabilities(specification: Specification): readonly Item<'capability'>
 export const capabilityNames: readonly string[] = compilation.value
   ? capabilities(compilation.value).map(capability => capability.name) : [];
 
+export async function writeProject(context: ProjectContext): Promise<WriteResult> {
+  const writer: ProjectWriter = new FileProjectWriter(context);
+  const changes: FileChange[] = [{ kind: 'write', path: 'book.txt', bytes: new TextEncoder().encode('book') }];
+  const result = await writer.apply({ basedOn: await context.readSnapshot(), changes });
+  const observation: FileObservation | undefined = result.outcomes[0]?.after[0];
+  return result;
+}
+
+export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
+  return [...specification.inspection.query('call-expression')].map(call => specification.call(call.id));
+}
+export function capturedValues(specification: Specification): readonly ScenarioCapture[] {
+  return [...specification.inspection.query('when')].flatMap(step => {
+    const result: Check<ScenarioStep> = specification.step(step.id);
+    return result.value ? [...result.value.available, ...result.value.capture ? [result.value.capture] : []] : [];
+  });
+}
 let issued = 0;
 const identities = new SpecificationIdentity(() => 'consumer-' + ++issued);
 const identified = compilation.value ? identities.associate(compilation.value) : undefined;

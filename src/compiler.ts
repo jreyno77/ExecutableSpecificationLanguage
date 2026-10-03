@@ -6,10 +6,11 @@ import type { Inspection } from './inspection.js';
 import { InteractionChecker, type Communication } from './interaction-checker.js';
 import { LangiumModel } from './langium-model.js';
 import { LangiumReader } from './langium/reader.js';
-import type { NodeId, NodeKind } from './model.js';
+import type { Item } from './inspection-item.js';
+import { QueryError, type NodeId, type NodeKind } from './model.js';
 import { Resolver, type Resolution, type ResolutionDependencies } from './resolution.js';
 import type { ProblemLocation } from './resolution/problem.js';
-import { ScenarioChecker } from './scenario-checker.js';
+import { checkScenario, type ScenarioStep } from './scenario-checker.js';
 import { TypeDescriber, type TypeCatalog } from './type-catalog.js';
 
 export interface CompilationInput {
@@ -25,6 +26,8 @@ export interface Specification {
   readonly inspection: Inspection;
   readonly types: TypeCatalog;
   message(message: NodeId): Check<Communication>;
+  call(call: NodeId): Check<NodeId>;
+  step(step: NodeId): Check<ScenarioStep>;
 }
 
 export class Compiler {
@@ -41,8 +44,8 @@ export class Compiler {
       resolution = new Resolver().resolve(new LangiumModel(input.locator, read.document), input.dependencies);
     }
     const types = new TypeDescriber().describe(resolution), inspection = types.inspection;
-    const expressions = new ExpressionChecker(types), fixtures = new FixtureChecker(types, expressions);
-    const scenarios = new ScenarioChecker(inspection, expressions, fixtures), interactions = new InteractionChecker(types, expressions);
+    const expressions = new CheckedExpressions(types), fixtures = new FixtureChecker(types, expressions);
+    const steps = new Map<NodeId, ScenarioStep>(), interactions = new InteractionChecker(types, expressions);
     const authored = <K extends NodeKind>(kind: K) => [...inspection.query(kind)].filter(node => node.origin.kind === 'source');
     const checks: Check<unknown>[] = [{ problems: resolution.problems, deferred: [] }, types];
     const covered = new Set<NodeId>();
@@ -64,7 +67,7 @@ export class Compiler {
       if (node.body.kind === 'available') covered.add(node.body.content.id);
     }
     for (const node of authored('fixture')) check(node.value.id, fixtures.check(node.id));
-    for (const kind of ['example', 'scenario'] as const) for (const node of authored(kind)) check(node.id, scenarios.check(node.id));
+    for (const kind of ['example', 'scenario'] as const) for (const node of authored(kind)) check(node.id, checkScenario(inspection, expressions, fixtures, node.id, steps));
     for (const node of authored('interaction')) check(node.id, interactions.check(node.id));
     const deferred: Requirement[] = [];
     for (const kind of ['setup', 'action', 'observation', 'check'] as const) for (const node of authored(kind)) {
@@ -86,9 +89,27 @@ export class Compiler {
       }
       if (requirement.reason === 'composition' || !covered.has(node.id)) deferred.push(requirement);
     }
-    const findings = combine([...checks, { problems: [], deferred }]);
+    const findings = combine([...checks, { problems: expressions.conflicts, deferred }]);
+    const calls = new Map(expressions.calls);
     return { syntax: [], ...findings, ...(!findings.problems.length && !findings.deferred.length
-      ? { value: { entry: resolution.entry, inspection, types, message: interactions.message.bind(interactions) } } : {}) };
+      ? { value: { entry: resolution.entry, inspection, types, message: interactions.message.bind(interactions),
+        call(id: NodeId): Check<NodeId> {
+          const node = ungroup(inspection.read(id));
+          if (node.kind !== 'call-expression') throw new QueryError('unexpected-kind', id, 'Expected a call expression.');
+          const value = calls.get(node.id);
+          if (!value) throw new QueryError('not-analyzed', id, 'This call has no checked operation.');
+          return { value, problems: [], deferred: [] };
+        },
+        step(id: NodeId): Check<ScenarioStep> {
+          const node = inspection.read(id);
+          if (!['given', 'when', 'then'].includes(node.kind) || inspection.parent(id)?.kind !== 'scenario') {
+            throw new QueryError('unexpected-kind', id, 'Expected a step belonging to a scenario.');
+          }
+          const value = steps.get(id);
+          if (!value) throw new QueryError('not-analyzed', id, 'This step has no checked capture facts.');
+          return { value: { available: value.available.map(capture => ({ ...capture })),
+            ...(value.capture ? { capture: { ...value.capture } } : {}) }, problems: [], deferred: [] };
+        } } } : {}) };
   }
 }
 
@@ -118,3 +139,22 @@ function location(at: ProblemLocation): string {
     case 'builtin': return JSON.stringify([at.kind, at.name]);
   }
 }
+
+/** Selection is captured in the checking context; query consumers never reconstruct that scope. */
+class CheckedExpressions extends ExpressionChecker {
+  readonly calls = new Map<NodeId, NodeId>();
+  readonly conflicts: Diagnostic[] = [];
+  constructor(private readonly catalog: TypeCatalog) { super(catalog); }
+  override calledOperation(call: NodeId, scope?: ValueScope): Check<NodeId> {
+    const result = super.calledOperation(call, scope);
+    if (result.value && !result.problems.length && !result.deferred.length) {
+      const node = ungroup(this.catalog.inspection.read(call)), previous = this.calls.get(node.id);
+      if (previous && previous !== result.value) this.conflicts.push({ code: 'ambiguous-reference',
+        message: 'The same call selected different operations while checking.', at: node.origin,
+        related: [this.catalog.inspection.read(previous).origin, this.catalog.inspection.read(result.value).origin] });
+      else this.calls.set(node.id, result.value);
+    }
+    return result;
+  }
+}
+function ungroup(node: Item): Item { return node.kind === 'grouped-expression' ? ungroup(node.inner) : node; }
