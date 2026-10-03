@@ -1,5 +1,5 @@
 import {
-  Outputs, umlOutput, markdownOutput, Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -70,6 +70,14 @@ export function describeFailures(specification: Specification, operation: NodeId
 const diagrams = new Outputs();
 diagrams.register(umlOutput);
 export const diagramProfiles = diagrams.profiles;
+
+export function readNativeProject(snapshot: import('executable-specification-language').ProjectSnapshot,
+  associations: readonly import('executable-specification-language').ArtifactAssociation[]) {
+  const reader = new TypeScriptProject({ outputId: 'typescript' }, associations);
+  const read: import('executable-specification-language').ProjectRead = reader.read('store', snapshot);
+  const search: import('executable-specification-language').ProjectSearch = reader.search('store', snapshot);
+  return { read, search };
+}
 
 export function documentationProfiles() {
   const outputs = new Outputs();

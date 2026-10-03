@@ -19,6 +19,22 @@ describe('Installed package consumers', () => {
     consumer.expectDeclarationsAccepted();
   });
 
+  it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.readTypeScriptProject({
+      'store.ts': 'export class StoreGame { private count = 1; }',
+      'run.ts': 'import { StoreGame } from "./store.js"; export const game = new StoreGame();',
+    });
+
+    consumer.expectInstalledProjectFile('store.ts', 'export class StoreGame { private count = 1; }');
+    consumer.expectInstalledProjectConsumer('run.ts', 'StoreGame', 'new StoreGame()', 'construct');
+    consumer.expectRuntimeTypeScriptInstalled('5.9.3');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('generates readable Markdown and observes notes and links through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
