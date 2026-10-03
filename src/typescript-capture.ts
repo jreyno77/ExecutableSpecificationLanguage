@@ -24,6 +24,7 @@ export class TypeScriptCapture {
   readonly service: ts.LanguageService;
   readonly program: ts.Program | undefined;
   readonly configurations = new Set<string>();
+  readonly resolveModule: (name: string, from: string) => ts.SourceFile | undefined;
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
   constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>()) {
     requireInput(snapshot && snapshot.root && typeof snapshot.root.path === 'string' && isAbsolute(snapshot.root.path)
@@ -87,6 +88,11 @@ export class TypeScriptCapture {
     const moduleHost: ts.ModuleResolutionHost = { fileExists: host.fileExists, readFile: projectRead,
       getDirectories: path => [...this.directoryEntries.get(posix.normalize(path))?.directories ?? []],
       directoryExists: path => this.directoryEntries.has(posix.normalize(path)), realpath: path => posix.normalize(path), getCurrentDirectory: () => root };
+    this.resolveModule = (name, from) => {
+      const containing = from.startsWith(root + '/') ? from : this.absolute(from), mode = ts.getImpliedNodeFormatForFile(containing, undefined, moduleHost, options),
+        resolved = ts.resolveModuleName(name, containing, options, moduleHost, undefined, undefined, mode).resolvedModule;
+      return resolved && this.program?.getSourceFile(resolved.resolvedFileName);
+    };
     this.service = ts.createLanguageService({ ...moduleHost, getCompilationSettings: () => options,
       getCurrentDirectory: () => root, getScriptFileNames: () => roots, getScriptVersion: () => 'capture',
       getScriptSnapshot: path => { const text = read(path); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text); },

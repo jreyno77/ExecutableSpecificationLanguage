@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { NativeEdits } from '../../src/typescript-edits.js';
-import { Compiler, SpecificationIdentity, typescriptOutput, type ArtifactAssociation, type IdentifiedSpecification,
+import { Compiler, LangiumReader, LangiumModel, SpecificationIdentity, typescriptOutput, type ArtifactAssociation, type IdentifiedSpecification,
   type OutputPlan, type ProjectSnapshot } from '../../src/index.js';
 
 const captured = (files: Record<string, string>): ProjectSnapshot => ({ root: { path: '/preservation-unit', identity: 'unit' },
   complete: true, problems: [], excluded: [], excludeNames: [], files: Object.entries(files).map(([path, text]) => ({ path, bytes: Buffer.from(text), version: createHash('sha256').update(text).digest('hex') })) });
-function author(text: string) {
-  let next = 0; const identity = new SpecificationIdentity(() => 'preservation-unit-' + ++next);
-  const compile = (text: string) => { const checked = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text }, dependencies: { modules: [], packages: [] } });
+function author(text: string, libraries: Record<string, string> = {}, identifier = (index: number) => 'preservation-unit-' + index) {
+  let next = 0; const identity = new SpecificationIdentity(() => identifier(++next));
+  const modules = Object.entries(libraries).map(([locator, text]) => { const read = new LangiumReader().read({ sourceId: locator + '.expec', text }); if (read.status !== 'accepted') throw Error(JSON.stringify(read)); return new LangiumModel(locator, read.document); });
+  const compile = (text: string) => { const checked = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text }, dependencies: { modules, packages: [] } });
     if (!checked.value) throw Error(JSON.stringify(checked)); return checked.value; };
   const initial = identity.associate(compile(text)).value!;
   const id = (name: string, current = initial): string => { const item = current.baseline.elements.find(element => element.address.name === name || name === 'construction' && element.address.kind === 'construction'); if (!item) throw Error('Missing ' + name); return item.id; };
@@ -284,5 +285,102 @@ describe('native preservation decisions', { timeout: 30_000 }, () => {
     expect(result.problems).toEqual([]); snapshot = materialize(snapshot, result.value!);
     expect(Buffer.from(snapshot.files.find(file => file.path === 'src/save.ts')!.bytes).toString()).toContain('save(snapshot: PlayerState, copies: number)');
     expect((await adapter.search(user.id('save'), snapshot)).problems).toEqual([]);
+  });
+  it('retains a handwritten comment when removing its parameter', async () => {
+    const user = author('function save(title: Text, copies: Number) returns Nothing'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path.endsWith('.ts') ? 'export function save(title: string, /* Handwritten copy rationale. */ copies: number): void {}' : Buffer.from(file.bytes).toString()])));
+    const current = user.revise('function save(title: Text) returns Nothing', ['copies']);
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); snapshot = materialize(snapshot, result.value!);
+    const text = Buffer.from(snapshot.files.find(file => file.path === 'src/save.ts')!.bytes).toString();
+    expect(text).toContain('/* Handwritten copy rationale. */'); expect(text).not.toContain('copies: number');
+    expect((await adapter.search(user.id('save'), snapshot)).problems).toEqual([]);
+  });
+  it('rejects a rename that would capture a consumer-local binding', async () => {
+    const user = author('class Store {}'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured({ ...Object.fromEntries(snapshot.files.map(file => [file.path, Buffer.from(file.bytes).toString()])), 'caller.ts': 'import { Store } from "./src/Store.js"; const Shop = 1; new Store();' });
+    const current = user.rename('class Shop {}', 'Store', 'Shop');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('native-name-conflict');
+    expect(result.problems.find(problem => problem.code === 'native-name-conflict')!.at).toMatchObject({ kind: 'dependency', path: ['typescript', 'caller.ts', 9, 5] });
+  });
+  it('does not remove duplicated obligation comments with ambiguous ownership', async () => {
+    const user = author('function save() returns Nothing { promises "Keep this obligation." }'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => {
+      const text = Buffer.from(file.bytes).toString();
+      return [file.path, file.path.endsWith('.ts') ? text.slice(0, text.indexOf('export function')) + text : text];
+    })));
+    const result = await adapter.plan({ operation: 'delete', id: user.id('save') }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('handwritten-removal');
+  });
+  it('keeps handwritten comments within a changed generic declaration', async () => {
+    const user = author('type Box<T> {}'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path.endsWith('.ts') ? 'export type Box</* Binder rationale. */ T> = {};' : Buffer.from(file.bytes).toString()])));
+    const current = user.rename('type Box<Value> {}', 'T', 'Value');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); snapshot = materialize(snapshot, result.value!);
+    expect(Buffer.from(snapshot.files.find(file => file.path === 'src/Box.ts')!.bytes).toString()).toContain('/* Binder rationale. */');
+    expect((await adapter.search(user.id('Box'), snapshot)).problems).toEqual([]);
+  });
+  it('keeps handwritten comments inside a changed type annotation', async () => {
+    const user = author('function save(values: List<Text>) returns Nothing'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path.endsWith('.ts') ? 'export function save(values: Array</* Element rationale. */ string>): void {}' : Buffer.from(file.bytes).toString()])));
+    const current = user.revise('function save(values: List<Number>) returns Nothing');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); snapshot = materialize(snapshot, result.value!);
+    expect(Buffer.from(snapshot.files.find(file => file.path === 'src/save.ts')!.bytes).toString()).toContain('/* Element rationale. */');
+    expect((await adapter.search(user.id('save'), snapshot)).problems).toEqual([]);
+  });
+  it('does not rename an inherited call into an unrelated receiver member', async () => {
+    const user = author('class Store { public save\ncapability save() returns Nothing }'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured({ ...Object.fromEntries(snapshot.files.map(file => [file.path, Buffer.from(file.bytes).toString()])),
+      'caller.ts': 'import { Store } from "./src/Store.js"; class Child extends Store { saveGame(): void { console.log("unrelated child behavior"); } } new Child().save();' });
+    const current = user.rename('class Store { public saveGame\ncapability saveGame() returns Nothing }', 'save', 'saveGame');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('native-name-conflict');
+    expect(result.problems.some(problem => problem.at.kind === 'dependency' && problem.at.path.includes('caller.ts'))).toBe(true);
+  });
+  it('does not rename an owned record field into an unowned field', async () => {
+    const user = author('type Book { item: Text }'), adapter = output();
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path.endsWith('.ts') ? 'export type Book = { item: string; title: string; };' : Buffer.from(file.bytes).toString()])));
+    const current = user.rename('type Book { title: Text }', 'item', 'title');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
+  it('accepts an unchanged configured external import alias by its native identity', async () => {
+    const user = author('use Book from "catalog"\nfunction save(book: Book) returns Nothing', { catalog: 'type Book {}' });
+    const adapter = typescriptOutput.open({ directory: 'src', imports: [{ module: 'catalog', declaration: ['Book'], name: 'Book', as: 'NativeBook', from: '../native/book.js' }] });
+    let snapshot = captured({ 'native/book.ts': 'export type Book = {};' });
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, snapshot); expect(first.problems).toEqual([]); snapshot = materialize(snapshot, first.value!);
+    const result = await adapter.plan({ operation: 'update', current: user.initial, diff: user.identity.compare(user.initial.baseline, user.initial).value! }, snapshot);
+    expect(result.problems).toEqual([]); expect(result.value!.changes).toEqual([]);
+  });
+  it('does not confuse two native libraries exporting the same type name', async () => {
+    const user = author('use Book as First from "catalog-a"\nuse Book as Second from "catalog-b"\nfunction compare(first: First, second: Second) returns Nothing', { 'catalog-a': 'type Book {}', 'catalog-b': 'type Book {}' });
+    const adapter = typescriptOutput.open({ directory: 'src', imports: [
+      { module: 'catalog-a', declaration: ['Book'], name: 'Book', as: 'FirstBook', from: '../native/a.js' },
+      { module: 'catalog-b', declaration: ['Book'], name: 'Book', as: 'SecondBook', from: '../native/b.js' },
+    ] });
+    let snapshot = captured({ 'native/a.ts': 'export type Book = {};', 'native/b.ts': 'export type Book = {};' });
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, snapshot); expect(first.problems).toEqual([]); snapshot = materialize(snapshot, first.value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path === 'src/compare.ts' ? Buffer.from(file.bytes).toString().replace('first: FirstBook', 'first: SecondBook') : Buffer.from(file.bytes).toString()])));
+    const result = await adapter.plan({ operation: 'update', current: user.initial, diff: user.identity.compare(user.initial.baseline, user.initial).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('contract-drift');
+  });
+  it('does not confuse an opaque specification ID with an unrelated native type name', async () => {
+    const user = author('type Book {}\nfunction save(book: Book) returns Nothing', {}, index => 'Other' + index), adapter = output();
+    expect(user.id('Book')).toBe('Other1');
+    let snapshot = materialize(captured({}), (await adapter.plan({ operation: 'create', current: user.initial }, captured({}))).value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => [file.path, file.path === 'src/Book.ts' ? 'export type Book = {}; export type Other1 = {};'
+      : file.path === 'src/save.ts' ? 'import type { Book, Other1 } from "./Book.js"; export function save(book: Other1): void {}' : Buffer.from(file.bytes).toString()])));
+    const result = await adapter.plan({ operation: 'update', current: user.initial, diff: user.identity.compare(user.initial.baseline, user.initial).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('contract-drift');
   });
 });
