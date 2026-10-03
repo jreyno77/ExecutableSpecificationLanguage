@@ -14,10 +14,8 @@ export interface ListedDeclaration {
   members: ListedDeclaration[];
 }
 const roots = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'function']);
-export function listDeclarations(current: IdentifiedSpecification): ListedDeclaration[] {
-  const inspection = current.specification.inspection;
-  const names = (node: Item): string => 'name' in node ? node.name : node.kind;
-  const type = (node: Item): string => {
+export const typeLabel = (node: Item): string => {
+  const type = typeLabel;
     switch (node.kind) {
       case 'named-type': return node.reference.segments.join('.') + (node.arguments.length ? '<' + node.arguments.map(type).join(', ') + '>' : '');
       case 'optional-type': return type(node.inner) + '?';
@@ -30,7 +28,11 @@ export function listDeclarations(current: IdentifiedSpecification): ListedDeclar
       case 'boolean-literal': return String(node.value);
       default: throw new TypeError('Cannot describe a checked type as ' + node.kind);
     }
-  };
+};
+export function listDeclarations(current: IdentifiedSpecification): ListedDeclaration[] {
+  const inspection = current.specification.inspection;
+  const names = (node: Item): string => 'name' in node ? node.name : node.kind;
+  const type = typeLabel;
   const references = (node: Item, role: ListedDeclaration['references'][number]['role']): ListedDeclaration['references'] => {
     const found = new Set<string>();
     const visit = (item: Item): void => {
