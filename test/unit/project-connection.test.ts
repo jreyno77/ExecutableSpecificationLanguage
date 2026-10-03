@@ -9,11 +9,11 @@ import { ConfigurationReader } from '../../src/configuration.js';
 import { ProjectConnector, type ProjectConnection, type ProjectContext } from '../../src/project-connection.js';
 
 let directory: string;
-beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'expec-connection-')); });
+beforeEach(async () => { directory = await realpath(await mkdtemp(join(tmpdir(), 'expec-connection-'))); });
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  if (dirname(resolve(directory)) !== resolve(tmpdir()) || !basename(directory).startsWith('expec-connection-')) {
+  if (dirname(resolve(directory)) !== await realpath(tmpdir()) || !basename(directory).startsWith('expec-connection-')) {
     throw new Error(`Refusing to remove a directory outside the temporary fixture: ${directory}`);
   }
   await rm(directory, { recursive: true, force: true });
