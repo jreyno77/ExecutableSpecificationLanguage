@@ -15,7 +15,8 @@ import { ConfigurationReader, ProjectConnector, TypeScriptContext, TypeScriptPro
 
 type Options = { configFile?: string; imports?: readonly string[] };
 export class NativeContextDriver {
-  readonly directory = fs.realpathSync.native(fs.mkdtempSync(join(tmpdir(), 'expec-native-')));
+  private readonly temporaryRoot = fs.realpathSync.native(tmpdir());
+  readonly directory = fs.realpathSync.native(fs.mkdtempSync(join(this.temporaryRoot, 'expec-native-')));
   readonly root = join(this.directory, 'project');
   context!: ProjectContext;
   native!: TypeScriptContext;
@@ -128,8 +129,8 @@ export class NativeContextDriver {
   }
   async dispose(): Promise<void> {
     for (const restore of this.restores.reverse()) restore();
-    const path = resolve(this.directory), allowed = resolve(tmpdir());
-    if (dirname(path) !== allowed || !path.split(sep).at(-1)!.startsWith('expec-native-')) throw Error('Unsafe fixture cleanup.');
+    const path = resolve(this.directory);
+    if (dirname(path) !== this.temporaryRoot || !path.split(sep).at(-1)!.startsWith('expec-native-') || await files.realpath(path) !== path) throw Error('Unsafe fixture cleanup.');
     await files.rm(path, { recursive: true, force: true });
   }
   hash(bytes: Uint8Array): string { return createHash('sha256').update(bytes).digest('hex'); }

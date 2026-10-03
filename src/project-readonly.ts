@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { ProjectSnapshot } from './project-connection.js';
 
-export const packagePath = (path: string): boolean => path.split('/').some(part => part.toLowerCase() === 'node_modules');
 const canonical = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path;
+export const packagePath = (path: string): boolean => path.split('/').some(part => canonical(part) === 'node_modules');
 export function validateReadOnly(snapshot: ProjectSnapshot): boolean {
   const supplemental = snapshot.readOnlyFiles;
   if (supplemental !== undefined && !Array.isArray(supplemental)) return false;
