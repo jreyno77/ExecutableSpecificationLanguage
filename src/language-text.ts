@@ -51,11 +51,11 @@ export function language(node: Item): string {
     case 'message': return 'message ' + language(node.sender) + ' -> ' + language(node.receiver) + '.' + language(node.operation)
       + '(' + node.arguments.map(language).join(', ') + ')' + (node.capture ? ' as ' + language(node.capture) : '');
     case 'examples': return 'examples' + (node.subject ? ' for ' + language(node.subject) : '');
-    default: throw new UnsupportedMarkdown(node);
+    default: throw new UnsupportedLanguage(node);
   }
 }
-export class UnsupportedMarkdown extends Error {
-  constructor(readonly item: Item) { super('Markdown output cannot describe ' + item.kind + '.'); }
+export class UnsupportedLanguage extends Error {
+  constructor(readonly item: Item) { super('Cannot describe authored syntax for ' + item.kind + '.'); }
 }
 const keywords = new Set('use from include concept component class interface depends on requires package for build runtime test public construction capability function returns local extend type opaque examples fixture setup action observation check scenario given when then example satisfies interaction participant message as let do return assert promises ensures or and not true false'.split(' '));
 function name(value: string): string {
