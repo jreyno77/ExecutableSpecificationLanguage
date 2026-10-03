@@ -1,5 +1,5 @@
 import {
-  Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptProject, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -65,4 +65,12 @@ export async function loadSources(manifestLocation: string, configuration: Confi
 
 export function describeFailures(specification: Specification, operation: NodeId): readonly import('executable-specification-language').TypeFact<import('executable-specification-language').ErrorDescription>[] {
   return specification.types.callable(operation).failures.map(fact => fact.status === 'known' ? specification.types.error(fact.value) : fact);
+}
+
+export function readNativeProject(snapshot: import('executable-specification-language').ProjectSnapshot,
+  associations: readonly import('executable-specification-language').ArtifactAssociation[]) {
+  const reader = new TypeScriptProject({ outputId: 'typescript' }, associations);
+  const read: import('executable-specification-language').ProjectRead = reader.read('store', snapshot);
+  const search: import('executable-specification-language').ProjectSearch = reader.search('store', snapshot);
+  return { read, search };
 }

@@ -418,6 +418,39 @@ returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations ove
 supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
 guarded application. No decorators, package loading, or inheritance are required.
 
+## TypeScript project queries
+
+```ts
+import { TypeScriptProject } from 'executable-specification-language';
+
+const reader = new TypeScriptProject({ outputId: 'typescript', configFile: 'tsconfig.json' }, [
+  { specId: storeGameId, locator: { outputId: 'typescript', format: 'typescript-symbol-1', value: {
+    file: 'src/store.ts', declaration: [{ kind: 'class', name: 'StoreGame' }],
+  } } },
+]);
+const snapshot = await connectedProject.readSnapshot();
+const source = reader.read(storeGameId, snapshot);
+const relationships = reader.search(storeGameId, snapshot);
+```
+
+Read returns whole original files, including private state and handwritten bodies.
+Search follows native TypeScript symbols, aliases, overloads and members, retaining
+unmodeled consumers. Both return the shared `ProjectRead`/`ProjectSearch` values.
+Exact lexical selectors survive body edits; a renamed or moved declaration needs
+an explicit new association. Class members specify `static: true` or `false`.
+Explicit constructor parameter properties belong to the class; constructor facets
+remain separate from class type/value uses. `typescript-file-1` companions return
+raw bytes without claiming their declarations as owned symbols.
+
+Every query analyzes its supplied capture. Source, configuration and packages come
+only from captured bytes; the sole disk resource is the pinned TypeScript standard
+library. Without `configFile`, the profile is ES2022/NodeNext, strict, JSX Preserve,
+no automatic type packages, and legacy module detection (plain scripts can merge).
+Native JSONC configuration overrides that profile; plugins/project references stay
+explicitly unsupported. Definitions and uses carry original UTF-16 offsets and file
+versions. Dynamic lookup, native diagnostics and missing inputs make coverage
+incomplete. The reader neither reconnects files nor authorizes or performs writes.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
