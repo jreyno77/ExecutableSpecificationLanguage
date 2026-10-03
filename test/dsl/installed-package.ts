@@ -49,6 +49,27 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    return this.driver.preserveTypeScript(input);
+  }
+  expectAdoptedSourceUnchanged(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.preservation!;
+    expect(observed.adopted).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.afterAdoption).toBe(observed.original); expect(observed.generatedDuplicate).toBe(false);
+  }
+  expectPreservedNativeSource(source: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.updated).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.retainedIdentity).toBe(true); expect(observed.source).toContain(source);
+    expect(observed.source).not.toContain('Not implemented');
+  }
+  expectPreservedCaller(source: string): void { expect(this.driver.report.preservation?.caller).toContain(source); }
+  expectPreservedRuntimeOutput(text: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.diagnostics).toEqual([]); expect(observed.runtime).toMatchObject({ code: 0, stderr: '' });
+    expect(observed.runtime!.stdout.trim()).toBe(text);
+  }
+
   captureNativeDependencies(packages: Record<string, string>): Promise<void> { return this.driver.captureNativeDependencies(packages); }
   expectInstalledMethodConsumer(file: string, name: string): void {
     this.expectConsumerRan();
@@ -110,8 +131,8 @@ export class PackageExamples {
     expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
   }
 
-  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
-    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised);
+  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
+    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised, handwrittenParameter);
   }
   expectInstalledTypeScriptScaffold(message: string): void {
     this.expectConsumerRan();
@@ -128,9 +149,9 @@ export class PackageExamples {
       { code: 2345, file: 'invalid.mts', text, message: "Argument of type 'number' is not assignable to parameter of type 'string'." },
     ]);
   }
-  expectHandwrittenNativeFileProtected(): void {
+  expectConflictingNativeSignatureProtected(): void {
     const observed = this.driver.report.typescriptOutput!;
-    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'output-conflict' }));
+    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'contract-drift' }));
     expect(observed.update?.receipt).toBeUndefined();
     expect(observed.after).toBe(observed.handwritten);
     expect(observed.after).toContain('// Keep the handwritten retry rationale.');

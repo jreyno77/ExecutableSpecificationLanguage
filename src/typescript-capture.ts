@@ -33,6 +33,7 @@ export class TypeScriptCapture {
   readonly service: ts.LanguageService;
   readonly program: ts.Program | undefined;
   readonly configurations = new Set<string>();
+  readonly resolveModule: (name: string, from: string) => ts.SourceFile | undefined;
   private readonly nativeFiles = new Set<string>();
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
   constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs) {
@@ -109,6 +110,11 @@ export class TypeScriptCapture {
     const moduleHost: ts.ModuleResolutionHost = { fileExists: host.fileExists, readFile: projectRead,
       getDirectories: directories,
       directoryExists: path => this.directoryEntries.has(posix.normalize(path)) || !!inputs?.directoryExists(this.projectPath(posix.normalize(path)) ?? ''), realpath: path => posix.normalize(path), getCurrentDirectory: () => root };
+    this.resolveModule = (name, from) => {
+      const containing = from.startsWith(root + '/') ? from : this.absolute(from), mode = ts.getImpliedNodeFormatForFile(containing, undefined, moduleHost, options),
+        resolved = ts.resolveModuleName(name, containing, options, moduleHost, undefined, undefined, mode).resolvedModule;
+      return resolved && this.program?.getSourceFile(resolved.resolvedFileName);
+    };
     // Acquisition alone asks the native compiler for both seeded declaration closures.
     // The returned snapshot adds no project roots; pure queries build their original program.
     for (const name of inputs?.imports ?? []) {
