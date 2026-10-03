@@ -21,6 +21,7 @@ export class ProjectReading {
   search(id: string): Promise<void> { return this.driver.search(id); }
   searchSpecified(name: string): Promise<void> { return this.search(this.driver.id(name)); }
   capture(): Promise<ProjectSnapshot> { return this.driver.capture(); }
+  captureNativeDependencies(): void { this.driver.nativeDependencies(); }
   searchSnapshot(id: string, snapshot: ProjectSnapshot): void { this.driver.searchSnapshot(id, snapshot); }
   captureWithReadFailure(path: string): Promise<ProjectSnapshot> { return this.driver.readFailure(path); }
   searchWithProjectFilesystemReadsForbidden(id: string): Promise<void> { return this.driver.guardedSearch(id); }
@@ -65,6 +66,14 @@ export class ProjectReading {
   expectOutgoingTo(id: string, occurrence: Occurrence): void { expect(this.uses('outgoing', occurrence).map(use => use.target)).toContainEqual({ kind: 'specified', id }); }
   expectProjectOnlyIncoming(occurrence: Occurrence): void { expect(this.uses('incoming', occurrence).map(use => use.target.kind)).toContain('project'); }
   expectProjectOnlyOutgoing(occurrence: Occurrence): void { expect(this.uses('outgoing', occurrence).map(use => use.target.kind)).toContain('project'); }
+  expectNativeTarget(expected: { file: string; declaration: string }, occurrence: Occurrence): void {
+    expect(this.driver.snapshot.readOnlyFiles?.some(file => file.path === expected.file)).toBe(true);
+    expect(this.uses('outgoing', occurrence).some(use => {
+      if (use.target.kind !== 'project') return false;
+      const target = JSON.parse(use.target.id) as { file: string; start: number; end: number };
+      return target.file === expected.file && this.driver.text(target.file).slice(target.start, target.end) === expected.declaration;
+    })).toBe(true);
+  }
   expectIncomingUses(expected: never[]): void { expect(this.driver.searchResult.incoming.uses).toEqual(expected); }
   expectOutgoingUses(expected: never[]): void { expect(this.driver.searchResult.outgoing.uses).toEqual(expected); }
   expectNoOutgoingTo(id: string): void { expect(this.driver.searchResult.outgoing.uses.filter(use => use.target.id === id)).toEqual([]); }

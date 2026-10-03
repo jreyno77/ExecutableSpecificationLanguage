@@ -522,6 +522,16 @@ reads or network access are part of rendering. D2 retains its MPL-2.0 notices.
 
 ## TypeScript project queries
 
+For projects with installed native dependencies, capture them through
+`new TypeScriptContext(connectedProject, { configFile: 'tsconfig.json', imports: ['vitest'] })`.
+Its `readSnapshot()` puts consulted package metadata/declarations in `readOnlyFiles`,
+separate from editable project files. Ordinary npm directories are supported;
+linked package layouts, runtime loading, parent fallback and installation are not.
+Use the same context for `FileProjectWriter` so every write guard rechecks dependency
+evidence. Seed imports used by planned additions/removals to keep that evidence
+stable; an unseeded closure change stops with an honest partial receipt. Native
+declarations resolve real symbols but never grant package write/adoption authority.
+
 ```ts
 import { TypeScriptProject } from 'executable-specification-language';
 
