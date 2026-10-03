@@ -31,6 +31,15 @@ describe('Installed package consumers', () => {
     consumer.expectConsumerFailedFor('compiler.js');
   });
 
+  it('applies a guarded file change through the installed public writer', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.changeProjectFile('original book', 'updated book');
+
+    consumer.expectInstalledPackageUsed();
+    consumer.expectProjectFileChanged('original book', 'updated book');
+  });
+
   it('detects an undeclared runtime dependency in a packed artifact', async () => {
     const consumer = new PackageExamples();
     await consumer.installPackageWithoutDependency('langium');

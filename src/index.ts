@@ -38,3 +38,4 @@ export { DependencyPlanner } from './dependency-planner.js';
 export type { DependencyInventory } from './dependency-planner.js';
 export { ProjectConnector } from './project-connection.js';
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
+export * from './project-writer.js';
