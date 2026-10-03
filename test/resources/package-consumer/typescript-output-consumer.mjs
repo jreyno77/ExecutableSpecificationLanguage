@@ -60,7 +60,7 @@ catch (error) { process.stdout.write(JSON.stringify({ name: error.name, message:
     const statePath = join(root, '.expec/outputs', Buffer.from('typescript').toString('hex') + '.json');
     const stateBefore = await readFile(statePath, 'utf8');
     report.baseline = JSON.parse(stateBefore).files.find(file => file.path === 'src/save.ts').generated;
-    report.handwritten = report.source + '\n// Keep the handwritten retry rationale.\n';
+    report.handwritten = report.source.replace('title: string', input.handwrittenParameter) + '\n// Keep the handwritten retry rationale.\n';
     await writeFile(sourcePath, report.handwritten);
     const revised = identify(input.revised, current.baseline), diff = identities.compare(current.baseline, revised);
     if (!diff.value) throw Error(JSON.stringify(diff));

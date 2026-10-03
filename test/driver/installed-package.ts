@@ -21,6 +21,11 @@ interface ConsumerReport {
     editable: string[]; before: string; after: string; laterVersion: string; targetExists: boolean; handwritten: string;
     receipt: import('../../src/index.js').WriteResult;
   };
+  preservation?: {
+    adopted: OutputWrite; updated?: OutputWrite; original: string; afterAdoption: string;
+    source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
+    generatedDuplicate: boolean; retainedIdentity?: boolean;
+  };
   workspace?: { functions: string[]; books: string[]; parameters: number; bothParametersUseBook: boolean; bookIdentityRecords: number };
   nativeContext?: {
     complete: boolean; problems: unknown[]; search: ProjectSearch;
@@ -148,6 +153,12 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
     await this.readReport();
   }
+  async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
+    await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
+    this.result = await run(process.execPath, ['preservation-consumer.mjs', 'preservation.json'], this.consumer);
+    await this.readReport();
+  }
   async compileWorkspace(files: Record<string, string>, entries: string[]): Promise<void> {
     await cp(join(resources, 'workspace-consumer.mjs'), join(this.consumer, 'workspace-consumer.mjs'));
     await writeFile(join(this.consumer, 'workspace.json'), JSON.stringify({ files, entries }));
@@ -184,9 +195,9 @@ export class PackageDriver {
     const path = this.report.initialization?.typescript?.location, selectedRoot = this.report.initialization?.selectedRoot?.actual;
     this.compilerInsideProject = !!path && !!selectedRoot && contained(join(selectedRoot, 'node_modules'), await realpath(path));
   }
-  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
+  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
     await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
-    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised }));
+    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised, handwrittenParameter }));
     this.result = await run(process.execPath, ['typescript-output-consumer.mjs', 'typescript-output.json'], this.consumer);
     await this.readReport();
     const path = this.report.typescriptOutput?.typescript.location;
