@@ -362,6 +362,105 @@ and coverage. These operations do not scan or edit projects. Persist proposed
 baseline bytes only with successful project application. Inspection `roots()` and
 `children(id)` expose complete containment alongside `query`, `read` and `parent`.
 
+## Create and inspect output
+
+```ts
+import { Outputs, contractListOutput, structureListOutput, markdownOutput,
+  FileProjectWriter } from 'executable-specification-language';
+
+const outputs = new Outputs();
+outputs.register(contractListOutput);
+outputs.register(structureListOutput);
+outputs.register(markdownOutput);
+const output = outputs.open('contract-list', { directory: 'docs/contracts' },
+  context, new FileProjectWriter(context));
+if (output.value && current.value) {
+  const written = await output.value.create(current.value);
+  const present = await output.value.read(storeGameId);
+  const uses = await output.value.search(storeGameId);
+  console.log(written, present, uses);
+}
+```
+
+`current.value` is the identified specification above. The summary profiles document source
+declarations in the checked view, including included/imported source. External
+metadata stays a reference. Markdown contract lists and structural JSON summaries
+share `create`, addition-only `insert(diff, current)`, `update(diff, current)`,
+`read`, `search`, and top-level `delete`. They summarize contracts; prose promises
+remain unverified. This documentation scope grants no implementation-code ownership.
+Error records retain their code/payload fields; declared failures are listed separately
+from an operation's unchanged successful result.
+
+For complete readable documentation, open `markdown` with `{ directory: 'docs/specification' }`.
+It includes internal declarations, error contracts, fixtures, examples, operation bodies
+and declared communications. Authored bodies and examples are statically checked, never
+executed; prose intent remains unfinished. Linked parameter and field fragments retain
+independent identities without repeated headings. Updates replace only recorded generated
+regions, preserving exact prefix/notes bytes. Renames carry notes with their page; removal
+with handwritten content is refused. Actual edited files remain readable and searchable.
+Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
+
+An output keeps options and live context, captures fresh files for each operation,
+and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
+changes without effects. Hosts can combine disjoint plans from one snapshot, then
+apply them once. Successful association proposals cover only that output namespace;
+retain other namespaces before calling `withArtifacts`. Outputs do not save the
+global identity baseline.
+
+Summary profiles own whole generated files. Private `.expec/outputs/` records permit
+repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
+owned files conflict instead of being overwritten. Read still returns their actual
+complete content. Directory changes require an explicit future migration policy.
+A stopped write retains actual effects/preimages and makes no successful association
+proposal; inspect the receipt before planning recovery.
+
+Search observes current Markdown definitions/CommonMark links or versioned
+`*.structure.json` declaration/reference fields. It includes consumers absent from
+the specification and reports incomplete coverage. It does not analyze arbitrary
+code, runtime calls, or infer ownership/lifetime. Insufficient incoming-use coverage
+blocks removal. Shared `ProjectRead`/`ProjectSearch` values are also usable by
+independent scanners without an output registry.
+Valid foreign Markdown namespaces remain project-only consumers and targets; their
+opaque identities never become definitions owned by the selected output.
+
+Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
+returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a
+supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
+guarded application. No decorators, package loading, or inheritance are required.
+
+## TypeScript project queries
+
+```ts
+import { TypeScriptProject } from 'executable-specification-language';
+
+const reader = new TypeScriptProject({ outputId: 'typescript', configFile: 'tsconfig.json' }, [
+  { specId: storeGameId, locator: { outputId: 'typescript', format: 'typescript-symbol-1', value: {
+    file: 'src/store.ts', declaration: [{ kind: 'class', name: 'StoreGame' }],
+  } } },
+]);
+const snapshot = await connectedProject.readSnapshot();
+const source = reader.read(storeGameId, snapshot);
+const relationships = reader.search(storeGameId, snapshot);
+```
+
+Read returns whole original files, including private state and handwritten bodies.
+Search follows native TypeScript symbols, aliases, overloads and members, retaining
+unmodeled consumers. Both return the shared `ProjectRead`/`ProjectSearch` values.
+Exact lexical selectors survive body edits; a renamed or moved declaration needs
+an explicit new association. Class members specify `static: true` or `false`.
+Explicit constructor parameter properties belong to the class; constructor facets
+remain separate from class type/value uses. `typescript-file-1` companions return
+raw bytes without claiming their declarations as owned symbols.
+
+Every query analyzes its supplied capture. Source, configuration and packages come
+only from captured bytes; the sole disk resource is the pinned TypeScript standard
+library. Without `configFile`, the profile is ES2022/NodeNext, strict, JSX Preserve,
+no automatic type packages, and legacy module detection (plain scripts can merge).
+Native JSONC configuration overrides that profile; plugins/project references stay
+explicitly unsupported. Definitions and uses carry original UTF-16 offsets and file
+versions. Dynamic lookup, native diagnostics and missing inputs make coverage
+incomplete. The reader neither reconnects files nor authorizes or performs writes.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.

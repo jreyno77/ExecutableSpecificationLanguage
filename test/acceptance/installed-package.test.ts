@@ -5,6 +5,37 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.readTypeScriptProject({
+      'store.ts': 'export class StoreGame { private count = 1; }',
+      'run.ts': 'import { StoreGame } from "./store.js"; export const game = new StoreGame();',
+    });
+
+    consumer.expectInstalledProjectFile('store.ts', 'export class StoreGame { private count = 1; }');
+    consumer.expectInstalledProjectConsumer('run.ts', 'StoreGame', 'new StoreGame()', 'construct');
+    consumer.expectRuntimeTypeScriptInstalled('5.9.3');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('generates readable Markdown and observes notes and links through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.documentProject('concept Game { public save\ncapability save() returns Nothing }', '\nReader note.\n');
+
+    consumer.expectInstalledPackageUsed();
+    consumer.expectInstalledDocumentation('reference/Game.md', [
+      '# Game', 'capability save() returns Nothing', 'Reader note.',
+      'Statically checked specification. Runtime behavior is not verified by this document.',
+    ]);
+    consumer.expectInstalledDocumentConsumer('guide.md', 'reference/Game.md');
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('exposes the same error declaration and checked signature to installed public consumers', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
@@ -77,6 +108,32 @@ assert actual == copies
 
     consumer.expectInstalledPackageUsed();
     consumer.expectProjectFileChanged('original book', 'updated book');
+  });
+
+  it('uses an independently authored installed output to write, read and discover a new consumer', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.registerCountOutput();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+    await consumer.createCountReport(`concept Storage {}
+type Snapshot { title: Text }
+concept StoreGame {
+  depends on Storage, Snapshot
+  public save
+  capability save(snapshot: Snapshot) returns Nothing
+}`, 'reports');
+    consumer.expectDeclarationCounts({ concepts: 2, recordTypes: 1, capabilities: 1 });
+    consumer.expectCountReportWritten('applied');
+
+    await consumer.readCountReport('StoreGame');
+    consumer.expectWholeCountReport('reports/counts.json', '"capabilities": 1');
+    await consumer.writeCountConsumer('Release checklist');
+    await consumer.searchCountReport();
+    consumer.expectCountDefinition('reports/counts.json');
+    consumer.expectCountConsumer('notes/release.counts.json', 'Release checklist');
+    consumer.expectCompleteCountCoverage('declaration-count report definitions and references');
+    consumer.expectInstalledPackageUsed();
   });
 
   it('detects an undeclared runtime dependency in a packed artifact', async () => {

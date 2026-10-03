@@ -13,7 +13,66 @@ export class PackageExamples {
   check(text: string): Promise<void> { return this.driver.check(text); }
   checkTypeScriptConsumer(): Promise<void> { return this.driver.checkTypeScript(); }
   changeProjectFile(before: string, after: string): Promise<void> { return this.driver.writeProject(before, after); }
+  registerCountOutput(): Promise<void> { return this.driver.registerCountOutput(); }
+  createCountReport(text: string, directory: string): Promise<void> { return this.driver.createCountReport(text, directory); }
+  readCountReport(subject: string): Promise<void> { return this.driver.readCountReport(subject); }
+  writeCountConsumer(title: string): Promise<void> { return this.driver.writeCountConsumer(title); }
+  searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
+
+  readTypeScriptProject(files: Record<string, string>): Promise<void> { return this.driver.readTypeScriptProject(files); }
+  expectInstalledProjectFile(file: string, text: string): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.projectReading!;
+    expect(observed.read.problems).toEqual([]);
+    expect(observed.read.artifacts).toContainEqual(expect.objectContaining({ file, text }));
+    expect(observed.files[file]).toBe(text);
+    expect(observed.read.coverage).toMatchObject({ complete: true, limitations: [] });
+  }
+  expectInstalledProjectConsumer(file: string, text: string, within: string, role: string): void {
+    const observed = this.driver.report.projectReading!, source = observed.files[file]!;
+    const context = source.indexOf(within), start = source.indexOf(text, context);
+    expect(context).toBeGreaterThanOrEqual(0);
+    expect(start).toBeGreaterThanOrEqual(context);
+    expect(observed.search.problems).toEqual([]);
+    expect(observed.search.definitions).toContainEqual(expect.objectContaining({
+      format: 'typescript-site-1', value: expect.objectContaining({ file: 'store.ts', role: 'definition' }),
+    }));
+    expect(observed.search.incoming.uses).toContainEqual({
+      target: { kind: 'project', id: expect.any(String) },
+      at: { outputId: 'typescript', format: 'typescript-site-1',
+        value: { file, version: observed.versions[file], start, end: start + text.length, role } },
+    });
+    expect(observed.search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+  }
+  expectRuntimeTypeScriptInstalled(version: string): void {
+    expect(this.driver.report.projectReading?.typescript.version).toBe(version);
+    expect(this.driver.typescriptInsideConsumer).toBe(true);
+  }
+
+  documentProject(source: string, note: string): Promise<void> { return this.driver.documentProject(source, note); }
+  expectInstalledDocumentation(path: string, parts: string[]): void {
+    this.expectConsumerRan();
+    const docs = this.driver.report.documentation!;
+    expect(docs.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(docs.read.problems).toEqual([]);
+    expect(docs.read.coverage).toMatchObject({ complete: true, limitations: [] });
+    const artifact = docs.read.artifacts.find(item => item.path === path);
+    expect(artifact, 'The installed output must return the whole current document.').toBeDefined();
+    expect(artifact!.text).toBe(artifact!.disk);
+    for (const part of parts) expect(artifact!.text).toContain(part);
+    expect(artifact!.text).not.toContain('Tests passed');
+  }
+  expectInstalledDocumentConsumer(file: string, definition: string): void {
+    const search = this.driver.report.documentation!.search;
+    expect(search.problems).toEqual([]);
+    expect(search.definitions).toContainEqual(expect.objectContaining({ value: expect.objectContaining({ path: definition }) }));
+    expect(search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(search.incoming.uses).toContainEqual({
+      target: { kind: 'project', id: file },
+      at: { outputId: 'markdown', format: 'markdown-link', value: { path: file, offset: 0 } },
+    });
+  }
 
   expectInstalledPackageUsed(): void {
     expect(this.driver.location.insidePackage).toBe(true);
@@ -51,6 +110,41 @@ export class PackageExamples {
   }
   expectCapturedSteps(expected: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[]): void {
     expect(this.driver.report.steps).toEqual(expected);
+  }
+  expectDeclarationCounts(expected: { concepts: number; recordTypes: number; capabilities: number }): void {
+    expect(this.driver.countReports.create?.counts).toMatchObject(expected);
+  }
+  expectCountReportWritten(status: string): void {
+    const created = this.driver.countReports.create!;
+    expect(created.write).toMatchObject({ problems: [], receipt: { status, problems: [], outcomes: [
+      { state: 'applied', change: { kind: 'write', path: 'reports/counts.json' } },
+    ] } });
+    expect(created.handwritten).toBe('Keep my notes.');
+    expect(created.write?.artifacts?.map(item => item.specId)).toEqual(created.counts?.subjects.map(item => item.id));
+  }
+  expectWholeCountReport(path: string, text: string): void {
+    const read = this.driver.countReports.read?.read;
+    expect(read?.problems).toEqual([]);
+    expect(read?.artifacts).toHaveLength(1);
+    expect(read?.artifacts[0]?.path).toBe(path);
+    expect(read?.artifacts[0]?.text).toBe(read?.artifacts[0]?.disk);
+    expect(read?.artifacts[0]?.text).toContain(text);
+  }
+  expectCountDefinition(path: string): void {
+    expect(this.driver.countReports.search?.search?.definitions).toContainEqual(expect.objectContaining({ value: expect.objectContaining({ path }) }));
+  }
+  expectCountConsumer(path: string, title: string): void {
+    expect(this.driver.countReports.search?.search?.incoming.uses).toContainEqual({ target: { kind: 'project', id: title },
+      at: { outputId: 'declaration-count', format: 'declaration-count-1', value: { path } } });
+  }
+  expectCompleteCountCoverage(scope: string): void {
+    const search = this.driver.countReports.search?.search;
+    expect(search?.problems).toEqual([]);
+    for (const direction of ['incoming', 'outgoing'] as const) {
+      expect(search?.[direction].coverage).toEqual({ complete: true, limitations: [],
+        scope: [{ outputId: 'declaration-count', format: 'declaration-count-1', value: scope }] });
+      expect(search?.[direction].unresolved).toEqual([]);
+    }
   }
   expectConsumerFailedFor(missing: string): void {
     expect(this.driver.result.code).not.toBe(0);
