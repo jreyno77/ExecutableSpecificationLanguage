@@ -49,6 +49,37 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  initializeProject(root: string, target: string): Promise<void> { return this.driver.initializeProject(root, target); }
+  expectInstalledInitialization(paths: string[]): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.initialization!;
+    expect(observed.prepared.problems).toEqual([]);
+    expect(observed.prepared.value?.changes.map(change => change.kind === 'move' ? change.to : change.path)).toEqual(paths);
+    expect(observed.result).toMatchObject({ status: 'applied', problems: [], deferred: [], write: { status: 'applied', problems: [] } });
+    expect(observed.connectedRoot?.path).toBe(observed.selectedRoot?.actual);
+    expect(observed.result?.createdRoot).toBe(observed.selectedRoot?.requested);
+    expect(observed.snapshot).toMatchObject({ complete: true, problems: [], excluded: [] });
+    expect(observed.snapshot?.files.map(file => file.path).sort()).toEqual([...paths].sort());
+    expect(observed.snapshot?.files).toContainEqual({ path: 'src/index.ts', text: 'export {};\n' });
+    expect(observed.beforeBuildEntries?.sort()).toEqual(['.gitignore', 'package.json', 'src', 'tsconfig.json']);
+    expect(JSON.parse(observed.manifest)).toEqual({ formatVersion: 1, version: '0.1.0', build: { entries: ['store.expec'] } });
+  }
+  expectInstalledToolchainAcquired(name: string, version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.acquisition).toMatchObject({ problems: [], deferred: [],
+      packages: [{ name: 'npm:' + name, requested: version, selected: version, installed: version }] });
+    expect(observed.result?.value?.configuration.packages).toEqual([
+      { alias: name, name: 'npm:' + name, version, phases: ['build'] },
+    ]);
+  }
+  expectInstalledStarterBuild(version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.typescript?.version).toBe(version);
+    expect(this.driver.compilerInsideProject).toBe(true);
+    expect(observed.build?.code, observed.build?.output).toBe(0);
+    expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
+  }
+
   generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
     return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised);
   }

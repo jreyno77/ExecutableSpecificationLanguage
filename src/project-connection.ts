@@ -118,7 +118,7 @@ class ConnectedProject implements ProjectContext {
   }
 }
 
-function nativePath(path: unknown): path is string {
+export function nativePath(path: unknown): path is string {
   return typeof path === 'string' && path.length > 0 && !path.includes('\0') && Buffer.from(path).toString() === path
     && (process.platform !== 'win32' || !/^(?:[a-z]:(?![/\\])|[/\\](?![/\\])|[/\\]{2}[^/\\]*[/\\]?$)/i.test(path));
 }
