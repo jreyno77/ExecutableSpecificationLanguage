@@ -10,6 +10,8 @@ export class Modules {
   readonly failures = new Map<string, readonly ResolutionProblem[]>();
   readonly problems: ResolutionProblem[] = [];
   readonly includes = new Map<string, { readonly target: string; readonly directive: ModelNode<'include'> }[]>();
+  readonly attachments = new Map<NodeId, string | undefined>();
+  get composing(): boolean { return !!this.policy; }
   private readonly located = new Map<string, string | undefined>();
 
   constructor(entry: ModuleModel, supplied: readonly ModuleModel[], private readonly policy?: ModuleLocator) {
@@ -70,7 +72,7 @@ export class Modules {
           if (target !== undefined) targets.add(target);
         }
       }
-      if (policy) for (const directive of input.of('include')) {
+      if (policy) for (const directive of [...input.of('include'), ...input.of('examples-attachment')]) {
         const locator = input.node(directive.locator);
         if (locator.kind !== 'string-literal') throw new Error('An include locator must be text.');
         const target = this.locate(input.locator, locator.value);
@@ -78,14 +80,17 @@ export class Modules {
           ? [{ code: 'unavailable-module' as const, message: 'No supplied module has locator ' + (target ?? locator.value) + '.',
               at: { kind: 'dependency' as const, path: ['modules', target ?? locator.value] }, related: [] }]
           : this.failures.get(target);
+        if (directive.kind === 'examples-attachment') this.attachments.set(directive.id, failures?.length ? undefined : target);
         if (failures?.length) this.problems.push(...failures.map(problem => ({
           ...problem, at: locator.origin, related: [problem.at, ...problem.related],
         })));
         else {
           targets.add(target!);
-          const edges = this.includes.get(input.locator) ?? [];
-          edges.push({ target: target!, directive });
-          this.includes.set(input.locator, edges);
+          if (directive.kind === 'include') {
+            const edges = this.includes.get(input.locator) ?? [];
+            edges.push({ target: target!, directive });
+            this.includes.set(input.locator, edges);
+          }
         }
       }
       for (const target of targets) {
