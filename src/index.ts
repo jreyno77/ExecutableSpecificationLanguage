@@ -44,8 +44,10 @@ export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, Project
 export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad } from './source-loader.js';
 export * from './project-writer.js';
 export * from './output.js';
+export * from './output-typescript.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';
+export { umlOutput } from './uml-output.js';
 export { TypeScriptProject, type TypeScriptProjectOptions } from './typescript-project.js';
 export { markdownOutput } from './output-markdown.js';
 export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';

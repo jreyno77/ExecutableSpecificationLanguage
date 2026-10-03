@@ -22,6 +22,12 @@ interface ConsumerReport {
     beforeBuildEntries?: string[]; typescript?: { version: string; location: string };
     build?: { code: number; output: string }; emitted?: Record<string, string>; manifest: string;
   };
+  typescriptOutput?: {
+    written: OutputWrite; typescript: { version: string; location: string }; source?: string;
+    validDiagnostics?: unknown[]; invalidDiagnostics?: { code: number; file: string; text: string; message: string }[];
+    runtime?: { name?: string; message?: string; returned?: boolean }; notes?: string;
+    baseline?: string; handwritten?: string; update?: OutputWrite; after?: string; stateBefore?: string; stateAfter?: string;
+  };
   projectReading?: {
     read: Omit<ProjectRead, 'artifacts'> & { artifacts: { at: unknown; file: string; text: string }[] };
     search: ProjectSearch; files: Record<string, string>; versions: Record<string, string>;
@@ -48,6 +54,11 @@ interface ConsumerReport {
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
   output?: CountReport;
+  diagram?: { written: OutputWrite; read: NonNullable<CountReport['read']>; search: ProjectSearch;
+    native: { label: string; methods?: { name: string; return: string }[] }[];
+    guards: { reads: string[]; denied: string[]; workers: { created: number; exited: number } };
+    canaries: { failures: boolean[]; denied: string[] }; private: string };
+
 }
 interface CountReport {
   write?: OutputWrite;
@@ -122,6 +133,14 @@ export class PackageDriver {
     const path = this.report.initialization?.typescript?.location;
     this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
   }
+  async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
+    await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
+    await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised }));
+    this.result = await run(process.execPath, ['typescript-output-consumer.mjs', 'typescript-output.json'], this.consumer);
+    await this.readReport();
+    const path = this.report.typescriptOutput?.typescript.location;
+    this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
+  }
   async readTypeScriptProject(files: Record<string, string>): Promise<void> {
     await cp(join(resources, 'project-reading.mjs'), join(this.consumer, 'project-reading.mjs'));
     await writeFile(join(this.consumer, 'project.json'), JSON.stringify({ files }));
@@ -142,6 +161,13 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['writer.mjs', 'write.json'], this.consumer);
     await this.readReport();
   }
+  async diagramProject(source: string): Promise<void> {
+    for (const name of ['diagram-guard.mjs', 'diagram-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'diagram.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['--import', './diagram-guard.mjs', 'diagram-consumer.mjs', 'diagram.json'], this.consumer);
+    await this.readReport();
+  }
+  diagramResourceInsidePackage(path: string): boolean { return contained(join(this.consumer, 'node_modules/@d2lang/d2'), path) || path === join(this.consumer, 'diagram-guard.mjs'); }
   async registerCountOutput(): Promise<void> {
     for (const name of ['count-adapter.mts', 'output-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
   }

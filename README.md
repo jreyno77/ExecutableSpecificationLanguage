@@ -400,14 +400,36 @@ regions, preserving exact prefix/notes bytes. Renames carry notes with their pag
 with handwritten content is refused. Actual edited files remain readable and searchable.
 Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
 
+Register `typescriptOutput` to generate native TypeScript contracts and throwing
+implementation stubs. Pass `{ directory: 'src', concepts: 'class' }` as options;
+use `concepts: 'interface'` for signatures. Optional `names` and `imports` mappings
+make quoted names and external native dependencies explicit. Native identifiers
+currently use ASCII letters/digits, `_`, `$` and exclude
+reserved/contextual names. Unsupported spellings require explicit mapping; quoted
+field/method properties remain readable. Names are never silently transliterated.
+`Nothing` returns `void`; an unspecified result remains documented as `unknown`. Defaults and prose
+remain implementation obligations. Number uses JavaScript binary64, with lossy
+authored numeric literals refused. Error records retain their data and receive
+an `Error` companion; normal return types remain unchanged.
+
+For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
+`Outputs.open` argument, using successful `SourceLoader` captures' model locators.
+The entry is always included. Other source modules are generated only when in
+that captured set; provider dependencies require native mappings. This keeps
+documentation visibility separate from authority to generate implementation code.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve untouched
+files and refuse handwritten edits to files they would replace or remove. The
+private output state retains only last-generated text for later comparison;
+preservation-aware editing of handwritten bodies is a subsequent task.
+
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
-changes without effects. Hosts can combine disjoint plans from one snapshot, then
+changes without project mutations. Hosts can combine disjoint plans from one snapshot, then
 apply them once. Successful association proposals cover only that output namespace;
 retain other namespaces before calling `withArtifacts`. Outputs do not save the
 global identity baseline.
 
-Summary profiles own whole generated files. Private `.expec/outputs/` records permit
+The two list profiles own whole files. Private `.expec/outputs/` records permit
 repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
 owned files conflict instead of being overwritten. Read still returns their actual
 complete content. Directory changes require an explicit future migration policy.
@@ -424,9 +446,38 @@ Valid foreign Markdown namespaces remain project-only consumers and targets; the
 opaque identities never become definitions owned by the selected output.
 
 Custom outputs register an ordinary `{ id, validate, open }` object. `open(options)`
-returns an `OutputAdapter` with pure `plan`, `read`, and `search` operations over a
+returns an `OutputAdapter` with `plan`, `read`, and `search` operations over a
 supplied snapshot. `ProjectOutput` supplies live capture, result validation, and
 guarded application. No decorators, package loading, or inheritance are required.
+
+## Draw declared contracts and communications
+
+```ts
+import { umlOutput } from 'executable-specification-language';
+
+outputs.register(umlOutput);
+const diagrams = outputs.open('uml', {
+  directory: 'design', views: ['structure', 'interactions']
+}, project, new FileProjectWriter(project));
+if (diagrams.value && current.value) await diagrams.value.create(current.value);
+```
+
+The adapter writes native D2 and SVG: one shared structure view and one sequence
+file per authored interaction. Inputs, outputs, fields, dependencies and possible
+failures remain distinct; sequence messages come only from checked interactions.
+Omit `views` for structure alone. Requesting interactions without one is a finding.
+
+Generated D2 regions and derived SVGs are guarded by recorded hashes. Handwritten
+comments, unique root objects/edges and participant notes survive updates; a
+note-only update refreshes the SVG. `read` returns actual source/SVG bytes and
+reports stale renders. `search` parses current native references, including
+unmodeled consumers, with original source ranges. Imports, arbitrary nested
+scopes, boards and dynamic native syntax remain incomplete coverage; linked
+assets are unsupported. No labels are guessed to be code references.
+
+Native work lazily loads pinned D2 package resources and disposes its worker per
+operation. It uses captured project bytes; no CLI, downloads, ambient project
+reads or network access are part of rendering. D2 retains its MPL-2.0 notices.
 
 ## TypeScript project queries
 
