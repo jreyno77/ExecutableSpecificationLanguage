@@ -8,7 +8,7 @@ import { hash, literal } from './project-files.js';
 import { validDiff } from './output-contract.js';
 import { artifact, ListDocuments, outputProblem } from './output-documents.js';
 import { MarkdownDocumentation, emptyNotes, sectionEnd, sectionStart } from './markdown-document.js';
-import { UnsupportedMarkdown } from './markdown-language.js';
+import { UnsupportedLanguage } from './language-text.js';
 
 const subject = z.strictObject({ id: identifier, structure: z.string() });
 const stateSchema = z.strictObject({ format: z.literal(1), renderFormat: z.literal(1), outputId: z.literal('markdown'), directory: z.string(), context: z.string(), notes: z.literal(emptyNotes),
@@ -115,7 +115,7 @@ class MarkdownOutput implements OutputAdapter {
       let pages;
       try { pages = new MarkdownDocumentation(current, this.directory).render(); }
       catch (error) {
-        if (!(error instanceof UnsupportedMarkdown)) throw error;
+        if (!(error instanceof UnsupportedLanguage)) throw error;
         return refused([{ code: 'unsupported-output', message: error.message, at: error.item.origin, related: [] }]);
       }
       next = { format: 1, renderFormat: 1, outputId: this.id, directory: this.directory, context: current.baseline.context, notes: emptyNotes, documents: [], deleted: [] };

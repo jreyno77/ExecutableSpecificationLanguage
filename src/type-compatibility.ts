@@ -3,6 +3,7 @@ import type { NodeId } from './model.js';
 import type { TypeCatalog } from './type-catalog.js';
 import type { TypeDescription, TypeId } from './type-description.js';
 import { fromFact, mergeChecks, type Check } from './checking.js';
+import { decimal } from './decimal.js';
 
 type Catalog = Pick<TypeCatalog, 'describe' | 'inspection' | 'fields'>;
 type Meaning = Exclude<TypeDescription, { kind: 'alias' }>;
@@ -126,16 +127,4 @@ function literalValue(item: Item): Literal | undefined {
     if (operand.kind === 'number-literal') return { kind: 'Number', value: decimal(item.operator + operand.token) };
   }
   return undefined;
-}
-
-/** Normalize digits and exponent without converting the value to a host number. */
-function decimal(token: string): string {
-  const match = /^([+-]?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token)!;
-  let digits = (match[2]! + (match[3] ?? '')).replace(/^0+/, '');
-  if (!digits) return '0';
-  let exponent = BigInt(match[4] ?? '0') - BigInt((match[3] ?? '').length);
-  const trailing = /0+$/.exec(digits)?.[0].length ?? 0;
-  digits = digits.slice(0, digits.length - trailing);
-  exponent += BigInt(trailing);
-  return (match[1] === '-' ? '-' : '') + digits + 'e' + exponent;
 }

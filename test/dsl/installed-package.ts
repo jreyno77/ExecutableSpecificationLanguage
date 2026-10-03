@@ -20,6 +20,35 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
+    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised);
+  }
+  expectInstalledTypeScriptScaffold(message: string): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.validDiagnostics).toEqual([]);
+    expect(observed.runtime).toEqual({ name: 'Error', message });
+    expect(observed.notes).toBe('Keep the deployment note.');
+    expect(observed.typescript.version).toBe('5.9.3');
+    expect(this.driver.typescriptInsideConsumer).toBe(true);
+  }
+  expectInvalidNativeArgument(text: string): void {
+    expect(this.driver.report.typescriptOutput?.invalidDiagnostics).toEqual([
+      { code: 2345, file: 'invalid.mts', text, message: "Argument of type 'number' is not assignable to parameter of type 'string'." },
+    ]);
+  }
+  expectHandwrittenNativeFileProtected(): void {
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'output-conflict' }));
+    expect(observed.update?.receipt).toBeUndefined();
+    expect(observed.after).toBe(observed.handwritten);
+    expect(observed.after).toContain('// Keep the handwritten retry rationale.');
+    expect(observed.baseline).toBe(observed.source);
+    expect(observed.baseline).not.toContain('handwritten retry rationale');
+    expect(observed.stateAfter).toBe(observed.stateBefore);
+  }
+
   readTypeScriptProject(files: Record<string, string>): Promise<void> { return this.driver.readTypeScriptProject(files); }
   expectInstalledProjectFile(file: string, text: string): void {
     this.expectConsumerRan();
