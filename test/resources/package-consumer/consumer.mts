@@ -1,5 +1,5 @@
 import {
-  Compiler, TypeScriptProject, Outputs, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -67,6 +67,10 @@ export function describeFailures(specification: Specification, operation: NodeId
   return specification.types.callable(operation).failures.map(fact => fact.status === 'known' ? specification.types.error(fact.value) : fact);
 }
 
+const diagrams = new Outputs();
+diagrams.register(umlOutput);
+export const diagramProfiles = diagrams.profiles;
+
 export function readNativeProject(snapshot: import('executable-specification-language').ProjectSnapshot,
   associations: readonly import('executable-specification-language').ArtifactAssociation[]) {
   const reader = new TypeScriptProject({ outputId: 'typescript' }, associations);
@@ -79,4 +83,10 @@ export function documentationProfiles() {
   const outputs = new Outputs();
   outputs.register(markdownOutput);
   return outputs.profiles;
+}
+
+export function openTypeScriptOutput(project: ProjectContext, context: import('executable-specification-language').OutputContext) {
+  const outputs = new Outputs();
+  outputs.register(typescriptOutput);
+  return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
 }

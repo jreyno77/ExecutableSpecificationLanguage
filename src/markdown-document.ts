@@ -5,7 +5,7 @@ import type { NodeId } from './model.js';
 import type { IdentifiedSpecification } from './specification-identity.js';
 import type { TypeId } from './types.js';
 import { anchor } from './output-projection.js';
-import { language, UnsupportedMarkdown } from './markdown-language.js';
+import { language, UnsupportedLanguage } from './language-text.js';
 
 export const emptyNotes = '## Your notes\n\nEdit this area for your own notes. Content above it is generated from .expec.\n\n';
 export interface MarkdownPage { id: string; path: string; region: Uint8Array; subjects: string[] }
@@ -49,7 +49,7 @@ export class MarkdownDocumentation {
       }
       const filename = node.kind === 'examples' ? 'examples/' + createHash('sha256').update(record.id).digest('hex')
         : node.kind === 'interaction' ? 'interactions/' + node.title.value : 'name' in node ? node.name : undefined;
-      if (filename === undefined) throw new UnsupportedMarkdown(node);
+      if (filename === undefined) throw new UnsupportedLanguage(node);
       this.page.set(record.id, { id: record.id, path: directory + '/' + filename + '.md' });
     }
     const assign = (id: string, page: { id: string; path: string }): void => {
@@ -160,7 +160,7 @@ export class MarkdownDocumentation {
     }
     if (node.kind === 'record-type-declaration' && node.error) {
       const error = this.current.specification.types.error(this.current.specification.types.declaredType(node.id));
-      if (error.status !== 'known') throw new UnsupportedMarkdown(node);
+      if (error.status !== 'known') throw new UnsupportedLanguage(node);
       text += 'Error type\n\nCodes: ' + error.value.codes.map(markdownText).join(', ') + '\n\n';
     }
     if (node.kind === 'opaque-type-declaration') text += 'Structure unavailable\n\n';
@@ -180,7 +180,7 @@ export class MarkdownDocumentation {
       text += 'Declared communication — not an observed execution.\n\nMessages:\n\n';
       for (const message of node.members.filter(member => member.kind === 'message')) {
         const facts = this.current.specification.message(message.id).value;
-        if (!facts) throw new UnsupportedMarkdown(message);
+        if (!facts) throw new UnsupportedLanguage(message);
         text += '- ' + inline(language(message).slice('message '.length) + (message.capture && facts.reply ? ': ' + this.inferred(facts.reply) : '')) + '\n';
         text += '  \n  Operation: ' + this.link(facts.operation, path) + '\n';
       }
