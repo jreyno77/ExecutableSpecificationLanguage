@@ -215,6 +215,36 @@ describe('ProjectConnector native locations', () => {
 });
 
 describe('ProjectSnapshot captured observations', () => {
+  it('keeps readable neighbors when Node rejects a file beyond its read limit', async () => {
+    await file('game/large.bin', 'file read limit is arranged at the handle boundary');
+    await file('game/readable.txt', 'keep');
+    const context = await connected(), open = fs.open.bind(fs);
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const handle = await open(...args);
+      if (String(args[0]) === path('game/large.bin')) vi.spyOn(handle, 'readFile').mockRejectedValueOnce(
+        Object.assign(new RangeError('File size is greater than 2 GiB'), { code: 'ERR_FS_FILE_TOO_LARGE' }));
+      return handle;
+    });
+
+    const snapshot = await context.readSnapshot();
+
+    expect(snapshot.complete).toBe(false);
+    expect(snapshot.files.map(item => item.path)).toEqual(['readable.txt']);
+    expect(Buffer.from(snapshot.files[0]!.bytes).toString('utf8')).toBe('keep');
+    expect(snapshot.problems).toEqual([expect.objectContaining({ code: 'read-failed', related: [],
+      at: { kind: 'dependency', path: ['project', context.root.path, 'large.bin'] },
+      message: expect.stringContaining('ERR_FS_FILE_TOO_LARGE') })]);
+  });
+
+  it('propagates a programming error instead of presenting it as a filesystem gap', async () => {
+    await file('game/readable.txt', 'keep');
+    const context = await connected();
+    const failure = Object.assign(new TypeError('Invalid argument'), { code: 'ERR_INVALID_ARG_TYPE' });
+    vi.spyOn(fs, 'open').mockRejectedValueOnce(failure);
+
+    await expect(context.readSnapshot()).rejects.toBe(failure);
+  });
+
   it('includes an empty regular file with the SHA-256 digest of zero bytes', async () => {
     await file('game/empty.txt', '');
 

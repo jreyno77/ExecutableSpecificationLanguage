@@ -133,6 +133,7 @@ function diagnostic(code: string, message: string, path: readonly (string | numb
   return { code, message, at: { kind: 'dependency', path: [...path] }, related: [] };
 }
 function osError(error: unknown): string {
-  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^E[A-Z]+$/.test(error.code)) return error.code;
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    && (/^E[A-Z]+$/.test(error.code) || error.code === 'ERR_FS_FILE_TOO_LARGE')) return error.code;
   throw error;
 }

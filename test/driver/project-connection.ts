@@ -7,7 +7,7 @@ import { ConfigurationReader, ProjectConnector, type Check, type Configuration, 
 
 /** Real temporary project and public calls; observations remain in the acceptance DSL. */
 export class ConnectionDriver {
-  readonly directory = realpathSync(mkdtempSync(join(tmpdir(), 'expec-connection-')));
+  readonly directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'expec-connection-')));
   configuration!: Configuration;
   connection!: Check<ProjectConnection>;
   current!: ProjectSnapshot;
