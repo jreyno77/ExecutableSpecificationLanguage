@@ -10,6 +10,8 @@ export type { Item, Body } from './inspection-item.js';
 export { QueryError, createNodeId, isNodeId } from './model.js';
 export type { Model, ModelNode, ModuleModel, NodeKind, NodeId, Origin, ReferenceLookup, ReferenceResolution, CallableBody, QueryErrorCode, BuiltinName } from './model.js';
 export { Resolver } from './resolution.js';
+export { SourceComposer } from './source-composer.js';
+export type { ModuleLocator } from './source-composer.js';
 export type { Resolution, ResolutionDependencies } from './resolution.js';
 export type { DeferredReference, DeferredReason } from './resolution/reference-resolver.js';
 export type { ResolutionProblem, ResolutionProblemCode, ProblemLocation } from './resolution/problem.js';
