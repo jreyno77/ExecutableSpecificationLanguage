@@ -94,6 +94,52 @@ describe('exact TypeScript project inputs and selectors', () => {
     const result = query({ 'store.ts': 'export class Store {}\nexport class Store {}' });
     expect(result.problems.some(problem => problem.code === 'typescript-2300')).toBe(true); expect(result.incoming.coverage.complete).toBe(false);
   });
+  it('observes an indexed-access type property without treating an unrelated literal type as a reference', () => {
+    const files = { 'store.ts': 'export class Store { title = "Dune"; }\nexport type Title = Store["title"];\nexport type Other = "title";' };
+    const associations = [association('property', 'store.ts', [{ kind: 'class', name: 'Store' }, { kind: 'property', name: 'title', static: false }]),
+      association('title', 'store.ts', [{ kind: 'type', name: 'Title' }]), association('other', 'store.ts', [{ kind: 'type', name: 'Other' }])];
+    const incoming = query(files, associations, 'property'), outgoing = query(files, associations, 'title'), other = query(files, associations, 'other');
+    expect(incoming.problems).toEqual([]); expect(texts(incoming, files, 'incoming')).toEqual(['"title"']);
+    expect(incoming.incoming.uses[0]?.at.value).toMatchObject({ role: 'type', start: files['store.ts'].indexOf('["title"]') + 1 });
+    expect(outgoing.outgoing.uses).toContainEqual(expect.objectContaining({ target: { kind: 'specified', id: 'property' } }));
+    expect(other.outgoing.uses).toEqual([]); expect(other.outgoing.unresolved).toEqual([]);
+    expect(incoming.incoming.coverage.complete).toBe(true); expect(outgoing.outgoing.coverage.complete).toBe(true);
+  });
+  it('keeps an instantiated generic union member linked to its single original declaration', () => {
+    const files = { 'store.ts': 'export interface Box<T> { value: T }\nexport function read(box: Box<string> | Box<number>) { const { value } = box; return box.value; }' };
+    const associations = [association('value', 'store.ts', [{ kind: 'interface', name: 'Box' }, { kind: 'property', name: 'value' }]),
+      association('read', 'store.ts', [{ kind: 'function', name: 'read' }])];
+    const result = query(files, associations, 'read');
+    const starts = [files['store.ts'].indexOf('{ value }') + 2, files['store.ts'].lastIndexOf('value')];
+    expect(result.problems).toEqual([]); expect(result.outgoing.unresolved).toEqual([]);
+    expect(result.outgoing.uses.filter(use => (use.at.value as { role: string }).role === 'value').map(use => ({
+      target: use.target, start: (use.at.value as { start: number }).start,
+    }))).toEqual(starts.map(start => ({ target: { kind: 'specified', id: 'value' }, start })));
+    expect(result.outgoing.coverage.complete).toBe(true);
+  });
+  it('does not choose one declaration for an intersection member with distinct native roots', () => {
+    const files = { 'store.ts': 'export interface A { title: string }\nexport interface B { title: string }\nexport function read(value: A & B) { return value.title; }' };
+    const associations = [association('a-title', 'store.ts', [{ kind: 'interface', name: 'A' }, { kind: 'property', name: 'title' }]),
+      association('b-title', 'store.ts', [{ kind: 'interface', name: 'B' }, { kind: 'property', name: 'title' }]),
+      association('read', 'store.ts', [{ kind: 'function', name: 'read' }])];
+    const result = query(files, associations, 'read');
+    expect(result.problems).toEqual([]);
+    expect(result.outgoing.uses.filter(use => (use.at.value as { role: string }).role === 'value')).toEqual([]);
+    expect(result.outgoing.unresolved).toContainEqual(expect.objectContaining({
+      at: expect.objectContaining({ value: expect.objectContaining({ start: files['store.ts'].lastIndexOf('title'), end: files['store.ts'].length - 3 }) }),
+    }));
+    expect(result.outgoing.coverage.complete).toBe(false);
+  });
+  it('keeps ambiguous destructured intersection properties unresolved without confusing their local binding', () => {
+    const files = { 'store.ts': 'export interface A { title: string }\nexport interface B { title: string }\nexport function read(value: A & B) { const { title } = value; return title; }' };
+    const result = query(files, [association('read', 'store.ts', [{ kind: 'function', name: 'read' }])], 'read');
+    expect(result.problems).toEqual([]);
+    expect(result.outgoing.uses.filter(use => (use.at.value as { role: string }).role === 'value')).toEqual([]);
+    expect(result.outgoing.unresolved).toHaveLength(1);
+    const at = result.outgoing.unresolved[0]!.at.value as { start: number; end: number };
+    expect(files['store.ts'].slice(at.start, at.end)).toBe('title'); expect(at.start).toBe(files['store.ts'].indexOf('{ title }') + 2);
+    expect(result.outgoing.coverage.complete).toBe(false);
+  });
   it('observes numeric literal method calls in both relationship directions', () => {
     const files = { 'store.ts': 'export class Store { [0]() {} }\nexport function invoke(store: Store) { store[0](); }' };
     const associations = [association('zero', 'store.ts', [{ kind: 'class', name: 'Store' }, { kind: 'method', name: '0', static: false }]),

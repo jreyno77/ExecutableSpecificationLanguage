@@ -83,7 +83,7 @@ export class TypeScriptSymbols {
     return symbol ? this.rootSymbol(symbol.flags & ts.SymbolFlags.Alias ? this.checker!.getAliasedSymbol(symbol) : symbol) : undefined;
   }
   private rootSymbol(symbol: ts.Symbol): ts.Symbol {
-    const roots = this.checker!.getRootSymbols(symbol); return roots.length === 1 ? roots[0]! : symbol;
+    const roots = [...new Set(this.checker!.getRootSymbols(symbol))]; return roots.length === 1 ? roots[0]! : symbol;
   }
   private construction(node: ts.ConstructorDeclaration): ts.ConstructorDeclaration { return (node.parent as ts.ClassLikeDeclaration).members.find(ts.isConstructorDeclaration)!; }
   private claim(key: ts.Symbol | ts.ConstructorDeclaration): string | undefined { const ids = this.claims.get(key); return ids?.size === 1 ? [...ids][0] : undefined; }
@@ -131,6 +131,9 @@ export class TypeScriptSymbols {
       incoming.unresolved.push(finding); if (relevant) outgoing.unresolved.push(finding);
     };
     const observe = (use: Use): void => {
+      if (new Set(this.checker!.getRootSymbols(use.symbol)).size > 1) {
+        unresolved(use.node, 'The native member identifies multiple declarations.'); return;
+      }
       use = { ...use, symbol: this.rootSymbol(use.symbol) };
       const symbolDeclarations = use.symbol.declarations ?? [], internal = symbolDeclarations.some(contains);
       const targetSelected = keys.has(use.symbol) || internal || !!use.construction && keys.has(use.construction);
@@ -149,7 +152,9 @@ export class TypeScriptSymbols {
         const key = ts.isComputedPropertyName(property) ? property.expression : property;
         if (ts.isIdentifier(key) && !ts.isComputedPropertyName(property) || ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)) {
           const receiver = this.checker!.getTypeAtLocation(node.parent);
-          const members = receiver.isUnion() ? new Set(receiver.types.map(type => this.checker!.getPropertyOfType(type, key.text)).filter(Boolean)) : undefined;
+          const members = receiver.isUnion() ? new Set(receiver.types.flatMap(type => {
+            const property = this.checker!.getPropertyOfType(type, key.text); return property ? [this.rootSymbol(property)] : [];
+          })) : undefined;
           if (members && members.size > 1) unresolved(key, 'Union members identify different declarations.');
           else {
             const symbol = this.checker!.getPropertyOfType(receiver, key.text);
@@ -168,13 +173,18 @@ export class TypeScriptSymbols {
           if (symbol) observe({ node, symbol, role: 'construct', construction: this.construction(declaration) });
         }
       }
-      if (!(ts.isIdentifier(node) || ts.isPrivateIdentifier(node) || (ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) && ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node)) return;
+      const literalMember = (ts.isStringLiteralLike(node) || ts.isNumericLiteral(node))
+        && (ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node
+          || ts.isLiteralTypeNode(node.parent) && ts.isIndexedAccessTypeNode(node.parent.parent) && node.parent.parent.indexType === node.parent);
+      if (!(ts.isIdentifier(node) || ts.isPrivateIdentifier(node) || literalMember)) return;
       const role = this.role(node); if (!role) return;
       if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node || ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node) {
         const receiver = this.checker!.getTypeAtLocation(node.parent.expression);
         if (receiver.isUnion()) {
           const name = ts.isPropertyAccessExpression(node.parent) ? node.parent.name.text : ts.isStringLiteralLike(node) || ts.isNumericLiteral(node) ? node.text : '';
-          const members = new Set(receiver.types.map(type => this.checker!.getPropertyOfType(type, name)).filter(Boolean));
+          const members = new Set(receiver.types.flatMap(type => {
+            const property = this.checker!.getPropertyOfType(type, name); return property ? [this.rootSymbol(property)] : [];
+          }));
           if (members.size > 1) { unresolved(node.parent, 'Union members identify different declarations.'); return; }
         }
       }
