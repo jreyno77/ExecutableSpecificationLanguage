@@ -103,6 +103,47 @@ and never scans, installs or writes. Descendant links and distinct physical-file
 aliases are rejected. Named libraries come from supplied dependencies; a library's
 diagnostic filename does not grant it a local source root.
 
+## Acquire declared dependencies
+
+Set `libraries[].source` to an explicit library directory. Its `package.json`
+declares a complete `version` and `expec: { entry: "./index.expec" }`, or
+`expec: { declarations: "./declarations.json" }` for existing ExternalDefinition
+JSON. Only the entry and its relative private imports are captured; library
+JavaScript and lifecycle scripts are never evaluated by the loader.
+
+```ts
+import { LibraryLoader, NpmDependencies, DependencyPlanner, SourceLoader } from 'executable-specification-language';
+
+const libraries = await new LibraryLoader(absoluteManifestFilename).load(configuration);
+const native = new NpmDependencies(absoluteProjectRoot);
+const packages = await native.read(configuration.packages);
+// Explicitly call native.install(configuration.packages) when installation is wanted.
+if (libraries.value && packages.value) {
+  const selected = new DependencyPlanner().resolve(configuration, {
+    modules: libraries.value.inventory, packages: packages.value,
+  });
+  if (selected.value) {
+    const sources = await new SourceLoader(absoluteManifestFilename)
+      .load(configuration, selected.value, libraries.value);
+  }
+}
+```
+
+Library captures keep their own model identities and ownership; they never become
+workspace output just because their source was loaded. Requirements without
+`source` continue to accept host-supplied models through the planner.
+
+`NpmDependencies` supports an existing ordinary npm11 project and qualified names
+such as `npm:example-storage`. Its observations distinguish requested ranges,
+locked selections and actual installed versions. A successful inventory requires
+the installed version to satisfy the range and match the lock. `read()` never
+installs or changes project files; its temporary cache must be outside the project.
+`install()` preserves unrelated manifest values,
+sets requested runtime dependencies or development tools, then runs native npm
+with scripts disabled. Native installation may change its lockfile and package
+files; a failure does not imply rollback. File presence does not prove lifecycle
+or runtime readiness. Neither operation creates a project or runs compilation.
+
 ## Compose supplied modules
 
 ```ts

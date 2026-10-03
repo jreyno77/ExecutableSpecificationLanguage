@@ -1,11 +1,18 @@
 import {
   Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
   type NodeId, type ScenarioCapture, type ScenarioStep,
   TestOperationChecker, ExpressionChecker, FixtureChecker, type TestOperationChecking,
 } from 'executable-specification-language';
+
+export async function acquire(manifest: string, root: string, configuration: Configuration) {
+  const libraries: LibraryLoad = await new LibraryLoader(manifest).load(configuration);
+  const packages: PackageRead = await new NpmDependencies(root).read(configuration.packages);
+  return { libraries, packages };
+}
 
 const input: CompilationInput = {
   source: { sourceId: 'consumer.expec', text: 'concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }' },

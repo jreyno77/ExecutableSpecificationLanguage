@@ -6,6 +6,8 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
+import type { PackageRead } from '../../src/index.js';
+import { NativePackageDriver, npmCommand } from './native-packages.js';
 
 const execute = promisify(execFile), require = createRequire(import.meta.url);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -19,6 +21,7 @@ interface ConsumerReport {
     source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
     generatedDuplicate: boolean; retainedIdentity?: boolean;
   };
+  acquisition?: { packages: PackageRead; fields?: { name: string; type: string }[]; workspace?: string[]; libraryOrigins?: string[]; problems?: unknown[]; syntax?: unknown[] };
   typescriptOutput?: {
     written: OutputWrite; typescript: { version: string; location: string }; source?: string;
     validDiagnostics?: unknown[]; invalidDiagnostics?: { code: number; file: string; text: string; message: string }[];
@@ -78,6 +81,7 @@ export class PackageDriver {
   location!: Awaited<ReturnType<typeof packageLocation>>;
   countReports: Record<string, CountReport> = {};
   private countInput: Record<string, unknown> = {};
+  private native: NativePackageDriver | undefined;
 
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
@@ -126,6 +130,19 @@ export class PackageDriver {
     await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
     this.result = await run(process.execPath, ['preservation-consumer.mjs', 'preservation.json'], this.consumer);
     await this.readReport();
+  }
+  async provideDependencies(): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize();
+    await this.native.publish('example-storage', '2.1.0');
+    await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
+    await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
+    await this.native.file('libraries/books/types.expec', 'type Title = Text');
+    await cp(join(resources, 'dependency-consumer.mjs'), join(this.consumer, 'dependency-consumer.mjs'));
+  }
+  async acquireDependencies(command: 'install' | 'compile', source = ''): Promise<void> {
+    if (!this.native) throw Error('Prepare the actual library and native registry first.');
+    await writeFile(join(this.consumer, 'dependencies.json'), JSON.stringify({ root: this.native.root, command: npmCommand(), source }));
+    this.result = await run(process.execPath, ['dependency-consumer.mjs', command], this.consumer); await this.readReport();
   }
   typescriptInsideConsumer = false;
   async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
@@ -218,7 +235,7 @@ export class PackageDriver {
       throw new Error(`Negative fixture can find ${name} at ${directory}`);
     }
   }
-  async dispose(): Promise<void> { if (this.directory) await cleanup(this.directory); }
+  async dispose(): Promise<void> { if (this.native) await this.native.dispose(); if (this.directory) await cleanup(this.directory); }
 }
 
 export async function packageLocation(consumer: string, entry: string) {
