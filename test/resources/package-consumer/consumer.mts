@@ -1,5 +1,5 @@
 import {
-  Outputs, umlOutput, Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Outputs, umlOutput, markdownOutput, Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -70,3 +70,9 @@ export function describeFailures(specification: Specification, operation: NodeId
 const diagrams = new Outputs();
 diagrams.register(umlOutput);
 export const diagramProfiles = diagrams.profiles;
+
+export function documentationProfiles() {
+  const outputs = new Outputs();
+  outputs.register(markdownOutput);
+  return outputs.profiles;
+}

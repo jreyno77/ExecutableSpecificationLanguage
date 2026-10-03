@@ -19,6 +19,21 @@ describe('Installed package consumers', () => {
     consumer.expectDeclarationsAccepted();
   });
 
+  it('generates readable Markdown and observes notes and links through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.documentProject('concept Game { public save\ncapability save() returns Nothing }', '\nReader note.\n');
+
+    consumer.expectInstalledPackageUsed();
+    consumer.expectInstalledDocumentation('reference/Game.md', [
+      '# Game', 'capability save() returns Nothing', 'Reader note.',
+      'Statically checked specification. Runtime behavior is not verified by this document.',
+    ]);
+    consumer.expectInstalledDocumentConsumer('guide.md', 'reference/Game.md');
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('exposes the same error declaration and checked signature to installed public consumers', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

@@ -1,3 +1,4 @@
+import type { IdentifiedSpecification, SpecDiff } from './specification-identity.js';
 import type { Check, Diagnostic } from './checking.js';
 import { canonical, identifier, locatorSchema } from './identity-baseline.js';
 import type { OutputPlan } from './output.js';
@@ -63,8 +64,6 @@ export function checkSearch(result: ProjectSearch, snapshot: ProjectSnapshot, id
     for (const unresolved of observation.unresolved) { locator(unresolved.at, id); require(typeof unresolved.reason === 'string', 'Malformed unresolved observation.'); }
   }
 }
-
-import type { SpecDiff, IdentifiedSpecification } from './specification-identity.js';
 export function validDiff(diff: SpecDiff, current: IdentifiedSpecification): boolean {
   const known = new Set([...current.baseline.elements.map(record => record.id), ...current.baseline.retired]);
   if (!diff || !Array.isArray(diff.changes) || !Array.isArray(diff.affected) || typeof diff.contextChanged !== 'boolean'
@@ -84,4 +83,3 @@ export function validDiff(diff: SpecDiff, current: IdentifiedSpecification): boo
   }
   return true;
 }
-

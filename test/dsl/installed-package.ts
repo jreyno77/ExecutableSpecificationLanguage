@@ -22,6 +22,30 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  documentProject(source: string, note: string): Promise<void> { return this.driver.documentProject(source, note); }
+  expectInstalledDocumentation(path: string, parts: string[]): void {
+    this.expectConsumerRan();
+    const docs = this.driver.report.documentation!;
+    expect(docs.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(docs.read.problems).toEqual([]);
+    expect(docs.read.coverage).toMatchObject({ complete: true, limitations: [] });
+    const artifact = docs.read.artifacts.find(item => item.path === path);
+    expect(artifact, 'The installed output must return the whole current document.').toBeDefined();
+    expect(artifact!.text).toBe(artifact!.disk);
+    for (const part of parts) expect(artifact!.text).toContain(part);
+    expect(artifact!.text).not.toContain('Tests passed');
+  }
+  expectInstalledDocumentConsumer(file: string, definition: string): void {
+    const search = this.driver.report.documentation!.search;
+    expect(search.problems).toEqual([]);
+    expect(search.definitions).toContainEqual(expect.objectContaining({ value: expect.objectContaining({ path: definition }) }));
+    expect(search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(search.incoming.uses).toContainEqual({
+      target: { kind: 'project', id: file },
+      at: { outputId: 'markdown', format: 'markdown-link', value: { path: file, offset: 0 } },
+    });
+  }
+
   expectInstalledPackageUsed(): void {
     expect(this.driver.location.insidePackage).toBe(true);
     expect(this.driver.location.real).toBe(this.driver.location.expected);
