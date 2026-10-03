@@ -1,5 +1,5 @@
 import {
-  Compiler, TypeScriptProject, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptProject, Outputs, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -73,4 +73,10 @@ export function readNativeProject(snapshot: import('executable-specification-lan
   const read: import('executable-specification-language').ProjectRead = reader.read('store', snapshot);
   const search: import('executable-specification-language').ProjectSearch = reader.search('store', snapshot);
   return { read, search };
+}
+
+export function documentationProfiles() {
+  const outputs = new Outputs();
+  outputs.register(markdownOutput);
+  return outputs.profiles;
 }

@@ -365,12 +365,13 @@ baseline bytes only with successful project application. Inspection `roots()` an
 ## Create and inspect output
 
 ```ts
-import { Outputs, contractListOutput, structureListOutput,
+import { Outputs, contractListOutput, structureListOutput, markdownOutput,
   FileProjectWriter } from 'executable-specification-language';
 
 const outputs = new Outputs();
 outputs.register(contractListOutput);
 outputs.register(structureListOutput);
+outputs.register(markdownOutput);
 const output = outputs.open('contract-list', { directory: 'docs/contracts' },
   context, new FileProjectWriter(context));
 if (output.value && current.value) {
@@ -381,7 +382,7 @@ if (output.value && current.value) {
 }
 ```
 
-`current.value` is the identified specification above. Both profiles document source
+`current.value` is the identified specification above. The summary profiles document source
 declarations in the checked view, including included/imported source. External
 metadata stays a reference. Markdown contract lists and structural JSON summaries
 share `create`, addition-only `insert(diff, current)`, `update(diff, current)`,
@@ -390,6 +391,15 @@ remain unverified. This documentation scope grants no implementation-code owners
 Error records retain their code/payload fields; declared failures are listed separately
 from an operation's unchanged successful result.
 
+For complete readable documentation, open `markdown` with `{ directory: 'docs/specification' }`.
+It includes internal declarations, error contracts, fixtures, examples, operation bodies
+and declared communications. Authored bodies and examples are statically checked, never
+executed; prose intent remains unfinished. Linked parameter and field fragments retain
+independent identities without repeated headings. Updates replace only recorded generated
+regions, preserving exact prefix/notes bytes. Renames carry notes with their page; removal
+with handwritten content is refused. Actual edited files remain readable and searchable.
+Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
+
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
 changes without effects. Hosts can combine disjoint plans from one snapshot, then
@@ -397,7 +407,7 @@ apply them once. Successful association proposals cover only that output namespa
 retain other namespaces before calling `withArtifacts`. Outputs do not save the
 global identity baseline.
 
-Generated files are owned whole files. Private `.expec/outputs/` records permit
+Summary profiles own whole generated files. Private `.expec/outputs/` records permit
 repeat operations and catch-up after skipped builds. Edited, missing, or ambiguous
 owned files conflict instead of being overwritten. Read still returns their actual
 complete content. Directory changes require an explicit future migration policy.

@@ -19,6 +19,11 @@ interface ConsumerReport {
     search: ProjectSearch; files: Record<string, string>; versions: Record<string, string>;
     typescript: { version: string; location: string };
   };
+  documentation?: {
+    written: OutputWrite;
+    read: Omit<ProjectRead, 'artifacts'> & { artifacts: { path: string; text: string; disk: string }[] };
+    search: ProjectSearch;
+  };
   domainFailures?: { operation: string; result: string; code: { family: string; codes: string[]; payload: string[] }[];
     documented: { family: string; codes: string[]; payload: string[] }[]; sameDeclaration: boolean; fieldsAgree: boolean; earlierUnchanged: boolean }[];
 
@@ -108,6 +113,12 @@ export class PackageDriver {
     await this.readReport();
     const path = this.report.projectReading?.typescript.location;
     this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
+  }
+  async documentProject(source: string, note: string): Promise<void> {
+    await cp(join(resources, 'markdown-consumer.mjs'), join(this.consumer, 'markdown-consumer.mjs'));
+    await writeFile(join(this.consumer, 'documentation.json'), JSON.stringify({ source, note }));
+    this.result = await run(process.execPath, ['markdown-consumer.mjs', 'documentation.json'], this.consumer);
+    await this.readReport();
   }
   async writeProject(before: string, after: string): Promise<void> {
     await cp(join(resources, 'writer.mjs'), join(this.consumer, 'writer.mjs'));
