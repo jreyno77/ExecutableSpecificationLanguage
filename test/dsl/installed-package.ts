@@ -9,6 +9,24 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
+  installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
+  loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }
+  expectAcquiredFieldType(name: string, type: string) {
+    this.expectConsumerRan(); expect(this.driver.report.acquisition?.problems).toEqual([]); expect(this.driver.report.acquisition?.syntax).toEqual([]);
+    expect(this.driver.report.acquisition?.fields).toContainEqual({ name, type });
+  }
+  expectSelectedAndInstalledStorage(version: string) {
+    this.expectConsumerRan(); const packages = this.driver.report.acquisition?.packages;
+    expect(packages).toEqual({ value: [{ name: 'npm:example-storage', version }], packages: [{ name: 'npm:example-storage', requested: '^2', selected: version, installed: version }], problems: [], deferred: [] });
+  }
+  expectNoLibraryModuleInWorkspaceOwnership() {
+    const report = this.driver.report.acquisition!;
+    expect(report.libraryOrigins).toHaveLength(2); expect(report.workspace).toHaveLength(1);
+    expect(report.workspace![0]).toMatch(/\/main\.expec$/);
+    expect(report.libraryOrigins!.every(source => source.includes('/libraries/books/'))).toBe(true);
+    expect(report.libraryOrigins!.some(source => report.workspace!.includes(source))).toBe(false);
+  }
   installPackageWithoutFile(path: string): Promise<void> { return this.driver.install({ withoutFile: path }); }
   installPackageWithoutDependency(name: string): Promise<void> { return this.driver.install({ withoutDependency: name }); }
   check(text: string): Promise<void> { return this.driver.check(text); }
