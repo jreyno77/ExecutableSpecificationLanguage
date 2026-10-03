@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { join, resolve, isAbsolute } from 'node:path';
+import type { BigIntStats } from 'node:fs';
+import { dirname, join, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import type { Diagnostic } from './checking.js';
@@ -39,45 +40,69 @@ export function pythonEnvironment(snapshot: ProjectSnapshot, profile: PythonProf
 export class PythonInputs {
   readonly problems: Diagnostic[] = [];
   readonly inputs = new Map<string, string>();
-  private readonly directories = new Map<string, string[]>();
+  private readonly directories = new Map<string, { names: string[]; stamp: string; cache: boolean }>();
   private readonly fingerprints = new Map<string, string>();
+  private readonly parents = new Map<string, string>();
+  private readonly identities = new Map<string, string>();
   async capture(environment: PythonEnvironment, profile: PythonProfile): Promise<void> {
-    for (const directory of [...environment.python.stdlib, ...environment.environment.sites, ...profile.sourcePath]) await this.walk(directory);
+    for (const directory of environment.python.stdlib) await this.walk(directory, true);
+    for (const directory of [...environment.environment.sites, ...profile.sourcePath]) await this.walk(directory);
     for (const path of [profile.python, profile.uv, ...environment.python.binaries]) await this.file(path);
     await this.file(fileURLToPath(new URL('./python/inspect.py', import.meta.url)));
     await this.verify();
   }
-  private fingerprint(info: Awaited<ReturnType<typeof fs.lstat>>): string { return [info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs, info.mode].join(':'); }
-  private async ordinary(path: string, directory: boolean): Promise<Awaited<ReturnType<typeof fs.lstat>>> {
-    const info = await fs.lstat(path);
+  private fingerprint(info: BigIntStats): string { return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.mode].join(':'); }
+  private identity(info: BigIntStats): string { return [info.dev, info.ino, info.mode].join(':'); }
+  private async ordinary(path: string, directory: boolean): Promise<BigIntStats> {
+    const info = await fs.lstat(path, { bigint: true });
     if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) || !info.ino) throw new Error('Native input is not an ordinary identifiable ' + (directory ? 'directory.' : 'file.'));
     return info;
   }
-  private async walk(path: string): Promise<void> {
+  private async path(path: string): Promise<void> {
+    for (let parent = dirname(path); ; parent = dirname(parent)) {
+      if (!this.parents.has(parent)) this.parents.set(parent, this.identity(await this.ordinary(parent, true)));
+      if (dirname(parent) === parent) break;
+    }
+    const actual = await fs.realpath(path), key = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value;
+    if (key(actual) !== key(resolve(path))) throw new Error('Native input has a redirected or noncanonical path.');
+  }
+  private async walk(path: string, standardLibrary = false, cache = false): Promise<void> {
+    path = resolve(path);
     if (this.directories.has(path)) return;
     try {
-      await this.ordinary(path, true);
-      const names = (await fs.readdir(path)).filter(name => name !== '__pycache__' && name !== 'site-packages').sort();
-      this.directories.set(path, names);
+      await this.path(path);
+      const before = await this.ordinary(path, true), names = (await fs.readdir(path)).sort();
+      this.directories.set(path, { names, stamp: this.fingerprint(before), cache });
       for (const name of names) {
-        const child = join(path, name), info = await fs.lstat(child);
-        if (info.isSymbolicLink()) throw new Error('Native inputs cannot follow a link: ' + child);
-        if (info.isDirectory()) await this.walk(child); else if (!name.endsWith('.pyc')) await this.file(child);
+        const child = join(path, name), info = await fs.lstat(child, { bigint: true });
+        if (cache) { if (!name.endsWith('.pyc')) throw new Error('A bytecode cache contains hidden source or an unknown entry: ' + child); await this.ordinary(child, false); }
+        else if (standardLibrary && name === 'site-packages') this.parents.set(child, this.identity(await this.ordinary(child, true))); // -S excludes only this native site directory.
+        else if (info.isDirectory()) await this.walk(child, false, name === '__pycache__');
+        else if (name.endsWith('.pyc')) throw new Error('Legacy bytecode outside an ordinary cache is unsupported: ' + child);
+        else await this.file(child);
       }
     } catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
   }
   private async file(path: string): Promise<void> {
+    path = resolve(path);
     const uri = pathToFileURL(resolve(path)).href; if (this.inputs.has(uri)) return;
     try {
+      await this.path(path);
       const before = await this.ordinary(path, false), bytes = await fs.readFile(path), after = await this.ordinary(path, false);
       if (this.fingerprint(before) !== this.fingerprint(after)) throw new Error('Native input changed during capture.');
+      const identity = this.identity(after), previous = this.identities.get(identity);
+      if (previous && previous !== path) throw new Error('Distinct native paths alias the same physical file: ' + previous);
+      this.identities.set(identity, path);
       this.inputs.set(uri, hash(bytes)); this.fingerprints.set(path, this.fingerprint(after));
     } catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
   }
   async verify(): Promise<void> {
-    for (const [path, names] of this.directories) try {
-      await this.ordinary(path, true);
-      if (JSON.stringify((await fs.readdir(path)).filter(name => name !== '__pycache__' && name !== 'site-packages').sort()) !== JSON.stringify(names)) throw new Error('Native directory entries changed.');
+    for (const [path, identity] of this.parents) try {
+      if (this.identity(await this.ordinary(path, true)) !== identity) throw new Error('Native input parent changed.');
+    } catch (error) { this.problems.push(outputProblem('native-input-changed', path, String(error))); }
+    for (const [path, directory] of this.directories) try {
+      if (this.fingerprint(await this.ordinary(path, true)) !== directory.stamp || JSON.stringify((await fs.readdir(path)).sort()) !== JSON.stringify(directory.names)) throw new Error('Native directory changed.');
+      if (directory.cache) for (const name of directory.names) await this.ordinary(join(path, name), false);
     } catch (error) { this.problems.push(outputProblem('native-input-changed', path, String(error))); }
     for (const [path, stamp] of this.fingerprints) try {
       const before = await this.ordinary(path, false), bytes = await fs.readFile(path), after = await this.ordinary(path, false);
