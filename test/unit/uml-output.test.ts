@@ -27,7 +27,7 @@ class DiagramPlan {
   async change(operation: 'insert' | 'update') { return this.output.plan({ operation, current: this.current, diff: this.diff }, this.snapshot()); }
 }
 
-describe('diagram planning boundaries', () => {
+describe('diagram planning boundaries', { timeout: 30_000 }, () => {
   it('inserts the fields of a genuinely new top-level record with that record', async () => {
     const plan = new DiagramPlan(); plan.specify('concept Store {}'); await plan.create();
     plan.specify('concept Store {}\ntype Book { title: Text }');

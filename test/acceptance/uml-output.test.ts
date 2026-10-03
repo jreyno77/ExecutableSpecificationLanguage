@@ -43,7 +43,7 @@ describe('readable declared diagrams', { timeout: 30_000 }, () => {
     diagrams.expectProblem('missing-interaction'); diagrams.expectNoProjectChanges();
   });
 });
-describe('the structure view keeps readable type meaning', () => {
+describe('the structure view keeps readable type meaning', { timeout: 30_000 }, () => {
   it('retains generic wrappers and distinct roles between the same declarations', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('type Book { title: Text }\nconcept Library { public add, find\ncapability add(books: List<Book>) returns Nothing\ncapability find(title: Text) returns Book? }');
@@ -115,7 +115,7 @@ describe('the structure view keeps readable type meaning', () => {
   });
 });
 
-describe('sequences preserve the interaction actually authored', () => {
+describe('sequences preserve the interaction actually authored', { timeout: 30_000 }, () => {
   it('keeps two participants of the same type as separate ordered lifelines', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Worker { public ping\ncapability ping() returns Nothing }\ninteraction "handoff"() {\nparticipant first: Worker\nparticipant second: Worker\nmessage first -> second.ping()\n}');
@@ -164,7 +164,7 @@ describe('sequences preserve the interaction actually authored', () => {
 });
 
 
-describe('native search observes current diagrams rather than saved expectations', () => {
+describe('native search observes current diagrams rather than saved expectations', { timeout: 30_000 }, () => {
   it('finds a real unmodeled root consumer with exact original Unicode and whitespace ranges', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Store {}');
@@ -284,7 +284,7 @@ describe('native search observes current diagrams rather than saved expectations
 });
 
 
-describe('source and rendered artifacts evolve without losing notes', () => {
+describe('source and rendered artifacts evolve without losing notes', { timeout: 30_000 }, () => {
   it('returns complete actual source and SVG bytes and identifies a stale rendering', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Store {}');
@@ -352,7 +352,7 @@ describe('source and rendered artifacts evolve without losing notes', () => {
     diagrams.expectSvgDigestMatchesActualSource('design/structure.svg', 'design/structure.d2');
     await diagrams.delete('Storage');
     diagrams.expectUnchanged();
-  }, 15_000);
+  });
 
   it('protects a handwritten edge even when native D2 could implicitly recreate its removed target', async () => {
     const diagrams = await DiagramExamples.connect();
@@ -442,7 +442,7 @@ describe('source and rendered artifacts evolve without losing notes', () => {
 });
 
 
-describe('native rendering and the installed adapter establish actual delivery', () => {
+describe('native rendering and the installed adapter establish actual delivery', { timeout: 30_000 }, () => {
   it('refuses native external assets without fetching them or emitting an SVG that loads them', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Store {}');

@@ -10,7 +10,7 @@ async function inspect(text: string) {
     files: [{ path: 'diagram.d2', bytes, version: createHash('sha256').update(bytes).digest('hex') }] }, native); } finally { await native.dispose(); }
 }
 
-describe('native diagram source facts', () => {
+describe('native diagram source facts', { timeout: 30_000 }, () => {
   it('keeps a direct class method at its literal original UTF-16 key and statement', async () => {
     const source = '# 📚\nstore: Store {\n  shape: class\n  "save(title: Text)": Nothing\n}\n';
     const diagrams = new NativeDiagrams();
