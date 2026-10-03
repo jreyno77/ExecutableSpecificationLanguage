@@ -19,7 +19,7 @@ export class TestOperationChecker implements TestOperationChecking {
       throw new QueryError('unexpected-kind', operation, 'Expected a test operation.');
     }
     const signature = this.declarations.callable(operation), result = fromFact(signature.result);
-    const checks: Check<unknown>[] = [result, { problems: signature.problems, deferred: [] }, ...signature.parameters.map(parameter => fromFact(parameter.type))];
+    const checks: Check<unknown>[] = [result, ...signature.failures.map(fromFact), { problems: signature.problems, deferred: [] }, ...signature.parameters.map(parameter => fromFact(parameter.type))];
     if (node.body.kind === 'unavailable') return mergeChecks(...checks, {
       problems: [], deferred: [{ reason: 'test-operation-body', origin: node.origin, requires: 'Supply the test operation body before checking it.' }],
     });

@@ -41,6 +41,10 @@ export class PackageExamples {
     expect(this.driver.report.writing).toEqual({ status: 'applied', problems: [], outcomes: ['applied'],
       before: [before], file: after, handwritten: 'handwritten', markerPresent: false });
   }
+  expectDomainFailures(operation: string, result: string, expected: { family: string; codes: string[]; payload: string[] }[]): void {
+    expect(this.driver.report.domainFailures).toEqual([{ operation, result, code: expected, documented: expected,
+      sameDeclaration: true, fieldsAgree: true, earlierUnchanged: true }]);
+  }
   expectCheckedCalls(names: string[]): void { expect(this.driver.report.operations).toEqual(names); }
   expectTestBody(name: string, calls: string[], statements: string[]): void {
     expect(this.driver.report.bodies).toEqual([{ name, generation: calls, documentation: calls, statements, earlierUnchanged: true }]);

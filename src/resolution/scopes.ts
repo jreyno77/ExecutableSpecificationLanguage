@@ -349,6 +349,7 @@ export class ScopeGraph {
         this.walk(source, source.node(p.name), scope);
         this.parameters(source, p.parameters, inside);
         if (p.returnType) this.walk(source, source.node(p.returnType), inside);
+        for (const failure of p.failures) this.walk(source, source.node(failure), inside);
         if (p.body.kind === 'available') this.walk(source, source.node(p.body.node), inside);
         for (const id of source.children(node.id)) if (this.ownership.get(id) === node.id) this.walk(source, source.node(id), inside);
         return;

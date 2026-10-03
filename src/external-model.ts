@@ -8,12 +8,12 @@ export interface ExternalField extends DefinitionName {
 }
 export interface ExternalParameter { readonly name: string; readonly type: TypeExpression; readonly hasDefault?: boolean }
 export type ExternalDefinition = DefinitionName & (
-  | ({ readonly kind: 'record-type'; readonly fields: readonly ExternalField[] } & TypeParameters)
+  | ({ readonly kind: 'record-type'; readonly error?: boolean; readonly fields: readonly ExternalField[] } & TypeParameters)
   | ({ readonly kind: 'alias-type'; readonly target: TypeExpression } & TypeParameters)
   | ({ readonly kind: 'opaque-type' } & TypeParameters)
   | { readonly kind: 'concept' | 'component' | 'class' | 'interface'; readonly members: readonly (ExternalDefinition | ExternalField)[];
       readonly public: readonly string[]; readonly construction?: readonly ExternalParameter[] }
-  | { readonly kind: 'function' | 'capability'; readonly parameters: readonly ExternalParameter[]; readonly result?: TypeExpression }
+  | { readonly kind: 'function' | 'capability'; readonly parameters: readonly ExternalParameter[]; readonly result?: TypeExpression; readonly failures?: readonly TypeExpression[] }
 );
 export type TypeExpression =
   | { readonly kind: 'named'; readonly path: readonly string[]; readonly module?: string; readonly arguments?: readonly TypeExpression[] }
@@ -131,8 +131,8 @@ class ExternalNodes {
         const shared = ['kind', 'name', 'local'];
         switch (kind) {
           case 'record-type': {
-            this.keys(data, path, [...shared, 'typeParameters', 'fields']);
-            return { kind: 'record-type-declaration', name, typeParameters: this.generics(data, path),
+            this.keys(data, path, [...shared, 'typeParameters', 'fields', 'error']);
+            return { kind: 'record-type-declaration', name, error: this.boolean(data.error, [...path, 'error']), typeParameters: this.generics(data, path),
               fields: this.collection(data.fields, [...path, 'fields'], (field, at) => this.definition(field, at, 'field')) };
           }
           case 'alias-type': {
@@ -155,10 +155,10 @@ class ExternalNodes {
             return { kind, name, members };
           }
           case 'function': case 'capability': {
-            this.keys(data, path, [...shared, 'parameters', 'result']);
+            this.keys(data, path, [...shared, 'parameters', 'result', 'failures']);
             const parameters = this.parameters(data.parameters, [...path, 'parameters']);
             const returnType = data.result === undefined ? undefined : this.type(data.result, [...path, 'result']);
-            return { kind, name, parameters, ...(returnType ? { returnType } : {}), body: { kind: 'unavailable' } };
+            return { kind, name, parameters, failures: this.typeList(data.failures === undefined ? [] : data.failures, [...path, 'failures']), ...(returnType ? { returnType } : {}), body: { kind: 'unavailable' } };
           }
           case 'field':
             this.keys(data, path, [...shared, 'type', 'hasDefault']);

@@ -57,7 +57,44 @@ try {
     return [{ name: check.name, generation: generation.map(id => inspection.read(id).name),
       documentation: documentation.map(id => inspection.read(id).name), statements: before, earlierUnchanged: true }];
   }) : [];
-  process.stdout.write(JSON.stringify({ operations, steps, bodies,
+  const domainFailures = specification ? [...specification.types.callableDeclarations()].flatMap(id => {
+    const types = specification.types, inspection = specification.inspection, signature = types.callable(id);
+    if (!signature.failures.length) return [];
+    const known = fact => { assert.equal(fact.status, 'known'); return fact.value; };
+    const label = type => {
+      const shape = types.describe(type);
+      assert.ok('declaration' in shape);
+      return inspection.read(shape.declaration).name;
+    };
+    const describe = type => {
+      const error = known(types.error(type));
+      return { family: inspection.read(error.declaration).name, codes: error.codes,
+        payload: error.fields.filter(field => inspection.read(field.declaration).name !== 'code')
+          .map(field => inspection.read(field.declaration).name + ': ' + label(known(field.type))) };
+    };
+    const code = signature.failures.map(fact => describe(known(fact)));
+    const earlier = JSON.stringify(code);
+    const documented = [...inspection.query('record-type-declaration')].filter(node => node.error).flatMap(node =>
+      signature.failures.filter(fact => known(types.error(known(fact))).declaration === node.id).map(fact => describe(known(fact))));
+    const sameDeclaration = signature.failures.every(fact => {
+      const error = known(types.error(known(fact)));
+      return [...inspection.query('record-type-declaration')].some(node => node.id === error.declaration && node.name === inspection.read(error.declaration).name);
+    });
+    const fieldsAgree = signature.failures.every(fact => {
+      const error = known(types.error(known(fact))), shape = known(types.fields(known(fact)));
+      assert.equal(shape.kind, 'available'); assert.equal(error.fields.length, shape.fields.length);
+      error.fields.forEach((field, index) => {
+        assert.equal(field.declaration, shape.fields[index].declaration);
+        assert.equal(known(field.type), known(shape.fields[index].type));
+      });
+      return true;
+    });
+    assert.equal(JSON.stringify(code), earlier);
+    const result = known(signature.result);
+    return [{ operation: inspection.read(id).name, result: result.kind === 'value' ? label(result.type) : result.kind,
+      code, documented, sameDeclaration, fieldsAgree, earlierUnchanged: JSON.stringify(code) === earlier }];
+  }) : [];
+  process.stdout.write(JSON.stringify({ operations, steps, bodies, domainFailures,
     packageUrl, accepted: result.value !== undefined, syntax: result.syntax, deferred: result.deferred,
     problems: result.problems.map(problem => ({ ...problem,
       text: problem.at.kind === 'source'

@@ -20,8 +20,9 @@ DependsOn: 'depends' 'on' references+=Reference<false> (',' references+=Referenc
 RequiresPackage: 'requires' 'package' locator=StringLiteral ('for' phase=('build' | 'runtime' | 'test'))?;
 Public: 'public' references+=SingleReference (',' references+=SingleReference)*;
 Construction: 'construction' Parameters;
-Capability infers Callable: kind='capability' name=Name Parameters ('returns' returnType=TypeExpression<false>)? body=ContractBody?;
-Function infers Callable: kind='function' name=Name Parameters ('returns' returnType=TypeExpression<false>)? body=ContractBody?;
+Capability infers Callable: kind='capability' name=Name Parameters ('returns' returnType=TypeExpression<false>)? Failures body=ContractBody?;
+Function infers Callable: kind='function' name=Name Parameters ('returns' returnType=TypeExpression<false>)? Failures body=ContractBody?;
+fragment Failures: ('fails' 'with' failures+=NamedType<false> (',' failures+=NamedType<false>)*)?;
 fragment Parameters:
     '(' NL* (parameters+=Parameter (NL* ',' NL* parameters+=Parameter)* (NL* ',')? NL*)? ')';
 Parameter: name=Name NL* ':' NL* declaredType=TypeExpression<true> (NL* '=' NL* defaultValue=Expression<true>)?;
@@ -33,7 +34,7 @@ Ensures: 'ensures' content=Expression<false>;
 Local: 'local' declaration=(Concept | TypeDeclaration | OpaqueTypeDeclaration);
 Extend: 'extend' target=Reference<false> ConceptBody;
 TypeDeclaration: RecordTypeDeclaration | AliasTypeDeclaration;
-RecordTypeDeclaration: 'type' name=Name TypeParameters? '{' NL* (fields+=Field (NL+ fields+=Field)* NL*)? '}';
+RecordTypeDeclaration: (error?='error')? 'type' name=Name TypeParameters? '{' NL* (fields+=Field (NL+ fields+=Field)* NL*)? '}';
 AliasTypeDeclaration: 'type' name=Name TypeParameters? '=' targetType=TypeExpression<false>;
 OpaqueTypeDeclaration: 'opaque' 'type' name=Name TypeParameters?;
 fragment TypeParameters:
@@ -57,13 +58,13 @@ InlineExamples infers Examples: 'examples' ExamplesBody;
 fragment ExamplesBody: '{' NL* (members+=ExampleMember (NL+ members+=ExampleMember)* NL*)? '}';
 ExampleMember: Fixture | Helper | Check | Scenario | Example;
 Fixture: 'fixture' name=Name ':' declaredType=TypeExpression<false> '=' value=Expression<false>;
-Helper infers Callable: kind=('setup' | 'action' | 'observation') name=Name Parameters ('returns' returnType=TypeExpression<false>)? body=HelperBody?;
+Helper infers Callable: kind=('setup' | 'action' | 'observation') name=Name Parameters ('returns' returnType=TypeExpression<false>)? Failures body=HelperBody?;
 HelperBody: '{' NL* (members+=HelperStatement (NL+ members+=HelperStatement)* NL*)? '}';
 HelperStatement: Let | Do | Return;
 Let: 'let' name=Name '=' value=Expression<false>;
 Do: 'do' expression=PostfixExpression<false>;
 Return: 'return' expression=Expression<false>;
-Check infers Callable: kind='check' name=Name Parameters body=CheckBody?;
+Check infers Callable: kind='check' name=Name Parameters Failures body=CheckBody?;
 CheckBody: '{' NL* (members+=CheckStatement (NL+ members+=CheckStatement)* NL*)? '}';
 CheckStatement: HelperStatement | Assert;
 Assert: 'assert' expression=Expression<false>;
@@ -105,7 +106,7 @@ GroupedExpression: '(' NL* inner=Expression<true> NL* ')';
 Reference<ml>: segments+=Name ((<ml> NL+)? '.' (<ml> NL+)? segments+=Name)*;
 SingleReference infers Reference: segments+=Name;
 interface Name { decoded: string; quoted: boolean; }
-Name returns Name: decoded=(ID | QUOTED_NAME);
+Name returns Name: decoded=(ID | QUOTED_NAME | 'error' | 'fails' | 'with');
 StringLiteral: value=STRING;
 NumberLiteral: token=NUMBER;
 BooleanLiteral: value?='true' | 'false';
