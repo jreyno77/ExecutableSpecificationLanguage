@@ -262,6 +262,33 @@ without traversal. The default scope excludes `.git` and `node_modules`; pass
 `{ excludeNames: [] }` to read those entries too. Root replacements require reconnecting.
 Connection and reading never write or initialize a project.
 
+## Compare specification changes
+
+```ts
+import { SpecificationIdentity } from 'executable-specification-language';
+
+const identities = new SpecificationIdentity(() => crypto.randomUUID());
+const current = identities.associate(specification, previousBaseline);
+if (current.value) {
+  const changes = identities.compare(previousBaseline, current.value);
+  const proposedBytes = identities.write(current.value.baseline);
+  console.log(changes, proposedBytes);
+}
+```
+
+`specification` is a successful Compiler result; omit `previousBaseline` on first
+use. `read({ sourceId, text })` validates saved baseline JSON. Exact addresses keep
+IDs; explicit `{ id, to: nodeId }` decisions establish renames/moves, and
+`{ retire: id }` retires a subtree except explicitly retained descendants. Ambiguous
+correspondence returns findings. Comparison reports coarse structural changes and
+affected declared references; current Inspection retains the full checked facts.
+
+`withArtifacts` records supplied exporter locators, including multiple fragments
+per ID. `reconcileRelationships` compares supplied uses and preserves their scope
+and coverage. These operations do not scan or edit projects. Persist proposed
+baseline bytes only with successful project application. Inspection `roots()` and
+`children(id)` expose complete containment alongside `query`, `read` and `parent`.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
