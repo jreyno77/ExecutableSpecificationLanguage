@@ -12,6 +12,7 @@ export class PackageExamples {
   installPackageWithoutDependency(name: string): Promise<void> { return this.driver.install({ withoutDependency: name }); }
   check(text: string): Promise<void> { return this.driver.check(text); }
   checkTypeScriptConsumer(): Promise<void> { return this.driver.checkTypeScript(); }
+  changeProjectFile(before: string, after: string): Promise<void> { return this.driver.writeProject(before, after); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
   expectInstalledPackageUsed(): void {
@@ -32,6 +33,11 @@ export class PackageExamples {
     expect(this.driver.report).toMatchObject({ accepted: true, syntax: [], problems: [], deferred: [] });
   }
   expectCapabilities(names: string[]): void { expect(this.driver.report.capabilities).toEqual(names); }
+  expectProjectFileChanged(before: string, after: string): void {
+    this.expectConsumerRan();
+    expect(this.driver.report.writing).toEqual({ status: 'applied', problems: [], outcomes: ['applied'],
+      before: [before], file: after, handwritten: 'handwritten', markerPresent: false });
+  }
   expectCheckedCalls(names: string[]): void { expect(this.driver.report.operations).toEqual(names); }
   expectCapturedSteps(expected: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[]): void {
     expect(this.driver.report.steps).toEqual(expected);
