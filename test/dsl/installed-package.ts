@@ -32,6 +32,10 @@ export class PackageExamples {
     expect(this.driver.report).toMatchObject({ accepted: true, syntax: [], problems: [], deferred: [] });
   }
   expectCapabilities(names: string[]): void { expect(this.driver.report.capabilities).toEqual(names); }
+  expectCheckedCalls(names: string[]): void { expect(this.driver.report.operations).toEqual(names); }
+  expectCapturedSteps(expected: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[]): void {
+    expect(this.driver.report.steps).toEqual(expected);
+  }
   expectConsumerFailedFor(missing: string): void {
     expect(this.driver.result.code).not.toBe(0);
     expect(this.driver.report.error?.code).toBe('ERR_MODULE_NOT_FOUND');
