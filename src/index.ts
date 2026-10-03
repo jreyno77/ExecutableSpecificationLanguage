@@ -30,3 +30,7 @@ export { InteractionChecker } from './interaction-checker.js';
 export type { InteractionChecking, Communication } from './interaction-checker.js';
 export { Compiler } from './compiler.js';
 export type { CompilationInput, Compilation, Specification } from './compiler.js';
+export { ConfigurationReader } from './configuration.js';
+export type { Configuration, OutputProfile, OptionProblem } from './configuration.js';
+export { DependencyPlanner } from './dependency-planner.js';
+export type { DependencyInventory } from './dependency-planner.js';
