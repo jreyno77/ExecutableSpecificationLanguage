@@ -9,7 +9,19 @@ export class KotlinDelivery {
   }
   static async dispose(): Promise<void> { for (const project of this.instances.splice(0)) await project.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
-  change(text: string, renames: Readonly<Record<string, string>> = {}): void { this.driver.source(text, renames); }
+  change(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void { this.driver.source(text, renames, retire); }
+  implement(name: string, body: string): Promise<void> { return this.driver.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', 'throw NotImplementedError("Not implemented: ' + name + '")', body); }
+  read(name: string): Promise<void> { return this.driver.read(name); }
+  expectReadText(text: string): void {
+    expect(this.driver.readResult.coverage.complete, JSON.stringify(this.driver.readResult.problems)).toBe(true);
+    expect(this.driver.readResult.artifacts.some(artifact => Buffer.from(artifact.file.bytes).toString('utf8').includes(text))).toBe(true);
+  }
+  async expectUpdateRefused(code: string): Promise<void> {
+    const before = await this.driver.capturedFiles();
+    await this.driver.update(); expect(this.driver.written.problems.map(problem => problem.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
+    expect(this.driver.files).toEqual(before);
+  }
+  expectFileMissingText(path: string, text: string): void { expect(this.driver.files.get(path)).not.toContain(text); }
   async updateContracts(): Promise<void> {
     await this.driver.update(); expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
   }
@@ -28,6 +40,10 @@ export class KotlinDelivery {
   expectSearchScope(paths: string[]): void {
     expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
     expect(this.driver.searchResult.incoming.coverage.scope.map(at => (at.value as { file: string }).file).sort()).toEqual([...paths].sort());
+  }
+  expectIncompleteSearch(code: string): void {
+    expect(this.driver.searchResult.incoming.coverage.complete).toBe(false);
+    expect(this.driver.searchResult.problems.map(problem => problem.code)).toContain(code);
   }
   async buildContracts(): Promise<void> {
     await this.driver.build(); expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');

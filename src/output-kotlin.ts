@@ -9,6 +9,9 @@ import { z } from 'zod';
 import { hash, literal } from './project-files.js';
 import { KotlinProject } from './kotlin-project.js';
 import { preserveKotlin } from './kotlin-preservation.js';
+import { nativeInputs } from './native-inputs.js';
+import { validDiff } from './output-contract.js';
+import { kotlinConfiguration } from './kotlin-configuration.js';
 
 const statePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
 const state = z.strictObject({ format: z.literal(1), options: z.string(), files: z.array(z.strictObject({
@@ -36,19 +39,29 @@ class KotlinOutput implements OutputAdapter {
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'A complete captured project is required.')], deferred: [] };
+    if (!nativeInputs(snapshot) || !snapshot.nativeInputs?.length) return { problems: [outputProblem('native-inputs-unavailable', '', 'Supply captured Kotlin native inputs before planning.')], deferred: [] };
+    const configuration = kotlinConfiguration(snapshot, 'expec.kotlin.json');
+    if (!configuration.value) return { problems: configuration.problems, deferred: [] };
     if (request.operation === 'delete') return { problems: [outputProblem('native-preservation-unavailable', '', 'Safe retirement is not available yet.')], deferred: [] };
     let previous: z.infer<typeof state> | undefined;
     try { previous = this.state(snapshot); } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin generation baseline is invalid.')], deferred: [] }; }
     if (previous && previous.options !== canonical(this.options)) return { problems: [outputProblem('output-options-changed', statePath, 'Kotlin placement/options require an explicit migration.')], deferred: [] };
+    const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
+    if (previous?.files.some(file => file.artifacts.some(item => !known.has(item.specId)))) return { problems: [outputProblem('unknown-output-identity', statePath, 'Current identity does not recognize earlier Kotlin output subjects.')], deferred: [] };
+    if ('diff' in request && !validDiff(request.diff, request.current)) return { problems: [outputProblem('inconsistent-diff', '', 'The supplied transition disagrees with current identity facts.')], deferred: [] };
+    if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts')))) return { problems: [outputProblem('not-addition-only', '', 'Use update when existing contracts change.')], deferred: [] };
     const declarations = new KotlinDeclarations(request.current, this.options, this.context), files = declarations.render();
     const problems = [...declarations.problems];
+    if (request.operation === 'create' && previous?.files.some(before => !files.some(file => file.id === before.id && file.path === before.path && file.text === before.generated))) return { problems: [outputProblem('use-update', statePath, 'Existing Kotlin contracts changed; use update.')], deferred: [] };
     for (const file of files) {
       const existing = snapshot.files.find(existing => existing.path === file.path), before = previous?.files.find(before => before.path === file.path);
-      if (request.operation === 'create' && existing && (!before || existing.version !== before.hash || existing.version !== hash(Buffer.from(file.text)))) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs proven contract preservation before changing it.'));
+      if (request.operation === 'create' && existing && !before) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs explicit ownership before changing it.'));
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
     }
     const next = { format: 1, options: canonical(this.options), files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
-    const preserved = request.operation === 'create' ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files);
+    if (problems.length) return { problems, deferred: [] };
+    const unchanged = previous && canonical(next) === canonical(previous);
+    const preserved = unchanged ? success([]) : request.operation === 'create' && !previous ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files);
     if (preserved?.problems.length) problems.push(...preserved.problems);
     const changes = [...(preserved?.value ?? files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));

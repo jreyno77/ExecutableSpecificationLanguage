@@ -31,8 +31,9 @@ fun main(args: Array<String>) {
         require(args.size == 1)
         val request = Json.parseToJsonElement(Files.readString(Path.of(args[0]))).jsonObject
         val directory = Path.of(request.getValue("directory").jsonPrimitive.content)
-        val libraries = request.getValue("classpath").jsonArray.map { Path.of(it.jsonPrimitive.content) }
-        lateinit var source: KaSourceModule
+        val classPath = request.getValue("classPath").jsonObject
+        val roots = request.getValue("sourceRoots").jsonObject
+        val sources = mutableListOf<KaSourceModule>()
         val session = buildStandaloneAnalysisAPISession(lifetime) {
             buildKtModuleProvider {
                 platform = JvmPlatforms.defaultJvmPlatform
@@ -41,21 +42,25 @@ fun main(args: Array<String>) {
                     platform = JvmPlatforms.defaultJvmPlatform
                     libraryName = "captured JDK"
                 })
-                val dependencies = libraries.mapIndexed { index, path -> addModule(buildKtLibraryModule {
+                val libraries = classPath.values.flatMap { it.jsonArray.map { Path.of(it.jsonPrimitive.content) } }.distinct()
+                val dependencies = libraries.mapIndexed { index, path -> path to addModule(buildKtLibraryModule {
                     addBinaryRoot(path)
                     platform = JvmPlatforms.defaultJvmPlatform
                     libraryName = "captured library $index"
-                }) }
-                source = addModule(buildKtSourceModule {
-                    addSourceRoot(directory)
-                    addRegularDependency(sdk)
-                    dependencies.forEach { addRegularDependency(it) }
-                    platform = JvmPlatforms.defaultJvmPlatform
-                    moduleName = "captured Kotlin project"
-                })
+                }) }.toMap()
+                for (scope in listOf("main", "test")) {
+                    sources.add(addModule(buildKtSourceModule {
+                        roots.getValue(scope).jsonArray.forEach { addSourceRoot(directory.resolve(it.jsonPrimitive.content)) }
+                        addRegularDependency(sdk)
+                        classPath.getValue(scope).jsonArray.forEach { addRegularDependency(dependencies.getValue(Path.of(it.jsonPrimitive.content))) }
+                        if (scope == "test") { addRegularDependency(sources.first()); addFriendDependency(sources.first()) }
+                        platform = JvmPlatforms.defaultJvmPlatform
+                        moduleName = "captured Kotlin $scope"
+                    }))
+                }
             }
         }
-        val files = session.modulesWithFiles.getValue(source).filterIsInstance<KtFile>()
+        val files = sources.flatMap { session.modulesWithFiles.getValue(it).filterIsInstance<KtFile>() }
         val originals = files.associateWith { NativeText(directory, it) }
         val declarations = mutableListOf<JsonElement>()
         val references = mutableListOf<JsonElement>()

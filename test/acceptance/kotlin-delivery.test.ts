@@ -147,4 +147,54 @@ class StoreGame {
     await project.runConsumer('fun main() { println(store.launch()) }');
     project.expectStdout('saved');
   }, 120_000);
+
+  it('reads the current handwritten implementation as complete raw content', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save\ncapability save(title: Text) returns Text }');
+    await project.buildContracts();
+    await project.implement('StoreGame.save', '// preserve this note\n    return "saved:$title"');
+    await project.read('StoreGame');
+    project.expectReadText('// preserve this note\n    return "saved:$title"');
+  }, 60_000);
+
+  it('retires an unchanged generated stub without touching implemented neighbors', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save, delete\ncapability save() returns Text\ncapability delete() returns Nothing }');
+    await project.buildContracts();
+    await project.implement('StoreGame.save', 'return "saved"');
+    project.change('class StoreGame { public save\ncapability save() returns Text }', {}, ['StoreGame.delete']);
+    await project.updateContracts();
+    project.expectFileMissingText('src/main/kotlin/store/StoreGame.kt', 'fun delete(');
+    project.expectFileContains('src/main/kotlin/store/StoreGame.kt', 'return "saved"');
+    await project.runConsumer('fun main() { println(store.StoreGame().save()) }');
+    project.expectStdout('saved');
+  }, 120_000);
+
+  it('refuses to retire handwritten behavior after its contract retires', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save\ncapability save() returns Text }');
+    await project.buildContracts();
+    await project.implement('StoreGame.save', 'return "saved"');
+    project.change('class StoreGame {}', {}, ['StoreGame.save']);
+    await project.expectUpdateRefused('handwritten-removal');
+  }, 120_000);
+
+  it('does not make test-only declarations available to production code', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame {}');
+    await project.buildContracts();
+    await project.file('src/test/kotlin/store/TestOnly.kt', 'package store\nclass TestOnly');
+    await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = TestOnly()');
+    await project.search('StoreGame');
+    project.expectIncompleteSearch('kotlin-UNRESOLVED_REFERENCE');
+  }, 60_000);
+
+  it('lets a native test use the production declarations through its real module dependency', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame {}');
+    await project.buildContracts();
+    await project.file('src/test/kotlin/store/Example.kt', 'package store\nfun example() = StoreGame()');
+    await project.search('StoreGame');
+    project.expectIncomingCall('src/test/kotlin/store/Example.kt', 30, 39);
+  }, 60_000);
 });

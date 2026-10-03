@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
-import { KotlinContext } from '../../src/index.js';
+import { KotlinContext, KotlinProject } from '../../src/index.js';
 
 const instances: KotlinDeliveryDriver[] = [];
 afterEach(async () => { for (const driver of instances.splice(0)) await driver.dispose(); });
@@ -50,4 +50,19 @@ describe('captured Kotlin prerequisites', () => {
     expect(snapshot.complete).toBe(false);
     expect(snapshot.problems).toContainEqual(expect.objectContaining({ code: 'excluded-kotlin-input', message: expect.stringContaining('src/main/kotlin/store/build') }));
   }, 30_000);
+
+  it('queries supplied source bytes without revisiting the live source directories', async () => {
+    const { context, driver } = await captureFixture();
+    await driver.file('src/main/kotlin/store/Book.kt', 'package store\nclass Book');
+    const captured = await context.readSnapshot();
+    expect(captured.problems).toEqual([]);
+    const root = join(driver.root, 'src/main/kotlin');
+    await fs.rename(root, join(driver.root, 'src/main/retained'));
+    await fs.writeFile(root, 'The live project has changed since this capture.');
+    const result = await new KotlinProject({ outputId: 'kotlin' }, [{ specId: 'book', locator: { outputId: 'kotlin', format: 'kotlin-symbol-1',
+      value: { file: 'src/main/kotlin/store/Book.kt', declaration: [{ kind: 'class', name: 'Book' }] } } }]).search('book', captured);
+    expect(result.problems).toEqual([]);
+    expect(result.incoming.coverage.complete).toBe(true);
+    expect(result.definitions[0]?.value).toEqual({ file: 'src/main/kotlin/store/Book.kt', start: 20, end: 24, role: 'definition' });
+  }, 60_000);
 });

@@ -45,6 +45,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
     scratch = await fs.mkdtemp(join(temporary, 'expec-kotlin-query-')); scratchIdentity = await fs.lstat(scratch, { bigint: true });
     const source = join(scratch, 'sources'); await fs.mkdir(source);
     const roots = [...config.sourceRoots.main, ...config.sourceRoots.test];
+    for (const root of roots) await fs.mkdir(join(source, root), { recursive: true });
     for (const file of snapshot.files.filter(file => roots.some(root => file.path.startsWith(root + '/')))) {
       if (file.path.endsWith('.java')) { finding('unsupported-native-input', 'Java source consumers are outside the Kotlin-only query profile.', file.path); continue; }
       if (!file.path.endsWith('.kt')) continue;
@@ -53,7 +54,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
       const path = join(source, file.path); await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, file.bytes);
     }
     if (!problems.length) {
-      const input = join(scratch, 'request.json'); await fs.writeFile(input, JSON.stringify({ directory: source, classpath: [...new Set([...config.classPath.main, ...config.classPath.test])] }));
+      const input = join(scratch, 'request.json'); await fs.writeFile(input, JSON.stringify({ directory: source, classPath: config.classPath, sourceRoots: config.sourceRoots }));
       const libraries = join(kotlinResources, 'lib'), jars = (await fs.readdir(libraries)).filter(name => name.endsWith('.jar')).sort().map(name => join(libraries, name));
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'JAVA_OPTS', 'CLASSPATH'].includes(key.toUpperCase())));
       const observed = await promisify(execFile)(join(config.javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),

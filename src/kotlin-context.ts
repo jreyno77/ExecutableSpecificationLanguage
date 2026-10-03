@@ -23,7 +23,7 @@ export class KotlinContext implements ProjectContext {
     const problems = [...snapshot.problems, ...configured.problems];
     let inputs: NonNullable<ProjectSnapshot['nativeInputs']> = [];
     if (configured.value && !problems.length) {
-      const native = await captureKotlinInputs(snapshot, configured.value); problems.push(...native.problems); inputs = native.inputs;
+      const native = await captureKotlinInputs(snapshot, configured.value, true); problems.push(...native.problems); inputs = native.inputs;
       const fresh = await this.project.readSnapshot();
       if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(problem(snapshot.root, 'stale-project', '', 'Project inputs changed during Kotlin capture.'));
     }
@@ -32,7 +32,7 @@ export class KotlinContext implements ProjectContext {
 }
 
 /** Native file evidence is small; JDK and library bytes stay in their explicit installed locations. */
-export async function captureKotlinInputs(snapshot: ProjectSnapshot, config: KotlinConfiguration): Promise<{ inputs: NonNullable<ProjectSnapshot['nativeInputs']>; problems: Diagnostic[] }> {
+export async function captureKotlinInputs(snapshot: ProjectSnapshot, config: KotlinConfiguration, verifySourceRoots = false): Promise<{ inputs: NonNullable<ProjectSnapshot['nativeInputs']>; problems: Diagnostic[] }> {
   const inputs = new Map<string, string>(), identities = new Map<string, string>(), problems: Diagnostic[] = [];
   const directories = new Map<string, { info: BigIntStats; names: string[] }>();
   const captured = new Map<string, BigIntStats>();
@@ -70,7 +70,7 @@ export async function captureKotlinInputs(snapshot: ProjectSnapshot, config: Kot
     for (const directory of ['bin', 'lib', 'conf']) await tree(join(config.javaHome, directory));
     for (const path of [...config.classPath.main, ...config.classPath.test]) { if (!path.endsWith('.jar')) throw new Error('The native classpath profile accepts ordinary JAR files.'); await file(path); }
     await tree(kotlinResources);
-    for (const root of [...config.sourceRoots.main, ...config.sourceRoots.test]) {
+    for (const root of verifySourceRoots ? [...config.sourceRoots.main, ...config.sourceRoots.test] : []) {
       let path = snapshot.root.path;
       for (const segment of root.split('/')) {
         path = join(path, segment);

@@ -4,7 +4,7 @@ import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'no
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer, SpecificationIdentity,
-  type IdentifiedSpecification, type Output, type OutputWrite, type ProjectContext, type ProjectSearch, type SpecDiff } from '../../src/index.js';
+  type IdentifiedSpecification, type Output, type OutputWrite, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff } from '../../src/index.js';
 
 /** Reaches the connected project and the actual pinned Kotlin compiler/JVM. */
 export class KotlinDeliveryDriver {
@@ -20,6 +20,7 @@ export class KotlinDeliveryDriver {
   written!: OutputWrite;
   output!: Output;
   searchResult!: ProjectSearch;
+  readResult!: ProjectRead;
   files = new Map<string, string>();
   consumer = '';
   compiled = { code: -1, stdout: '', stderr: '' };
@@ -50,7 +51,7 @@ export class KotlinDeliveryDriver {
       classPath: { main: [library], test: [library] }, packages: [], inputs }));
     this.context = new KotlinContext(this.context);
   }
-  source(text: string, renames: Readonly<Record<string, string>> = {}): void {
+  source(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
     const read = new LangiumReader().read({ sourceId: 'main.expec', text });
     if (read.status !== 'accepted') throw new Error(JSON.stringify(read));
     const result = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('main', read.document), { modules: [], packages: [] }) });
@@ -58,9 +59,9 @@ export class KotlinDeliveryDriver {
     const previous = this.current;
     const proposed = this.identity.associate(result.value);
     if (!proposed.value) throw new Error(JSON.stringify(proposed));
-    const identified = previous ? this.identity.associate(result.value, previous.baseline, Object.entries(renames).map(([before, after]) => ({
+    const identified = previous ? this.identity.associate(result.value, previous.baseline, [...Object.entries(renames).map(([before, after]) => ({
       id: this.subject(previous, before), to: proposed.value!.node(this.subject(proposed.value!, after)),
-    }))) : proposed;
+    })), ...retire.map(name => ({ retire: this.subject(previous, name) }))]) : proposed;
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
     if (previous) { const compared = this.identity.compare(previous.baseline, this.current); if (!compared.value) throw new Error(JSON.stringify(compared)); this.diff = compared.value; }
   }
@@ -71,11 +72,18 @@ export class KotlinDeliveryDriver {
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
   async file(path: string, text: string): Promise<void> { await fs.mkdir(dirname(join(this.root, path)), { recursive: true }); await fs.writeFile(join(this.root, path), text); }
+  async replace(path: string, before: string, after: string): Promise<void> {
+    const text = await fs.readFile(join(this.root, path), 'utf8');
+    if (!text.includes(before)) throw new Error('Fixture replacement did not match: ' + before);
+    await this.file(path, text.replace(before, after));
+  }
+  async capturedFiles(): Promise<Map<string, string>> { return new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')])); }
   async update(): Promise<void> {
     this.written = await this.output.update(this.diff, this.current);
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
+  async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }
   private subject(current: IdentifiedSpecification, name: string): string {
     const path = (id: string): string => { const record = current.baseline.elements.find(record => record.id === id)!; return (record.address.owner ? path(record.address.owner) + '.' : '') + record.address.name; };
     const subject = current.baseline.elements.find(record => path(record.id) === name);

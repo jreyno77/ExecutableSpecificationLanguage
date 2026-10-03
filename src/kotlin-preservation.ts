@@ -41,7 +41,16 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     const old = oldNodes.get(address), node = currentNodes.get(address), next = newNodes.get(newSymbols.get(id) ?? '');
     if (!old || !node) { refuse(old?.file ?? '', 'A previously generated declaration is unavailable or changed identity.'); continue; }
     currentById.set(id, node);
-    if (!next) { refuse(node.file, 'Declaration retirement requires proven unchanged generated ownership.'); continue; }
+    if (!next) {
+      if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)) {
+        problems.push(problem(snapshot.root, 'handwritten-removal', node.file, 'The retired declaration contains handwritten changes.')); continue;
+      }
+      if (current.value.references.some(reference => reference.targetFile === node.file && same(reference.target, node.selector)
+        && !(reference.file === node.file && reference.range.start >= node.range.start && reference.range.end <= node.range.end))) {
+        refuse(node.file, 'A current native caller still uses the retired declaration.'); continue;
+      }
+      edit(node.file, node.range, ''); continue;
+    }
     if (old.kind !== next.kind) { refuse(node.file, 'Native declaration category cannot change over an implementation.'); continue; }
     if (old.name !== next.name) {
       edit(node.file, node.nameRange, next.name);
