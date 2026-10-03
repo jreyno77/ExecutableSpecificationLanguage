@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const text = await readFile(process.argv[2], 'utf8');
@@ -9,7 +10,25 @@ try {
     source: { sourceId: 'consumer.expec', text }, locator: 'consumer',
     dependencies: { modules: [], packages: [] },
   });
-  process.stdout.write(JSON.stringify({
+  const specification = result.value;
+  const operations = specification ? [...specification.inspection.query('call-expression')].map(call => {
+    const selected = specification.call(call.id);
+    assert.deepEqual(selected.problems, []); assert.deepEqual(selected.deferred, []); assert.ok(selected.value);
+    return specification.inspection.read(selected.value).name;
+  }) : [];
+  const steps = specification ? [...specification.inspection.query('scenario')].flatMap(scenario => scenario.steps.map(step => {
+    const checked = specification.step(step.id);
+    assert.deepEqual(checked.problems, []); assert.deepEqual(checked.deferred, []); assert.ok(checked.value);
+    const capture = value => {
+      const shape = specification.types.describe(value.type);
+      assert.ok('declaration' in shape);
+      return { name: specification.inspection.read(value.name, 'name').decoded,
+        type: specification.inspection.read(shape.declaration).name };
+    };
+    return { available: checked.value.available.map(capture),
+      ...(checked.value.capture ? { capture: capture(checked.value.capture) } : {}) };
+  })) : [];
+  process.stdout.write(JSON.stringify({ operations, steps,
     packageUrl, accepted: result.value !== undefined, syntax: result.syntax, deferred: result.deferred,
     problems: result.problems.map(problem => ({ ...problem,
       text: problem.at.kind === 'source'

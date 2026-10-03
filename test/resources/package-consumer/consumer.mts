@@ -2,6 +2,7 @@ import {
   Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
+  type NodeId, type ScenarioCapture, type ScenarioStep,
 } from 'executable-specification-language';
 
 const input: CompilationInput = {
@@ -26,6 +27,15 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
   return result;
 }
 
+export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
+  return [...specification.inspection.query('call-expression')].map(call => specification.call(call.id));
+}
+export function capturedValues(specification: Specification): readonly ScenarioCapture[] {
+  return [...specification.inspection.query('when')].flatMap(step => {
+    const result: Check<ScenarioStep> = specification.step(step.id);
+    return result.value ? [...result.value.available, ...result.value.capture ? [result.value.capture] : []] : [];
+  });
+}
 let issued = 0;
 const identities = new SpecificationIdentity(() => 'consumer-' + ++issued);
 const identified = compilation.value ? identities.associate(compilation.value) : undefined;
