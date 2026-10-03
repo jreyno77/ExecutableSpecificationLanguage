@@ -49,7 +49,11 @@ if (result.value) {
 ```
 
 `value` exists only when static checking completes without findings. It shares
-the existing Inspection, type catalog and `message(id)` query. Reachable source
+the existing Inspection, type catalog and `message(id)` query. `call(id)` returns
+the checked operation identity; `step(id)` returns preceding scenario captures
+and the value introduced by that step. Capture names are existing source handles
+and their TypeIds belong to the same catalog. These queries retain successful
+checking results without executing or rechecking source. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
 Syntax errors, semantic errors and missing analysis remain separate. Extensions
@@ -282,6 +286,33 @@ reports detected gaps, not a whole-project transaction. Internal links are repor
 without traversal. The default scope excludes `.git` and `node_modules`; pass
 `{ excludeNames: [] }` to read those entries too. Root replacements require reconnecting.
 Connection and reading never write or initialize a project.
+
+## Apply planned file changes
+
+```ts
+import { FileProjectWriter } from 'executable-specification-language';
+
+const basedOn = await context.readSnapshot();
+const result = await new FileProjectWriter(context).apply({
+  basedOn,
+  changes: [{ kind: 'write', path: 'src/book.ts',
+    bytes: new TextEncoder().encode('export interface Book {}\n') }],
+});
+console.log(result.status, result.outcomes, result.problems);
+```
+
+The writer applies complete file bytes, removals, or moves with optional replacement
+bytes. It guards the whole observed scope, coordinates participating processes with
+`.expec/write.lock`, and returns before/after observations when work stops partway
+through. A stopped result can contain applied changes. Recover by inspecting its
+receipt, reading a fresh snapshot, and explicitly proposing repairs.
+
+Application is optimistic: it cannot atomically exclude arbitrary editor changes.
+It rejects links, unsupported path aliases, overlapping operations and affected
+hard links. Existing ordinary permissions are preserved; snapshots do not capture
+all filesystem metadata. It never steals an existing marker or automatically rolls
+back partial writes. A process killed during application may leave a marker requiring
+inspection. Code ownership and preservation decisions belong to the caller's planner.
 
 ## Compare specification changes
 

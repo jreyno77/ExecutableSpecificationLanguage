@@ -19,6 +19,10 @@ interface ConsumerReport {
   problems?: { code: string; text?: string }[];
   capabilities?: string[];
   loaded?: { accepted: boolean; captures: number; capabilities: string[]; problems: unknown[]; syntax: unknown[] };
+  writing?: { status: string; problems: unknown[]; outcomes: string[]; before: string[];
+    file: string; handwritten: string; markerPresent: boolean };
+  operations?: string[];
+  steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
 }
 
@@ -73,6 +77,15 @@ export class PackageDriver {
     const source = join(this.consumer, 'source.expec');
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
+    await this.readReport();
+  }
+  async writeProject(before: string, after: string): Promise<void> {
+    await cp(join(resources, 'writer.mjs'), join(this.consumer, 'writer.mjs'));
+    await writeFile(join(this.consumer, 'write.json'), JSON.stringify({ before, after }));
+    this.result = await run(process.execPath, ['writer.mjs', 'write.json'], this.consumer);
+    await this.readReport();
+  }
+  private async readReport(): Promise<void> {
     try { this.report = JSON.parse(this.result.stdout); }
     catch { throw new Error(`Consumer did not return observations. ${output(this.result)}`); }
     if (this.report.packageUrl) {

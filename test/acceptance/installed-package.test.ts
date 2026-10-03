@@ -18,11 +18,21 @@ describe('Installed package consumers', () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
     await consumer.checkTypeScriptConsumer();
-    await consumer.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }');
+    await consumer.check(`concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }
+function quantity() returns Number
+examples { scenario "count" {
+  when result = quantity()
+  then result == 1
+} }`);
     consumer.expectDeclarationsAccepted();
     consumer.expectSpecificationAccepted();
     consumer.expectCapabilities(['saveGame']);
     consumer.expectSourceLoaded(['saveGame']);
+    consumer.expectCheckedCalls(['quantity']);
+    consumer.expectCapturedSteps([
+      { available: [], capture: { name: 'result', type: 'Number' } },
+      { available: [{ name: 'result', type: 'Number' }] },
+    ]);
   });
 
   it('detects a missing implementation file in a packed artifact', async () => {
@@ -30,6 +40,15 @@ describe('Installed package consumers', () => {
     await consumer.installPackageWithoutFile('dist/compiler.js');
     await consumer.runPublicApiCheck();
     consumer.expectConsumerFailedFor('compiler.js');
+  });
+
+  it('applies a guarded file change through the installed public writer', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.changeProjectFile('original book', 'updated book');
+
+    consumer.expectInstalledPackageUsed();
+    consumer.expectProjectFileChanged('original book', 'updated book');
   });
 
   it('detects an undeclared runtime dependency in a packed artifact', async () => {

@@ -27,7 +27,7 @@ export type { Check, Diagnostic, Requirement } from './checking.js';
 export { FixtureChecker } from './fixture-checker.js';
 export type { FixtureChecking } from './fixture-checker.js';
 export { ScenarioChecker } from './scenario-checker.js';
-export type { ScenarioChecking } from './scenario-checker.js';
+export type { ScenarioChecking, ScenarioCapture, ScenarioStep } from './scenario-checker.js';
 export { InteractionChecker } from './interaction-checker.js';
 export type { InteractionChecking, Communication } from './interaction-checker.js';
 export { Compiler } from './compiler.js';
@@ -41,3 +41,4 @@ export { SpecificationIdentity, reconcileRelationships } from './specification-i
 export type { SpecIdentifier, JsonValue, ArtifactLocator, ArtifactAssociation, IdentityRecord, IdentityBaseline, IdentityDecision, IdentifiedSpecification, SpecDiff, ObservedRelationship, RelationshipObservation, Reconciliation } from './specification-identity.js';
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
 export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad } from './source-loader.js';
+export * from './project-writer.js';
