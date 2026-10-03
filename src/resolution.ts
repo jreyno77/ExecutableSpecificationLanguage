@@ -5,6 +5,8 @@ import { PackageAvailability, type DependencyPackage } from './resolution/packag
 import { ScopeGraph } from './resolution/scopes.js';
 import { ReferenceResolver, type DeferredReference } from './resolution/reference-resolver.js';
 import type { ResolutionProblem } from './resolution/problem.js';
+import { Composition } from './resolution/composition.js';
+import type { Scope } from './resolution/scopes.js';
 
 export interface ResolutionDependencies {
   readonly modules: readonly ModuleModel[];
@@ -29,29 +31,35 @@ export class Resolver {
 /** Shared linking pipeline for ordinary resolution and explicitly composed modules. */
 export function resolveModules(modules: Modules, suppliedPackages: readonly DependencyPackage[]): Resolution {
     const builtins = builtinModel();
-    const scopes = new ScopeGraph(modules.reached, builtins, modules);
+    const composition = modules.composing ? new Composition(modules, builtins) : undefined;
+    const sources = composition?.reached ?? modules.reached;
+    const primitives = composition?.model ?? builtins;
+    const scopes = new ScopeGraph(sources, primitives, modules, composition?.owners);
     const packages = new PackageAvailability(suppliedPackages);
     const bindings = new Map<NodeId, ReferenceResolution>(scopes.imports);
-    const problems = [...modules.problems, ...scopes.problems, ...packages.problems];
+    for (const [id, outcome] of composition?.bindings ?? []) if (!composition?.omitted.has(id)) bindings.set(id, outcome);
+    const problems = [...modules.problems, ...composition?.problems ?? [], ...scopes.problems, ...packages.problems];
     const deferred: DeferredReference[] = [];
-    for (const module of modules.reached) {
-      new ReferenceResolver(module, scopes, packages, bindings, problems, deferred).analyze();
+    const contracts = { constructions: new Map<Scope, ModelNode>(), publicNames: new Map<Scope, Map<string, ModelNode>>() };
+    for (const module of sources) {
+      new ReferenceResolver(module, scopes, packages, bindings, problems, deferred, contracts).analyze();
     }
 
-    const primitiveNodes = builtins.nodes('builtin-type').flatMap(node => [node, builtins.node(node.name)]);
-    const [main, ...reached] = modules.reached;
-    const roots = [...main!.roots.map(node => node.id), ...builtins.roots(),
+    const primitiveNodes = primitives.nodes('builtin-type').flatMap(node => [node, primitives.node(node.name)]);
+    const [main, ...reached] = sources;
+    const roots = composition?.model.roots() ?? [...main!.roots.map(node => node.id), ...builtins.roots(),
       ...reached.flatMap(module => module.roots.map(node => node.id))];
     const nodes = [...main!.nodes, ...primitiveNodes, ...reached.flatMap(module => module.nodes)];
     for (const node of nodes) {
       if (node.kind === 'reference' && !bindings.has(node.id)) throw new Error('An analyzed reference is missing its resolution outcome.');
     }
-    const containment = new Map(modules.reached.flatMap(module => module.nodes.map(node =>
+    const containment = new Map(sources.flatMap(module => module.nodes.map(node =>
       [node.id, [...module.children(node.id)]] as const)));
-    for (const node of primitiveNodes) containment.set(node.id, [...builtins.children(node.id)]);
+    for (const node of primitiveNodes) containment.set(node.id, [...primitives.children(node.id)]);
     const captured = new WeakMap<object, unknown>();
     const outcomes = new Map([...bindings].map(([id, outcome]) => [id, capture(outcome, captured)]));
-    return { entry: main!.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes, modules.unanalyzed, containment),
+    return { entry: main!.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes,
+      new Set([...modules.unanalyzed, ...composition?.omitted ?? []]), containment),
       problems: capture([...new Set(problems)], captured), deferred: capture(deferred, captured) };
 }
 
