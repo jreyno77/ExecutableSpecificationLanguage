@@ -5,6 +5,20 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('renders and searches installed diagrams using only captured input and immutable package resources', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.diagramProject('concept Store { public save\ncapability save() returns Nothing }');
+    consumer.expectInstalledPackageUsed();
+    consumer.expectInstalledDiagramFiles(['design/structure.d2', 'design/structure.svg']);
+    consumer.expectInstalledNativeSignature('Store', 'save() → Nothing');
+    consumer.expectInstalledSvgLabel('Store');
+    consumer.expectInstalledDiagramCoverage();
+    consumer.expectOnlyInstalledDiagramResourcesUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
