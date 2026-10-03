@@ -400,6 +400,28 @@ regions, preserving exact prefix/notes bytes. Renames carry notes with their pag
 with handwritten content is refused. Actual edited files remain readable and searchable.
 Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
 
+Register `typescriptOutput` to generate native TypeScript contracts and throwing
+implementation stubs. Pass `{ directory: 'src', concepts: 'class' }` as options;
+use `concepts: 'interface'` for signatures. Optional `names` and `imports` mappings
+make quoted names and external native dependencies explicit. Native identifiers
+currently use ASCII letters/digits, `_`, `$` and exclude
+reserved/contextual names. Unsupported spellings require explicit mapping; quoted
+field/method properties remain readable. Names are never silently transliterated.
+`Nothing` returns `void`; an unspecified result remains documented as `unknown`. Defaults and prose
+remain implementation obligations. Number uses JavaScript binary64, with lossy
+authored numeric literals refused. Error records retain their data and receive
+an `Error` companion; normal return types remain unchanged.
+
+For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
+`Outputs.open` argument, using successful `SourceLoader` captures' model locators.
+The entry is always included. Other source modules are generated only when in
+that captured set; provider dependencies require native mappings. This keeps
+documentation visibility separate from authority to generate implementation code.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve untouched
+files and refuse handwritten edits to files they would replace or remove. The
+private output state retains only last-generated text for later comparison;
+preservation-aware editing of handwritten bodies is a subsequent task.
+
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
 changes without project mutations. Hosts can combine disjoint plans from one snapshot, then

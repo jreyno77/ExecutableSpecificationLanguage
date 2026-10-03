@@ -1,5 +1,5 @@
 import {
-  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -83,4 +83,10 @@ export function documentationProfiles() {
   const outputs = new Outputs();
   outputs.register(markdownOutput);
   return outputs.profiles;
+}
+
+export function openTypeScriptOutput(project: ProjectContext, context: import('executable-specification-language').OutputContext) {
+  const outputs = new Outputs();
+  outputs.register(typescriptOutput);
+  return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
 }

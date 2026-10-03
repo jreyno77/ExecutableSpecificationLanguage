@@ -5,6 +5,22 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('generates a natively checked callable scaffold through the installed TypeScript output', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.generateTypeScript('function save(title: Text) returns Nothing',
+      'import { save } from "./src/save.js"; save("Dune");',
+      'import { save } from "./src/save.js"; save(64);',
+      'function save(title: Text, copies: Number) returns Nothing');
+
+    consumer.expectInstalledTypeScriptScaffold('Not implemented: save');
+    consumer.expectInvalidNativeArgument('64');
+    consumer.expectHandwrittenNativeFileProtected();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('renders and searches installed diagrams using only captured input and immutable package resources', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
