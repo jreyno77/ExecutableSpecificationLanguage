@@ -1,3 +1,4 @@
+import type { IdentifiedSpecification, SpecDiff } from './specification-identity.js';
 import type { Check, Diagnostic } from './checking.js';
 import { canonical, identifier, locatorSchema } from './identity-baseline.js';
 import type { OutputPlan } from './output.js';
@@ -62,4 +63,23 @@ export function checkSearch(result: ProjectSearch, snapshot: ProjectSnapshot, id
     for (const use of observation.uses) { locator(use.at, id); require(use.target && ['specified', 'project'].includes(use.target.kind) && typeof use.target.id === 'string' && use.target.id.trim(), 'Malformed relationship target.'); }
     for (const unresolved of observation.unresolved) { locator(unresolved.at, id); require(typeof unresolved.reason === 'string', 'Malformed unresolved observation.'); }
   }
+}
+export function validDiff(diff: SpecDiff, current: IdentifiedSpecification): boolean {
+  const known = new Set([...current.baseline.elements.map(record => record.id), ...current.baseline.retired]);
+  if (!diff || !Array.isArray(diff.changes) || !Array.isArray(diff.affected) || typeof diff.contextChanged !== 'boolean'
+    || new Set(diff.changes.map(change => change.id)).size !== diff.changes.length || new Set(diff.affected).size !== diff.affected.length
+    || diff.affected.some(id => !identifier.safeParse(id).success || !known.has(id))) return false;
+  for (const change of diff.changes) {
+    const { before, after, kinds } = change, record = current.baseline.elements.find(record => record.id === change.id);
+    if (!identifier.safeParse(change.id).success || !known.has(change.id) || !before && !after || !Array.isArray(kinds) || !kinds.length || new Set(kinds).size !== kinds.length
+      || kinds.some(kind => !['add', 'remove', 'rename', 'move', 'update', 'artifacts'].includes(kind))
+      || before && before.id !== change.id || after && (after.id !== change.id || canonical(after) !== canonical(record))) return false;
+    const expected = [...(!before && after ? ['add'] : []), ...(before && !after ? ['remove'] : []),
+      ...(before && after && before.address.name !== after.address.name ? ['rename'] : []),
+      ...(before && after && (before.address.module !== after.address.module || before.address.owner !== after.address.owner) ? ['move'] : []),
+      ...(before && after && (before.structure !== after.structure || before.address.kind !== after.address.kind) ? ['update'] : [])];
+    if (canonical(kinds.filter(kind => kind !== 'artifacts').sort()) !== canonical(expected.sort())
+      || before && !after && (record || !current.baseline.retired.includes(change.id))) return false;
+  }
+  return true;
 }

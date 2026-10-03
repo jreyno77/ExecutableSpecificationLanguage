@@ -1,5 +1,5 @@
 import {
-  Compiler, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, Outputs, markdownOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
@@ -65,4 +65,10 @@ export async function loadSources(manifestLocation: string, configuration: Confi
 
 export function describeFailures(specification: Specification, operation: NodeId): readonly import('executable-specification-language').TypeFact<import('executable-specification-language').ErrorDescription>[] {
   return specification.types.callable(operation).failures.map(fact => fact.status === 'known' ? specification.types.error(fact.value) : fact);
+}
+
+export function documentationProfiles() {
+  const outputs = new Outputs();
+  outputs.register(markdownOutput);
+  return outputs.profiles;
 }
