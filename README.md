@@ -563,6 +563,30 @@ explicitly unsupported. Definitions and uses carry original UTF-16 offsets and f
 versions. Dynamic lookup, native diagnostics and missing inputs make coverage
 incomplete. The reader neither reconnects files nor authorizes or performs writes.
 
+## Initialize a chosen project
+
+```ts
+import { ProjectInitializer } from 'executable-specification-language';
+
+const initializer = new ProjectInitializer(manifestLocation, configuration);
+const preview = await initializer.prepare({ root: '../store-game', target: 'typescript' });
+if (preview.value) {
+  // Present the destination and exact file bytes before accepting.
+  const result = await initializer.apply(preview.value, authorAccepted);
+  if (result.value) useProject(result.value.context, result.value.configuration);
+}
+```
+
+The TypeScript starter contains package.json, tsconfig.json, src/index.ts and
+.gitignore. It requires an absent leaf below an existing parent or an empty ordinary
+directory. Declining creates nothing; changed destinations stop application.
+Initialization neither installs dependencies nor generates contracts/tests or runs
+the build. The host explicitly saves the returned configuration when appropriate.
+The returned configuration declares the pinned TypeScript 5.9.3 build requirement.
+Pass its packages to `NpmDependencies.install` explicitly; then `npm run build`
+compiles the starter. Conflicting compiler requirements are rejected before creation.
+A stopped result preserves any created root and actual writer receipt; inspect it
+before recovery. Accepted previews are single-use, including failed attempts.
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
@@ -586,6 +610,6 @@ This separate suite runs in Windows/Linux CI and may need registry access; insta
 scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
 and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
-`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. npm publication, full type/behavior validation and project generation remain subsequent work.
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. The connected-build CLI, additional language targets and npm publication remain subsequent work.
 
 Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).

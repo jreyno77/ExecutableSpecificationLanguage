@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
+import type { Check, InitializationPlan, InitializationResult, OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
 import type { PackageRead } from '../../src/index.js';
 import { NativePackageDriver, npmCommand } from './native-packages.js';
 
@@ -23,6 +23,14 @@ interface ConsumerReport {
     receipt: import('../../src/index.js').WriteResult; notesExist: boolean;
     capturedText: string; originalText: string; diskText: string;
     packages: Record<string, string>;
+  };
+  initialization?: {
+    prepared: Check<InitializationPlan>; result?: InitializationResult; acquisition?: PackageRead;
+    connectedRoot?: { path: string; identity: string };
+    selectedRoot?: { requested: string; actual: string };
+    snapshot?: { complete: boolean; files: { path: string; text: string }[]; problems: unknown[]; excluded: string[] };
+    beforeBuildEntries?: string[]; typescript?: { version: string; location: string };
+    build?: { code: number; output: string }; emitted?: Record<string, string>; manifest: string;
   };
   acquisition?: { packages: PackageRead; fields?: { name: string; type: string }[]; workspace?: string[]; libraryOrigins?: string[]; problems?: unknown[]; syntax?: unknown[] };
   typescriptOutput?: {
@@ -150,6 +158,15 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['dependency-consumer.mjs', command], this.consumer); await this.readReport();
   }
   typescriptInsideConsumer = false;
+  compilerInsideProject = false;
+  async initializeProject(root: string, target: string): Promise<void> {
+    await cp(join(resources, 'initialization-consumer.mjs'), join(this.consumer, 'initialization-consumer.mjs'));
+    await writeFile(join(this.consumer, 'initialization.json'), JSON.stringify({ root, target, npm: npmExecutable() }));
+    this.result = await run(process.execPath, ['initialization-consumer.mjs', 'initialization.json'], this.consumer);
+    await this.readReport();
+    const path = this.report.initialization?.typescript?.location, selectedRoot = this.report.initialization?.selectedRoot?.actual;
+    this.compilerInsideProject = !!path && !!selectedRoot && contained(join(selectedRoot, 'node_modules'), await realpath(path));
+  }
   async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
     await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
     await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised }));
