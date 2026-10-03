@@ -46,6 +46,11 @@ interface ConsumerReport {
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
   output?: CountReport;
+  diagram?: { written: OutputWrite; read: NonNullable<CountReport['read']>; search: ProjectSearch;
+    native: { label: string; methods?: { name: string; return: string }[] }[];
+    guards: { reads: string[]; denied: string[]; workers: { created: number; exited: number } };
+    canaries: { failures: boolean[]; denied: string[] }; private: string };
+
 }
 interface CountReport {
   write?: OutputWrite;
@@ -140,6 +145,13 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['writer.mjs', 'write.json'], this.consumer);
     await this.readReport();
   }
+  async diagramProject(source: string): Promise<void> {
+    for (const name of ['diagram-guard.mjs', 'diagram-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'diagram.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['--import', './diagram-guard.mjs', 'diagram-consumer.mjs', 'diagram.json'], this.consumer);
+    await this.readReport();
+  }
+  diagramResourceInsidePackage(path: string): boolean { return contained(join(this.consumer, 'node_modules/@d2lang/d2'), path) || path === join(this.consumer, 'diagram-guard.mjs'); }
   async registerCountOutput(): Promise<void> {
     for (const name of ['count-adapter.mts', 'output-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
   }
