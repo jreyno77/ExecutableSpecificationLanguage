@@ -39,6 +39,9 @@ export class PackageExamples {
       before: [before], file: after, handwritten: 'handwritten', markerPresent: false });
   }
   expectCheckedCalls(names: string[]): void { expect(this.driver.report.operations).toEqual(names); }
+  expectTestBody(name: string, calls: string[], statements: string[]): void {
+    expect(this.driver.report.bodies).toEqual([{ name, generation: calls, documentation: calls, statements, earlierUnchanged: true }]);
+  }
   expectCapturedSteps(expected: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[]): void {
     expect(this.driver.report.steps).toEqual(expected);
   }

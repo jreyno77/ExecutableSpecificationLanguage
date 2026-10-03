@@ -41,3 +41,4 @@ export { SpecificationIdentity, reconcileRelationships } from './specification-i
 export type { SpecIdentifier, JsonValue, ArtifactLocator, ArtifactAssociation, IdentityRecord, IdentityBaseline, IdentityDecision, IdentifiedSpecification, SpecDiff, ObservedRelationship, RelationshipObservation, Reconciliation } from './specification-identity.js';
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
 export * from './project-writer.js';
+export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';

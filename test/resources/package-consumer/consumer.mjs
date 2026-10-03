@@ -28,7 +28,28 @@ try {
     return { available: checked.value.available.map(capture),
       ...(checked.value.capture ? { capture: capture(checked.value.capture) } : {}) };
   })) : [];
-  process.stdout.write(JSON.stringify({ operations, steps,
+  const bodies = specification ? [...specification.inspection.query('check')].flatMap(check => {
+    if (check.body.kind !== 'available') return [];
+    const inspection = specification.inspection, statements = check.body.content.members;
+    const textOf = node => Array.from(text).slice(node.origin.range.start.offset, node.origin.range.end.offset).join('');
+    const generation = [];
+    const collect = node => {
+      if (node.kind === 'call-expression') generation.push(specification.call(node.id).value);
+      for (const child of inspection.children(node.id)) collect(child);
+    };
+    collect(check.body.content);
+    const before = statements.map(textOf);
+    const documentation = [...inspection.query('call-expression')].filter(call => {
+      for (let parent = inspection.parent(call.id); parent; parent = inspection.parent(parent.id)) if (parent.id === check.id) return true;
+      return false;
+    }).map(call => specification.call(call.id).value);
+    assert.deepEqual(generation, documentation);
+    assert.deepEqual(statements.map(textOf), before);
+    for (const id of generation) assert.ok(id);
+    return [{ name: check.name, generation: generation.map(id => inspection.read(id).name),
+      documentation: documentation.map(id => inspection.read(id).name), statements: before, earlierUnchanged: true }];
+  }) : [];
+  process.stdout.write(JSON.stringify({ operations, steps, bodies,
     packageUrl, accepted: result.value !== undefined, syntax: result.syntax, deferred: result.deferred,
     problems: result.problems.map(problem => ({ ...problem,
       text: problem.at.kind === 'source'

@@ -57,7 +57,9 @@ checking results without executing or rechecking source. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
 Syntax errors, semantic errors and missing analysis remain separate. Extensions
-and attached examples require SourceComposer; authored helper/check bodies remain incomplete. Compilation
+and attached examples require SourceComposer. Authored test operations check ordered
+locals, calls, returns and assertions through `TestOperationChecker`; their checked
+calls remain available through `call(id)`. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
 
