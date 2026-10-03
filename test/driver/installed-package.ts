@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
+import type { Check, InitializationPlan, InitializationResult, OutputWrite, ProjectRead, ProjectSearch } from '../../src/index.js';
 
 const execute = promisify(execFile), require = createRequire(import.meta.url);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -14,6 +14,14 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  initialization?: {
+    prepared: Check<InitializationPlan>; result?: InitializationResult;
+    connectedRoot?: { path: string; identity: string };
+    selectedRoot?: { requested: string; actual: string };
+    snapshot?: { complete: boolean; files: { path: string; text: string }[]; problems: unknown[]; excluded: string[] };
+    beforeBuildEntries?: string[]; typescript?: { version: string; location: string };
+    build?: { code: number; output: string }; emitted?: Record<string, string>; manifest: string;
+  };
   typescriptOutput?: {
     written: OutputWrite; typescript: { version: string; location: string }; source?: string;
     validDiagnostics?: unknown[]; invalidDiagnostics?: { code: number; file: string; text: string; message: string }[];
@@ -117,6 +125,14 @@ export class PackageDriver {
     await this.readReport();
   }
   typescriptInsideConsumer = false;
+  async initializeProject(root: string, target: string): Promise<void> {
+    await cp(join(resources, 'initialization-consumer.mjs'), join(this.consumer, 'initialization-consumer.mjs'));
+    await writeFile(join(this.consumer, 'initialization.json'), JSON.stringify({ root, target, npm: npmExecutable() }));
+    this.result = await run(process.execPath, ['initialization-consumer.mjs', 'initialization.json'], this.consumer);
+    await this.readReport();
+    const path = this.report.initialization?.typescript?.location;
+    this.typescriptInsideConsumer = !!path && contained(join(await realpath(this.consumer), 'node_modules'), await realpath(path));
+  }
   async generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
     await cp(join(resources, 'typescript-output-consumer.mjs'), join(this.consumer, 'typescript-output-consumer.mjs'));
     await writeFile(join(this.consumer, 'typescript-output.json'), JSON.stringify({ source, validConsumer, invalidConsumer, revised }));

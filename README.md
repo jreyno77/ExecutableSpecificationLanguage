@@ -512,6 +512,28 @@ explicitly unsupported. Definitions and uses carry original UTF-16 offsets and f
 versions. Dynamic lookup, native diagnostics and missing inputs make coverage
 incomplete. The reader neither reconnects files nor authorizes or performs writes.
 
+## Initialize a chosen project
+
+```ts
+import { ProjectInitializer } from 'executable-specification-language';
+
+const initializer = new ProjectInitializer(manifestLocation, configuration);
+const preview = await initializer.prepare({ root: '../store-game', target: 'typescript' });
+if (preview.value) {
+  // Present the destination and exact file bytes before accepting.
+  const result = await initializer.apply(preview.value, authorAccepted);
+  if (result.value) useProject(result.value.context, result.value.configuration);
+}
+```
+
+The TypeScript starter contains package.json, tsconfig.json, src/index.ts and
+.gitignore. It requires an absent leaf below an existing parent or an empty ordinary
+directory. Declining creates nothing; changed destinations stop application.
+Initialization neither installs dependencies nor generates contracts/tests or runs
+the build. The host explicitly saves the returned configuration when appropriate.
+After supplying pinned TypeScript 5.9.3, `npm run build` compiles the starter.
+A stopped result preserves any created root and actual writer receipt; inspect it
+before recovery. Accepted previews are single-use, including failed attempts.
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
