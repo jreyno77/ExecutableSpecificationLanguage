@@ -17,6 +17,7 @@ interface ConsumerReport {
   initialization?: {
     prepared: Check<InitializationPlan>; result?: InitializationResult;
     connectedRoot?: { path: string; identity: string };
+    selectedRoot?: { requested: string; actual: string };
     snapshot?: { complete: boolean; files: { path: string; text: string }[]; problems: unknown[]; excluded: string[] };
     beforeBuildEntries?: string[]; typescript?: { version: string; location: string };
     build?: { code: number; output: string }; emitted?: Record<string, string>; manifest: string;

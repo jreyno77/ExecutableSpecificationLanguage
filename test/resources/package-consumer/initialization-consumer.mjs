@@ -1,7 +1,7 @@
 import { readFile, writeFile, readdir, realpath } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { dirname, delimiter, join } from 'node:path';
+import { dirname, delimiter, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 let packageUrl;
@@ -23,6 +23,8 @@ try {
     if (report.result.value) {
       const context = report.result.value.context, snapshot = await context.readSnapshot();
       report.connectedRoot = context.root;
+      const requested = resolve(dirname(manifest), input.root);
+      report.selectedRoot = { requested, actual: await realpath(requested) };
       report.snapshot = { ...snapshot, files: snapshot.files.map(file => ({ path: file.path, text: new TextDecoder().decode(file.bytes) })) };
       report.beforeBuildEntries = await readdir(context.root.path);
       const require = createRequire(import.meta.url), compiler = require.resolve('typescript/package.json');

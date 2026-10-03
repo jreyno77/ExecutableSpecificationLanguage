@@ -27,7 +27,8 @@ export class PackageExamples {
     expect(observed.prepared.problems).toEqual([]);
     expect(observed.prepared.value?.changes.map(change => change.kind === 'move' ? change.to : change.path)).toEqual(paths);
     expect(observed.result).toMatchObject({ status: 'applied', problems: [], deferred: [], write: { status: 'applied', problems: [] } });
-    expect(observed.connectedRoot?.path).toBe(observed.result?.createdRoot);
+    expect(observed.connectedRoot?.path).toBe(observed.selectedRoot?.actual);
+    expect(observed.result?.createdRoot).toBe(observed.selectedRoot?.requested);
     expect(observed.snapshot).toMatchObject({ complete: true, problems: [], excluded: [] });
     expect(observed.snapshot?.files.map(file => file.path).sort()).toEqual([...paths].sort());
     expect(observed.snapshot?.files).toContainEqual({ path: 'src/index.ts', text: 'export {};\n' });
