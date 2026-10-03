@@ -46,3 +46,4 @@ export * from './project-writer.js';
 export * from './output.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';
+export { umlOutput } from './uml-output.js';

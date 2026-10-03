@@ -1,4 +1,5 @@
 import { expect, onTestFinished } from 'vitest';
+import { DOMParser } from '@xmldom/xmldom';
 import { PackageDriver } from '../driver/installed-package.js';
 
 /** Consumer intentions and observations, independent of packaging and process mechanics. */
@@ -13,6 +14,7 @@ export class PackageExamples {
   check(text: string): Promise<void> { return this.driver.check(text); }
   checkTypeScriptConsumer(): Promise<void> { return this.driver.checkTypeScript(); }
   changeProjectFile(before: string, after: string): Promise<void> { return this.driver.writeProject(before, after); }
+  diagramProject(source: string): Promise<void> { return this.driver.diagramProject(source); }
   registerCountOutput(): Promise<void> { return this.driver.registerCountOutput(); }
   createCountReport(text: string, directory: string): Promise<void> { return this.driver.createCountReport(text, directory); }
   readCountReport(subject: string): Promise<void> { return this.driver.readCountReport(subject); }
@@ -91,6 +93,46 @@ export class PackageExamples {
         scope: [{ outputId: 'declaration-count', format: 'declaration-count-1', value: scope }] });
       expect(search?.[direction].unresolved).toEqual([]);
     }
+  }
+  expectInstalledDiagramFiles(paths: string[]): void {
+    this.expectConsumerRan();
+    const diagram = this.driver.report.diagram!;
+    expect(diagram.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(diagram.read.problems).toEqual([]);
+    expect([...new Set(diagram.read.artifacts.map(file => file.path))].sort()).toEqual([...paths].sort());
+    for (const file of diagram.read.artifacts) expect(file.text).toBe(file.disk);
+  }
+  expectInstalledNativeSignature(owner: string, signature: string): void {
+    const native = this.driver.report.diagram!.native.find(shape => shape.label === owner || shape.label.endsWith('\n' + owner));
+    expect(native?.methods?.map(method => method.name + ' → ' + method.return)).toContain(signature);
+  }
+  expectInstalledSvgLabel(label: string): void {
+    const svg = this.driver.report.diagram!.read.artifacts.find(file => file.path.endsWith('.svg'))!;
+    const document = new DOMParser({ onError: (_level, message) => { throw Error(message); } }).parseFromString(svg.text, 'image/svg+xml');
+    expect(document.documentElement?.localName).toBe('svg');
+    expect(document.documentElement?.textContent).toContain(label);
+  }
+  expectInstalledDiagramCoverage(): void {
+    const search = this.driver.report.diagram!.search;
+    expect(search.problems).toEqual([]);
+    expect(search.definitions.length).toBeGreaterThan(0);
+    for (const direction of ['incoming', 'outgoing'] as const) {
+      expect(search[direction].coverage).toMatchObject({ complete: true, limitations: [] });
+      expect(search[direction].coverage.scope.length).toBeGreaterThan(0);
+      expect(search[direction].unresolved).toEqual([]);
+    }
+  }
+  expectOnlyInstalledDiagramResourcesUsed(): void {
+    this.expectConsumerRan();
+    const diagram = this.driver.report.diagram!;
+    expect(diagram.canaries.failures).toEqual([true, true, true]);
+    expect(diagram.canaries.denied).toHaveLength(3);
+    expect(diagram.private).toBe('Keep private.');
+    expect(diagram.guards.denied).toEqual([]);
+    expect(diagram.guards.reads.length).toBeGreaterThan(0);
+    for (const path of diagram.guards.reads) expect(this.driver.diagramResourceInsidePackage(path), path).toBe(true);
+    expect(diagram.guards.workers.created).toBeGreaterThan(0);
+    expect(diagram.guards.workers.exited).toBe(diagram.guards.workers.created);
   }
   expectConsumerFailedFor(missing: string): void {
     expect(this.driver.result.code).not.toBe(0);
