@@ -52,10 +52,32 @@ if (result.value) {
 the existing Inspection, type catalog and `message(id)` query. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
-Syntax errors, semantic errors and missing analysis remain separate. Source
-composition and authored helper/check bodies remain incomplete. Compilation
+Syntax errors, semantic errors and missing analysis remain separate. Extensions,
+attached examples and authored helper/check bodies remain incomplete. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
+
+## Compose supplied modules
+
+```ts
+import { SourceComposer, Compiler } from 'executable-specification-language';
+
+// entry and shared are accepted source models or supplied external models.
+const resolution = new SourceComposer().compose(entry, { modules: [shared], packages: [] });
+const result = new Compiler().compile({ resolution });
+```
+
+`include "shared"` exposes and re-exports shared declarations while their references
+keep the original module's scope. Imports remain selective; imported aliases are
+not re-exported by includes. Declarations retain their original identities and
+origins. Repeated include paths are idempotent; conflicting declarations and
+include cycles are diagnosed. Extensions and attached examples remain pending.
+
+The default locator uses exact supplied keys. Pass a pure `(owner, authored) =>
+suppliedKey | undefined` function to interpret relative locators; the owner is
+always the original containing module. Composition reads no files and changes
+no input models. Missing inputs remain explicit findings. The original source
+Compiler entry point and Resolver retain their existing behavior.
 
 ## Inspect declarations
 
@@ -208,6 +230,29 @@ result remains deferred. Dependencies and captures never invent messages.
 Expression checking supplies `publicCapability` for explicitly public lookup and
 `checkArguments` for shared call/message argument rules. Neither operation runs
 the software; source and supplied external declarations use the same contracts.
+
+## Read a connected project
+
+```ts
+import { ProjectConnector } from 'executable-specification-language';
+
+// configuration is the successful ConfigurationReader result.
+const connection = await new ProjectConnector(absoluteManifestPath).connect(configuration);
+if (connection.value?.status === 'connected') {
+  const context = connection.value.context;
+  const snapshot = await context.readSnapshot();
+  console.log(snapshot.files, snapshot.problems, snapshot.excludeNames);
+}
+```
+
+The manifest location determines relative project paths; diagnostic source IDs do
+not. Missing configuration or a missing destination returns an unconnected result
+without creating anything. Each context read captures fresh bytes and SHA-256
+versions while retaining earlier observations. Scans are non-atomic; completeness
+reports detected gaps, not a whole-project transaction. Internal links are reported
+without traversal. The default scope excludes `.git` and `node_modules`; pass
+`{ excludeNames: [] }` to read those entries too. Root replacements require reconnecting.
+Connection and reading never write or initialize a project.
 
 ## Development and delivery
 

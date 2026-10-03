@@ -117,7 +117,7 @@ export class ReferenceResolver {
     const instruction = reference.lookup;
     if (instruction) {
       const found = instruction.kind === 'module'
-        ? this.scopes.select(instruction.locator, path, scope)
+        ? this.scopes.selectFrom(this.source.locator, instruction.locator, path, scope)
         : instruction.kind === 'builtin' ? this.scopes.builtin(path[0]!) : this.scopes.lookup(scope, path);
       const required = instruction.kind === 'builtin' ? new Set<NodeKind>(['builtin-type'])
         : instruction.kind === 'type-parameter' ? new Set<NodeKind>(['type-parameter']) : typeKinds;

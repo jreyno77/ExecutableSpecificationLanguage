@@ -7,7 +7,7 @@ export type ProblemLocation =
 export type ResolutionProblemCode =
   | 'unresolved-reference' | 'wrong-reference-kind' | 'ambiguous-reference'
   | 'duplicate-declaration' | 'inaccessible-reference' | 'unavailable-module'
-  | 'unavailable-package' | 'invalid-dependency-input' | 'composition-required';
+  | 'unavailable-package' | 'invalid-dependency-input' | 'composition-required' | 'include-cycle';
 
 /** An author/input failure, distinct from misuse of the report's query API. */
 export interface ResolutionProblem {
