@@ -2,6 +2,32 @@
 
 An experimental language for readable software specifications. The compiler composes Langium reading, resolution, type descriptions and expression, fixture, scenario and communication checks over supplied inputs.
 
+## Read project settings
+
+```ts
+import { ConfigurationReader, DependencyPlanner } from 'executable-specification-language';
+
+const settings = new ConfigurationReader([]).read({
+  sourceId: 'expec.json',
+  text: `{
+    "formatVersion": 1, "version": "0.2.0",
+    "project": { "root": "../game" },
+    "build": { "entries": ["store.expec"] }
+  }`,
+});
+if (settings.value) {
+  const dependencies = new DependencyPlanner().resolve(settings.value, { modules: [], packages: [] });
+  console.log(settings.value.project, dependencies);
+} else console.error(settings.problems);
+```
+
+The reader validates strict JSON and preserves authored paths. Output profiles
+supplied to its constructor validate their own options. The planner checks
+declared library and package ranges against host-supplied versions, returning
+the compiler's existing dependency input. These operations do not read files,
+install packages or change a project. Empty outputs means checking only;
+an absent project remains unconnected.
+
 ## Compile a specification
 
 ```ts
