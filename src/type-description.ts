@@ -10,7 +10,7 @@ export type TypeFact<T> =
   | { readonly status: 'invalid'; readonly problems: readonly (ResolutionProblem | TypeProblem)[]; readonly deferred: readonly DeferredReference[] }
   | { readonly status: 'deferred'; readonly requirements: readonly DeferredReference[] };
 export interface TypeProblem {
-  readonly code: 'wrong-type-argument-count' | 'circular-alias' | 'invalid-nothing-use' | 'required-after-default' | 'private-type-exposure';
+  readonly code: 'wrong-type-argument-count' | 'circular-alias' | 'invalid-nothing-use' | 'required-after-default' | 'private-type-exposure' | 'invalid-error-code' | 'invalid-failure-type' | 'duplicate-failure';
   readonly message: string;
   readonly at: ProblemLocation;
   readonly related: readonly ProblemLocation[];
@@ -171,7 +171,7 @@ export class TypeDescriptions {
 }
 
 /** Preserve all real causes when sibling inputs contain different failures. */
-function failures(facts: readonly TypeFact<unknown>[]): Exclude<TypeFact<never>, { status: 'known' }> | undefined {
+export function failures(facts: readonly TypeFact<unknown>[]): Exclude<TypeFact<never>, { status: 'known' }> | undefined {
   const problems = [...new Set(facts.flatMap(fact => fact.status === 'invalid' ? fact.problems : []))];
   const deferred = [...new Set(facts.flatMap(fact => fact.status === 'invalid' ? fact.deferred : fact.status === 'deferred' ? fact.requirements : []))];
   return problems.length ? { status: 'invalid', problems, deferred } : deferred.length ? { status: 'deferred', requirements: deferred } : undefined;

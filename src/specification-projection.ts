@@ -95,6 +95,8 @@ export class SpecificationProjection {
     for (const key of propertyNames(item)) {
       if (metadata.has(key)) continue;
       const field = (item as unknown as Record<string, unknown>)[key];
+      if (key === 'error' && item.kind === 'record-type-declaration' && field === false
+        || key === 'failures' && Array.isArray(field) && field.length === 0) continue;
       if (mode === 'structure' && eligible.has(item.kind) && (key === 'name' || key === 'title')) {
         if (isItem(field)) covered.add(field.id);
         continue;

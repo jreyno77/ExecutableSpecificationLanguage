@@ -1,0 +1,9 @@
+{
+  "commit": "113277de63f3ec1cee38faf8a0cf62bd8d2a98a3",
+  "taskBranchIntegration": "7fc03bd5ba2fa43ebb6503f506f71ca6d9aeb911",
+  "source": "type Account { id: Text }\nfunction findAccount(id: Text) returns Account",
+  "sourceId": "entry",
+  "locator": "entry",
+  "captured": "2026-10-03T12:42:22.282Z",
+  "purpose": "Frozen baseline produced before domain-error changes using delivered PROJECT-10 identity implementation."
+}

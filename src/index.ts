@@ -16,6 +16,7 @@ export type { Resolution, ResolutionDependencies } from './resolution.js';
 export type { DeferredReference, DeferredReason } from './resolution/reference-resolver.js';
 export type { ResolutionProblem, ResolutionProblemCode, ProblemLocation } from './resolution/problem.js';
 export type { DependencyPackage, PackagePhase } from './resolution/package-availability.js';
+export type { ErrorDescription } from './error-description.js';
 export { TypeDescriber } from './type-catalog.js';
 export { TypeQueryError } from './type-description.js';
 export type { TypeId, TypeDescription, TypeFact, TypeProblem } from './type-description.js';
@@ -44,3 +45,4 @@ export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad }
 export * from './project-writer.js';
 export * from './output.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
+export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';

@@ -13,6 +13,9 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  domainFailures?: { operation: string; result: string; code: { family: string; codes: string[]; payload: string[] }[];
+    documented: { family: string; codes: string[]; payload: string[] }[]; sameDeclaration: boolean; fieldsAgree: boolean; earlierUnchanged: boolean }[];
+
   accepted?: boolean;
   syntax?: unknown[];
   deferred?: unknown[];
@@ -22,6 +25,7 @@ interface ConsumerReport {
   writing?: { status: string; problems: unknown[]; outcomes: string[]; before: string[];
     file: string; handwritten: string; markerPresent: boolean };
   operations?: string[];
+  bodies?: { name: string; generation: string[]; documentation: string[]; statements: string[]; earlierUnchanged: boolean }[];
   steps?: { available: { name: string; type: string }[]; capture?: { name: string; type: string } }[];
   error?: { code?: string; message: string; url?: string };
 }

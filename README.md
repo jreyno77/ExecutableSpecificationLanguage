@@ -57,9 +57,30 @@ checking results without executing or rechecking source. Reachable source
 modules are checked; external metadata supplies signatures. Queries retain
 dependency origins, so consumers can distinguish entry-owned declarations.
 Syntax errors, semantic errors and missing analysis remain separate. Extensions
-and attached examples require SourceComposer; authored helper/check bodies remain incomplete. Compilation
+and attached examples require SourceComposer. Authored test operations check ordered
+locals, calls, returns and assertions through `TestOperationChecker`; their checked
+calls remain available through `call(id)`. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
+
+## Describe domain failures
+
+```expec
+type Account { id: Text }
+error type AccountError {
+  code: "duplicate-account" | "invalid-account"
+  email: Text
+}
+function createAccount(email: Text) returns Account fails with AccountError
+```
+
+An error is ordinary record data with a required closed set of text codes.
+`fails with` describes possible exceptional completion; it leaves the successful
+result unchanged and does not infer or execute exception handling. Query
+`types.callable(id).failures`, then `types.error(type)` for its declaration,
+codes and existing field slots. A known error description can retain invalid or
+deferred payload slots during standalone analysis; a successful compilation
+has no unresolved failure prerequisites. Native exception generation is separate.
 
 ## Load configured source files
 

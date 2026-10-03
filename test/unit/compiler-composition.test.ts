@@ -5,12 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, type Compilation, type ProblemLocation, type ResolutionDependencies } from '../../src/index.js';
 
 describe('compiler coverage', () => {
-  it('keeps an empty authored action body pending', () => {
+  it('accepts an explicitly empty Nothing action body', () => {
     const result = compile('examples { action save() returns Nothing {} }');
-    expect(result.value).toBeUndefined();
-    expect(result.syntax).toEqual([]);
-    expect(result.problems).toEqual([]);
-    expect(result.deferred.map(requirement => requirement.reason)).toEqual(['helper-body']);
+    expectChecked(result);
   });
 
   it('does not let a checked postcondition discharge a different unchecked result reference', () => {
@@ -20,24 +17,19 @@ examples {
 }`);
     expect(result.value).toBeUndefined();
     expect(result.syntax).toEqual([]);
-    expect(result.problems).toEqual([]);
-    expect(result.deferred.map(requirement => [requirement.reason, line(requirement.origin)])).toEqual(
-      expect.arrayContaining([['helper-body', 3], ['contextual-result', 3]]));
+    expect(result.problems.map(problem => [problem.code, line(problem.at)])).toEqual([['unresolved-reference', 3]]);
+    expect(result.deferred).toEqual([]);
     expect(result.deferred.some(requirement => line(requirement.origin) === 1)).toBe(false);
   });
 
-  it('keeps ordered references in an authored check body pending', () => {
+  it('checks ordered references in an authored assertion body', () => {
     const result = compile(`examples {
   check quantityIsCorrect() {
     let actual = 1
     assert actual == 1
   }
 }`);
-    expect(result.value).toBeUndefined();
-    expect(result.syntax).toEqual([]);
-    expect(result.problems).toEqual([]);
-    expect(result.deferred.map(requirement => [requirement.reason, line(requirement.origin)])).toEqual(
-      expect.arrayContaining([['helper-body', 2], ['ordered-scope', 4]]));
+    expectChecked(result);
   });
 
   it('retains composition needed by an otherwise covered fixture initializer', () => {
