@@ -72,4 +72,3 @@ it('rejects different root spellings that identify the same directory', async ()
     related: [{ kind: 'dependency', path: ['manifest', 'settings', 'build'] }],
   }));
 });
-

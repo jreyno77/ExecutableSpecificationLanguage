@@ -147,4 +147,3 @@ function osError(error: unknown): string {
     && (/^E[A-Z]+$/.test(error.code) || error.code === 'ERR_FS_FILE_TOO_LARGE')) return error.code;
   throw error;
 }
-
