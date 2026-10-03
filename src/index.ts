@@ -51,4 +51,6 @@ export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';
 export { umlOutput } from './uml-output.js';
 export { TypeScriptProject, type TypeScriptProjectOptions } from './typescript-project.js';
+export { TypeScriptContext } from './typescript-context.js';
 export { markdownOutput } from './output-markdown.js';
+export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';

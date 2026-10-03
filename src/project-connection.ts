@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 export interface ProjectRoot { readonly path: string; readonly identity: string }
 export interface ProjectFile { readonly path: string; readonly bytes: Uint8Array; readonly version: string }
 export interface ProjectSnapshot {
+  readonly readOnlyFiles?: readonly ProjectFile[];
   readonly root: ProjectRoot;
   readonly complete: boolean;
   readonly files: readonly ProjectFile[];
@@ -118,7 +119,7 @@ class ConnectedProject implements ProjectContext {
   }
 }
 
-function nativePath(path: unknown): path is string {
+export function nativePath(path: unknown): path is string {
   return typeof path === 'string' && path.length > 0 && !path.includes('\0') && Buffer.from(path).toString() === path
     && (process.platform !== 'win32' || !/^(?:[a-z]:(?![/\\])|[/\\](?![/\\])|[/\\]{2}[^/\\]*[/\\]?$)/i.test(path));
 }

@@ -1,6 +1,6 @@
 import { mkdtempSync, realpathSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, readdir, readlink, rename, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { unreadableFile } from './unreadable-file.js';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ConfigurationReader, ProjectConnector, type Check, type Configuration, type ProjectConnection, type ProjectContext, type ProjectSnapshot } from '../../src/index.js';
@@ -55,38 +55,7 @@ export class ConnectionDriver {
     await unlink(this.path(path));
     await this.directoryLink(path, target);
   }
-  async preventRead(path: string): Promise<void> {
-    if (process.platform === 'win32') {
-      const script = "$ErrorActionPreference='Stop'; $file=[IO.File]::Open($env:EXPEC_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None); try { [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); [Console]::In.ReadLine() | Out-Null } finally { $file.Dispose() }";
-      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-        { windowsHide: true, env: { ...process.env, EXPEC_LOCK_FILE: this.path(path) }, stdio: ['pipe', 'pipe', 'pipe'] });
-      const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
-      this.blocked.set(path, async () => {
-        child.stdin.end('\n');
-        const timeout = setTimeout(() => child.kill(), 5000);
-        try { await closed; } finally { clearTimeout(timeout); }
-      });
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Exclusive-read fixture did not become ready.')), 8000);
-        let output = '', error = '';
-        child.stderr.on('data', chunk => { error += String(chunk); });
-        child.once('error', failure => { clearTimeout(timeout); reject(failure); });
-        child.once('close', () => { clearTimeout(timeout); reject(new Error(`Exclusive-read fixture exited: ${error}`)); });
-        child.stdout.on('data', chunk => {
-          output += String(chunk);
-          if (output.includes('READY')) { clearTimeout(timeout); resolve(); }
-        });
-      });
-    } else {
-      const mode = (await stat(this.path(path))).mode;
-      this.blocked.set(path, () => chmod(this.path(path), mode));
-      await chmod(this.path(path), 0);
-    }
-    const failure = await readFile(this.path(path)).then(() => undefined, error => error as NodeJS.ErrnoException);
-    if (!failure || !['EACCES', 'EPERM', 'EBUSY'].includes(failure.code ?? '')) {
-      throw new Error(`Could not establish an unreadable existing file: ${failure?.code ?? 'read succeeded'}.`);
-    }
-  }
+  async preventRead(path: string): Promise<void> { this.blocked.set(path, await unreadableFile(this.path(path))); }
   async allowRead(path: string): Promise<void> { await this.blocked.get(path)?.(); this.blocked.delete(path); }
   remember(label: string): void { this.remembered.set(label, { source: this.current, facts: this.facts(this.current) }); }
   facts(snapshot: ProjectSnapshot): unknown { return structuredClone({ ...snapshot, files: snapshot.files.map(file => ({ ...file, bytes: [...file.bytes] })) }); }

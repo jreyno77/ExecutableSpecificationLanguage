@@ -1,5 +1,6 @@
 import {
-  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  ProjectInitializer, type InitializationPlan, type InitializationResult,
   LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
@@ -27,6 +28,13 @@ function capabilities(specification: Specification): readonly Item<'capability'>
 
 export const capabilityNames: readonly string[] = compilation.value
   ? capabilities(compilation.value).map(capability => capability.name) : [];
+
+export async function captureNative(context: ProjectContext): Promise<import('executable-specification-language').ProjectSnapshot> {
+  const native: ProjectContext = new TypeScriptContext(context, { configFile: 'tsconfig.json', imports: ['vitest'] });
+  const snapshot = await native.readSnapshot();
+  const evidence: readonly import('executable-specification-language').ProjectFile[] = snapshot.readOnlyFiles ?? [];
+  return snapshot;
+}
 
 export async function writeProject(context: ProjectContext): Promise<WriteResult> {
   const writer: ProjectWriter = new FileProjectWriter(context);
@@ -90,6 +98,12 @@ export function documentationProfiles() {
   const outputs = new Outputs();
   outputs.register(markdownOutput);
   return outputs.profiles;
+}
+
+export async function initializeProject(manifest: string, configuration: Configuration): Promise<InitializationResult | undefined> {
+  const initializer = new ProjectInitializer(manifest, configuration);
+  const preview: Check<InitializationPlan> = await initializer.prepare({ root: 'chosen-game', target: 'typescript' });
+  return preview.value ? initializer.apply(preview.value, true) : undefined;
 }
 
 export function openTypeScriptOutput(project: ProjectContext, context: import('executable-specification-language').OutputContext) {

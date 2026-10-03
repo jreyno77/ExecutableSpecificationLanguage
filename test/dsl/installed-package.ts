@@ -61,6 +61,67 @@ export class PackageExamples {
     expect(observed.runtime!.stdout.trim()).toBe(text);
   }
 
+  captureNativeDependencies(packages: Record<string, string>): Promise<void> { return this.driver.captureNativeDependencies(packages); }
+  expectInstalledMethodConsumer(file: string, name: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeContext!, text = native.files[file]!, start = text.indexOf(name);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.search.problems).toEqual([]);
+    expect(native.search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.outgoing).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.incoming.uses).toContainEqual({ target: { kind: 'project', id: expect.any(String) },
+      at: { outputId: 'native', format: 'typescript-site-1', value: {
+        file, version: native.versions[file], start, end: start + name.length, role: 'call',
+      } },
+    });
+  }
+  expectReadOnlyNativeEvidence(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.readonly).toContainEqual({ path, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.editable).not.toContain(path);
+    expect(native.packages).toEqual({ vitest: '5.0.2', '@types/node': '24.13.6' });
+    expect(native.capturedText).toBe(native.originalText);
+    expect(native.diskText).toBe(native.originalText + '\n// Installed consumer changes consulted evidence.\n');
+  }
+  expectChangedNativeEvidenceStopsWrite(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes.some(outcome => outcome.state === 'applied')).toBe(false);
+    expect(native.notesExist, 'No prepared ' + path + ' write should have happened.').toBe(false);
+  }
+  initializeProject(root: string, target: string): Promise<void> { return this.driver.initializeProject(root, target); }
+  expectInstalledInitialization(paths: string[]): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.initialization!;
+    expect(observed.prepared.problems).toEqual([]);
+    expect(observed.prepared.value?.changes.map(change => change.kind === 'move' ? change.to : change.path)).toEqual(paths);
+    expect(observed.result).toMatchObject({ status: 'applied', problems: [], deferred: [], write: { status: 'applied', problems: [] } });
+    expect(observed.connectedRoot?.path).toBe(observed.selectedRoot?.actual);
+    expect(observed.result?.createdRoot).toBe(observed.selectedRoot?.requested);
+    expect(observed.snapshot).toMatchObject({ complete: true, problems: [], excluded: [] });
+    expect(observed.snapshot?.files.map(file => file.path).sort()).toEqual([...paths].sort());
+    expect(observed.snapshot?.files).toContainEqual({ path: 'src/index.ts', text: 'export {};\n' });
+    expect(observed.beforeBuildEntries?.sort()).toEqual(['.gitignore', 'package.json', 'src', 'tsconfig.json']);
+    expect(JSON.parse(observed.manifest)).toEqual({ formatVersion: 1, version: '0.1.0', build: { entries: ['store.expec'] } });
+  }
+  expectInstalledToolchainAcquired(name: string, version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.acquisition).toMatchObject({ problems: [], deferred: [],
+      packages: [{ name: 'npm:' + name, requested: version, selected: version, installed: version }] });
+    expect(observed.result?.value?.configuration.packages).toEqual([
+      { alias: name, name: 'npm:' + name, version, phases: ['build'] },
+    ]);
+  }
+  expectInstalledStarterBuild(version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.typescript?.version).toBe(version);
+    expect(this.driver.compilerInsideProject).toBe(true);
+    expect(observed.build?.code, observed.build?.output).toBe(0);
+    expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
+  }
+
   generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
     return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised, handwrittenParameter);
   }
