@@ -22,6 +22,37 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  captureNativeDependencies(packages: Record<string, string>): Promise<void> { return this.driver.captureNativeDependencies(packages); }
+  expectInstalledMethodConsumer(file: string, name: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeContext!, text = native.files[file]!, start = text.indexOf(name);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.search.problems).toEqual([]);
+    expect(native.search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.outgoing).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.incoming.uses).toContainEqual({ target: { kind: 'project', id: expect.any(String) },
+      at: { outputId: 'native', format: 'typescript-site-1', value: {
+        file, version: native.versions[file], start, end: start + name.length, role: 'call',
+      } },
+    });
+  }
+  expectReadOnlyNativeEvidence(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.readonly).toContainEqual({ path, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.editable).not.toContain(path);
+    expect(native.packages).toEqual({ vitest: '5.0.2', '@types/node': '24.13.6' });
+    expect(native.capturedText).toBe(native.originalText);
+    expect(native.diskText).toBe(native.originalText + '\n// Installed consumer changes consulted evidence.\n');
+  }
+  expectChangedNativeEvidenceStopsWrite(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes.some(outcome => outcome.state === 'applied')).toBe(false);
+    expect(native.notesExist, 'No prepared ' + path + ' write should have happened.').toBe(false);
+  }
+
   readTypeScriptProject(files: Record<string, string>): Promise<void> { return this.driver.readTypeScriptProject(files); }
   expectInstalledProjectFile(file: string, text: string): void {
     this.expectConsumerRan();

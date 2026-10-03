@@ -14,6 +14,14 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  nativeContext?: {
+    complete: boolean; problems: unknown[]; search: ProjectSearch;
+    editable: string[]; readonly: { path: string; version: string }[];
+    files: Record<string, string>; versions: Record<string, string>;
+    receipt: import('../../src/index.js').WriteResult; notesExist: boolean;
+    capturedText: string; originalText: string; diskText: string;
+    packages: Record<string, string>;
+  };
   projectReading?: {
     read: Omit<ProjectRead, 'artifacts'> & { artifacts: { at: unknown; file: string; text: string }[] };
     search: ProjectSearch; files: Record<string, string>; versions: Record<string, string>;
@@ -108,6 +116,14 @@ export class PackageDriver {
     const source = join(this.consumer, 'source.expec');
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
+    await this.readReport();
+  }
+  async captureNativeDependencies(packages: Record<string, string>): Promise<void> {
+    const installed = await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock',
+      ...Object.entries(packages).map(([name, version]) => name + '@' + version)]);
+    if (installed.code !== 0) throw Error(installed.stdout + installed.stderr);
+    await cp(join(resources, 'native-context.mjs'), join(this.consumer, 'native-context.mjs'));
+    this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
     await this.readReport();
   }
   typescriptInsideConsumer = false;
