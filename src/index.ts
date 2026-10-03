@@ -40,5 +40,6 @@ export { ProjectConnector } from './project-connection.js';
 export { SpecificationIdentity, reconcileRelationships } from './specification-identity.js';
 export type { SpecIdentifier, JsonValue, ArtifactLocator, ArtifactAssociation, IdentityRecord, IdentityBaseline, IdentityDecision, IdentifiedSpecification, SpecDiff, ObservedRelationship, RelationshipObservation, Reconciliation } from './specification-identity.js';
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
+export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad } from './source-loader.js';
 export * from './project-writer.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';

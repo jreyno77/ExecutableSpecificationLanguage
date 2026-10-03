@@ -63,6 +63,27 @@ calls remain available through `call(id)`. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
 
+## Load configured source files
+
+```ts
+import { SourceLoader, SourceComposer, Compiler } from 'executable-specification-language';
+
+// configuration and dependencies are successful reader/planner results.
+const loaded = await new SourceLoader(absoluteManifestFilename).load(configuration, dependencies);
+if (loaded.value) for (const { entry, dependencies } of loaded.value.entries) {
+  const resolution = new SourceComposer(loaded.value.locate).compose(entry, dependencies);
+  const compilation = new Compiler().compile({ resolution });
+}
+```
+
+Entries resolve from the manifest directory; `./` and `../` imports resolve from
+their owning file. Use exact `.expec` filenames. Optional `build.sourceRoots`
+adds explicit directories to the default manifest-directory scope. Loading reads
+only referenced files, preserves captured text/models and diagnostics on failure,
+and never scans, installs or writes. Descendant links and distinct physical-file
+aliases are rejected. Named libraries come from supplied dependencies; a library's
+diagnostic filename does not grant it a local source root.
+
 ## Compose supplied modules
 
 ```ts
