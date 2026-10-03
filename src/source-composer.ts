@@ -5,7 +5,7 @@ import { Modules } from './resolution/modules.js';
 export type ModuleLocator = (owner: string, authoredLocator: string) => string | undefined;
 
 export class SourceComposer {
-  constructor(private readonly locate: ModuleLocator = (_owner, authored) => authored) {
+  constructor(private readonly locate: ModuleLocator = (_owner, authored) => authored.trim() ? authored : undefined) {
     if (typeof locate !== 'function') throw new TypeError('A module locator must be a function.');
   }
   compose(entry: ModuleModel, dependencies: ResolutionDependencies): Resolution {

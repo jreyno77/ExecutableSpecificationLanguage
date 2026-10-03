@@ -18,6 +18,19 @@ describe('a supplied-source host selects module keys deliberately', () => {
     expect(new Compiler().compile({ resolution }).value).toBeDefined();
     expect(resolution.model.node(shared.roots()[0]!).id).toBe(shared.roots()[0]);
   });
+  it('preserves surrounding whitespace in nonblank exact keys', () => {
+    const entry = module('entry', 'include " shared "'), shared = module(' shared ', 'type Shared {}');
+    const resolution = new SourceComposer().compose(entry, dependencies(shared));
+    expect(new Compiler().compile({ resolution }).value).toBeDefined();
+    expect(resolution.model.node(shared.roots()[0]!).id).toBe(shared.roots()[0]);
+  });
+  it('lets an explicit policy map a blank authored locator deliberately', () => {
+    const entry = module('entry', 'include ""'), shared = module('shared', 'type Shared {}');
+    const resolution = new SourceComposer((owner, authored) => owner === 'entry' && authored === '' ? 'shared' : undefined)
+      .compose(entry, dependencies(shared));
+    expect(new Compiler().compile({ resolution }).value).toBeDefined();
+    expect(resolution.model.node(shared.roots()[0]!).id).toBe(shared.roots()[0]);
+  });
   it('does not repair an undefined mapping with a same-spelling supplied module', () => {
     const result = new SourceComposer(() => undefined).compose(module('entry', 'use Shared from "shared"'),
       dependencies(module('shared', 'type Shared {}')));

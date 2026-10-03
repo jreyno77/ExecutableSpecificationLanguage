@@ -31,7 +31,7 @@ export class CompositionDriver {
   compose(): void {
     const locate = (owner: string, authored: string) => this.mappings.get(JSON.stringify([owner, authored]))
       ?? (authored.startsWith('.') ? undefined : authored);
-    this.resolution = new SourceComposer(locate).compose(this.modules.get(this.entryLocator)!, {
+    this.resolution = new SourceComposer(this.mappings.size ? locate : undefined).compose(this.modules.get(this.entryLocator)!, {
       modules: [...this.modules.values()].filter(model => model.locator !== this.entryLocator), packages: [],
     });
   }
