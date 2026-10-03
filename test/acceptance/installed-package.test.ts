@@ -46,6 +46,20 @@ describe('Installed package consumers', () => {
     consumer.expectDeclarationsAccepted();
   });
 
+  it('acquires packages and composes private library sources through the installed public product', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.provideLocalLibraryAndNativeRegistry();
+    await consumer.installConfiguredStorage();
+    consumer.expectSelectedAndInstalledStorage('2.1.0');
+    await consumer.loadAcquiredLibrary('use Book from "books"\nfunction save(book: Book) returns Nothing');
+    consumer.expectAcquiredFieldType('Book.title', 'Text');
+    consumer.expectSelectedAndInstalledStorage('2.1.0');
+    consumer.expectNoLibraryModuleInWorkspaceOwnership();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
   it('reads handwritten TypeScript and discovers an unmodeled caller through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

@@ -16,6 +16,7 @@ export class SourceFiles {
   readonly problems: Diagnostic[] = [];
   readonly captured = new Map<string, File>();
   private readonly roots: Root[] = [];
+  private readonly excluded: Root[] = [];
   private readonly failures = new Map<string, FileProblem>();
   constructor(private readonly directory: string, private readonly configuration: Configuration) {}
   manifest(...path: (string | number)[]): ProblemLocation {
@@ -24,20 +25,20 @@ export class SourceFiles {
   problem(code: string, message: string, at: ProblemLocation, related: readonly ProblemLocation[] = []): void {
     this.problems.push({ code, message, at, related });
   }
-  async initialize(): Promise<void> {
-    const roots = [this.directory, ...this.configuration.build.sourceRoots ?? []];
-    for (const [index, name] of roots.entries()) {
-      const at = index ? this.manifest('sourceRoots', index - 1) : this.manifest();
+  async initialize(roots = [this.directory, ...this.configuration.build.sourceRoots ?? []].map((path, index) =>
+    ({ path, at: index ? this.manifest('sourceRoots', index - 1) : this.manifest() })), ownership: 'workspace' | 'library' | 'excluded' = 'workspace'): Promise<void> {
+    for (const { path: name, at } of roots) {
       if (!nativePath(name) || /[*?\[\]{}]/.test(name)) {
         this.problem('invalid-source-root', 'Provide a literal native source directory.', at); continue;
       }
       const selected = resolve(this.directory, name);
       try {
+        if (ownership !== 'workspace' && (await fs.lstat(selected)).isSymbolicLink()) throw new FileProblem('source-link', 'Library roots must be ordinary directories: ' + selected);
         const path = await fs.realpath(selected), stat = await fs.stat(path, { bigint: true });
         if (!stat.isDirectory() || !usable(stat)) throw new FileProblem('invalid-source-root', 'A source root must be a directory with usable filesystem identity.');
-        const previous = this.roots.find(root => sameIdentity(root.stat, stat));
+        const collection = ownership === 'excluded' ? this.excluded : this.roots, previous = collection.find(root => sameIdentity(root.stat, stat));
         if (previous) this.problem('invalid-source-root', 'Source root ' + selected + ' repeats ' + previous.selected + '.', at, [previous.at]);
-        else this.roots.push({ selected, path, stat, at });
+        else collection.push({ selected, path, stat, at });
       } catch (error) { this.report(error, 'source-root-unavailable', selected, at); }
     }
   }
@@ -46,7 +47,11 @@ export class SourceFiles {
     const root = this.roots.filter(root => inside(root.selected, path) || inside(root.path, path))
       .sort((a, b) => b.selected.length - a.selected.length)[0];
     if (!root) throw new FileProblem('source-outside-roots', 'Source ' + path + ' is outside the configured roots.');
-    return inside(root.path, path) ? path : resolve(root.path, relative(root.selected, path));
+    const actual = inside(root.path, path) ? path : resolve(root.path, relative(root.selected, path));
+    if (this.excluded.some(root => inside(root.selected, path) || inside(root.path, actual))) {
+      throw new FileProblem('source-ownership-conflict', 'Workspace source belongs to an explicitly acquired library: ' + actual);
+    }
+    return actual;
   }
   async read(selected: string, at: ProblemLocation): Promise<SourceCapture | undefined> {
     let path = selected;
@@ -84,7 +89,7 @@ export class SourceFiles {
     }
   }
   async verify(): Promise<void> {
-    for (const root of this.roots) {
+    for (const root of [...this.roots, ...this.excluded]) {
       try {
         const path = await fs.realpath(root.selected), stat = await fs.stat(path, { bigint: true });
         if (!sameIdentity(root.stat, stat) || path !== root.path || !stat.isDirectory()) throw changed(root.selected);

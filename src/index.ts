@@ -42,6 +42,8 @@ export { SpecificationIdentity, reconcileRelationships } from './specification-i
 export type { SpecIdentifier, JsonValue, ArtifactLocator, ArtifactAssociation, IdentityRecord, IdentityBaseline, IdentityDecision, IdentifiedSpecification, SpecDiff, ObservedRelationship, RelationshipObservation, Reconciliation } from './specification-identity.js';
 export type { ProjectContext, ProjectRoot, ProjectFile, ProjectSnapshot, ProjectConnection } from './project-connection.js';
 export { SourceLoader, type SourceCapture, type LoadedSources, type SourceLoad } from './source-loader.js';
+export { LibraryLoader, type LoadedLibraries, type LibraryLoad } from './library-loader.js';
+export { NpmDependencies, type NpmOptions, type PackageRead, type PackageObservation } from './npm-dependencies.js';
 export * from './project-writer.js';
 export * from './output.js';
 export * from './output-typescript.js';
