@@ -8,7 +8,7 @@ describe('a model caller reads indexed structure', () => {
   it('looks up one kind without inspecting unrelated node kinds after construction', () => {
     const nameId = createNodeId(), capabilityId = createNodeId();
     const name: ModelNode<'name'> = { id: nameId, kind: 'name', origin, decoded: 'save' };
-    const capability: ModelNode<'capability'> = { id: capabilityId, kind: 'capability', origin,
+    const capability: ModelNode<'capability'> = { id: capabilityId, kind: 'capability', failures: [], origin,
       name: nameId, parameters: [], body: { kind: 'absent' } };
     let constructing = true;
     const unrelated: ModelNode<'string-literal'> = {
@@ -29,7 +29,7 @@ describe('a model caller reads indexed structure', () => {
   it('distinguishes valid roots from unknown identities when following containment', () => {
     const nameId = createNodeId(), capabilityId = createNodeId();
     const model = new IndexedModel([capabilityId], [
-      { id: capabilityId, kind: 'capability', origin, name: nameId, parameters: [], body: { kind: 'absent' } },
+      { id: capabilityId, kind: 'capability', failures: [], origin, name: nameId, parameters: [], body: { kind: 'absent' } },
       { id: nameId, kind: 'name', origin, decoded: 'save' },
     ]);
 
@@ -47,7 +47,7 @@ describe('a model caller reads indexed structure', () => {
     const model = new IndexedModel([referenceId, targetId], [
       { id: referenceId, kind: 'reference', origin, segments: [nameId] },
       { id: nameId, kind: 'name', origin, decoded: 'Cart' },
-      { id: targetId, kind: 'record-type-declaration', origin, name: targetNameId, fields: [], typeParameters: [] },
+      { id: targetId, kind: 'record-type-declaration', error: false, origin, name: targetNameId, fields: [], typeParameters: [] },
       { id: targetNameId, kind: 'name', origin, decoded: 'Cart' },
     ], new Map([[referenceId, { status: 'bound', target: targetId }]]));
 

@@ -56,7 +56,7 @@ function suppliedContract(): Model {
   }
   const capabilityId = createNodeId(), nameId = name('save');
   const parameters = [parameter('left', 'Number'), parameter('right', 'Text')];
-  const capability: ModelNode<'capability'> = { id: capabilityId, kind: 'capability', origin, name: nameId, parameters, body: { kind: 'absent' } };
+  const capability: ModelNode<'capability'> = { id: capabilityId, kind: 'capability', failures: [], origin, name: nameId, parameters, body: { kind: 'absent' } };
   containment.set(capabilityId, [nameId, ...parameters]);
   function ordered(id: NodeId): ModelNode[] {
     return [nodes.find(node => node.id === id)!, ...(containment.get(id) ?? []).flatMap(ordered)];

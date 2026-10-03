@@ -63,6 +63,25 @@ calls remain available through `call(id)`. Compilation
 does not execute expectations, discover implementations or change a project;
 bodyless declarations and prose remain authored intent.
 
+## Describe domain failures
+
+```expec
+type Account { id: Text }
+error type AccountError {
+  code: "duplicate-account" | "invalid-account"
+  email: Text
+}
+function createAccount(email: Text) returns Account fails with AccountError
+```
+
+An error is ordinary record data with a required closed set of text codes.
+`fails with` describes possible exceptional completion; it leaves the successful
+result unchanged and does not infer or execute exception handling. Query
+`types.callable(id).failures`, then `types.error(type)` for its declaration,
+codes and existing field slots. A known error description can retain invalid or
+deferred payload slots during standalone analysis; a successful compilation
+has no unresolved failure prerequisites. Native exception generation is separate.
+
 ## Load configured source files
 
 ```ts

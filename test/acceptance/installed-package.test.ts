@@ -5,6 +5,19 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('exposes the same error declaration and checked signature to installed public consumers', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.check('type Account { id: Text }\nerror type AccountError {\ncode: "duplicate-account" | "invalid-account"\nemail: Text\n}\nfunction createAccount(email: Text) returns Account fails with AccountError');
+    consumer.expectInstalledPackageUsed();
+    consumer.expectSpecificationAccepted();
+    consumer.expectDomainFailures('createAccount', 'Account', [
+      { family: 'AccountError', codes: ['duplicate-account', 'invalid-account'], payload: ['email: Text'] },
+    ]);
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('checks an unavailable type through the installed package', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
