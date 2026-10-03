@@ -10,7 +10,8 @@ import { Compiler, ConfigurationReader, FileProjectWriter, Outputs, ProjectConne
 
 /** Real checked specifications, connected files, and writer effects for the output examples. */
 export class OutputsDriver {
-  readonly directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'expec-outputs-')));
+  private readonly temporary = realpathSync.native(tmpdir());
+  readonly directory = realpathSync.native(mkdtempSync(join(this.temporary, 'expec-outputs-')));
   root = '';
   readonly outputs = new Outputs();
   readonly identity = new SpecificationIdentity(() => 'id-' + ++this.nextId);
@@ -242,8 +243,8 @@ export class OutputsDriver {
   async tryCreate(): Promise<void> { try { await this.create(); } catch (error) { this.error = error; } }
   async dispose(): Promise<void> {
     this.restoreFailure?.();
-    const name = relative(resolve(tmpdir()), this.directory);
-    if (name.includes(sep) || !name.startsWith('expec-outputs-')) throw new Error('Unexpected fixture directory');
+    const name = relative(this.temporary, this.directory);
+    if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-outputs-')) throw new Error('Unexpected fixture directory');
     await fs.rm(this.directory, { recursive: true, force: true });
   }
 }
