@@ -239,6 +239,7 @@ Use Node 24.19.0 and npm 11.20.0.
 ```sh
 npm ci
 npm run check
+npm run test:package
 npm run dev
 ```
 
@@ -247,6 +248,12 @@ npm run dev
 `test/acceptance` contains domain scenarios; `test/unit` checks focused component contracts.
 `test/dsl` provides domain actions and expectations; `test/driver` invokes the real APIs
 and returns observations. Drivers contain no test assertions or expected answers.
+
+`test:package` builds and packs once, then installs the tarball into isolated consumers.
+It checks public runtime and TypeScript imports and detects missing files/dependencies.
+This separate suite runs in Windows/Linux CI and may need registry access; install
+scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
+and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
 `npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. npm publication, full type/behavior validation and project generation remain subsequent work.
 
