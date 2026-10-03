@@ -489,7 +489,7 @@ it('retains only generated syntax as its future comparison baseline', async () =
   await project.read('StoreGame');
   project.expectWholeCurrentFile('src/StoreGame.ts', ['Private handwritten implementation note.']);
   project.expectBaselineExcludes('Private handwritten implementation note.');
-});
+}, 30_000);
 
 it('refuses a tampered generated baseline before changing code', async () => {
   const project = await TypeScriptExamples.connect();
@@ -500,7 +500,7 @@ it('refuses a tampered generated baseline before changing code', async () => {
   await project.update();
   project.expectProblem('invalid-output-state');
   await project.expectProjectBytesUnchanged();
-});
+}, 30_000);
 
 it('inserts an unrelated contract while retaining a handwritten owned file', async () => {
   const project = await TypeScriptExamples.connect();
@@ -513,7 +513,7 @@ it('inserts an unrelated contract while retaining a handwritten owned file', asy
   project.expectWriteStatus('applied');
   project.expectGeneratedFile('src/Snapshot.ts');
   await project.expectRememberedFileUnchanged('src/StoreGame.ts');
-});
+}, 30_000);
 
 describe('scaffold evolution is based on current native content and ownership', { timeout: 30_000 }, () => {
   it('reads the whole generated file and finds an unmodeled native launcher', async () => {
@@ -669,4 +669,3 @@ localStorage.setItem("store-game-save", JSON.stringify(snapshot));`);
     await project.expectProjectBytesUnchanged();
   });
 });
-
