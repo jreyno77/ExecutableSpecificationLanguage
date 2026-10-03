@@ -9,6 +9,24 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
+  installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
+  loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }
+  expectAcquiredFieldType(name: string, type: string) {
+    this.expectConsumerRan(); expect(this.driver.report.acquisition?.problems).toEqual([]); expect(this.driver.report.acquisition?.syntax).toEqual([]);
+    expect(this.driver.report.acquisition?.fields).toContainEqual({ name, type });
+  }
+  expectSelectedAndInstalledStorage(version: string) {
+    this.expectConsumerRan(); const packages = this.driver.report.acquisition?.packages;
+    expect(packages).toEqual({ value: [{ name: 'npm:example-storage', version }], packages: [{ name: 'npm:example-storage', requested: '^2', selected: version, installed: version }], problems: [], deferred: [] });
+  }
+  expectNoLibraryModuleInWorkspaceOwnership() {
+    const report = this.driver.report.acquisition!;
+    expect(report.libraryOrigins).toHaveLength(2); expect(report.workspace).toHaveLength(1);
+    expect(report.workspace![0]).toMatch(/\/main\.expec$/);
+    expect(report.libraryOrigins!.every(source => source.includes('/libraries/books/'))).toBe(true);
+    expect(report.libraryOrigins!.some(source => report.workspace!.includes(source))).toBe(false);
+  }
   installPackageWithoutFile(path: string): Promise<void> { return this.driver.install({ withoutFile: path }); }
   installPackageWithoutDependency(name: string): Promise<void> { return this.driver.install({ withoutDependency: name }); }
   check(text: string): Promise<void> { return this.driver.check(text); }
@@ -51,6 +69,34 @@ export class PackageExamples {
     expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
     expect(native.receipt.outcomes.some(outcome => outcome.state === 'applied')).toBe(false);
     expect(native.notesExist, 'No prepared ' + path + ' write should have happened.').toBe(false);
+  }
+  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
+    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised);
+  }
+  expectInstalledTypeScriptScaffold(message: string): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.validDiagnostics).toEqual([]);
+    expect(observed.runtime).toEqual({ name: 'Error', message });
+    expect(observed.notes).toBe('Keep the deployment note.');
+    expect(observed.typescript.version).toBe('5.9.3');
+    expect(this.driver.typescriptInsideConsumer).toBe(true);
+  }
+  expectInvalidNativeArgument(text: string): void {
+    expect(this.driver.report.typescriptOutput?.invalidDiagnostics).toEqual([
+      { code: 2345, file: 'invalid.mts', text, message: "Argument of type 'number' is not assignable to parameter of type 'string'." },
+    ]);
+  }
+  expectHandwrittenNativeFileProtected(): void {
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'output-conflict' }));
+    expect(observed.update?.receipt).toBeUndefined();
+    expect(observed.after).toBe(observed.handwritten);
+    expect(observed.after).toContain('// Keep the handwritten retry rationale.');
+    expect(observed.baseline).toBe(observed.source);
+    expect(observed.baseline).not.toContain('handwritten retry rationale');
+    expect(observed.stateAfter).toBe(observed.stateBefore);
   }
 
   readTypeScriptProject(files: Record<string, string>): Promise<void> { return this.driver.readTypeScriptProject(files); }

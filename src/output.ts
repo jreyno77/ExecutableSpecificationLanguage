@@ -29,7 +29,8 @@ export interface OutputAdapter {
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectRead>;
   search(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectSearch>;
 }
-export interface OutputRegistration extends OutputProfile { open(options: Readonly<Record<string, unknown>>): OutputAdapter }
+export interface OutputContext { readonly workspaceModules: readonly string[] }
+export interface OutputRegistration extends OutputProfile { open(options: Readonly<Record<string, unknown>>, context?: OutputContext): OutputAdapter }
 export class ProjectOutput implements Output {
   constructor(private readonly adapter: OutputAdapter, private readonly project: ProjectContext, private readonly writer: ProjectWriter) {
     if (!adapter?.id?.trim() || !['plan', 'read', 'search'].every(key => typeof adapter[key as 'plan'] === 'function')
@@ -70,15 +71,18 @@ export class Outputs {
     this.registrations.set(output.id, { id: output.id, validate: output.validate.bind(output), open: output.open.bind(output) });
   }
   get profiles(): readonly OutputProfile[] { return [...this.registrations.values()].map(({ id, validate }) => ({ id, validate })); }
-  open(id: string, options: Readonly<Record<string, unknown>>, project: ProjectContext, writer: ProjectWriter): Check<Output> {
+  open(id: string, options: Readonly<Record<string, unknown>>, project: ProjectContext, writer: ProjectWriter, context?: OutputContext): Check<Output> {
     const registration = this.registrations.get(id);
     if (!registration) return failure('unknown-output', 'Output is not registered: ' + id, ['outputs', id]);
+    if (context !== undefined && (!jsonData(context) || !context || Array.isArray(context) || typeof context !== 'object'
+      || Object.keys(context).length !== 1 || !Array.isArray(context.workspaceModules) || context.workspaceModules.some(value => typeof value !== 'string' || !value.trim())
+      || new Set(context.workspaceModules).size !== context.workspaceModules.length)) return failure('invalid-output-context', 'Provide only a duplicate-free list of exact nonblank workspace module locators.', ['outputs', id, 'context']);
     if (!jsonData(options) || !options || Array.isArray(options) || typeof options !== 'object') return failure('invalid-output-options', 'Output options must be finite JSON data.', ['outputs', id, 'options']);
     const copy = captured(options), problems = registration.validate(copy);
     if (!Array.isArray(problems) || problems.some(item => !item || typeof item.message !== 'string' || !Array.isArray(item.path))) throw new TypeError('Output validator returned malformed findings.');
     if (problems.length) return { problems: problems.map(item => ({ code: 'invalid-output-options', message: item.message,
       at: { kind: 'dependency', path: ['outputs', id, 'options', ...item.path] }, related: [] })), deferred: [] };
-    const adapter = registration.open(copy);
+    const adapter = registration.open(copy, context === undefined ? undefined : captured(context));
     if (adapter.id !== id) throw new TypeError('Opened adapter must retain its registered output ID.');
     return success(new ProjectOutput(adapter, project, writer));
   }

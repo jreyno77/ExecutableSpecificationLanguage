@@ -103,6 +103,47 @@ and never scans, installs or writes. Descendant links and distinct physical-file
 aliases are rejected. Named libraries come from supplied dependencies; a library's
 diagnostic filename does not grant it a local source root.
 
+## Acquire declared dependencies
+
+Set `libraries[].source` to an explicit library directory. Its `package.json`
+declares a complete `version` and `expec: { entry: "./index.expec" }`, or
+`expec: { declarations: "./declarations.json" }` for existing ExternalDefinition
+JSON. Only the entry and its relative private imports are captured; library
+JavaScript and lifecycle scripts are never evaluated by the loader.
+
+```ts
+import { LibraryLoader, NpmDependencies, DependencyPlanner, SourceLoader } from 'executable-specification-language';
+
+const libraries = await new LibraryLoader(absoluteManifestFilename).load(configuration);
+const native = new NpmDependencies(absoluteProjectRoot);
+const packages = await native.read(configuration.packages);
+// Explicitly call native.install(configuration.packages) when installation is wanted.
+if (libraries.value && packages.value) {
+  const selected = new DependencyPlanner().resolve(configuration, {
+    modules: libraries.value.inventory, packages: packages.value,
+  });
+  if (selected.value) {
+    const sources = await new SourceLoader(absoluteManifestFilename)
+      .load(configuration, selected.value, libraries.value);
+  }
+}
+```
+
+Library captures keep their own model identities and ownership; they never become
+workspace output just because their source was loaded. Requirements without
+`source` continue to accept host-supplied models through the planner.
+
+`NpmDependencies` supports an existing ordinary npm11 project and qualified names
+such as `npm:example-storage`. Its observations distinguish requested ranges,
+locked selections and actual installed versions. A successful inventory requires
+the installed version to satisfy the range and match the lock. `read()` never
+installs or changes project files; its temporary cache must be outside the project.
+`install()` preserves unrelated manifest values,
+sets requested runtime dependencies or development tools, then runs native npm
+with scripts disabled. Native installation may change its lockfile and package
+files; a failure does not imply rollback. File presence does not prove lifecycle
+or runtime readiness. Neither operation creates a project or runs compilation.
+
 ## Compose supplied modules
 
 ```ts
@@ -399,6 +440,28 @@ independent identities without repeated headings. Updates replace only recorded 
 regions, preserving exact prefix/notes bytes. Renames carry notes with their page; removal
 with handwritten content is refused. Actual edited files remain readable and searchable.
 Invalid UTF-8 prevents edits without losing the raw bytes returned by `read`.
+
+Register `typescriptOutput` to generate native TypeScript contracts and throwing
+implementation stubs. Pass `{ directory: 'src', concepts: 'class' }` as options;
+use `concepts: 'interface'` for signatures. Optional `names` and `imports` mappings
+make quoted names and external native dependencies explicit. Native identifiers
+currently use ASCII letters/digits, `_`, `$` and exclude
+reserved/contextual names. Unsupported spellings require explicit mapping; quoted
+field/method properties remain readable. Names are never silently transliterated.
+`Nothing` returns `void`; an unspecified result remains documented as `unknown`. Defaults and prose
+remain implementation obligations. Number uses JavaScript binary64, with lossy
+authored numeric literals refused. Error records retain their data and receive
+an `Error` companion; normal return types remain unchanged.
+
+For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
+`Outputs.open` argument, using successful `SourceLoader` captures' model locators.
+The entry is always included. Other source modules are generated only when in
+that captured set; provider dependencies require native mappings. This keeps
+documentation visibility separate from authority to generate implementation code.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve untouched
+files and refuse handwritten edits to files they would replace or remove. The
+private output state retains only last-generated text for later comparison;
+preservation-aware editing of handwritten bodies is a subsequent task.
 
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
