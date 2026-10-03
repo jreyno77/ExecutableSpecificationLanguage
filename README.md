@@ -209,6 +209,29 @@ Expression checking supplies `publicCapability` for explicitly public lookup and
 `checkArguments` for shared call/message argument rules. Neither operation runs
 the software; source and supplied external declarations use the same contracts.
 
+## Read a connected project
+
+```ts
+import { ProjectConnector } from 'executable-specification-language';
+
+// configuration is the successful ConfigurationReader result.
+const connection = await new ProjectConnector(absoluteManifestPath).connect(configuration);
+if (connection.value?.status === 'connected') {
+  const context = connection.value.context;
+  const snapshot = await context.readSnapshot();
+  console.log(snapshot.files, snapshot.problems, snapshot.excludeNames);
+}
+```
+
+The manifest location determines relative project paths; diagnostic source IDs do
+not. Missing configuration or a missing destination returns an unconnected result
+without creating anything. Each context read captures fresh bytes and SHA-256
+versions while retaining earlier observations. Scans are non-atomic; completeness
+reports detected gaps, not a whole-project transaction. Internal links are reported
+without traversal. The default scope excludes `.git` and `node_modules`; pass
+`{ excludeNames: [] }` to read those entries too. Root replacements require reconnecting.
+Connection and reading never write or initialize a project.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
