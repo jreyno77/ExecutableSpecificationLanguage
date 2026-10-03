@@ -9,6 +9,13 @@ export class KotlinDelivery {
   }
   static async dispose(): Promise<void> { for (const project of this.instances.splice(0)) await project.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
+  change(text: string, renames: Readonly<Record<string, string>> = {}): void { this.driver.source(text, renames); }
+  async updateContracts(): Promise<void> {
+    await this.driver.update(); expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
+  }
+  expectFileContains(path: string, text: string): void { expect(this.driver.files.get(path)).toContain(text); }
+  expectFileText(path: string, text: string): void { expect(this.driver.files.get(path)).toBe(text); }
+  expectMissingFile(path: string): void { expect(this.driver.files.has(path)).toBe(false); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   search(name: string): Promise<void> { return this.driver.search(name); }
   expectIncomingCall(path: string, start: number, end: number): void {
@@ -17,6 +24,10 @@ export class KotlinDelivery {
       target: expect.objectContaining({ kind: 'project' }),
       at: expect.objectContaining({ format: 'kotlin-site-1', value: expect.objectContaining({ file: path, start, end }) }),
     })]));
+  }
+  expectSearchScope(paths: string[]): void {
+    expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
+    expect(this.driver.searchResult.incoming.coverage.scope.map(at => (at.value as { file: string }).file).sort()).toEqual([...paths].sort());
   }
   async buildContracts(): Promise<void> {
     await this.driver.build(); expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');

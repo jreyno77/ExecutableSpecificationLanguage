@@ -70,6 +70,7 @@ fun main(args: Array<String>) {
                     put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", node.name)
                     put("range", text.range(node)); put("nameRange", text.range(node.nameIdentifier ?: node))
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
+                    if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
                 })
             }
@@ -97,7 +98,10 @@ fun main(args: Array<String>) {
                 }
             }
         }
-        println(buildJsonObject { put("declarations", JsonArray(declarations)); put("references", JsonArray(references)); put("problems", JsonArray(problems)) })
+        println(buildJsonObject {
+            put("files", JsonArray(files.map { JsonPrimitive(originals.getValue(it).file) }))
+            put("declarations", JsonArray(declarations)); put("references", JsonArray(references)); put("problems", JsonArray(problems))
+        })
     } catch (error: Throwable) {
         code = 1; error.printStackTrace(System.err)
     } finally {

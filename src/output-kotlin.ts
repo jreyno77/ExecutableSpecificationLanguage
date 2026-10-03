@@ -8,6 +8,7 @@ import { canonical, identifier, locatorSchema, success } from './identity-baseli
 import { z } from 'zod';
 import { hash, literal } from './project-files.js';
 import { KotlinProject } from './kotlin-project.js';
+import { preserveKotlin } from './kotlin-preservation.js';
 
 const statePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
 const state = z.strictObject({ format: z.literal(1), options: z.string(), files: z.array(z.strictObject({
@@ -35,7 +36,7 @@ class KotlinOutput implements OutputAdapter {
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'A complete captured project is required.')], deferred: [] };
-    if (request.operation !== 'create') return { problems: [outputProblem('native-preservation-unavailable', '', 'Native preservation is not available yet.')], deferred: [] };
+    if (request.operation === 'delete') return { problems: [outputProblem('native-preservation-unavailable', '', 'Safe retirement is not available yet.')], deferred: [] };
     let previous: z.infer<typeof state> | undefined;
     try { previous = this.state(snapshot); } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin generation baseline is invalid.')], deferred: [] }; }
     if (previous && previous.options !== canonical(this.options)) return { problems: [outputProblem('output-options-changed', statePath, 'Kotlin placement/options require an explicit migration.')], deferred: [] };
@@ -43,12 +44,14 @@ class KotlinOutput implements OutputAdapter {
     const problems = [...declarations.problems];
     for (const file of files) {
       const existing = snapshot.files.find(existing => existing.path === file.path), before = previous?.files.find(before => before.path === file.path);
-      if (existing && (!before || existing.version !== before.hash || existing.version !== hash(Buffer.from(file.text)))) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs proven contract preservation before changing it.'));
+      if (request.operation === 'create' && existing && (!before || existing.version !== before.hash || existing.version !== hash(Buffer.from(file.text)))) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs proven contract preservation before changing it.'));
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
     }
     const next = { format: 1, options: canonical(this.options), files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
-    const changes = [...files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) })), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
-      .filter(change => !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
+    const preserved = request.operation === 'create' ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files);
+    if (preserved?.problems.length) problems.push(...preserved.problems);
+    const changes = [...(preserved?.value ?? files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
+      .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
     return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts) });
   }
   async read(id: string, snapshot: ProjectSnapshot): Promise<ProjectRead> {

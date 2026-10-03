@@ -15,6 +15,7 @@ const range = z.strictObject({ start: z.number().int().nonnegative(), end: z.num
 export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'interface', 'object', 'function', 'property', 'parameter', 'type-parameter', 'typealias']),
   name: z.string().min(1), parameters: z.array(z.string()).optional(), receiver: z.string().optional() })).min(1);
 const result = z.strictObject({
+  files: z.array(z.string().refine(literal)),
   declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional() })),
   references: z.array(z.strictObject({ file: z.string().refine(literal), range, owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
   problems: z.array(z.strictObject({ file: z.string().refine(literal), range, message: z.string(), code: z.string() })),
@@ -58,6 +59,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
       const observed = await promisify(execFile)(join(config.javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
         ['-cp', jars.join(delimiter), 'expec.kotlin.MainKt', input], { cwd: scratch, env, timeout: 30_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
       value = result.parse(JSON.parse(observed.stdout));
+      if (new Set(value.files).size !== value.files.length || value.files.some(path => !snapshot.files.some(file => file.path === path && path.endsWith('.kt') && roots.some(root => path.startsWith(root + '/'))))) throw new Error('Native query claimed an uncaptured source file.');
       for (const observed of value.problems) finding('kotlin-' + observed.code, observed.message, observed.file);
       for (const observation of [...value.declarations, ...value.references, ...value.problems]) {
         const file = snapshot.files.find(file => file.path === observation.file);

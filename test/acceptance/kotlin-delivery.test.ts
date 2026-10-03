@@ -85,4 +85,66 @@ fun main() {
 }`);
     project.expectStdout('rejected:Dune');
   }, 60_000);
+
+  it('claims only the source sets actually inspected by Kotlin', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame {}');
+    await project.buildContracts();
+    await project.file('notes/Untracked.kt', 'fun unrelated() = missing.Name()');
+    await project.search('StoreGame');
+    project.expectSearchScope(['src/main/kotlin/store/StoreGame.kt']);
+  }, 60_000);
+
+  it('adds a capability while retaining private state and handwritten behavior', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save\ncapability save() returns Nothing }');
+    await project.buildContracts();
+    await project.file('src/main/kotlin/store/StoreGame.kt', `package store
+class StoreGame {
+    private var saves = 0
+    fun save(): Unit { saves += 1 }
+}`);
+    project.change('class StoreGame { public save, delete\ncapability save() returns Nothing\ncapability delete() returns Nothing }');
+    await project.updateContracts();
+    project.expectFileContains('src/main/kotlin/store/StoreGame.kt', 'private var saves = 0');
+    project.expectFileContains('src/main/kotlin/store/StoreGame.kt', 'fun save(): Unit { saves += 1 }');
+    await project.runConsumer('fun main() { store.StoreGame().delete() }');
+    project.expectUnimplemented('StoreGame.delete');
+  }, 120_000);
+
+  it('renames only the selected capability and actual callers', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save\ncapability save(title: Text) returns Text }');
+    await project.buildContracts();
+    await project.file('src/main/kotlin/store/StoreGame.kt', `package store
+class StoreGame {
+    fun save(title: String): String { // Dune
+        return "saved:$title"
+    }
+}`);
+    await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch(game: StoreGame) = game.save("Dune")');
+    await project.file('src/main/kotlin/store/Other.kt', 'package store\nclass Other { fun save() = "other" }');
+    project.change('class StoreGame { public saveGame\ncapability saveGame(title: Text) returns Text }', { 'StoreGame.save': 'StoreGame.saveGame' });
+    await project.updateContracts();
+    project.expectFileContains('src/main/kotlin/store/StoreGame.kt', 'fun saveGame(title: String): String { // Dune\n        return "saved:$title"');
+    project.expectFileText('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch(game: StoreGame) = game.saveGame("Dune")');
+    project.expectFileText('src/main/kotlin/store/Other.kt', 'package store\nclass Other { fun save() = "other" }');
+    await project.runConsumer('fun main() { println(store.launch(store.StoreGame())) }');
+    project.expectStdout('saved:Dune');
+  }, 120_000);
+
+  it('moves an output-created file with its renamed class and bound callers', async () => {
+    const project = await KotlinDelivery.create();
+    project.source('class StoreGame { public save\ncapability save() returns Text }');
+    await project.buildContracts();
+    await project.file('src/main/kotlin/store/StoreGame.kt', 'package store\nclass StoreGame { fun save(): String { /* retained */ return "saved" } }');
+    await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = StoreGame().save()');
+    project.change('class SavedGame { public save\ncapability save() returns Text }', { StoreGame: 'SavedGame' });
+    await project.updateContracts();
+    project.expectMissingFile('src/main/kotlin/store/StoreGame.kt');
+    project.expectFileContains('src/main/kotlin/store/SavedGame.kt', '/* retained */ return "saved"');
+    project.expectFileText('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = SavedGame().save()');
+    await project.runConsumer('fun main() { println(store.launch()) }');
+    project.expectStdout('saved');
+  }, 120_000);
 });

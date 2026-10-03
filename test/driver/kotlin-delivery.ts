@@ -4,7 +4,7 @@ import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'no
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer, SpecificationIdentity,
-  type IdentifiedSpecification, type Output, type OutputWrite, type ProjectContext, type ProjectSearch } from '../../src/index.js';
+  type IdentifiedSpecification, type Output, type OutputWrite, type ProjectContext, type ProjectSearch, type SpecDiff } from '../../src/index.js';
 
 /** Reaches the connected project and the actual pinned Kotlin compiler/JVM. */
 export class KotlinDeliveryDriver {
@@ -16,6 +16,7 @@ export class KotlinDeliveryDriver {
   root = '';
   context!: ProjectContext;
   current!: IdentifiedSpecification;
+  diff!: SpecDiff;
   written!: OutputWrite;
   output!: Output;
   searchResult!: ProjectSearch;
@@ -43,19 +44,25 @@ export class KotlinDeliveryDriver {
     await this.file('expec.kotlin.json', JSON.stringify({ javaHome, sourceRoots }));
     await this.file('build.gradle.kts', 'plugins { kotlin("jvm") version "2.4.10" }\n');
     await this.file('settings.gradle.kts', 'rootProject.name = "kotlin-acceptance"\n');
-    const library = resolve('src/kotlin-native/build/install/expec-kotlin/lib/kotlin-stdlib-2.4.10.jar');
+    const library = resolve('src/kotlin/lib/kotlin-stdlib-2.4.10.jar');
     const inputs = (await this.context.readSnapshot()).files.map(file => ({ path: file.path, version: file.version }));
     await this.file('.expec/kotlin/classpath.json', JSON.stringify({ format: 1, kotlin: '2.4.10', gradle: '9.1.0', jvmTarget: '21', javaHome, sourceRoots,
       classPath: { main: [library], test: [library] }, packages: [], inputs }));
     this.context = new KotlinContext(this.context);
   }
-  source(text: string): void {
+  source(text: string, renames: Readonly<Record<string, string>> = {}): void {
     const read = new LangiumReader().read({ sourceId: 'main.expec', text });
     if (read.status !== 'accepted') throw new Error(JSON.stringify(read));
     const result = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('main', read.document), { modules: [], packages: [] }) });
     if (!result.value) throw new Error(JSON.stringify(result));
-    const identified = this.identity.associate(result.value);
+    const previous = this.current;
+    const proposed = this.identity.associate(result.value);
+    if (!proposed.value) throw new Error(JSON.stringify(proposed));
+    const identified = previous ? this.identity.associate(result.value, previous.baseline, Object.entries(renames).map(([before, after]) => ({
+      id: this.subject(previous, before), to: proposed.value!.node(this.subject(proposed.value!, after)),
+    }))) : proposed;
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
+    if (previous) { const compared = this.identity.compare(previous.baseline, this.current); if (!compared.value) throw new Error(JSON.stringify(compared)); this.diff = compared.value; }
   }
   async build(): Promise<void> {
     const opened = this.outputs.open('kotlin', { directory: 'src/main/kotlin', package: 'store' }, this.context, new FileProjectWriter(this.context));
@@ -64,15 +71,20 @@ export class KotlinDeliveryDriver {
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
   async file(path: string, text: string): Promise<void> { await fs.mkdir(dirname(join(this.root, path)), { recursive: true }); await fs.writeFile(join(this.root, path), text); }
-  async search(name: string): Promise<void> {
-    const path = (id: string): string => { const record = this.current.baseline.elements.find(record => record.id === id)!; return (record.address.owner ? path(record.address.owner) + '.' : '') + record.address.name; };
-    const subject = this.current.baseline.elements.find(record => path(record.id) === name);
-    if (!subject) throw new Error('Missing source subject ' + name); this.searchResult = await this.output.search(subject.id);
+  async update(): Promise<void> {
+    this.written = await this.output.update(this.diff, this.current);
+    this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
+  }
+  async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
+  private subject(current: IdentifiedSpecification, name: string): string {
+    const path = (id: string): string => { const record = current.baseline.elements.find(record => record.id === id)!; return (record.address.owner ? path(record.address.owner) + '.' : '') + record.address.name; };
+    const subject = current.baseline.elements.find(record => path(record.id) === name);
+    if (!subject) throw new Error('Missing source subject ' + name); return subject.id;
   }
   private async native(): Promise<{ java: string; jars: string[]; stdlib: string }> {
     const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;
     if (!javaHome || !isAbsolute(javaHome)) throw new Error('Kotlin acceptance requires explicit EXPEC_TEST_JAVA_HOME or JAVA_HOME (JDK21).');
-    const libraries = process.env.EXPEC_TEST_KOTLIN_LIB ?? resolve('src/kotlin-native/build/install/expec-kotlin/lib');
+    const libraries = process.env.EXPEC_TEST_KOTLIN_LIB ?? resolve('src/kotlin/lib');
     const jars = (await fs.readdir(libraries)).filter(name => name.endsWith('.jar')).map(name => join(libraries, name));
     const stdlib = jars.find(path => /[\\/]kotlin-stdlib-2\.4\.10\.jar$/.test(path));
     if (!stdlib) throw new Error('Build the pinned Kotlin bridge before native acceptance.');

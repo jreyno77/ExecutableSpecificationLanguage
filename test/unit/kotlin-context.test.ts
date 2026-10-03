@@ -16,7 +16,7 @@ async function captureFixture() {
   await driver.file('expec.kotlin.json', JSON.stringify({ javaHome, sourceRoots }));
   await driver.file('build.gradle.kts', 'plugins { kotlin("jvm") version "2.4.10" }\n');
   await driver.file('settings.gradle.kts', 'rootProject.name = "native-context-example"\n');
-  const library = resolve('src/kotlin-native/build/install/expec-kotlin/lib/kotlin-stdlib-2.4.10.jar');
+  const library = resolve('src/kotlin/lib/kotlin-stdlib-2.4.10.jar');
   const report = { format: 1, kotlin: '2.4.10', gradle: '9.1.0', jvmTarget: '21', javaHome, sourceRoots,
     classPath: { main: [library], test: [library] }, packages: [],
     inputs: (await driver.context.readSnapshot()).files.map(file => ({ path: file.path, version: file.version })) };

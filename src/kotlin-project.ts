@@ -44,7 +44,7 @@ export class KotlinProject {
     const captured = structuredClone(snapshot), checked = await queryKotlin(captured, this.configFile), problems = [...checked.problems];
     const declarations = checked.value?.declarations ?? [], selected = declarations.filter(node => this.matches(node, id));
     if (!selected.length) problems.push(problem(snapshot.root, 'native-definition-unavailable', '', 'No unique current Kotlin declaration is associated with ' + id + '.'));
-    const scope = snapshot.files.filter(file => file.path.endsWith('.kt')).map(file => ({ outputId: this.outputId, format: 'kotlin-file-1', value: { file: file.path } }));
+    const scope = (checked.value?.files ?? []).map(file => ({ outputId: this.outputId, format: 'kotlin-file-1', value: { file } }));
     const coverage = { scope, complete: !problems.length && scope.length > 0, limitations: problems.map(problem => problem.message) };
     if (!scope.length && !coverage.limitations.length) coverage.limitations.push('No captured Kotlin source files.');
     const incoming: RelationshipObservation['uses'][number][] = [], outgoing: RelationshipObservation['uses'][number][] = [];
