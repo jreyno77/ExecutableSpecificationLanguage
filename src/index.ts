@@ -50,6 +50,7 @@ export * from './output-typescript.js';
 export { kotlinOutput } from './output-kotlin.js';
 export { KotlinContext } from './kotlin-context.js';
 export { KotlinProject } from './kotlin-project.js';
+export { KotlinDependencies } from './kotlin-dependencies.js';
 export type { KotlinContextOptions } from './kotlin-configuration.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';

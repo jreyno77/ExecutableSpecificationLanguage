@@ -3,6 +3,72 @@ import { KotlinDelivery } from '../dsl/kotlin-delivery.js';
 
 afterEach(() => KotlinDelivery.dispose());
 describe('a Kotlin consumer can use the specified contracts', () => {
+  it('reports an unsupported applied script after its actual configuration effects', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.file('build.gradle.kts', 'plugins { kotlin("jvm") version "2.4.10" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(21) }\napply(from=".expec/kotlin/dependencies.gradle.kts")\napply(from="extra.gradle.kts")');
+    await project.file('extra.gradle.kts', 'file("configured.txt").writeText("actual configuration ran")');
+    await project.attemptInstallDependencies();
+    project.expectInstallationRefusedAt('extra.gradle.kts');
+    project.expectFileText('configured.txt', 'actual configuration ran');
+    project.expectMissingFile('.expec/kotlin/classpath.json');
+  }, 240_000);
+
+  it('keeps a real Java consumer visible as unsupported native coverage', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.installDependencies();
+    await project.file('src/main/java/store/Caller.java', 'package store; public class Caller { public String title() { return "Dune"; } }');
+    await project.expectNativeCaptureRefusedAt('src/main/java/store/Caller.java');
+  }, 240_000);
+
+  it('installs the starter requirements and uses their actual native classpath', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.installDependencies();
+    project.expectInstalledPackage('maven:org.jetbrains.kotlin:kotlin-stdlib', '2.4.10');
+    project.expectInstalledPackage('maven:org.junit.jupiter:junit-jupiter', '6.1.3');
+    await project.readDependencies();
+    project.expectInstalledPackage('maven:org.jetbrains.kotlin:kotlin-gradle-plugin', '2.4.10');
+    project.source('class StoreGame { public save\ncapability save() returns Nothing }');
+    await project.buildContracts();
+    await project.runConsumer('fun main() { store.StoreGame().save() }');
+    project.expectUnimplemented('StoreGame.save');
+  }, 240_000);
+
+  it('previews a Kotlin starter with its exact native prerequisites before effects', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    project.expectRequiredPackages([
+      { name: 'maven:org.jetbrains.kotlin:kotlin-gradle-plugin', version: '2.4.10', phases: ['build'] },
+      { name: 'maven:org.jetbrains.kotlin:kotlin-stdlib', version: '2.4.10', phases: ['runtime'] },
+      { name: 'maven:org.junit.jupiter:junit-jupiter', version: '6.1.3', phases: ['test'] },
+      { name: 'maven:org.junit.platform:junit-platform-launcher', version: '6.1.3', phases: ['test'] },
+    ]);
+    await project.expectEmptyDestination();
+  });
+
+  it('creates the chosen Kotlin starter without an installed report or acceptance tests', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    project.expectStarterFiles(['settings.gradle.kts', 'build.gradle.kts', 'expec.kotlin.json', '.gitignore',
+      'gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties',
+      '.expec/kotlin/dependencies.gradle.kts', 'src/main/kotlin/Empty.kt']);
+    project.expectFileContains('build.gradle.kts', 'kotlin("jvm") version "2.4.10"');
+    project.expectFileContains('build.gradle.kts', 'apply(from = ".expec/kotlin/dependencies.gradle.kts")');
+  });
+
+  it('leaves the chosen destination empty when the Kotlin starter is declined', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.declineStarter();
+    await project.expectEmptyDestination();
+  });
+
   it('builds StoreGame and its reusable snapshot types', async () => {
     const project = await KotlinDelivery.create();
     project.source(`type Pair<T> = [T, T]

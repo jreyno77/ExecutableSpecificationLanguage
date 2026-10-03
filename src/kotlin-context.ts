@@ -68,8 +68,12 @@ export async function captureKotlinInputs(snapshot: ProjectSnapshot, config: Kot
     if (!/^JAVA_VERSION="21(?:[.+-]|\")/m.test(release)) throw new Error('The configured Kotlin toolchain must be JDK21.');
     await file(join(config.javaHome, 'release'));
     for (const directory of ['bin', 'lib', 'conf']) await tree(join(config.javaHome, directory));
-    for (const path of [...config.classPath.main, ...config.classPath.test]) { if (!path.endsWith('.jar')) throw new Error('The native classpath profile accepts ordinary JAR files.'); await file(path); }
+    for (const path of [...config.classPath.main, ...config.classPath.test, ...config.runtimeClassPath?.main ?? [], ...config.runtimeClassPath?.test ?? []]) {
+      if (!path.endsWith('.jar')) throw new Error('The native classpath profile accepts ordinary JAR files.'); await file(path);
+    }
     await tree(kotlinResources);
+    for (const artifact of config.artifacts ?? []) if (inputs.get(resolve(artifact.path)) !== artifact.version)
+      throw new Error('Installed native artifact changed; run explicit install: ' + artifact.path);
     for (const root of verifySourceRoots ? [...config.sourceRoots.main, ...config.sourceRoots.test] : []) {
       let path = snapshot.root.path;
       for (const segment of root.split('/')) {

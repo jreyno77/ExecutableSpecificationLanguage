@@ -7,6 +7,36 @@ export class KotlinDelivery {
   static async create(): Promise<KotlinDelivery> {
     const project = new KotlinDelivery(new KotlinDeliveryDriver()); this.instances.push(project); await project.driver.initialize(); await project.driver.configureNative(); return project;
   }
+  static async newProject(): Promise<KotlinDelivery> {
+    const project = new KotlinDelivery(new KotlinDeliveryDriver()); this.instances.push(project); await project.driver.initialize(); return project;
+  }
+  async prepareKotlin(): Promise<void> { await this.driver.prepareKotlin(); expect(this.driver.prepared.problems).toEqual([]); expect(this.driver.prepared.value?.target).toBe('kotlin'); }
+  async acceptStarter(): Promise<void> { await this.driver.initializeKotlin(true); expect(this.driver.initialized.problems).toEqual([]); expect(this.driver.initialized.status).toBe('applied'); }
+  async declineStarter(): Promise<void> { await this.driver.initializeKotlin(false); expect(this.driver.initialized.status).toBe('declined'); }
+  expectRequiredPackages(packages: { name: string; version: string; phases: string[] }[]): void {
+    expect(this.driver.prepared.value?.configuration.packages.map(({ name, version, phases }) => ({ name, version, phases }))).toEqual(packages);
+  }
+  async expectEmptyDestination(): Promise<void> { expect(await this.driver.capturedFiles()).toEqual(new Map()); }
+  expectStarterFiles(paths: string[]): void { expect([...this.driver.files.keys()].sort()).toEqual([...paths].sort()); }
+  async installDependencies(): Promise<void> { await this.driver.acquire(true); expect(this.driver.packages.problems).toEqual([]); }
+  async readDependencies(): Promise<void> { await this.driver.acquire(false); expect(this.driver.packages.problems).toEqual([]); }
+  async attemptInstallDependencies(): Promise<void> { await this.driver.acquire(true); }
+  expectInstallationRefusedAt(path: string): void {
+    expect(this.driver.packages.value === undefined).toBe(true);
+    expect(this.driver.packages.problems).toContainEqual(expect.objectContaining({ code: 'unsupported-native-input',
+      at: expect.objectContaining({ path: ['project', this.driver.root, ...path.split('/')] }) }));
+    expect(this.driver.packages.problems.map(problem => problem.code)).toContain('installation-effects');
+  }
+  async expectNativeCaptureRefusedAt(path: string): Promise<void> {
+    const snapshot = await this.driver.context.readSnapshot();
+    expect(snapshot.complete).toBe(false);
+    expect(snapshot.problems).toContainEqual(expect.objectContaining({ code: 'unsupported-native-input',
+      at: expect.objectContaining({ path: ['project', this.driver.root, ...path.split('/')] }) }));
+  }
+  expectInstalledPackage(name: string, version: string): void {
+    expect(this.driver.packages.value).toContainEqual({ name, version });
+    expect(this.driver.packages.packages).toContainEqual(expect.objectContaining({ name, selected: version, installed: version }));
+  }
   static async dispose(): Promise<void> { for (const project of this.instances.splice(0)) await project.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
   change(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void { this.driver.source(text, renames, retire); }

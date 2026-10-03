@@ -31,7 +31,9 @@ fun bridgeStage(name: String, destination: String) = tasks.register<Sync>(name) 
     from(configurations.runtimeClasspath) { into("lib") }
     from(tasks.jar) { into("lib") }
     from("NOTICE.txt")
+    from("acquire.gradle")
     from("gradle/wrapper/gradle-wrapper.jar") { into("wrapper") }
+    from(listOf("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.properties")) { into("wrapper") }
     into(destination)
 }
 val stageSource = bridgeStage("stageSource", "../kotlin")

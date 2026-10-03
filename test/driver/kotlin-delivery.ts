@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer, SpecificationIdentity,
-  type IdentifiedSpecification, type Output, type OutputWrite, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff } from '../../src/index.js';
+import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, KotlinDependencies, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, ProjectInitializer, SourceComposer, SpecificationIdentity,
+  type Check, type Configuration, type InitializationPlan, type InitializationResult, type IdentifiedSpecification, type Output, type OutputWrite, type PackageRead, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff } from '../../src/index.js';
 
 /** Reaches the connected project and the actual pinned Kotlin compiler/JVM. */
 export class KotlinDeliveryDriver {
@@ -14,6 +14,11 @@ export class KotlinDeliveryDriver {
   temporary = '';
   directory = '';
   root = '';
+  manifest = '';
+  configuration!: Configuration;
+  initializer!: ProjectInitializer;
+  prepared!: Check<InitializationPlan>;
+  initialized!: InitializationResult;
   context!: ProjectContext;
   current!: IdentifiedSpecification;
   diff!: SpecDiff;
@@ -25,18 +30,37 @@ export class KotlinDeliveryDriver {
   consumer = '';
   compiled = { code: -1, stdout: '', stderr: '' };
   execution = { code: -1, stdout: '', stderr: '' };
+  packages!: PackageRead;
+  async acquire(install: boolean): Promise<void> {
+    const dependencies = new KotlinDependencies(this.root);
+    this.packages = await (install ? dependencies.install(this.configuration.packages) : dependencies.read(this.configuration.packages));
+    if (install && this.packages.value) this.context = new KotlinContext(this.initialized.value!.context);
+    this.files = await this.capturedFiles();
+  }
   async initialize(): Promise<void> {
     this.outputs.register(kotlinOutput);
     this.temporary = await fs.realpath(tmpdir());
     this.directory = await fs.realpath(await fs.mkdtemp(join(this.temporary, 'expec-kotlin-')));
     this.root = join(this.directory, 'project'); await fs.mkdir(this.root);
-    const manifest = join(this.directory, 'expec.json');
+    const manifest = this.manifest = join(this.directory, 'expec.json');
     const configuration = new ConfigurationReader(this.outputs.profiles).read({ sourceId: manifest,
       text: JSON.stringify({ formatVersion: 1, version: '0.1.0', project: { root: 'project' }, build: { entries: ['main.expec'] } }) });
     if (!configuration.value) throw new Error(JSON.stringify(configuration));
+    this.configuration = configuration.value;
     const connection = await new ProjectConnector(manifest, { excludeNames: ['.git', 'node_modules', '.gradle', '.kotlin', 'build'] }).connect(configuration.value);
     if (connection.value?.status !== 'connected') throw new Error(JSON.stringify(connection));
     this.context = connection.value.context;
+  }
+  async prepareKotlin(): Promise<void> {
+    this.initializer = new ProjectInitializer(this.manifest, this.configuration);
+    const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;
+    this.prepared = await this.initializer.prepare({ root: 'project', target: 'kotlin', ...javaHome ? { javaHome } : {} });
+  }
+  async initializeKotlin(accepted: boolean): Promise<void> {
+    if (!this.prepared.value) throw new Error(JSON.stringify(this.prepared));
+    this.initialized = await this.initializer.apply(this.prepared.value, accepted);
+    if (this.initialized.value) { this.context = this.initialized.value.context; this.configuration = this.initialized.value.configuration; }
+    this.files = await this.capturedFiles();
   }
   async configureNative(): Promise<void> {
     const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;

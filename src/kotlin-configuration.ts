@@ -13,12 +13,15 @@ const sourceRoots = z.strictObject({ main: z.array(path).min(1), test: z.array(p
   const all = [...roots.main, ...roots.test];
   return all.every((value, index) => all.every((other, at) => at === index || value !== other && !value.startsWith(other + '/') && !other.startsWith(value + '/')));
 }, 'Source roots must be distinct and nonoverlapping.');
-const configuration = z.strictObject({ javaHome: absolute, sourceRoots });
+export const kotlinSettings = z.strictObject({ javaHome: absolute, sourceRoots });
 export const kotlinReportPath = '.expec/kotlin/classpath.json';
 export const kotlinReport = z.strictObject({
   format: z.literal(1), kotlin: z.literal('2.4.10'), gradle: z.literal('9.1.0'), jvmTarget: z.literal('21'),
   javaHome: absolute, sourceRoots,
+  javaRoots: z.strictObject({ main: z.array(path), test: z.array(path) }).optional(),
   classPath: z.strictObject({ main: z.array(absolute), test: z.array(absolute) }),
+  runtimeClassPath: z.strictObject({ main: z.array(absolute), test: z.array(absolute) }).optional(),
+  artifacts: z.array(z.strictObject({ path: absolute, version: z.string().regex(/^[a-f0-9]{64}$/) })).optional(),
   inputs: z.array(z.strictObject({ path, version: z.string().regex(/^[a-f0-9]{64}$/) })),
   packages: z.array(z.strictObject({ name: z.string(), version: z.string(), phases: z.array(z.enum(['build', 'runtime', 'test'])) })),
 });
@@ -42,20 +45,26 @@ export function kotlinConfiguration(snapshot: ProjectSnapshot, configFile: strin
     try { return readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (_code, text) => report('invalid-kotlin-configuration', path, text)); }
     catch { report('invalid-kotlin-configuration', path, 'Kotlin metadata must be valid UTF-8 JSON.'); return; }
   };
-  const config = configuration.safeParse(json(configFile)), installed = kotlinReport.safeParse(json(kotlinReportPath));
+  const config = kotlinSettings.safeParse(json(configFile)), installed = kotlinReport.safeParse(json(kotlinReportPath));
   if (!config.success) report('invalid-kotlin-configuration', configFile, config.error.message);
   if (!installed.success) report('invalid-kotlin-configuration', kotlinReportPath, installed.error.message);
   if (!config.success || !installed.success) return { problems, deferred: [] };
   const data = installed.data;
+  const artifacts = [...new Set([...data.classPath.main, ...data.classPath.test, ...data.runtimeClassPath?.main ?? [], ...data.runtimeClassPath?.test ?? []])].sort();
+  if (data.artifacts && (!data.runtimeClassPath || canonical(data.artifacts.map(item => item.path).sort()) !== canonical(artifacts)))
+    report('invalid-native-report', kotlinReportPath, 'Installed artifact evidence must identify every compile and runtime classpath file exactly once.');
   if (canonical(config.data) !== canonical({ javaHome: data.javaHome, sourceRoots: data.sourceRoots })) report('native-configuration-stale', kotlinReportPath, 'Native classpath report does not match the selected configuration; run explicit install.');
   const inputs = snapshot.files.filter(file => kotlinBuildInput(file.path, configFile)).map(file => ({ path: file.path, version: file.version })).sort((a, b) => a.path.localeCompare(b.path));
   if (!data.inputs.some(input => input.path === configFile) || !data.inputs.some(input => /(?:^|\/)build\.gradle(?:\.kts)?$/.test(input.path))
     || new Set(data.inputs.map(input => input.path)).size !== data.inputs.length
     || canonical(inputs) !== canonical([...data.inputs].sort((a, b) => a.path.localeCompare(b.path)))) report('native-configuration-stale', kotlinReportPath, 'Native build inputs changed; run explicit install to refresh the classpath.');
-  for (const root of [configFile, kotlinReportPath, ...data.sourceRoots.main, ...data.sourceRoots.test]) {
+  for (const root of [configFile, kotlinReportPath, ...data.sourceRoots.main, ...data.sourceRoots.test, ...data.javaRoots?.main ?? [], ...data.javaRoots?.test ?? []]) {
     const segment = root.split('/').find(part => snapshot.excludeNames.includes(part));
     const omitted = snapshot.excluded.find(path => path === root || path.startsWith(root + '/') || root.startsWith(path + '/'));
     if (segment || omitted) report('excluded-kotlin-input', omitted ?? root, 'Selected Kotlin input ' + (omitted ?? root) + ' intersects excluded segment ' + (segment ?? omitted!.split('/').at(-1)) + '.');
   }
+  for (const file of snapshot.files) if (file.path.endsWith('.java') && [...data.sourceRoots.main, ...data.sourceRoots.test,
+    ...data.javaRoots?.main ?? [], ...data.javaRoots?.test ?? []].some(root => file.path.startsWith(root + '/')))
+    report('unsupported-native-input', file.path, 'Java source consumers are outside this Kotlin-only native profile.');
   return problems.length ? { problems, deferred: [] } : success(data);
 }
