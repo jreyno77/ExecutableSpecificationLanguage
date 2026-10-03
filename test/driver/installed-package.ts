@@ -18,6 +18,7 @@ interface ConsumerReport {
   deferred?: unknown[];
   problems?: { code: string; text?: string }[];
   capabilities?: string[];
+  loaded?: { accepted: boolean; captures: number; capabilities: string[]; problems: unknown[]; syntax: unknown[] };
   writing?: { status: string; problems: unknown[]; outcomes: string[]; before: string[];
     file: string; handwritten: string; markerPresent: boolean };
   operations?: string[];
