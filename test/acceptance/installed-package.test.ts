@@ -5,6 +5,49 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('guards a planned write when an actual external native input changes through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.applyWriteAfterNativeReplacement({
+      library: 'catalog.jar', before: 'version-one', after: 'version-two', file: 'result.txt', text: 'written',
+    });
+    consumer.expectExternalNativeChangeStopsWrite('result.txt', 'version-one', 'version-two');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
+  it('preserves an adopted implementation and its caller through an installed native rename', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.preserveTypeScript({
+      source: 'class StoreGame { public save\ncapability save(snapshot: Text) returns Nothing }',
+      revised: 'class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }',
+      implementation: 'export class StoreGame { private saves = 0; save(snapshot: string): void { this.saves++; console.log(snapshot); } }\n',
+      caller: 'import { StoreGame } from "./game.js"; new StoreGame().save("Dune");\n',
+    });
+    consumer.expectAdoptedSourceUnchanged();
+    consumer.expectPreservedNativeSource('private saves = 0; saveGame(snapshot: string): void { this.saves++; console.log(snapshot); }');
+    consumer.expectPreservedCaller('new StoreGame().saveGame("Dune")');
+    consumer.expectPreservedRuntimeOutput('Dune');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
+  });
+
+  it('compiles every configured workspace entry with one shared Book through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.compileWorkspace({
+      'game.expec': 'use Book from "./catalog.expec"\nfunction save(book: Book) returns Nothing',
+      'checkout.expec': 'use Book from "./catalog.expec"\nfunction price(book: Book) returns Number',
+      'catalog.expec': 'type Book { title: Text }',
+    }, ['game.expec', 'checkout.expec']);
+
+    consumer.expectWorkspaceFunctions(['price', 'save']);
+    consumer.expectSharedWorkspaceType('Book', 2);
+    consumer.expectInstalledPackageUsed();
+  });
+
   it('queries actual installed Vitest declarations and refuses a write after they change', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
@@ -35,11 +78,11 @@ describe('Installed package consumers', () => {
     await consumer.generateTypeScript('function save(title: Text) returns Nothing',
       'import { save } from "./src/save.js"; save("Dune");',
       'import { save } from "./src/save.js"; save(64);',
-      'function save(title: Text, copies: Number) returns Nothing');
+      'function save(title: Text, copies: Number) returns Nothing', 'title: number');
 
     consumer.expectInstalledTypeScriptScaffold('Not implemented: save');
     consumer.expectInvalidNativeArgument('64');
-    consumer.expectHandwrittenNativeFileProtected();
+    consumer.expectConflictingNativeSignatureProtected();
     consumer.expectInstalledPackageUsed();
     await consumer.checkTypeScriptConsumer();
     consumer.expectDeclarationsAccepted();

@@ -11,10 +11,12 @@ import { validDiff } from './output-contract.js';
 import { outputProblem } from './output-documents.js';
 import { TypeScriptProject } from './typescript-project.js';
 import { TypeScriptDeclarations, typescriptOptions, type TypeScriptOptions } from './typescript-declarations.js';
+import { TypeScriptPreservation } from './typescript-preservation.js';
 
 const association = z.strictObject({ specId: identifier, locator: locatorSchema });
 const stateSchema = z.strictObject({ format: z.literal(1), renderFormat: z.literal(1), outputId: z.literal('typescript'), options: z.string(),
-  files: z.array(z.strictObject({ id: identifier, path: z.string(), generated: z.string(), hash: z.string().regex(/^[a-f0-9]{64}$/), artifacts: z.array(association).min(1) })), deleted: z.array(identifier) });
+  files: z.array(z.strictObject({ id: identifier, path: z.string(), generated: z.string(), hash: z.string().regex(/^[a-f0-9]{64}$/), artifacts: z.array(association).min(1),
+    renderedArtifacts: z.array(association).min(1).optional(), adopted: z.array(identifier).optional(), documentation: z.array(identifier).optional(), confirmed: z.string().regex(/^[a-f0-9]{64}$/).optional() })), deleted: z.array(identifier) });
 type State = z.infer<typeof stateSchema>;
 const statePath = '.expec/outputs/' + Buffer.from('typescript').toString('hex') + '.json';
 const refused = (problems: readonly Diagnostic[]): Check<OutputPlan> => ({ problems, deferred: [] });
@@ -29,7 +31,9 @@ export const typescriptOutput: OutputRegistration = {
   open: (options, context) => new TypeScriptOutput(typescriptOptions.parse(options), context),
 };
 
-/** Owns whole generated files; handwritten edits require a preservation-aware editor. */
+const renderingOptions = (options: TypeScriptOptions) => { const { adoptExisting: _permission, ...rendering } = options; return canonical(rendering); };
+
+/** Coordinates native projection, preservation ownership and a guarded project write plan. */
 class TypeScriptOutput implements OutputAdapter {
   readonly id = 'typescript';
   constructor(private readonly options: TypeScriptOptions, private readonly context?: OutputContext) {}
@@ -43,14 +47,21 @@ class TypeScriptOutput implements OutputAdapter {
       } });
       const data = JSON.parse(text);
       if (data?.renderFormat !== 1) return { problems: [outputProblem('output-options-changed', statePath, 'Recorded native render format requires an explicit migration.')] };
-      const state = stateSchema.parse(data), settings = typescriptOptions.parse(JSON.parse(state.options)), paths = state.files.map(file => key(file.path)), roots = state.files.map(file => file.id), ids = state.files.flatMap(file => file.artifacts.map(item => item.specId));
-      if (new Set(paths).size !== paths.length || new Set(roots).size !== roots.length || new Set(state.deleted).size !== state.deleted.length
-        || state.deleted.some(id => ids.includes(id)) || state.files.some(file => !literal(file.path) || !file.path.startsWith(settings.directory + '/') || !file.path.endsWith('.ts')
+      const state = stateSchema.parse(data), settings = typescriptOptions.parse(JSON.parse(state.options)), roots = state.files.map(file => file.id), ids = state.files.flatMap(file => file.artifacts.map(item => item.specId));
+      if (new Set(roots).size !== roots.length || new Set(state.deleted).size !== state.deleted.length
+        || state.deleted.some(id => ids.includes(id)) || state.files.some(file => !literal(file.path) || !file.adopted?.length && !file.path.startsWith(settings.directory + '/') || !file.path.endsWith('.ts')
           || Buffer.from(file.generated).toString('utf8') !== file.generated || hash(Buffer.from(file.generated)) !== file.hash
+          || file.adopted?.some(id => !file.artifacts.some(item => item.specId === id)) || file.adopted?.length && !file.renderedArtifacts
+          || state.files.some(other => other !== file && key(other.path) === key(file.path) && (other.path !== file.path || other.confirmed !== file.confirmed))
           || !file.artifacts.some(item => item.specId === file.id) || file.artifacts.some(item => item.locator.outputId !== this.id
             || item.locator.format !== 'typescript-symbol-1' || (item.locator.value as { file: string }).file !== file.path))) throw new Error('Invalid generation baseline');
       this.project(state);
-      return { value: state, problems: state.options === canonical(this.options) ? [] : [outputProblem('output-options-changed', statePath, 'Native output options require an explicit migration.')] };
+      this.project({ ...state, files: state.files.map(file => ({ ...file, artifacts: file.renderedArtifacts ?? file.artifacts })) });
+      const represented = (items: readonly ArtifactAssociation[]) => canonical(items.map(item => ({ id: item.specId,
+        kinds: (item.locator.value as { declaration: { kind: string }[] }).declaration.map(part => part.kind) })).sort((a, b) => canonical(a).localeCompare(canonical(b))));
+      if (state.files.some(file => represented(file.artifacts) !== represented(file.renderedArtifacts ?? file.artifacts)
+        || file.documentation?.some(id => !file.artifacts.some(item => item.specId === id)))) throw new Error('Invalid rendered associations');
+      return { value: state, problems: renderingOptions(settings) === renderingOptions(this.options) ? [] : [outputProblem('output-options-changed', statePath, 'Native output options require an explicit migration.')] };
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded generated text, byte hash or native associations are invalid.')] }; }
   }
   private project(state?: State): TypeScriptProject {
@@ -89,40 +100,25 @@ class TypeScriptOutput implements OutputAdapter {
       if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts')))) return refused([outputProblem('not-addition-only', '', 'Use update when existing contracts change.')]);
       const declarations = new TypeScriptDeclarations(current, this.options, this.context), files = declarations.render();
       if (declarations.problems.length) return refused(declarations.problems);
-      next = { format: 1, renderFormat: 1, outputId: this.id, options: canonical(this.options), deleted: [], files: files.map(file => ({ id: file.id, path: file.path,
+      next = { format: 1, renderFormat: 1, outputId: this.id, options: renderingOptions(this.options), deleted: [], files: files.map(file => ({ id: file.id, path: file.path,
         generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: structuredClone(file.artifacts) as ArtifactAssociation[] })) };
       const retained = new Set(next.files.flatMap(file => file.artifacts.map(item => item.specId)));
       next.deleted = [...new Set([...(previous?.deleted ?? []), ...previous?.files.flatMap(file => file.artifacts.map(item => item.specId)) ?? []])].filter(id => !retained.has(id)).sort();
       if (previous && ['create', 'insert'].includes(request.operation) && previous.files.some(file => {
-        const after = next.files.find(candidate => candidate.id === file.id); return !after || canonical(after) !== canonical(file);
+        const after = next.files.find(candidate => candidate.id === file.id); return !after || after.hash !== file.hash;
       })) return refused([outputProblem(request.operation === 'insert' ? 'not-addition-only' : 'use-update', statePath, 'Existing native contracts changed; use update.')]);
     }
-    const desired = new Map<string, Uint8Array>(next.files.map(file => [file.path, Buffer.from(file.generated)]));
-    for (const file of previous?.files ?? []) {
-      const after = next.files.find(next => next.id === file.id), actual = snapshot.files.find(actual => actual.path === file.path)!;
-      if (after?.path === file.path && after.hash === file.hash) desired.set(file.path, actual.bytes);
-      else if (hash(actual.bytes) !== file.hash) problems.push(conflict(file.path, 'Handwritten changes prevent replacing or removing this generated contract.'));
-    }
-    for (const path of [...desired.keys(), statePath]) {
+    const preservation = new TypeScriptPreservation(snapshot, this.options, 'diff' in request ? request.diff : undefined);
+    preservation.reconcile(previous?.files ?? [], next.files.map(file => ({ id: file.id, path: file.path, text: file.generated, artifacts: file.artifacts })),
+      request.operation === 'delete' ? [] : request.current.baseline.artifacts, request.operation === 'create' && this.options.adoptExisting);
+    if (preservation.problems.length) return refused(preservation.problems);
+    next.files = preservation.files;
+    const changes: FileChange[] = preservation.changes;
+    for (const path of [...next.files.map(file => file.path), ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path]), statePath]) {
       if (!literal(path) || path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(path, 'The captured scope excludes the output destination.'));
       const existing = snapshot.files.find(file => key(file.path) === key(path));
-      if (existing && path !== statePath && !previous?.files.some(file => file.path === existing.path)) problems.push(conflict(existing.path, 'Existing native file is not owned by this output.'));
+      if (existing && path !== statePath && next.files.some(file => file.path === existing.path) && !previous?.files.some(file => file.path === existing.path) && !next.files.some(file => file.path === existing.path && file.adopted?.length)) problems.push(outputProblem(this.options.adoptExisting ? 'unowned-project-artifact' : 'output-conflict', existing.path, 'Existing native file is not owned by this output.'));
       if (snapshot.files.some(file => key(path).startsWith(key(file.path) + '/') || key(file.path).startsWith(key(path) + '/'))) problems.push(conflict(path, 'An existing file occupies a destination parent or descendant.'));
-    }
-    const changes: FileChange[] = [];
-    for (const file of previous?.files ?? []) if (!desired.has(file.path)) changes.push({ kind: 'remove', path: file.path });
-    for (const [path, bytes] of desired) if (!snapshot.files.some(file => file.path === path && hash(file.bytes) === hash(bytes))) changes.push({ kind: 'write', path, bytes });
-    const changed = new Set(changes.map(change => 'path' in change ? change.path : change.from)), owned = new Set(previous?.files.map(file => file.path));
-    const native = this.project(previous);
-    for (const file of previous?.files ?? []) for (const subject of new Set(file.artifacts.map(item => item.specId))) {
-      const before = file.artifacts.filter(item => item.specId === subject), after = next.files.flatMap(file => file.artifacts.filter(item => item.specId === subject));
-      if (canonical(before) === canonical(after)) continue;
-      const search = native.search(subject, snapshot);
-      if (!search.incoming.coverage.complete) problems.push(outputProblem('incomplete-output-search', file.path, 'Current native incoming uses are incomplete: ' + search.incoming.coverage.limitations.join('; ')));
-      for (const use of search.incoming.uses) {
-        const path = (use.at.value as { file: string }).file;
-        if (!owned.has(path) || !changed.has(path)) problems.push(conflict(path, 'An unmodified current native caller would be broken by this change.'));
-      }
     }
     if (problems.length) return refused(problems);
     const bytes = Buffer.from(canonical(next, 2) + '\n');

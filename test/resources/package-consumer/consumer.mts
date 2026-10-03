@@ -44,6 +44,14 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
   return result;
 }
 
+export async function writeWithNativeEvidence(context: ProjectContext, uri: string, version: string): Promise<WriteResult> {
+  const snapshot: import('executable-specification-language').ProjectSnapshot = {
+    ...await context.readSnapshot(), nativeInputs: [{ uri, version }],
+  };
+  const captured: readonly { readonly uri: string; readonly version: string }[] = snapshot.nativeInputs ?? [];
+  return new FileProjectWriter(context).apply({ basedOn: snapshot, changes: [] });
+}
+
 export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
   return [...specification.inspection.query('call-expression')].map(call => specification.call(call.id));
 }
@@ -110,4 +118,8 @@ export function openTypeScriptOutput(project: ProjectContext, context: import('e
   const outputs = new Outputs();
   outputs.register(typescriptOutput);
   return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
+}
+
+export function compileWorkspace(sources: LoadedSources): Compilation {
+  return new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(sources.entries) });
 }
