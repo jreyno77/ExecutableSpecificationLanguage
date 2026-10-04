@@ -48,7 +48,7 @@ for site in sites:
 base, library = pathlib.Path(sys.base_prefix), pathlib.Path(sysconfig.get_path("stdlib"))
 binaries = [str(path) for path in base.glob("python*.dll")]
 if sysconfig.get_config_var("LIBDIR") and sysconfig.get_config_var("LDLIBRARY"):
-    binaries.append(str(pathlib.Path(sysconfig.get_config_var("LIBDIR")) / sysconfig.get_config_var("LDLIBRARY")))
+    binaries.append(str((pathlib.Path(sysconfig.get_config_var("LIBDIR")) / sysconfig.get_config_var("LDLIBRARY")).resolve(strict=True)))
 print(json.dumps({"requirements": requirements, "selected": selected, "installed": installed,
                   "python": {"version": sys.version.split()[0], "stdlib": [str(library)] + ([str(base / "DLLs")] if (base / "DLLs").exists() else []),
                              "binaries": binaries}, "sites": [str(site) for site in sites]}))

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Compiler, ConfigurationReader, FileProjectWriter, LangiumModel, LangiumReader, Outputs, ProjectConnector,
@@ -59,7 +59,9 @@ export class PythonOutputDriver {
   }
   async runConsumer(): Promise<void> { this.runtime = await this.python('import sys, runpy; sys.path.insert(0, sys.argv[1]); runpy.run_path(sys.argv[2], run_name="__main__")', [join(this.root, 'src'), join(this.root, 'consumer.py')]); }
   async dispose(): Promise<void> {
-    if (!this.directory || !resolve(this.directory).startsWith(resolve(tmpdir()) + '\\') && !resolve(this.directory).startsWith(resolve(tmpdir()) + '/')) throw new Error('Unexpected temporary project root.');
-    await fs.rm(this.directory, { recursive: true, force: true });
+    if (!this.directory) return;
+    const directory = await fs.realpath(this.directory), within = relative(await fs.realpath(tmpdir()), directory);
+    if (!within || within === '..' || within.startsWith('..' + sep) || isAbsolute(within)) throw new Error('Unexpected temporary project root.');
+    await fs.rm(directory, { recursive: true, force: true });
   }
 }
