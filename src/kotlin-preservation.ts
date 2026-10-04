@@ -146,7 +146,31 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
         } else refuse(node.file, 'The inferred native result no longer matches the owned signature.');
       }
     }
-    if (old.kind === 'function' && !same(old.selector.at(-1)?.parameters, next.selector.at(-1)?.parameters)) refuse(node.file, 'Parameter changes require explicit native signature preservation.');
+    if (old.kind === 'function' && !same(old.selector.at(-1)?.parameters, next.selector.at(-1)?.parameters)) {
+      const parameters = (query: KotlinQuery, owner: Declaration) => query.declarations.filter(parameter => parameter.kind === 'parameter'
+        && parameter.file === owner.file && same(parameter.selector.slice(0, -1), owner.selector)).sort((a, b) => a.range.start - b.range.start);
+      const prior = parameters(before.value.native, old), actual = parameters(current.value, node), proposed = parameters(after.value.native, next);
+      const withoutType = (parameter: Declaration, source: string) => parameter.typeRange
+        ? source.slice(parameter.range.start, parameter.typeRange.start) + source.slice(parameter.typeRange.end, parameter.range.end) : undefined;
+      const pairs = prior.map(parameter => {
+        const address = key(parameter.file, parameter.selector), identity = [...oldSymbols].find(([, value]) => value === address)?.[0];
+        return [address, identity ? newSymbols.get(identity) : undefined] as const;
+      });
+      const signature = (owner: Declaration) => [owner.parameterNames, owner.typeParameters, owner.selector.at(-1)?.receiver];
+      const stable = same(signature(old), signature(node)) && same(signature(old), signature(next))
+        && prior.length === actual.length && prior.length === proposed.length && prior.length === old.parameterNames?.length
+        && prior.every((parameter, index) => {
+          const current = actual[index]!, desired = proposed[index]!;
+          return parameter.name === current.name && parameter.name === desired.name && parameter.hasDefault === current.hasDefault && parameter.hasDefault === desired.hasDefault
+            && pairs[index]![1] === key(desired.file, desired.selector) && parameter.typeRange && current.typeRange && desired.typeRange
+            && withoutType(parameter, original.get(parameter.file)!) === withoutType(desired, wanted.get(desired.file)!);
+        });
+      if (!stable) refuse(node.file, 'Parameter updates require the same ordered declarations, receiver, generics and default structure.');
+      else {
+        replacements.set(address, key(next.file, next.selector));
+        for (const [before, after] of pairs) replacements.set(before, after!);
+      }
+    }
   }
   for (const [id, address] of newSymbols) if (!oldSymbols.has(id)) {
     const next = newNodes.get(address);
