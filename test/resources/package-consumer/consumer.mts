@@ -1,5 +1,6 @@
 import {
-  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  type OutputRegistration, type OutputWrite,
   ProjectInitializer, type InitializationPlan, type InitializationResult,
   LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
@@ -8,6 +9,9 @@ import {
   type NodeId, type ScenarioCapture, type ScenarioStep,
   TestOperationChecker, ExpressionChecker, FixtureChecker, type TestOperationChecking,
 } from 'executable-specification-language';
+
+export const acceptanceRegistration: OutputRegistration = acceptanceOutput;
+export function remainingTestWork(write: OutputWrite): readonly string[] { return (write.obligations ?? []).map(item => item.message); }
 
 export async function acquire(manifest: string, root: string, configuration: Configuration) {
   const libraries: LibraryLoad = await new LibraryLoader(manifest).load(configuration);

@@ -37,6 +37,14 @@ function children(owner: ts.Node): ts.Declaration[] {
   ts.forEachChild(owner, visit); return found;
 }
 
+/** Resolves an exact lexical address without claiming a specification identity. */
+export function nativeSelection(source: ts.SourceFile, selectors: readonly Selector[]): readonly ts.Node[] {
+  let nodes: readonly ts.Node[] = [source];
+  for (const selector of selectors) nodes = nodes.flatMap(owner => children(owner).filter(node => kindOf(node) === selector.kind && nameOf(node) === selector.name
+    && (selector.static === undefined || !!(ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Static) === selector.static)));
+  return nodes;
+}
+
 /** Native declaration selection, reference identities and source-level relationship attribution. */
 export class TypeScriptSymbols {
   readonly problems: Diagnostic[] = [];
@@ -52,9 +60,7 @@ export class TypeScriptSymbols {
       const source = capture.program?.getSourceFile(capture.absolute(value.file));
       if (!capture.snapshot.files.some(file => file.path === value.file)) { this.problem('missing-project-artifact', value.file, 'Associated project file is absent.'); continue; }
       if (!source) { this.problem('outside-project-program', value.file, 'The associated source is outside the captured TypeScript program.'); continue; }
-      let nodes: readonly ts.Node[] = [source];
-      for (const selector of value.declaration) nodes = nodes.flatMap(owner => children(owner).filter(node => kindOf(node) === selector.kind && nameOf(node) === selector.name
-        && (selector.static === undefined || !!(ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Static) === selector.static)));
+      const nodes = nativeSelection(source, value.declaration);
       if (!nodes.length) { this.problem('missing-project-symbol', value.file, 'The exact associated declaration is absent.'); continue; }
       const constructors = nodes.filter(ts.isConstructorDeclaration);
       const keys = new Set<ts.Symbol | ts.ConstructorDeclaration>(constructors.length ? constructors.map(node => this.construction(node)) : nodes.map(node => this.symbol(named(node)!)).filter((symbol): symbol is ts.Symbol => !!symbol));
@@ -117,8 +123,8 @@ export class TypeScriptSymbols {
     }
     return { kind: 'project', id: this.projectId(nearest ?? node.getSourceFile()) };
   }
-  relationships(id: string): { incoming: { uses: ObservedRelationship[]; unresolved: Unresolved[] }; outgoing: { uses: ObservedRelationship[]; unresolved: Unresolved[] } } {
-    const selected = this.selected(id), nodes = selected.flatMap(item => item.nodes), keys = new Set(selected.map(item => item.key));
+  relationships(id: string, within?: readonly ts.Node[]): { incoming: { uses: ObservedRelationship[]; unresolved: Unresolved[] }; outgoing: { uses: ObservedRelationship[]; unresolved: Unresolved[] } } {
+    const selected = this.selected(id), nodes = within ?? selected.flatMap(item => item.nodes), keys = new Set(selected.map(item => item.key));
     const incoming = { uses: [] as ObservedRelationship[], unresolved: [] as Unresolved[] }, outgoing = { uses: [] as ObservedRelationship[], unresolved: [] as Unresolved[] };
     const contains = (node: ts.Node) => nodes.some(owner => inside(node, owner));
     const references = new Set<string>(), imports = new Set<ts.ImportDeclaration | ts.ExportDeclaration>();

@@ -591,6 +591,41 @@ Pass its packages to `NpmDependencies.install` explicitly; then `npm run build`
 compiles the starter. Conflicting compiler requirements are rejected before creation.
 A stopped result preserves any created root and actual writer receipt; inspect it
 before recovery. Accepted previews are single-use, including failed attempts.
+## Generate readable acceptance tests
+
+After application synchronization, open the acceptance output against a fresh project
+capture with its native declarations:
+
+```ts
+import { acceptanceOutput, FileProjectWriter, Outputs, TypeScriptContext } from 'executable-specification-language';
+
+const outputs = new Outputs();
+outputs.register(acceptanceOutput);
+const project = new TypeScriptContext(connectedProject, {
+  configFile: 'tsconfig.json', imports: ['vitest'],
+});
+const opened = outputs.open('acceptance', { domain: 'shopping', configFile: 'tsconfig.json' },
+  project, new FileProjectWriter(project), { workspaceModules });
+if (opened.value) {
+  const result = await opened.value.create(current);
+  // Inspect problems and obligations; confirm returned associations only after success.
+}
+```
+
+The pinned target is TypeScript 5.9.3 and Vitest 5.0.2. Generated tests retain authored
+titles, inputs and expected values. They call the domain DSL, which implements checked
+compositions and assertions or delegates runtime work to a driver. Missing runtime
+methods and prose-only expectations fail explicitly and produce `obligations`.
+Generation does not install packages, run the application or claim the tests passed.
+
+The default `test/acceptance`, `test/dsl` and `test/driver` layers use a fresh DSL/driver
+instance per test. Existing classes and native Vitest fixtures require exact
+`acceptance/typescript-symbol-1` associations and initial `adoptExisting: true`.
+Application mappings retain their original output namespace. Updates preserve
+handwritten bodies and refuse competing edits; `read` and `search` inspect current
+native callbacks and report changed generated assertions. Runtime resource lifecycle
+management is a separate boundary.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.

@@ -9,6 +9,27 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
+  expectShoppingSteps(steps: string[]): void {
+    this.expectConsumerRan(); const observed = this.driver.report.acceptance!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    for (const step of steps) expect(observed.scenario).toContain(step);
+  }
+  expectShoppingPassed(title: string): void {
+    expect(this.driver.report.acceptance!.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+  }
+  expectBrokenBasketFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.acceptance!.broken;
+    expect(observed).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+  }
+  expectAcceptanceAndDriverPreserved(): void {
+    const observed = this.driver.report.acceptance!;
+    expect(observed.driverAfter).toBe(observed.driverBefore); expect(observed.unchangedTests).toBe(true);
+  }
   applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
     return this.driver.applyWriteAfterNativeReplacement(input);
   }

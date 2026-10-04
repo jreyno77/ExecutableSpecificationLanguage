@@ -27,6 +27,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   require(!result.deferred.length, 'An output plan cannot defer compiler requirements.');
   if (!result.value) { require(result.problems.length, 'A refused output plan must explain why.'); return; }
   const plan = result.value;
+  if (plan.obligations !== undefined) diagnostics(plan.obligations);
   require(validateReadOnly(snapshot), 'Malformed read-only native evidence.');
   require(snapshot.complete && !snapshot.problems.length, 'A successful output plan requires complete input.');
   require(!result.problems.length && plan.outputId === id && canonical(plan.basedOn) === canonical(snapshot), 'A successful plan must retain its output, snapshot, and clean findings.');
