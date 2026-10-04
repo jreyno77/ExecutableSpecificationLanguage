@@ -67,13 +67,8 @@ def signature(current, wanted):
     def annotation(current, wanted):
         return current.with_changes(annotation=wanted.annotation) if current and wanted else wanted
 
-    previous = {}
+    previous = {parameter.name.value: parameter for parameter in parameters(current.params)}
     fields = ("posonly_params", "params", "kwonly_params", "star_arg", "star_kwarg")
-    for field in fields:
-        value = getattr(current.params, field)
-        for parameter in value if isinstance(value, (tuple, list)) else [value]:
-            if isinstance(parameter, cst.Param):
-                previous[parameter.name.value] = parameter
 
     def parameter(wanted):
         old = previous.get(wanted.name.value) if isinstance(wanted, cst.Param) else None
