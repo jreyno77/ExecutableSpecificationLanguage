@@ -59,3 +59,4 @@ export { JavaContext } from './java-context.js';
 export { JavaProject } from './java-project.js';
 export { javaOutput } from './output-java.js';
 export { javaAcceptanceOutput } from './output-java-acceptance.js';
+export { runCli, type CliOutputs } from './cli.js';

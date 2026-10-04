@@ -55,5 +55,8 @@
     "@types/semver": "7.8.0",
     "langium-cli": "4.4.0",
     "vitest": "5.0.2"
+  },
+  "bin": {
+    "expec": "./dist/cli-entry.js"
   }
 }

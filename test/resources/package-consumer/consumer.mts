@@ -1,5 +1,5 @@
 import {
-  JavaContext, JavaProject, javaOutput, javaAcceptanceOutput, Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  JavaContext, JavaProject, javaOutput, javaAcceptanceOutput, runCli, type CliOutputs, Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type OutputRegistration, type OutputWrite,
   ProjectInitializer, type InitializationPlan, type InitializationResult,
   LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
@@ -133,3 +133,4 @@ export async function inspectJava(project:ProjectContext,associations:readonly i
   const context:ProjectContext=new JavaContext(project),snapshot=await context.readSnapshot();
   return new JavaProject({outputId:'java'},associations).search(id,snapshot);
 }
+export function checkCommand(args: readonly string[], outputs: CliOutputs): Promise<number> { return runCli(args, outputs); }

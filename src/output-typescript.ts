@@ -123,6 +123,10 @@ class TypeScriptOutput implements OutputAdapter {
     if (problems.length) return refused(problems);
     const bytes = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === statePath && hash(file.bytes) === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.files.flatMap(file => file.artifacts) });
+    const obligations: Diagnostic[] = request.operation === 'delete' ? [] : preservation.unfinished().map(id => {
+      const item = request.current.specification.inspection.read(request.current.node(id));
+      return { code: 'implementation-required', message: 'Implement ' + ('name' in item ? item.name : item.kind) + '.', at: item.origin, related: [] };
+    });
+    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.files.flatMap(file => file.artifacts), obligations });
   }
 }

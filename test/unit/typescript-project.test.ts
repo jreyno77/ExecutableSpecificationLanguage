@@ -63,11 +63,17 @@ describe('exact TypeScript project inputs and selectors', () => {
     const result = query({ 'store.ts': 'export namespace Nested { export class Store {} }' });
     expect(result.problems.map(problem => problem.code)).toContain('missing-project-symbol'); expect(result.definitions).toEqual([]);
   });
-  it('does not cross an anonymous callable or block scope to satisfy a top-level selector', () => {
-    for (const source of ['export default function() { class Store {} return Store; }', '{ class Store {} }', 'export const factory = () => { class Store {} return Store; };']) {
-      const result = query({ 'store.ts': source });
-      expect(result.definitions).toEqual([]); expect(result.problems.map(problem => problem.code)).toContain('missing-project-symbol');
-    }
+  it('does not cross an anonymous function to satisfy a top-level selector', () => {
+    const result = query({ 'store.ts': 'export default function() { class Store {} return Store; }' });
+    expect(result.definitions).toEqual([]); expect(result.problems.map(problem => problem.code)).toContain('missing-project-symbol');
+  });
+  it('does not cross a block scope to satisfy a top-level selector', () => {
+    const result = query({ 'store.ts': '{ class Store {} }' });
+    expect(result.definitions).toEqual([]); expect(result.problems.map(problem => problem.code)).toContain('missing-project-symbol');
+  });
+  it('does not cross an arrow function to satisfy a top-level selector', () => {
+    const result = query({ 'store.ts': 'export const factory = () => { class Store {} return Store; };' });
+    expect(result.definitions).toEqual([]); expect(result.problems.map(problem => problem.code)).toContain('missing-project-symbol');
   });
   it('selects an explicit parameter property through its native class ownership', () => {
     const source = 'export class Store { constructor(public title: string) {} }\nconst store = new Store("Dune"); store.title;';
