@@ -9,7 +9,7 @@ import { readJson } from './json-data.js';
 import { outputProblem } from './output-documents.js';
 import { validDiff } from './output-contract.js';
 import type { FileChange } from './project-writer.js';
-import { preserveKotlin } from './kotlin-preservation.js';
+import { preserveKotlin, retireKotlin } from './kotlin-preservation.js';
 import { checkKotlinDriver, kotlinDriver, kotlinDriverBindings } from './kotlin-test-driver.js';
 import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
@@ -24,7 +24,7 @@ const options = kotlinOptions.omit({ directory: true, concepts: true }).extend({
 });
 const statePath = '.expec/outputs/' + Buffer.from('kotlin-acceptance').toString('hex') + '.json';
 const association = z.strictObject({ specId: z.string(), locator: locatorSchema });
-const state = z.strictObject({ format: z.literal(1), options: z.string(), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
+const state = z.strictObject({ format: z.literal(1), options: z.string(), deleted: z.array(z.string()).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
   id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association),
 })) });
 export const kotlinAcceptanceOutput: OutputRegistration = {
@@ -36,6 +36,10 @@ export const kotlinAcceptanceOutput: OutputRegistration = {
 class KotlinAcceptance implements OutputAdapter {
   readonly id = 'kotlin-acceptance';
   constructor(private readonly settings: z.infer<typeof options>, private readonly context?: OutputContext) {}
+  private artifacts(stored?: z.infer<typeof state>) {
+    return [...stored?.files.flatMap(file => file.artifacts) ?? [], ...stored?.fixture ? [stored.fixture] : [],
+      ...stored?.driver ? [stored.driver] : [], ...stored?.bindings ?? []].filter(item => !stored?.deleted.includes(item.specId));
+  }
   private state(snapshot: ProjectSnapshot): Check<z.infer<typeof state>> {
     const source = snapshot.files.find(file => file.path === statePath);
     if (!source) return { problems: [], deferred: [] };
@@ -58,7 +62,7 @@ class KotlinAcceptance implements OutputAdapter {
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     const failure = (code: string, message: string, path = ''): Check<OutputPlan> => ({ problems: [outputProblem(code, path, message)], deferred: [] });
     const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
-    if (request.operation === 'delete') return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
+    if (request.operation === 'delete') return this.delete(request.id, snapshot, stored.value);
     if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Supply the actual identity transition.');
     const beforeOptions = stored.value && options.parse(JSON.parse(stored.value.options));
     const fixed = ({ fixture: _fixture, ...settings }: z.infer<typeof options>) => canonical(settings);
@@ -144,10 +148,30 @@ class KotlinAcceptance implements OutputAdapter {
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
       artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : [], ...next.driver ? [next.driver] : [], ...next.bindings ?? []], obligations: rendered.obligations });
   }
+  private async delete(id: string, snapshot: ProjectSnapshot, stored?: z.infer<typeof state>): Promise<Check<OutputPlan>> {
+    const failure = (code: string, message: string): Check<OutputPlan> => ({ problems: [outputProblem(code, statePath, message)], deferred: [] });
+    if (!stored) return failure('output-not-found', 'No owned generated Kotlin test exists.');
+    if (stored.options !== canonical(this.settings)) return failure('output-options-changed', 'Reopen the recorded options before deleting a generated test.');
+    const intact = await this.integrity(snapshot, stored); if (intact.problems.length) return intact;
+    if (stored.deleted.includes(id)) return success({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.artifacts(stored) });
+    const prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/') + '/acceptance/';
+    const selected = stored.files.filter(file => file.path.startsWith(prefix) && file.artifacts.some(item => item.specId === id && item.locator.format === 'kotlin-symbol-1'));
+    if (selected.length !== 1) return failure('output-not-found', 'Select exactly one owned generated example or examples group.');
+    const retired = await retireKotlin(snapshot, selected, id);
+    if (!retired.value) return { problems: retired.problems, deferred: retired.deferred };
+    const preserved = await preserveKotlin(snapshot, selected, retired.value.files, new Set());
+    if (!preserved.value) return { problems: preserved.problems, deferred: preserved.deferred };
+    const files = stored.files.flatMap(file => file !== selected[0] ? [file] : retired.value!.files.map(next => ({
+      id: next.id, path: next.path, generated: next.text, hash: hash(Buffer.from(next.text)), artifacts: [...next.artifacts],
+    })));
+    const next = { ...stored, deleted: [...new Set([...stored.deleted, ...retired.value.removed])].sort(), files };
+    return success({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
+      { kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }], artifacts: this.artifacts(next), obligations: preserved.value.obligations });
+  }
   async read(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) } };
-    const result = await new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).read(id, snapshot);
+    const result = await new KotlinProject({ outputId: this.id }, this.artifacts(stored.value)).read(id, snapshot);
     const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
     return { ...result, problems, coverage: { ...result.coverage, complete: result.coverage.complete && !problems.length,
       limitations: [...result.coverage.limitations, ...problems.map(item => item.message)] } };
@@ -158,7 +182,7 @@ class KotlinAcceptance implements OutputAdapter {
       const coverage = { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) };
       return { definitions: [], problems: stored.problems, incoming: { subject: id, direction: 'incoming' as const, coverage, uses: [], unresolved: [] }, outgoing: { subject: id, direction: 'outgoing' as const, coverage, uses: [], unresolved: [] } };
     }
-    const result = await new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).search(id, snapshot);
+    const result = await new KotlinProject({ outputId: this.id }, this.artifacts(stored.value)).search(id, snapshot);
     const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
     const direction = (key: 'incoming' | 'outgoing') => ({ ...result[key], coverage: { ...result[key].coverage,
       complete: result[key].coverage.complete && !problems.length, limitations: [...result[key].coverage.limitations, ...problems.map(item => item.message)] } });

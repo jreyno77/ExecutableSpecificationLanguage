@@ -60,6 +60,12 @@ export class KotlinAcceptance {
     expect([...new Set(this.driver.readResult.artifacts.map(item => item.file.path.split('/').at(-1)))].sort()).toEqual([...files].sort());
   }
   runTests(concurrent = false): Promise<void> { return this.driver.runTests(concurrent); }
+  deleteExample(title: string): Promise<void> { return this.driver.deleteExample(title); }
+  deleteGroup(): Promise<void> { return this.driver.deleteGroup(); }
+  expectDeletionApplied(): void { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied'); }
+  expectDeletionUnchanged(): void { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('unchanged'); }
+  expectDeletionRefused(code: string): void { expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined(); }
+  expectNoGeneratedStep(text: string): void { expect([...this.driver.files].filter(([path]) => path.includes('/acceptance/')).map(([, text]) => text).join('\n')).not.toContain(text); }
   expectRuntimeLines(text: string, count: number): void { expect(this.driver.execution.stdout.split(/\r?\n/).filter(line => line === text)).toHaveLength(count); }
   expectDistinctResources(count: number): void { expect(new Set([...this.driver.execution.stdout.matchAll(/RESOURCE_PORT=(\d+)/g)].map(match => match[1])).size).toBe(count); }
   expectTests(passed: number, failed: number): void {

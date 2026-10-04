@@ -68,6 +68,16 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     if (!operation) throw new Error('Missing authored operation ' + name);
     this.readResult = await this.output.read(this.current.id(operation.id));
   }
+  async deleteExample(title: string): Promise<void> {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.written = await this.output.delete(this.current.id(matches[0]!.id)); this.files = await this.capturedFiles();
+  }
+  async deleteGroup(): Promise<void> {
+    const groups = [...this.current.specification.inspection.query('examples')];
+    if (groups.length !== 1) throw Error('Select exactly one authored examples group.');
+    this.written = await this.output.delete(this.current.id(groups[0]!.id)); this.files = await this.capturedFiles();
+  }
   async readGroup(): Promise<void> {
     const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
     this.readResult = await this.output.read(this.current.id(group[0]!.id));
