@@ -36,11 +36,16 @@ export class PythonDeclarations {
   private readonly used = new Map<string, NodeId>();
   private readonly variables = new Map<NodeId, string>();
   private readonly library = new Map<NodeId, PythonOptions['imports'][number]>();
+  private readonly hidden = new Set<NodeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: PythonOptions, context?: OutputContext) {
     this.inspection = current.specification.inspection; this.catalog = current.specification.types;
     this.path = options.directory + '/' + options.module.replaceAll('.', '/') + '.py';
     const modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.declarations = [...this.inspection.roots()].filter(item => roots.has(item.kind) && item.origin.kind === 'source' && modules.has(item.origin.module));
+    for (const item of this.declarations) if ('members' in item) {
+      const visible = new Set(item.members.flatMap(member => member.kind === 'public' ? member.references.flatMap(reference => reference.resolution.status === 'bound' ? [reference.resolution.target] : []) : []));
+      for (const member of item.members) if (member.kind === 'capability' && !visible.has(member.id)) this.hidden.add(member.id);
+    }
     for (const mapping of options.names) {
       const record = current.baseline.elements.find(record => record.id === mapping.id);
       if (!record) { this.problem('invalid-native-mapping', undefined, 'Unknown declaration: ' + mapping.id); continue; }
@@ -61,7 +66,8 @@ export class PythonDeclarations {
   private problem(code: string, item: Item | undefined, message: string): void { this.problems.push({ code, message, at: item?.origin ?? { kind: 'dependency', path: ['outputs', 'python', 'options'] }, related: [] }); }
   private known<T>(fact: TypeFact<T>): T { if (fact.status !== 'known') throw new TypeError('Python generation requires checked type facts.'); return fact.value; }
   private name(item: Item): string {
-    const value = this.variables.get(item.id) ?? this.names.get(item.id) ?? ('name' in item ? item.name : item.kind);
+    const declared = 'name' in item ? item.name : item.kind;
+    const value = this.variables.get(item.id) ?? this.names.get(item.id) ?? (this.hidden.has(item.id) && !declared.startsWith('_') ? '_' + declared : declared);
     if (!pythonName(value)) this.problem('invalid-native-name', item, 'Provide an explicit Python name for ' + value + '.'); return value;
   }
   private required(name: string): string { this.imports.add(name); return name; }

@@ -12,8 +12,9 @@ export class PythonDelivery {
   expectNativeTypecheckPassed(): void { expect(this.driver.native.text).not.toContain('error:'); expect(this.driver.native.code, this.driver.native.text).toBe(0); }
   expectNativeTypecheckFailedAt(text: string): void { expect(this.driver.native.code).not.toBe(0); expect(this.driver.native.text).toContain(text); }
   runConsumer(): Promise<void> { return this.driver.runConsumer(); }
+  async run(text: string): Promise<void> { await this.driver.file('consumer.py', text); await this.driver.runConsumer(); }
   expectRaised(type: string, message: string): void { expect(this.driver.runtime.code).not.toBe(0); expect(this.driver.runtime.text).toContain(type); expect(this.driver.runtime.text).toContain(message); }
-  expectOutput(text: string): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text.trim()).toBe(text); }
+  expectOutput(text: string): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text.trim().split(/\r?\n/)).toEqual(text.split('\n')); }
   expectProblemAt(code: string, text: string): void {
     expect(this.driver.written.problems.some(problem => problem.code === code && problem.at.kind === 'source' && problem.at.range.sourceId === 'main.expec'), JSON.stringify(this.driver.written.problems)).toBe(true);
     expect(this.driver.written.problems.some(problem => problem.message.includes(text))).toBe(true);

@@ -60,4 +60,10 @@ class StoreGame { depends on Snapshot\npublic save\ncapability save(snapshot: Sn
     await p.checkConsumer('from store.contracts import Book, Rejected, RejectedException\nerror: Rejected[Book] = {"code": "rejected", "payload": {"title": "Dune"}}\ntry:\n    raise RejectedException(error)\nexcept RejectedException as caught:\n    print(caught.details == error)');
     p.expectNativeTypecheckPassed(); await p.runConsumer(); p.expectOutput('True');
   });
+  it('keeps consumer capabilities public and internal operations conventionally private', async () => {
+    const p = await PythonDelivery.create();
+    p.source('class StoreGame { public save\ncapability save() returns Nothing\ncapability internal() returns Nothing }'); await p.buildContracts();
+    await p.run('from store.contracts import StoreGame\nprint(hasattr(StoreGame, "save"))\nprint(hasattr(StoreGame, "_internal"))\nprint(hasattr(StoreGame, "internal"))');
+    p.expectOutput('True\nTrue\nFalse');
+  });
 });

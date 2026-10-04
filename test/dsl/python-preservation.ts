@@ -9,6 +9,9 @@ export class PythonEvolution {
   source(text: string): void { this.driver.source(text); }
   async generate(): Promise<void> { await this.driver.generate(); this.expectApplied(); }
   change(text: string): void { this.driver.change(text); }
+  renameCapability(from: string, to: string, text: string): void { this.driver.renameCapability(from, to, text); }
+  file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
+  async expectFileText(path: string, text: string): Promise<void> { expect(await this.driver.text(path)).toBe(text); }
   update(): Promise<void> { return this.driver.update(); }
   implementSave(body: string): Promise<void> { return this.driver.implementSave(body); }
   run(text: string): Promise<void> { return this.driver.run(text); }

@@ -32,4 +32,10 @@ describe('native Python declaration edits', () => {
     const result = await preserve(before, before + '\n' + before, before + '\n    def reset(self) -> None:\n        raise NotImplementedError()\n', ['reset']);
     expect(result.problems.map(problem => problem.code)).toContain('python-definition-unavailable'); expect(result.files).toEqual([]);
   });
+  it('retains the UTF-8 BOM and CRLF when adding a member', async () => {
+    const current = '\uFEFF# 🛒 keep the source encoding\r\n' + before.replaceAll('\n', '\r\n').replace('raise NotImplementedError()', 'self.saved = title  # Keep me.');
+    const result = await preserve(before, current, before + '\n    def reset(self) -> None:\n        raise NotImplementedError()\n', ['reset']);
+    expect(result.problems).toEqual([]); expect(result.files[0]?.text.startsWith('\uFEFF# 🛒 keep the source encoding\r\n')).toBe(true);
+    expect(result.files[0]?.text).not.toMatch(/(?<!\r)\n/); expect(result.files[0]?.text).toContain('self.saved = title  # Keep me.\r\n');
+  });
 });

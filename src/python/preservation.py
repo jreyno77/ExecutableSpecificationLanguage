@@ -1,6 +1,7 @@
 """Lossless edits to explicitly identified declarations; no file writes or application execution."""
 import ast
 import libcst as cst
+from libcst.metadata import MetadataWrapper, PositionProvider
 
 
 def selector(artifact):
@@ -47,15 +48,16 @@ def contract(node):
     return ast.dump(ast.parse(cst.Module([]).code_for_node(node)), include_attributes=False)
 
 
-def preserve(request, root):
+def preserve(request, root, facts=None):
     before = declarations(cst.parse_module(request["before"]))
     after = declarations(cst.parse_module(request["after"]))
     previous = {item["specId"]: item for item in request["previous"]}
     desired = {item["specId"]: item for item in request["next"]}
-    files = {item["locator"]["value"]["file"] for item in request["previous"]}
-    modules = {file: cst.parse_module((root / file).read_bytes()) for file in files}
+    files = {item["locator"]["value"]["file"] for item in request["previous"]} | set(facts["files"] if facts else [])
+    wrappers = {file: MetadataWrapper(cst.parse_module((root / file).read_bytes())) for file in sorted(files)}
+    modules = {file: wrapper.module for file, wrapper in wrappers.items()}
     actual = {file: declarations(module) for file, module in modules.items()}
-    replacements, additions, problems = {}, {}, []
+    replacements, additions, problems, names = {}, {}, [], {}
 
     def problem(code, file, message):
         problems.append({"code": code, "file": file, "message": message})
@@ -75,8 +77,24 @@ def preserve(request, root):
                 problem("output-conflict", file, "A handwritten signature competes with the generated contract."); continue
             if contract(prior) == contract(wanted):
                 continue
+            if key[-1][1] != selector(old)[-1][1]:
+                targets = [item for item in (facts or {}).get("declarations", []) if item["file"] == file
+                           and tuple((part["kind"], part["name"]) for part in item["declaration"]) == selector(old)]
+                if len(targets) != 1:
+                    problem("python-definition-unavailable", file, "Renaming requires one exact native declaration."); continue
+                if key in actual[file]:
+                    problem("native-name-conflict", file, "Another native declaration already uses the requested name."); continue
+                target = targets[0]["target"]
+                target_key = lambda item: (item["file"], item["line"], item["column"])
+                for use in facts["uses"]:
+                    if use["name"] != selector(old)[-1][1]:
+                        continue  # An explicit import/callable alias keeps its own name.
+                    if len(use["targets"]) == 1 and target_key(use["targets"][0]) == target_key(target):
+                        names[(use["file"], use["start"])] = key[-1][1]
+                    elif use["member"] and len(use["targets"]) != 1:
+                        problem("incomplete-native-references", use["file"], "An uncertain native member cannot authorize this rename.")
             if isinstance(current, cst.FunctionDef) and isinstance(wanted, cst.FunctionDef):
-                replacements[current] = wanted.with_changes(body=current.body, decorators=current.decorators, leading_lines=current.leading_lines)
+                replacements[current] = wanted
             elif isinstance(current, cst.AnnAssign) and isinstance(wanted, cst.AnnAssign):
                 replacements[current] = current.with_changes(annotation=wanted.annotation)
             else:
@@ -100,8 +118,20 @@ def preserve(request, root):
         return [], problems
 
     class Rewrite(cst.CSTTransformer):
+        METADATA_DEPENDENCIES = (PositionProvider,)
+
+        def __init__(self, file, module):
+            self.file, self.lines, self.bom = file, module.code.splitlines(keepends=True), module.encoding == "utf-8-sig"
+
+        def leave_Name(self, original, updated):
+            at = self.get_metadata(PositionProvider, original).start
+            prefix = "".join(self.lines[:at.line - 1]) + self.lines[at.line - 1][:at.column]
+            name = names.get((self.file, len(prefix.encode("utf-16-le")) // 2 + self.bom))
+            return updated.with_changes(value=name) if name else updated
+
         def leave_FunctionDef(self, original, updated):
-            return replacements.get(original, updated)
+            wanted = replacements.get(original)
+            return wanted.with_changes(body=updated.body, decorators=updated.decorators, leading_lines=updated.leading_lines) if wanted else updated
 
         def leave_AnnAssign(self, original, updated):
             return replacements.get(original, updated)
@@ -109,4 +139,4 @@ def preserve(request, root):
         def leave_ClassDef(self, original, updated):
             return updated.with_changes(body=updated.body.with_changes(body=[*updated.body.body, *additions[original]])) if original in additions else updated
 
-    return [{"file": file, "text": module.visit(Rewrite()).code} for file, module in modules.items()], []
+    return [{"file": file, "text": wrapper.visit(Rewrite(file, wrapper.module)).bytes.decode("utf-8")} for file, wrapper in wrappers.items()], []

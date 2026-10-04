@@ -147,6 +147,6 @@ if "rewrite" in request and not problems:
     specification = importlib.util.spec_from_file_location("expec_preservation", pathlib.Path(__file__).with_name("preservation.py"))
     preservation = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(preservation)
-    result["rewritten"], failures = preservation.preserve(request["rewrite"], root)
+    result["rewritten"], failures = preservation.preserve(request["rewrite"], root, result)
     result["problems"].extend(failures)
 print(json.dumps(result, ensure_ascii=True))

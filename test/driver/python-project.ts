@@ -24,7 +24,7 @@ export class PythonProjectDriver extends PythonOutputDriver {
     const native = async (args: string[]) => promisify(execFile)(uv, ['--no-config', ...args, '--project', this.root], { cwd: this.root, env: { ...environment, UV_PYTHON_DOWNLOADS: 'never' }, timeout: 90_000, windowsHide: true });
     await this.file('pyproject.toml', '[project]\nname = "expec-native-fixture"\nversion = "0.0.0"\nrequires-python = ">=3.12,<3.13"\ndependencies = ["libcst==1.9.0", "jedi==0.20.0", "mypy==2.4.0", "pytest==9.1.1"]\n');
     await native(['lock', '--python', python]);
-    await native(['sync', '--locked', '--no-install-project', '--no-build', '--no-python-downloads', '--python', python]);
+    await native(['sync', '--locked', '--no-install-project', '--no-build', '--no-python-downloads', '--link-mode', 'copy', '--python', python]);
     const config = { format: 1, python, uv, sourceRoots: { main: ['src'], test: ['test'] }, environment: '.venv' };
     await this.file('expec.python.json', JSON.stringify(config));
     const sites = join(this.root, '.venv', ...(process.platform === 'win32' ? ['Lib', 'site-packages'] : ['lib', 'python3.12', 'site-packages']));
