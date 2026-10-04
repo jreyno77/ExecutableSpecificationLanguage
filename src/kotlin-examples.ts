@@ -6,6 +6,7 @@ import type { IdentifiedSpecification, ArtifactAssociation } from './specificati
 import type { TypeId } from './types.js';
 import type { KotlinFile } from './kotlin-declarations.js';
 import type { KotlinQuery } from './kotlin-query.js';
+import { kotlinName } from './kotlin-fixture.js';
 import { decimal } from './decimal.js';
 import { ExpressionChecker } from './expression-checker.js';
 import { KotlinData } from './kotlin-data.js';
@@ -29,7 +30,7 @@ export class KotlinExamples {
   private readonly className: string;
   private readonly locals = new Map<string, TypeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number]) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number]) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
     this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets);
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
@@ -206,8 +207,12 @@ export class KotlinExamples {
         methods.push('  fun ' + name + '(' + parameters + '): ' + result + ' {\n    ' + this.statements(operation) + '\n  }');
         continue;
       }
-      this.obligations.push({ code: 'implementation-required', at: operation.origin, message: 'Implement ' + this.options.domain + '.' + name + '.', related: [] });
-      driver.push('  open fun ' + name + '(' + parameters + '): ' + result + ' = throw NotImplementedError(' + quote('Not implemented: ' + name) + ')');
+      const target = this.nativeDriver && this.targets.get(operation.id);
+      if (target) driver.push('  open fun ' + name + '(' + parameters + '): ' + result + ' = delegate.' + target.name + '(' + operation.parameters.map(item => this.name(item)).join(', ') + ')');
+      else {
+        this.obligations.push({ code: 'implementation-required', at: operation.origin, message: 'Implement ' + this.options.domain + '.' + name + '.', related: [] });
+        driver.push('  open fun ' + name + '(' + parameters + '): ' + result + ' = throw NotImplementedError(' + quote('Not implemented: ' + name) + ')');
+      }
       methods.push('  fun ' + name + '(' + parameters + '): ' + result + ' = driver.' + name + '(' + operation.parameters.map(item => this.name(item)).join(', ') + ')');
       driverArtifacts.push(artifact(operation.id, 'driver', this.className + 'Driver', name, canonical));
     }
@@ -232,9 +237,9 @@ export class KotlinExamples {
     };
     this.locals.clear();
     for (const item of this.inspection.query('fixture')) if (this.owned(item)) fixture(item);
-    add(this.current.id(group.id) + ':driver', 'driver', this.className + 'Driver', 'open class ' + this.className + 'Driver {\n' + driver.join('\n') + '\n}', driverArtifacts);
+    add(this.current.id(group.id) + ':driver', 'driver', this.className + 'Driver', 'open class ' + this.className + 'Driver' + (this.nativeDriver ? '(private val delegate: ' + kotlinName(this.nativeDriver) + (this.nativeDriver.zeroArgumentConstruction ? ' = ' + kotlinName(this.nativeDriver) + '()' : '') + ')' : '') + ' {\n' + driver.join('\n') + '\n}', driverArtifacts);
     add(this.current.id(group.id) + ':dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + [...fixtures, ...methods].join('\n') + '\n}', dslArtifacts);
-    add(this.current.id(group.id) + ':fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + this.options.package + '.driver.' + this.className + 'Driver())\n}', []);
+    add(this.current.id(group.id) + ':fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? '(driver: ' + this.options.package + '.driver.' + this.className + 'Driver)' : '') + ' {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? 'driver' : this.options.package + '.driver.' + this.className + 'Driver()') + ')\n}', []);
     add(this.current.id(group.id) + ':comparison', 'dsl', 'ExpecChecks', this.data.source(), []);
     this.problems.push(...this.data.problems);
     return files.map(file => ({ ...file, artifacts: [...file.artifacts, { specId: this.current.id(group.id), locator: { outputId: 'kotlin-acceptance', format: 'kotlin-file-1', value: { file: file.path } } }] }));

@@ -17,6 +17,8 @@ export class KotlinAcceptance {
   }
   resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> { return this.driver.resourceFixture(setupFailure, cleanupFailure); }
   addTestMember(text: string): Promise<void> { return this.driver.addTestMember(text); }
+  selectDriver(file: string, name: string): void { this.driver.selectDriver(file, name); }
+  mapOperation(name: string, file: string, owner: string, method: string, parameters: string[]): void { this.driver.mapOperation(name, file, owner, method, parameters); }
   selectFixture(file: string, name: string): void { this.driver.selectFixture(file, name); }
   rememberFile(path: string): Promise<void> { return this.driver.rememberFile(path); }
   async expectFileUnchanged(path: string): Promise<void> { expect(await this.driver.unchangedFile(path)).toBe(true); }
@@ -54,5 +56,6 @@ export class KotlinAcceptance {
   }
   expectNoFailure(text: string): void { expect(this.driver.outcomes.map(item => item.failure).join('\n')).not.toContain(text); }
   expectFailure(text: string): void { expect(this.driver.outcomes.map(item => item.failure).join('\n')).toContain(text); }
+  expectNoObligation(code: string): void { expect(this.driver.written.obligations?.map(item => item.code) ?? []).not.toContain(code); }
   expectObligation(code: string): void { expect(this.driver.written.obligations?.map(item => item.code)).toContain(code); }
 }

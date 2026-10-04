@@ -46,6 +46,13 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     await this.file(path, source.slice(0, end) + text + '\n' + source.slice(end));
   }
   selectFixture(file: string, name: string): void { this.acceptanceOptions.fixture = { outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
+  selectDriver(file: string, name: string): void { this.acceptanceOptions.driver = { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
+  mapOperation(name: string, file: string, owner: string, method: string, parameters: string[]): void {
+    const operation = [...this.current.specification.inspection.query('setup'), ...this.current.specification.inspection.query('action'), ...this.current.specification.inspection.query('observation'), ...this.current.specification.inspection.query('check')].find(item => item.name === name);
+    if (!operation) throw Error('Missing authored operation ' + name);
+    const linked = this.identity.withArtifacts(this.current, [...this.current.baseline.artifacts, { specId: this.current.id(operation.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name: owner }, { kind: 'function', name: method, parameters }] } } }]);
+    if (!linked.value) throw Error(JSON.stringify(linked)); this.current = linked.value;
+  }
   async rememberFile(path: string): Promise<void> { this.remembered.set(path, await fs.readFile(join(this.root, path), 'utf8')); }
   async unchangedFile(path: string): Promise<boolean> { return this.remembered.has(path) && this.remembered.get(path) === await fs.readFile(join(this.root, path), 'utf8'); }
   async generate(update = false): Promise<void> {
