@@ -18,7 +18,7 @@ export class PythonRuntimeValues {
   }
   returnReceipt(copies: number): Promise<void> { return this.driver.receipt(copies); }
   observeNumber(expression: string): Promise<void> { return this.driver.number(expression); }
-  proveConversionHookIsExecutable(): Promise<void> { return this.driver.verifyConversionCanary(); }
+  proveConversionHookIsExecutable(nativeType?: string): Promise<void> { return this.driver.verifyConversionCanary(nativeType); }
   useIndependentBaskets(): Promise<void> { return this.driver.isolatedBaskets(); }
   run(): Promise<void> { return this.driver.run(); }
   expectPassed(count: number): void {
@@ -30,6 +30,10 @@ export class PythonRuntimeValues {
     expect(this.driver.runtime.text).toMatch(/Expected (?:a|an exactly representable) finite Number/);
     expect(this.driver.runtime.text).toContain('1 failed');
     expect(this.driver.events).toContainEqual({ event: 'number-type', value: nativeType });
+  }
+  expectNoNativeOverflow(): void {
+    expect(this.driver.runtime.text).toMatch(/^E\s+AssertionError: Expected an exactly representable finite Number/m);
+    expect(this.driver.runtime.text).not.toMatch(/^E\s+OverflowError:/m);
   }
   expectNoConversionHooksCalled(): void {
     expect(this.driver.events.filter(item => item.event.endsWith('-hook'))).toEqual([]);

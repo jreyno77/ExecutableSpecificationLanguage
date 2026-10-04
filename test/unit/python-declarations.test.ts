@@ -11,7 +11,7 @@ function contracts(source: string) {
     const identified = new SpecificationIdentity(() => 'construction-' + ++next).associate(compiled.value);
     if (!identified.value) throw Error(JSON.stringify(identified));
     const declarations = new PythonDeclarations(identified.value, pythonOptions.parse({ module: 'store.contracts' }));
-    return { current: identified.value, rendered: declarations.render(), problems: declarations.problems };
+    return { current: identified.value, rendered: declarations.render(), problems: declarations.problems, obligations: declarations.obligations };
 }
 describe('Python declaration associations', () => {
   it('locates a construction parameter in the actual native initializer', () => {
@@ -29,4 +29,23 @@ describe('Python declaration associations', () => {
     const result = contracts('function title(self: Text) returns Text');
     expect(result.problems).toEqual([]); expect(result.rendered.text).toContain('def title(self: str) -> str:');
   });
+});
+
+it('retains declared generic failure verification at the authored failure type', () => {
+  const source = 'type Book { title: Text }\nerror type Rejected<T> { code: "rejected"\npayload: T }\nfunction save(book: Book) returns Book fails with Rejected<Book>';
+  const result = contracts(source);
+  expect(result.problems).toEqual([]);
+  expect(result.rendered.text).toContain('def save(book: Book) -> Book:');
+  expect(result.obligations).toContainEqual(expect.objectContaining({
+    code: 'failure-verification-required', message: expect.stringMatching(/Rejected<Book>.*save/),
+    at: expect.objectContaining({ kind: 'source', range: expect.objectContaining({
+      sourceId: 'game.expec', start: expect.objectContaining({ offset: source.indexOf('Rejected<Book>') }),
+    }) }),
+  }));
+});
+
+it('does not invent a declared failure for an ordinary callable', () => {
+  const result = contracts('function save(title: Text) returns Text');
+  expect(result.problems).toEqual([]);
+  expect(result.obligations).toEqual([]);
 });

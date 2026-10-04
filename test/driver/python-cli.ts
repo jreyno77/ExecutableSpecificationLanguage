@@ -80,6 +80,15 @@ class ShoppingDriver:
     if (before === ledger.baseline.artifacts.length) throw Error('The confirmed scenario had no artifact association to remove.');
     await this.write(path, JSON.stringify(ledger));
   }
+  async installedVersion(name: string): Promise<string> {
+    const sites = this.path('project/.venv/' + (process.platform === 'win32' ? 'Lib/site-packages' : 'lib/python3.12/site-packages'));
+    const observed = await promisify(execFile)(this.tools().python, ['-I', '-S', '-B', '-c',
+      'import importlib.metadata as m, json, sys; print(json.dumps([d.version for d in m.distributions(path=[sys.argv[1]]) if d.metadata["Name"].lower() == sys.argv[2].lower()]))',
+      sites, name], { timeout: 10_000, windowsHide: true });
+    const versions = JSON.parse(observed.stdout) as string[];
+    if (versions.length !== 1) throw Error('Expected one actual installed distribution: ' + observed.stdout);
+    return versions[0]!;
+  }
   tools(): { python: string; uv: string } {
     const python = process.env.EXPEC_TEST_PYTHON, uv = process.env.EXPEC_TEST_UV;
     if (!python || !uv) throw Error('Provide the explicit Python and uv test executables.');

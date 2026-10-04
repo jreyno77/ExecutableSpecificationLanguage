@@ -46,6 +46,16 @@ examples {
     await p.run(); p.expectInvalidNumber('HookedNumber'); p.expectNoConversionHooksCalled();
   });
 
+  it('rejects a hostile integer and overflowing observation without native conversion failures', async () => {
+    const p = await PythonRuntimeValues.create();
+    p.source('examples { observation current() returns Number\nexample "one copy": current() => 1 }');
+    await p.generateTests();
+    await p.observeNumber('HookedInteger(1)'); await p.proveConversionHookIsExecutable('HookedInteger');
+    await p.run(); p.expectInvalidNumber('HookedInteger'); p.expectNoConversionHooksCalled();
+    await p.observeNumber('10 ** 10000'); await p.run();
+    p.expectInvalidNumber('int'); p.expectNoConversionHooksCalled(); p.expectNoNativeOverflow();
+  });
+
   it('creates two live drivers with separate baskets and starts the second scenario empty', async () => {
     const p = await PythonRuntimeValues.create();
     p.source(`examples {

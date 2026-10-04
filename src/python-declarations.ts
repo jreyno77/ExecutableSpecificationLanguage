@@ -101,6 +101,8 @@ export class PythonDeclarations {
     const facts = this.catalog.callable(item.id), result = this.known(facts.result);
     if (result.kind === 'unspecified') this.obligations.push({ code: 'unspecified-result', at: item.origin, related: [],
       message: 'Specify the result of ' + item.name + '; object is only a native placeholder.' });
+    for (const failure of item.failures) this.obligations.push({ code: 'failure-verification-required', at: failure.origin, related: [],
+      message: 'Verify declared failure ' + language(failure) + ' for ' + item.name + '.' });
     const parameters = [...owner ? ['self'] : [], ...this.parameters(item.parameters, path)], type = result.kind === 'value' ? this.type(result.type) : result.kind === 'none' ? 'None' : 'object';
     return 'def ' + name + '(' + parameters.join(', ') + ') -> ' + type + ':\n' + indent(signature ? '...' : 'raise NotImplementedError(' + JSON.stringify('Not implemented: ' + (owner ? this.name(owner) + '.' : '') + name) + ')');
   }

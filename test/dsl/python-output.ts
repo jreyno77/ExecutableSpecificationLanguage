@@ -9,6 +9,11 @@ export class PythonDelivery {
   source(text: string): void { this.driver.source(text); }
   async buildContracts(options?: Record<string, unknown>): Promise<void> { await this.driver.build(options); }
   expectDefaultObligation(name: string, value: string): void { this.expectObligation('default-verification-required', name + ': ' + value); }
+  expectFailureObligation(name: string, failure: string): void {
+    expect(this.driver.written.obligations?.some(problem => problem.code === 'failure-verification-required'
+      && problem.message.includes(name) && problem.message.includes(failure)
+      && problem.at.kind === 'source' && problem.at.range.sourceId === 'main.expec'), JSON.stringify(this.driver.written.obligations)).toBe(true);
+  }
   expectResultObligation(name: string): void { this.expectObligation('unspecified-result', name); }
   private expectObligation(code: string, name: string): void {
     const obligations = this.driver.written.obligations ?? [];

@@ -75,8 +75,9 @@ class StoreGame { depends on Snapshot\npublic save\ncapability save(snapshot: Sn
     const p = await PythonDelivery.create();
     p.source('type Book { title: Text }\nerror type Rejected<T> { code: "rejected"\npayload: T }\nfunction save(book: Book) returns Book fails with Rejected<Book>');
     await p.buildContracts();
-    await p.checkConsumer('from store.contracts import Book, Rejected, RejectedException\nerror: Rejected[Book] = {"code": "rejected", "payload": {"title": "Dune"}}\ntry:\n    raise RejectedException(error)\nexcept RejectedException as caught:\n    print(caught.details == error)');
-    p.expectNativeTypecheckPassed(); await p.runConsumer(); p.expectOutput('True');
+    await p.checkConsumer('from store.contracts import Book, Rejected, RejectedException, save\nfrom typing import Callable\noperation: Callable[[Book], Book] = save\nerror: Rejected[Book] = {"code": "rejected", "payload": {"title": "Dune"}}\ntry:\n    raise RejectedException(error)\nexcept RejectedException as caught:\n    print(caught.details == error)');
+    p.expectNativeTypecheckPassed(); p.expectFailureObligation('save', 'Rejected<Book>');
+    await p.runConsumer(); p.expectOutput('True');
   });
   it('keeps consumer capabilities public and internal operations conventionally private', async () => {
     const p = await PythonDelivery.create();

@@ -49,6 +49,11 @@ class ShoppingDriver:
         observe("equality-hook")
         raise RuntimeError("Equality hook ran")
 
+class HookedInteger(int):
+    def __float__(self) -> float:
+        observe("conversion-hook")
+        raise RuntimeError("Conversion hook ran")
+
 class ShoppingDriver:
     def current(self) -> float:
         value = ${expression}
@@ -56,9 +61,9 @@ class ShoppingDriver:
         return value
 `);
   }
-  async verifyConversionCanary(): Promise<void> {
+  async verifyConversionCanary(nativeType = 'HookedNumber'): Promise<void> {
     await fs.writeFile(this.trace, '');
-    const result = await this.python('import sys; sys.path.insert(0, sys.argv[1]); from driver.shopping_driver import HookedNumber; float(HookedNumber(1))', [join(this.root, 'test')]);
+    const result = await this.python('import sys; sys.path.insert(0, sys.argv[1]); from driver import shopping_driver; float(getattr(shopping_driver, sys.argv[2])(1))', [join(this.root, 'test'), nativeType]);
     await this.readEvents();
     if (result.code === 0 || !result.text.includes('Conversion hook ran') || !this.events.some(item => item.event === 'conversion-hook'))
       throw Error('The actual numeric conversion canary did not execute: ' + result.text);

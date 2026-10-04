@@ -161,6 +161,12 @@ def root_resource() -> Iterator[None]:
     expect(this.driver.report.stages[0]).toMatchObject({ name: 'installation', status: 'applied',
       packages: { packages: expect.arrayContaining([{ name: 'pypi:' + name, requested, selected, installed }]), problems: [], deferred: [] } });
   }
+  async expectNativePackageVersion(name: string, version: string): Promise<void> {
+    expect(await this.driver.installedVersion(name)).toBe(version);
+  }
+  async expectNoEnvironmentInstalled(): Promise<void> {
+    await expect(stat(this.driver.path('project/.venv'))).rejects.toMatchObject({ code: 'ENOENT' });
+  }
   async expectNativeToolVersions(versions: Record<string, string>): Promise<void> {
     const report = JSON.parse(await readFile(this.driver.path('project/.expec/python/environment.json'), 'utf8'));
     expect(report).toMatchObject({ format: 1, uv: { version: versions.uv }, tools: {
