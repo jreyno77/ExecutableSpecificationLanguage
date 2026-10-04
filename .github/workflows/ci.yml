@@ -75,14 +75,14 @@ jobs:
         run: npm run test:package
 
   kotlin:
-    name: Kotlin native / ${{ matrix.os }} / shard ${{ matrix.shard }}
+    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0}', matrix.shard) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, package]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,4 +113,8 @@ jobs:
       - name: Build the actual native bridge and public package
         run: npm run build
       - name: Run every selected native unit and acceptance test
+        if: matrix.shard != 'package'
         run: npm run test:kotlin -- --shard=${{ matrix.shard }}/4
+      - name: Verify the installed Kotlin consumer
+        if: matrix.shard == 'package'
+        run: npm run test:kotlin-package

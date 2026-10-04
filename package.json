@@ -31,6 +31,7 @@
     "test:acceptance": "vitest run test/acceptance --maxWorkers=2",
     "test:core": "vitest run --config vitest.core.config.ts",
     "test:kotlin": "vitest run --config vitest.kotlin.config.ts",
+    "test:kotlin-package": "npm run build && vitest run --config vitest.kotlin-package.config.ts",
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",

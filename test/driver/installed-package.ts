@@ -16,6 +16,13 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  kotlin?: {
+    initialized: string; acquired: PackageRead; created: OutputWrite; repeated: OutputWrite; tests: OutputWrite; testText: string;
+    observed: { coverage: { complete: boolean }; problems: unknown[]; files: { path: string; text: string }[] }; search: ProjectSearch;
+    caller: string; callerPath: string; before: string; after: string; passed: ProcessResult & { xml: string[] }; broken: ProcessResult & { xml: string[] };
+    testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[]; jars: number; nativeBytes: number; notice: string;
+    artifacts: { file: string; expected: string; actual: string; notices: { path: string; bytes: number }[] }[];
+  };
   acceptance?: {
     written: OutputWrite; scenario: string; driverBefore: string; driverAfter: string; unchangedTests: boolean;
     passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
@@ -152,6 +159,13 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
   }
+  async deliverKotlin(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['kotlin-consumer.mjs', 'kotlin.json'], this.consumer, 600_000, { EXPEC_DENIED_CHECKOUT: checkout });
+    await this.readReport();
+  }
+  async packedBytes(): Promise<number> { return (await stat(PackageDriver.artifact)).size; }
   async generateShoppingAcceptance(): Promise<void> {
     await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
     await cp(join(resources, 'acceptance-consumer.mjs'), join(this.consumer, 'acceptance-consumer.mjs'));
@@ -320,10 +334,10 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
-async function run(executable: string, args: string[], cwd: string): Promise<ProcessResult> {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
+async function run(executable: string, args: string[], cwd: string, timeout = 120_000, environment: Record<string, string> = {}): Promise<ProcessResult> {
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase()))), ...environment };
   try {
-    const result = await execute(executable, args, { cwd, env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
+    const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
   } catch (error) {
     const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
