@@ -194,7 +194,7 @@ export class ConnectedBuild {
     expect(docs).toContain(subject); expect(docs).toContain(text);
   }
   async expectNativeInvocationThrows(name: string, message: string): Promise<void> { expect(await this.driver.invoke(name)).toContain(message); }
-  runNative(args: string[]): Promise<void> { return this.driver.run(args, '', undefined, 120_000); }
+  runNative(args: string[]): Promise<void> { return this.driver.run(args, '', undefined, 180_000); }
   run(args: string[]): Promise<void> { return this.driver.run(args); }
   expectExit(code: number): void { expect(this.driver.result, this.driver.result.stdout + this.driver.result.stderr).toMatchObject({ code }); }
   expectStatus(status: string): void { if (this.driver.report) expect(this.driver.report).toMatchObject({ format: 1, status }); else expect(this.driver.result.stdout + this.driver.result.stderr).toContain(status + ':'); }

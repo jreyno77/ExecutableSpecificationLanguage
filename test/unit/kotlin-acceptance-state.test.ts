@@ -22,12 +22,13 @@ it('does not trust an old version when supplied test bytes remove the assertion'
   const project = new KotlinAcceptanceDriver(); onTestFinished(() => project.dispose());
   await project.prepare(); project.source('examples { example "one copy": 1 => 1 }');
   await project.generate(); expect(project.written.problems).toEqual([]);
+  const assertion = await project.comparisonCall('one copy');
   const captured = await project.context.readSnapshot(), path = 'src/test/kotlin/store/tests/acceptance/ShoppingAcceptance.kt';
   const before = captured.files.find(file => file.path === path)!;
   const text = Buffer.from(before.bytes).toString('utf8');
-  expect(text).toContain('store.tests.dsl.expectData0(1.0, 1.0)');
+  expect(assertion.text).toContain('(1.0, 1.0)'); expect(text).toContain(assertion.text);
   const changed = { ...captured, files: captured.files.map(file => file.path === path ? { ...file,
-    bytes: Buffer.from(text.replace('store.tests.dsl.expectData0(1.0, 1.0)', 'println("missing assertion")')) } : file) };
+    bytes: Buffer.from(text.replace(assertion.text, 'println("missing assertion")')) } : file) };
   const example = [...project.current.specification.inspection.query('example')][0]!;
   const { kotlinAcceptanceOutput } = await import('../../src/index.js');
   const result = await kotlinAcceptanceOutput.open({ package: 'store.tests', domain: 'shopping' }).read(project.current.id(example.id), changed);

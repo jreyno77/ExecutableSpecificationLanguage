@@ -19,6 +19,11 @@ export class KotlinAcceptance {
   changeGroups(text: string, retained: readonly string[], retired: readonly string[] = []): void { this.driver.changeGroups(text, retained, retired); }
   retireExamples(text: string, titles: readonly string[]): void { this.driver.retireExamples(text, titles); }
   addComparisonNeighbor(text: string): Promise<void> { return this.driver.addComparisonNeighbor(text); }
+  rememberComparison(title: string): Promise<void> { return this.driver.rememberComparison(title); }
+  async expectComparisonRetained(title: string): Promise<void> { expect(await this.driver.hasRememberedComparison(title)).toBe(true); }
+  async expectComparisonRemoved(title: string): Promise<void> { expect(await this.driver.hasRememberedComparison(title)).toBe(false); }
+  callComparisonFrom(title: string, file: string, name: string, arguments_: string): Promise<void> { return this.driver.callComparisonFrom(title, file, name, arguments_); }
+  eraseExpectation(title: string): Promise<void> { return this.driver.eraseExpectation(title); }
   async expectComparisonContains(text: string): Promise<void> { expect(await this.driver.comparisonText()).toContain(text); }
   async expectComparisonExcludes(text: string): Promise<void> { expect(await this.driver.comparisonText()).not.toContain(text); }
   weakenFiniteNumberGuard(): Promise<void> { return this.driver.replace('src/test/kotlin/store/tests/dsl/ExpecChecks.kt', 'require(value.isFinite())', 'require(true)'); }
@@ -34,6 +39,7 @@ export class KotlinAcceptance {
   }
   runTestClasses(classes: readonly string[]): Promise<void> { return this.driver.runTests(false, classes); }
   implementDriver(text: string): Promise<void> { return this.driver.driver(text); }
+  implementDriverOperation(name: string, body: string): Promise<void> { return this.driver.implementDriverOperation(name, body); }
   buildContracts(): Promise<void> { return this.driver.contracts(); }
   implement(name: string, body: string): Promise<void> { return this.driver.implement(name, body); }
   async buildAcceptance(): Promise<void> {
@@ -50,6 +56,10 @@ export class KotlinAcceptance {
   async updateAcceptance(): Promise<void> {
     await this.driver.generate('update'); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
   }
+  async repeatAcceptance(): Promise<void> {
+    await this.driver.generate(); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('unchanged');
+  }
+  async expectNoNativeFile(path: string): Promise<void> { expect((await this.driver.capturedFiles()).has(path)).toBe(false); }
   expectNoRuntimeOutput(text: string): void { expect(this.driver.execution.stdout + this.driver.execution.stderr).not.toContain(text); }
   async expectAcceptanceRefused(code: string): Promise<void> {
     await this.driver.generate('update'); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();

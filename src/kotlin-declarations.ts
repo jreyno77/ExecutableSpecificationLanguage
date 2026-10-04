@@ -40,6 +40,7 @@ const doc = (lines: readonly string[]): string => lines.length ? '/**\n' + lines
 /** Projects the existing checked type catalog into Kotlin declarations. */
 export class KotlinDeclarations {
   readonly problems: Diagnostic[] = [];
+  readonly obligations: Diagnostic[] = [];
   readonly constraints = new Set<string>();
   readonly carriers: KotlinCarrier[] = [];
   readonly companions: ArtifactAssociation[] = [];
@@ -55,6 +56,8 @@ export class KotlinDeclarations {
   private artifacts: ArtifactAssociation[] = [];
   private restrictions = new Map<string, string>();
   private restrictionTypes = new Map<string, TypeId>();
+  private nativeTypes: ReadonlyMap<NodeId, string> = new Map();
+  private tupleTypes: ReadonlyMap<number, string> = new Map();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinOptions, context?: OutputContext) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
     const modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
@@ -87,6 +90,13 @@ export class KotlinDeclarations {
     this.problems.push(...selected.problems); return selected.value;
   }
   private problem(code: string, item: Item, message: string): void { this.problems.push({ code, message, at: item.origin, related: [] }); }
+  private obligation(code: string, item: Item, message: string): void { this.obligations.push({ code, message, at: item.origin, related: [] }); }
+  private defaultDocumentation(item: Item<'field' | 'parameter'>): string[] {
+    if (!item.hasDefault) return [];
+    const text = 'Authored default: ' + this.authored(item) + ' = ' + language(item.defaultValue!);
+    this.obligation('default-verification-required', item, text + '; native generation does not evaluate it.');
+    return [text];
+  }
   private known<T>(fact: TypeFact<T>): T { if (fact.status !== 'known') throw new Error('Kotlin output requires checked type facts.'); return fact.value; }
   private name(item: Item): string {
     const name = this.names.get(item.id) ?? ('name' in item ? item.name : item.kind);
@@ -139,14 +149,15 @@ export class KotlinDeclarations {
           this.problem('native-name-conflict', owner, 'Native import conflicts with another declaration: ' + local);
         }
         this.imports.set(local, imported); name = qualified ? mapping.name : local;
-      } else if (!this.generated.has(declaration.id) || declaration.kind === 'opaque-type-declaration') {
+      } else if (this.nativeTypes.has(declaration.id)) name = this.nativeTypes.get(declaration.id)!;
+      else if (!this.generated.has(declaration.id) || declaration.kind === 'opaque-type-declaration') {
         this.problem('missing-native-mapping', owner, 'Provide a native type mapping for ' + this.authored(declaration) + '.'); name = '__unmapped';
       } else name = (qualified ? this.options.package + '.' : '') + this.nativeName(declaration);
       this.checkScope(mapping?.as ?? mapping?.name.split('.').at(-1) ?? this.name(declaration), owner);
       return name + (args.length ? '<' + args.join(', ') + '>' : '');
     }
     if (meaning.kind === 'optional') return this.type(meaning.inner, owner, qualified, suffix) + '?';
-    if (meaning.kind === 'tuple') { this.tuples.set(meaning.elements.length, owner); return (qualified ? this.options.package + '.' : '') + 'Tuple' + meaning.elements.length + '<' + meaning.elements.map((type, index) => this.type(type, owner, qualified, suffix + 'Item' + (index + 1))).join(', ') + '>'; }
+    if (meaning.kind === 'tuple') { if (!this.tupleTypes.has(meaning.elements.length)) this.tuples.set(meaning.elements.length, owner); return (this.tupleTypes.get(meaning.elements.length) ?? (qualified ? this.options.package + '.' : '') + 'Tuple' + meaning.elements.length) + '<' + meaning.elements.map((type, index) => this.type(type, owner, qualified, suffix + 'Item' + (index + 1))).join(', ') + '>'; }
     if ((meaning.kind === 'literal' || meaning.kind === 'union') && owner.kind === 'field') {
       const parent = this.inspection.parent(owner.id);
       if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code') {
@@ -271,9 +282,20 @@ export class KotlinDeclarations {
     this.associate(item, selector);
     for (const parameter of item.parameters) this.associate(parameter, [...selector, { kind: 'parameter', name: this.name(parameter) }]);
     const lines = ['Unverified implementation obligation: ' + this.authored(item) + '.'];
-    if (result.kind === 'unspecified') lines.push('unspecified-result: Any? is a scaffold placeholder.');
-    if (item.body.kind === 'available') lines.push(...item.body.content.members.map(member => member.kind === 'promises' ? member.text : language(member)));
-    lines.push(...item.failures.map(failure => '@throws ' + language(failure) + ': declared exceptional completion, unverified implementation obligation.'));
+    if (result.kind === 'unspecified') {
+      lines.push('unspecified-result: Any? is a scaffold placeholder.');
+      this.obligation('unspecified-result', item, 'Specify the result of ' + this.authored(item) + '; Any? is only a native placeholder.');
+    }
+    lines.push(...item.parameters.flatMap(parameter => this.defaultDocumentation(parameter)));
+    if (item.body.kind === 'available') for (const member of item.body.content.members) {
+      const text = member.kind === 'promises' ? member.text : language(member); lines.push(text);
+      this.obligation('verification-required', member, 'Verify ' + this.authored(item) + ': ' + text);
+    }
+    for (const failure of item.failures) {
+      const text = language(failure);
+      lines.push('@throws ' + text + ': declared exceptional completion, unverified implementation obligation.');
+      this.obligation('failure-verification-required', failure, 'Verify declared failure ' + text + ' for ' + this.authored(item) + '.');
+    }
     return doc(lines) + (private_ ? 'private ' : '') + 'fun ' + name + '(' + this.parameters(item.parameters) + '): ' + returns
       + (signature ? '' : ' {\n    throw ' + (this.hidesBuiltin('NotImplementedError', item) ? 'kotlin.' : '') + 'NotImplementedError(' + quote('Not implemented: ' + this.authored(item)) + ')\n}');
   }
@@ -298,7 +320,7 @@ export class KotlinDeclarations {
         this.associate(field, [...owners, { kind: 'class', name }, { kind: 'property', name: this.name(field) }]);
         return 'var ' + this.name(field) + ': ' + type + (type.endsWith('?') ? ' = null' : '');
       });
-      let text = (fields.length ? 'data ' : '') + 'class ' + name + parameters + '(' + content.join(', ') + ')';
+      let text = doc(fields.flatMap(field => this.defaultDocumentation(field))) + (fields.length ? 'data ' : '') + 'class ' + name + parameters + '(' + content.join(', ') + ')';
       if (item.error) {
         const companion = name + 'Exception'; this.associate(item, [...owners, { kind: 'class', name: companion }], true);
         text += '\n\n' + doc(['Declared domain failure. Generic payload arguments remain data; JVM exception types are nongeneric.'])
@@ -327,12 +349,26 @@ export class KotlinDeclarations {
         }
         return roots.has(member.kind) ? ['private ' + this.declare(member, owner)] : [];
       });
-      if (construction && kind === 'class') members.unshift(doc(['Unverified implementation obligation: ' + this.authored(construction) + '.'])
+      if (construction && kind === 'class') members.unshift(doc(['Unverified implementation obligation: ' + this.authored(construction) + '.',
+        ...construction.parameters.flatMap(parameter => this.defaultDocumentation(parameter))])
         + 'init { throw ' + (this.hidesBuiltin('NotImplementedError', item) ? 'kotlin.' : '') + 'NotImplementedError(' + quote('Not implemented: ' + this.authored(construction)) + ') }');
       return kind + ' ' + name + parameters + (construction && kind === 'class' ? '(' + this.parameters(construction.parameters) + ')' : '')
         + ' {\n' + members.map(text => text.split('\n').map(line => '    ' + line).join('\n')).join('\n\n') + '\n}';
     }
     this.problem('unsupported-native-declaration', item, 'No native declaration mapping for ' + item.kind); return '';
+  }
+  /** Uses the same checked representations for annotations owned only by examples. */
+  renderData(annotations: readonly { owner: Item; type: TypeId }[], names: ReadonlyMap<NodeId, string>, nativeTypes: ReadonlyMap<NodeId, string>, tupleTypes: ReadonlyMap<number, string>): KotlinFile[] {
+    this.selected.splice(0); this.generated.clear();
+    for (const [id, name] of names) this.names.set(id, name);
+    this.nativeTypes = nativeTypes; this.tupleTypes = tupleTypes;
+    this.file = this.options.directory + '/' + this.options.package.replaceAll('.', '/') + '/ExpecTestData.kt';
+    for (const { owner, type } of annotations) this.type(type, owner, true);
+    const files: KotlinFile[] = this.restrictions.size ? [{ id: 'support:data', path: this.file, support: true,
+      text: 'package ' + this.options.package + '\n\n' + [...this.restrictions.values()].join('\n\n') + '\n', artifacts: [] }] : [];
+    for (const arity of this.tuples.keys()) files.push({ id: 'support:tuple:' + arity, support: true,
+      path: this.options.directory + '/' + this.options.package.replaceAll('.', '/') + '/Tuple' + arity + '.kt', text: kotlinTuple(this.options.package, arity), artifacts: [] });
+    return files;
   }
   render(): KotlinFile[] {
     const files: KotlinFile[] = [];

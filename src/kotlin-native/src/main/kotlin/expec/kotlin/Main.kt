@@ -4,6 +4,7 @@ package expec.kotlin
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
+import com.intellij.mock.MockComponentManager
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.KaSession
@@ -24,6 +25,8 @@ import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.idea.references.KtReference
+import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
+import org.jetbrains.kotlin.references.utils.KotlinKDocResolutionStrategyProviderService
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
@@ -70,6 +73,13 @@ fun main(args: Array<String>) {
                 }
             }
         }
+        // This immutable capture uses K2's default strategy without an IDE registry-change listener.
+        val project = session.project as MockComponentManager
+        project.picoContainer.unregisterComponent(KotlinKDocResolutionStrategyProviderService::class.java.name)
+        project.registerService(KotlinKDocResolutionStrategyProviderService::class.java, object : KotlinKDocResolutionStrategyProviderService {
+            override fun shouldUseExperimentalStrategy() = true
+            override fun dispose() {}
+        })
         val files = sources.flatMap { session.modulesWithFiles.getValue(it).filterIsInstance<KtFile>() }
         val originals = files.associateWith { NativeText(directory, it) }
         val declarations = mutableListOf<JsonElement>()
@@ -178,7 +188,7 @@ fun main(args: Array<String>) {
                                 }) else emptyList()
                                 put("targetFile", originals.getValue(targetFile!!).file); put("target", JsonArray(selected))
                             } else put("external", external(symbol))
-                            put("role", if (symbol is KaConstructorSymbol) "construction" else if (element is KtOperationReferenceExpression || element !is KtSimpleNameExpression || element.parent is KtCallExpression) "call" else if (parents(element).any { it is KtTypeReference }) "type" else "reference")
+                            put("role", if (element is KDocName) "reference" else if (symbol is KaConstructorSymbol) "construction" else if (element is KtOperationReferenceExpression || element !is KtSimpleNameExpression || element.parent is KtCallExpression) "call" else if (parents(element).any { it is KtTypeReference }) "type" else "reference")
                         })
                     }
                 }

@@ -75,7 +75,8 @@ class KotlinOutput implements OutputAdapter {
     if (preserved?.problems.length) problems.push(...preserved.problems);
     const changes = [...(preserved?.value?.changes ?? files.filter(file => !file.adopted).map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
-    return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts), ...preserved?.value ? { obligations: preserved.value.obligations } : {} });
+    return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts),
+      obligations: [...declarations.obligations, ...preserved?.value?.obligations ?? []] });
   }
   private async delete(id: string, snapshot: ProjectSnapshot, previous?: KotlinOutputState): Promise<Check<OutputPlan>> {
     if (!previous || !previous.files.some(file => file.artifacts.some(item => item.specId === id)) && !previous.deleted.includes(id)) {

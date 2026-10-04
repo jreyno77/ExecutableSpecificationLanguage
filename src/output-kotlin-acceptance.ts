@@ -17,6 +17,7 @@ import { KotlinProject } from './kotlin-project.js';
 import { checkKotlinTests } from './kotlin-test-contract.js';
 import { compatibleKotlinFixture, migrateKotlinFixture, selectedKotlinFixture } from './kotlin-fixture.js';
 import { kotlinDataCarriers, kotlinGeneratedFiles, kotlinTupleTypes } from './kotlin-output-state.js';
+import { kotlinTestData } from './kotlin-test-data.js';
 import { kotlinOptions } from './kotlin-declarations.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
@@ -60,6 +61,7 @@ class KotlinAcceptance implements OutputAdapter {
         [prefix + '/dsl/' + name + '.kt', { id: 'dsl', name }],
         [prefix + '/dsl/' + name + 'Fixture.kt', { id: 'fixture', name: name + 'Fixture' }],
         [prefix + '/dsl/ExpecChecks.kt', { id: 'comparison', name: undefined }],
+        [prefix + '/dsl/ExpecTestData.kt', { id: 'data', name: undefined }],
       ]);
       for (const file of stored.files) {
         const tuple = file.path.startsWith(prefix + '/dsl/') && /^Tuple([1-9][0-9]*)\.kt$/.exec(file.path.slice((prefix + '/dsl/').length));
@@ -143,7 +145,12 @@ class KotlinAcceptance implements OutputAdapter {
         return failure('output-options-changed', 'A retained provider mapping cannot silently change native identity or local spelling.');
     }
     const generatedFiles = kotlinGeneratedFiles(snapshot, request.current, this.context); if (!generatedFiles.value) return { problems: generatedFiles.problems, deferred: generatedFiles.deferred };
-    const rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, tuples.value, generatedFiles.value, imports, companions.value.carriers), files = rendered.files();
+    let rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, tuples.value, generatedFiles.value, imports, companions.value.carriers);
+    if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
+    const data = await kotlinTestData(request.current, this.settings, rendered.mapping(), imported.value.targets, tuples.value, snapshot, this.context);
+    if (!data.value) return { problems: data.problems, deferred: data.deferred };
+    if (data.value.files.length) rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, data.value.tuples, generatedFiles.value, imports, [...companions.value.carriers, ...data.value.carriers]);
+    const files = [...rendered.files(), ...data.value.files];
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
     const names = rendered.mapping();
     if (stored.value) {
@@ -175,7 +182,7 @@ class KotlinAcceptance implements OutputAdapter {
       const ownedBodies = new Set([...request.current.specification.inspection.query('example'), ...request.current.specification.inspection.query('scenario'),
         ...request.current.specification.inspection.query('fixture'), ...request.current.specification.inspection.query('setup'), ...request.current.specification.inspection.query('action'),
         ...request.current.specification.inspection.query('observation'), ...request.current.specification.inspection.query('check')].filter(item => !('body' in item) || item.body.kind === 'available').map(item => request.current.id(item.id)));
-      const preserved = await preserveKotlin(snapshot, stored.value.files, files, ownedBodies, new Set(['support:comparison']));
+      const preserved = await preserveKotlin(snapshot, stored.value.files, files, ownedBodies, new Set(['support:comparison', 'support:data']));
       if (!preserved.value) return { problems: preserved.problems, deferred: preserved.deferred };
       changes.length = 0; changes.push(...preserved.value.changes);
       proposed.clear(); for (const file of snapshot.files) proposed.set(file.path, file);
@@ -228,7 +235,11 @@ class KotlinAcceptance implements OutputAdapter {
   async read(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) } };
-    const result = await new KotlinProject({ outputId: this.id }, this.artifacts(stored.value)).read(id, snapshot);
+    const associations = this.artifacts(stored.value);
+    if (stored.value?.files.some(file => !file.support && file.id === id)) associations.push(...stored.value.files.filter(file => file.support).map(file => ({
+      specId: id, locator: { outputId: this.id, format: 'kotlin-file-1', value: { file: file.path } },
+    })));
+    const result = await new KotlinProject({ outputId: this.id }, associations).read(id, snapshot);
     const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
     const artifacts = [...result.artifacts];
     if (!problems.length && stored.value?.fixture && stored.value.files.some(file => !file.support && file.id === id)) {

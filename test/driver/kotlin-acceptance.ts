@@ -13,6 +13,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   private readonly remembered = new Map<string, string>();
   private readonly names = new Map<string, string>();
   private readonly groups = new Map<string, string>();
+  private readonly comparisons = new Map<string, string>();
   readonly outcomes: { title: string; status: string; failure: string }[] = [];
   async prepare(): Promise<void> {
     if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR.');
@@ -76,6 +77,40 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\n' + text + '\n');
   }
   async comparisonText(): Promise<string> { return fs.readFile(join(this.root, 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt'), 'utf8'); }
+  async comparisonCall(title: string): Promise<{ file: string; name: string; callee: string; text: string }> {
+    const examples = [...this.current.specification.inspection.query('example')].filter(item => item.title.value === title);
+    if (examples.length !== 1) throw Error('Select one actual example: ' + title);
+    const result = await this.output.search(this.current.id(examples[0]!.id));
+    if (result.problems.length || !result.outgoing.coverage.complete) throw Error(JSON.stringify(result));
+    const calls = result.outgoing.uses.flatMap(use => {
+      if (use.target.kind !== 'project' || !use.target.id.startsWith('{')) return [];
+      const target = JSON.parse(use.target.id) as { file: string; declaration: { kind: string; name: string }[] };
+      const declaration = target.declaration.at(-1), at = use.at.value as { file: string; start: number; end: number; role: string };
+      return target.file.endsWith('/dsl/ExpecChecks.kt') && declaration?.kind === 'function' && declaration.name.startsWith('expectData') && at.role === 'call'
+        ? [{ name: declaration.name, at }] : [];
+    });
+    if (calls.length !== 1) throw Error('Select one actual generated comparison call: ' + JSON.stringify(calls));
+    const { name, at } = calls[0]!, source = await fs.readFile(join(this.root, at.file), 'utf8');
+    if (source.slice(at.start, at.end) !== name) throw Error('The actual comparison token changed.');
+    const start = source.lastIndexOf('\n', at.start) + 1, next = source.indexOf('\n', at.end);
+    const text = source.slice(start, next < 0 ? source.length : next).trim();
+    const callee = source.slice(start, at.end).trim();
+    if (!text.startsWith(callee + '(') || source.split(text).length !== 2) throw Error('Select one complete generated assertion statement.');
+    return { file: at.file, name, callee, text };
+  }
+  async rememberComparison(title: string): Promise<void> { this.comparisons.set(title, (await this.comparisonCall(title)).name); }
+  async hasRememberedComparison(title: string): Promise<boolean> {
+    const name = this.comparisons.get(title); if (!name) throw Error('Remember the actual comparison first: ' + title);
+    return (await this.comparisonText()).includes('internal fun ' + name + '(');
+  }
+  async callComparisonFrom(title: string, file: string, name: string, arguments_: string): Promise<void> {
+    const comparison = await this.comparisonCall(title);
+    await this.file(file, 'package store\nfun ' + name + '() { ' + comparison.callee + '(' + arguments_ + ') }\n');
+  }
+  async eraseExpectation(title: string): Promise<void> {
+    const comparison = await this.comparisonCall(title);
+    await this.replace(comparison.file, comparison.text, 'println("The authored assertion was removed")');
+  }
   async deleteGroupFor(title: string): Promise<void> {
     const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
     this.written = await this.output.delete(id); this.files = await this.capturedFiles();
@@ -92,6 +127,10 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   async implement(name: string, body: string): Promise<void> {
     const previous = this.implementations.get(name) ?? 'throw NotImplementedError("Not implemented: ' + name + '")';
     await this.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', previous, body); this.implementations.set(name, body);
+  }
+  async implementDriverOperation(name: string, body: string): Promise<void> {
+    const key = 'driver.' + name, previous = this.implementations.get(key) ?? 'throw NotImplementedError("Not implemented: ' + name + '")';
+    await this.replace('src/test/kotlin/store/tests/driver/ShoppingDriver.kt', previous, body); this.implementations.set(key, body);
   }
   async driver(text: string): Promise<void> { await this.file('src/test/kotlin/store/tests/driver/ShoppingDriver.kt', text); }
   async resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> {

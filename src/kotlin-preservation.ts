@@ -181,7 +181,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (!ownerId) {
       // A new support function joins its recorded file without replacing unowned neighbors.
       const file = desired.find(file => file.path === next.file && generatedSupport.has(file.id));
-      if (file && next.kind === 'function' && next.selector.length === 1 && previous.some(before => before.id === file.id) && sources.has(next.file)) {
+      if (file && (next.kind === 'function' || file.id === 'support:data') && next.selector.length === 1 && previous.some(before => before.id === file.id) && sources.has(next.file)) {
         const end = sources.get(next.file)!.length;
         edit(next.file, { start: end, end }, '\n' + wanted.get(next.file)!.slice(next.range.start, next.range.end) + '\n');
       }

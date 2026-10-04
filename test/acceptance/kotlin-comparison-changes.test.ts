@@ -1,14 +1,15 @@
 import { it } from 'vitest';
 import { KotlinAcceptance } from '../dsl/kotlin-acceptance.js';
 
-it('reuses private comparison ordinals only for the remaining generated expectations', async () => {
+it('retains the remaining comparison and removes the retired comparison', async () => {
   const project = await KotlinAcceptance.connect();
   project.source('examples { example "one": 1 => 1\nexample "title": "Dune" => "Dune" }');
   await project.buildAcceptance();
+  await project.rememberComparison('one'); await project.rememberComparison('title');
   project.retireExamples('examples { example "title": "Dune" => "Dune" }', ['one']);
   await project.updateAcceptance();
-  await project.expectComparisonContains('internal fun expectData0(');
-  await project.expectComparisonExcludes('fun expectData1(');
+  await project.expectComparisonRetained('title');
+  await project.expectComparisonRemoved('one');
   await project.runTests(); project.expectTests(1, 0);
 }, 300_000);
 
@@ -53,10 +54,10 @@ it('removes an unused comparison after explicitly retiring its last example', as
   const project = await KotlinAcceptance.connect();
   project.source('examples { example "one": 1 => 1\nexample "title": "Dune" => "Dune" }');
   await project.buildAcceptance();
-  await project.expectComparisonContains('internal fun expectData1(');
+  await project.rememberComparison('title'); await project.expectComparisonRetained('title');
   project.retireExamples('examples { example "one": 1 => 1 }', ['title']);
   await project.updateAcceptance();
-  await project.expectComparisonExcludes('fun expectData1(');
+  await project.expectComparisonRemoved('title');
   await project.runTests(); project.expectTests(1, 0);
 }, 300_000);
 
@@ -65,22 +66,21 @@ it('refuses retirement of a comparison still used by handwritten code', async ()
   project.source('examples { example "one": 1 => 1\nexample "title": "Dune" => "Dune" }');
   await project.buildAcceptance();
   const caller = 'src/test/kotlin/store/TitleCheck.kt', support = 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt';
-  await project.nativeFile(caller, 'package store\nfun checkTitle() { store.tests.dsl.expectData1("Dune", "Dune") }\n');
+  await project.callComparisonFrom('title', caller, 'checkTitle', '"Dune", "Dune"');
   await project.rememberFile(caller); await project.rememberFile(support);
   project.retireExamples('examples { example "one": 1 => 1 }', ['title']);
   await project.expectAcceptanceRefused('output-conflict');
   await project.expectFileUnchanged(caller); await project.expectFileUnchanged(support);
 }, 300_000);
 
-it('does not repurpose a same-named comparison called by handwritten code', async () => {
+it('does not remove a Number comparison called by handwritten code when only Text examples remain', async () => {
   const project = await KotlinAcceptance.connect();
   project.source('examples { example "one": 1 => 1\nexample "title": "Dune" => "Dune" }');
   await project.buildAcceptance();
   const caller = 'src/test/kotlin/store/QuantityCheck.kt', support = 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt';
-  await project.nativeFile(caller, 'package store\nfun checkQuantity() { store.tests.dsl.expectData0(1.0, 1.0) }\n');
+  await project.callComparisonFrom('one', caller, 'checkQuantity', '1.0, 1.0');
   await project.rememberFile(caller); await project.rememberFile(support);
   project.retireExamples('examples { example "title": "Dune" => "Dune" }', ['one']);
   await project.expectAcceptanceRefused('output-conflict');
   await project.expectFileUnchanged(caller); await project.expectFileUnchanged(support);
 }, 300_000);
-

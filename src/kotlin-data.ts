@@ -6,13 +6,15 @@ import type { TypeCatalog } from './type-catalog.js';
 import type { TypeId } from './types.js';
 import type { KotlinQuery } from './kotlin-query.js';
 import type { KotlinDataCarrier } from './kotlin-output-state.js';
+import { hash } from './project-files.js';
+import { language } from './language-text.js';
 
 export interface KotlinDataSite { readonly owner: NodeId; readonly path: string }
 
 /** Native type spellings and type-directed data checks use the same supplied catalog. */
 export class KotlinData {
   readonly problems: Diagnostic[] = [];
-  private readonly comparisons: { id: TypeId; site: KotlinDataSite | undefined; name: string; body: string }[] = [];
+  private readonly comparisons = new Map<string, { name: string; body: string }>();
   readonly generatedTuples = new Set<number>();
   constructor(private readonly types: TypeCatalog, private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>,
     private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string, private readonly generated: ReadonlySet<string>, private readonly spellings: ReadonlyMap<NodeId, string> = new Map(), private readonly carriers: readonly KotlinDataCarrier[] = []) {}
@@ -106,9 +108,9 @@ export class KotlinData {
     const arguments_ = restriction.arguments.length ? '<' + restriction.arguments.map(id => this.type(id, item)).join(', ') + '>' : '';
     const text = restriction.enumCases ?? this.textCases(inner);
     if (text && !restriction.arguments.length) {
-      return item.kind === 'string-literal' && text.includes(item.value)
-        ? name + '.' + item.value.slice(0, 1).toUpperCase() + item.value.slice(1)
-        : this.problem(item, 'A finite enum needs its checked literal value.');
+      if (item.kind === 'string-literal' && text.includes(item.value)) return name + '.' + item.value.slice(0, 1).toUpperCase() + item.value.slice(1);
+      return 'when (' + value + ') { ' + text.map(value => JSON.stringify(value).replaceAll('$', '\\$') + ' -> ' + name + '.' + value.slice(0, 1).toUpperCase() + value.slice(1)).join('; ')
+        + '; else -> error("Expected declared finite text data") }';
     }
     if (shape.kind === 'literal' || text) return name + arguments_ + '(' + value + ')';
     const compatibility = new TypeCompatibility(this.types);
@@ -116,6 +118,46 @@ export class KotlinData {
       ?? (actual ? compatibility.assignable(actual, type) : undefined))?.value === true);
     return matches.length === 1 ? name + '.' + this.variant(matches[0]!, item) + arguments_ + '(' + value + ')'
       : this.problem(item, 'The checked value must select exactly one native union alternative.');
+  }
+  /** Converts an observed value between checked receiving representations, evaluating it once. */
+  adapt(value: string, actual: TypeId, expected: TypeId, item: Item, from?: KotlinDataSite, to?: KotlinDataSite): string {
+    from = this.site(actual, from); to = this.site(expected, to);
+    const before = this.types.describe(actual), after = this.types.describe(expected);
+    if (before.kind === 'optional') return '(' + value + ')?.let { data -> ' + this.adapt('data', before.inner, after.kind === 'optional' ? after.inner : expected, item, from, to) + ' }';
+    if (after.kind === 'optional') return this.adapt(value, actual, after.inner, item, from, to);
+    const source = this.restriction(actual, from), destination = this.restriction(expected, to);
+    if (!source && before.kind === 'alias' && before.target.status === 'known') return this.adapt(value, before.target.value, expected, item, from, to);
+    if (!destination && after.kind === 'alias' && after.target.status === 'known') return this.adapt(value, actual, after.target.value, item, from, to);
+    if (source && destination && source.name === destination.name && source.arguments.length === destination.arguments.length
+      && source.arguments.every((id, index) => id === destination.arguments[index])) return value;
+    if (source) {
+      if (!source.trusted || !source.name) { this.dataProblem('unsupported-fixture-data', item, 'Restricted data conversion requires its unchanged generated declaration.', source.target); return '__unsupported'; }
+      const text = source.enumCases ?? this.textCases(source.inner);
+      if (source.shape.kind === 'literal' || text) {
+        const literal = source.shape.kind === 'literal' ? this.types.inspection.read(source.shape.expression, 'literal-type').value : undefined;
+        const primitive = text || literal?.kind === 'string-literal' ? 'Text' : literal?.kind === 'number-literal' ? 'Number' : 'Boolean';
+        const observed = '(' + value + ').' + source.member;
+        if (destination) return this.wrap(expected, item, observed, actual, to) ?? observed;
+        const declaration = [...this.types.inspection.query('builtin-type')].find(item => item.name === primitive)!;
+        return this.adapt(observed, this.types.declaredType(declaration.id), expected, item, undefined, to);
+      }
+      return 'when (val data = ' + value + ') { ' + source.shape.alternatives.map(alternative => 'is ' + source.name + '.' + this.variant(alternative, item)
+        + ' -> '
+        + this.adapt('data.value', alternative, expected, item, from, to)).join('; ') + ' }';
+    }
+    if (destination) return this.wrap(expected, item, value, actual, to) ?? value;
+    if (before.kind === 'builtin' && after.kind === 'builtin' && this.types.inspection.read(before.declaration, 'builtin-type').name === 'List'
+      && this.types.inspection.read(after.declaration, 'builtin-type').name === 'List') {
+      const converted = this.adapt('data', before.arguments[0]!, after.arguments[0]!, item, this.child(from, 'Element'), this.child(to, 'Element'));
+      return converted === 'data' ? value : this.tuplePackage + '.mapData(' + value + ') { data -> ' + converted + ' }';
+    }
+    if (before.kind === 'tuple' && after.kind === 'tuple' && before.elements.length === after.elements.length) {
+      const converted = before.elements.map((id, index) => this.adapt('data.item' + (index + 1), id, after.elements[index]!, item, this.child(from, 'Item' + (index + 1)), this.child(to, 'Item' + (index + 1))));
+      if (converted.every((value, index) => value === 'data.item' + (index + 1))) return value;
+      const name = this.tuple(after.elements.length, item);
+      return 'kotlin.run { val data = ' + value + '; require(data.javaClass == ' + name + '::class.java); ' + name + '(' + converted.join(', ') + ') }';
+    }
+    return value;
   }
   private primitive(native: string): string {
     const guard = 'require(actual is ' + native + ' && expected is ' + native + ') { path + ": expected ' + native + ' data" }\n  ';
@@ -143,9 +185,23 @@ export class KotlinData {
     this.problem(item, 'Opaque runtime values need an explicit comparison contract.'); return [];
   }
   assertion(actual: string, expected: string, id: TypeId, item: Item, site?: KotlinDataSite): string { return this.comparison(id, item, site) + '(' + actual + ', ' + expected + ')'; }
+  private comparisonKey(id: TypeId, site?: KotlinDataSite): unknown[] {
+    const type = this.types.describe(id), carrier = this.restriction(id, site)?.name;
+    if ('declaration' in type) {
+      const declaration = this.types.inspection.read(type.declaration), path: unknown[] = [];
+      for (let node: Item | undefined = declaration; node; node = this.types.inspection.parent(node.id)) if ('name' in node) path.unshift([node.kind, node.name]);
+      return [type.kind, declaration.origin.kind === 'builtin' ? 'builtin' : declaration.origin.module, path,
+        ...'arguments' in type ? type.arguments.map((argument, index) => this.comparisonKey(argument,
+          this.child(site, type.kind === 'builtin' && declaration.kind === 'builtin-type' && declaration.name === 'List' ? 'Element' : 'Argument' + (index + 1)))) : [], carrier];
+    }
+    if (type.kind === 'literal') return [type.kind, language(this.types.inspection.read(type.expression)), carrier];
+    if (type.kind === 'optional') return [type.kind, this.comparisonKey(type.inner, site)];
+    return [type.kind, ...(type.kind === 'tuple' ? type.elements : type.alternatives).map((part, index) =>
+      this.comparisonKey(part, type.kind === 'tuple' ? this.child(site, 'Item' + (index + 1)) : this.site(id, site))), carrier];
+  }
   private comparison(id: TypeId, item: Item, site?: KotlinDataSite): string {
-    const previous = this.comparisons.find(entry => entry.id === id && entry.site?.owner === site?.owner && entry.site?.path === site?.path); if (previous) return previous.name;
-    const entry = { id, site, name: 'expectData' + this.comparisons.length, body: '' }; this.comparisons.push(entry);
+    const key = JSON.stringify(this.comparisonKey(id, site)), previous = this.comparisons.get(key); if (previous) return previous.name;
+    const entry = { name: 'expectData' + hash(Buffer.from(key)), body: '' }; this.comparisons.set(key, entry);
     const type = this.types.describe(id), nested = (type: TypeId, actual: string, expected: string, path = 'path', site?: KotlinDataSite) => this.comparison(type, item, site) + '(' + actual + ', ' + expected + ', ' + path + ', seenActual, seenExpected)';
     let body: string;
     const restriction = this.restriction(id, site);
@@ -202,6 +258,7 @@ export class KotlinData {
     return '/** Compare declared components, never application equals/toString. */\n' + [...this.comparisons.values()].map(item => item.body).join('\n\n')
       + '\n\ninternal fun finiteNumber(value: Double): Double { require(value.isFinite()) { "Expected finite Number data" }; return value }\n'
       + '\n\ninternal fun dataEqual(actual: Any?, expected: Any?, compare: (Any?, Any?) -> Unit): Boolean {\n  return try { compare(actual, expected); true } catch (_: org.opentest4j.AssertionFailedError) { false }\n}\n'
+      + '\n\ninternal fun <A, B> mapData(values: MutableList<A>, convert: (A) -> B): MutableList<B> { require(ordinaryList(values)) { "Expected ordinary List data" }; return values.map(convert).toMutableList() }\n'
       + '\n\nprivate fun ordinaryList(value: List<*>): Boolean = value.javaClass.name in setOf("java.util.ArrayList", "java.util.LinkedList", "java.util.Arrays\\$ArrayList", "java.util.Collections\\$EmptyList", "java.util.Collections\\$SingletonList", "kotlin.collections.EmptyList")\n';
   }
 }

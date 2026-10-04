@@ -19,10 +19,10 @@ export async function checkKotlinTests(snapshot: ProjectSnapshot, current: Kotli
   for (const file of changed) {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.files.find(actual => actual.path === file.path)!.bytes);
     const declarations = [...baseline.value.declarations.filter(node => node.file === file.path && node.selector.length === 1
-      && (node.kind === 'class' || file.id === 'support:comparison' && node.kind === 'function')), ...file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').flatMap(item =>
+      && (node.kind === 'class' || file.id === 'support:data' || file.id === 'support:comparison' && node.kind === 'function')), ...file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').flatMap(item =>
       baseline.value!.declarations.filter(node => canonical({ file: node.file, declaration: node.selector }) === canonical(item.locator.value)
         && ['function', 'property'].includes(node.kind)))];
-    const contract = (node: KotlinQuery['declarations'][number], source: string) => source.slice(node.range.start, node.kind === 'class' ? node.bodyRange?.start ?? node.range.end : node.range.end);
+    const contract = (node: KotlinQuery['declarations'][number], source: string) => source.slice(node.range.start, node.kind === 'class' && file.id !== 'support:data' ? node.bodyRange?.start ?? node.range.end : node.range.end);
     if (!declarations.length || declarations.some(before => {
       const after = current.declarations.find(node => node.file === file.path && canonical(node.selector) === canonical(before.selector));
       return !after || contract(before, file.generated) !== contract(after, text);

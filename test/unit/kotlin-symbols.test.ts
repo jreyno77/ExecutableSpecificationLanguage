@@ -110,3 +110,18 @@ it('keeps distinct binary overload targets distinct in outgoing native relations
   expect(calls).toHaveLength(2);
   expect(new Set(calls.map(use => use.target.id)).size).toBe(2);
 }, 60_000);
+
+it('resolves a native KDoc link and does not invent a use for plain prose', async () => {
+  const { native, snapshot } = await project('package store\nclass StoreGame\n',
+    'package store\n/** Uses [StoreGame]. StoreGame is plain text. */\nfun launch() = Unit\n', [association('game', [game])]);
+  expect(uses(await native.search('game', snapshot))).toEqual([
+    { file: 'src/main/kotlin/store/Launcher.kt', start: 24, end: 33, role: 'reference' },
+  ]);
+}, 60_000);
+
+it('resolves an actual local import alias inside a native KDoc link', async () => {
+  const { native, snapshot } = await project('package store\nclass StoreGame\n',
+    'package store\nimport store.StoreGame as Game\n/** Uses [Game]. */\nfun launch() = Unit\n', [association('game', [game])]);
+  expect(uses(await native.search('game', snapshot))).toContainEqual(
+    { file: 'src/main/kotlin/store/Launcher.kt', start: 55, end: 59, role: 'reference' });
+}, 60_000);

@@ -122,6 +122,19 @@ export class KotlinDelivery {
   }
   expectUnchanged(): void { expect(this.driver.written.receipt?.status).toBe('unchanged'); }
   expectNativeObligation(code: string): void { expect(this.driver.written.obligations?.map(item => item.code)).toContain(code); }
+  expectObligationAt(code: string, line: number, column: number): void {
+    expect(this.driver.written.obligations ?? []).toContainEqual(expect.objectContaining({ code, at: expect.objectContaining({ kind: 'source',
+      range: expect.objectContaining({ sourceId: 'main.expec', start: expect.objectContaining({ line, column }) }) }) }));
+  }
+  expectPlannedObligation(code: string, line: number, column: number): void {
+    expect(this.driver.planned.problems).toEqual([]);
+    expect(this.driver.planned.value?.obligations ?? []).toContainEqual(expect.objectContaining({ code, at: expect.objectContaining({ kind: 'source',
+      range: expect.objectContaining({ sourceId: 'main.expec', start: expect.objectContaining({ line, column }) }) }) }));
+  }
+  expectNoContractObligations(): void { expect(this.driver.written.obligations ?? []).toEqual([]); }
+  async repeatContracts(): Promise<void> {
+    await this.driver.build(); expect(this.driver.written.problems).toEqual([]); this.expectUnchanged();
+  }
   expectFileContains(path: string, text: string): void { expect(this.driver.files.get(path)).toContain(text); }
   expectFileText(path: string, text: string): void { expect(this.driver.files.get(path)).toBe(text); }
   expectMissingFile(path: string): void { expect(this.driver.files.has(path)).toBe(false); }

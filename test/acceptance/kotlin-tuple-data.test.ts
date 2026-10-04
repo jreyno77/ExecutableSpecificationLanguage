@@ -26,3 +26,13 @@ it('refuses changed tuple support instead of running its authored initialization
   await project.rememberFile(tuple);
   await project.expectAcceptanceRefused('unsupported-native-data'); await project.expectFileUnchanged(tuple);
 }, 180_000);
+
+it('refuses changed test-only tuple initialization instead of trusting its regenerated preview', async () => {
+  const project = await KotlinAcceptance.connect();
+  project.source('examples { fixture book: [Text, Number] = ["Dune", 1]\nexample "tuple fixture": book => ["Dune", 1] }');
+  await project.buildAcceptance();
+  const tuple = 'src/test/kotlin/store/tests/dsl/Tuple2.kt';
+  await project.replaceNativeText(tuple, 'var item2: T2)', 'var item2: T2) { init { println("TUPLE_INITIALIZATION") } }');
+  await project.rememberFile(tuple);
+  await project.expectAcceptanceRefused('output-conflict'); await project.expectFileUnchanged(tuple);
+}, 180_000);

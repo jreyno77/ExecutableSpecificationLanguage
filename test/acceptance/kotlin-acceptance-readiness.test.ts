@@ -5,10 +5,10 @@ it('returns the real test bytes but reports an erased expectation as incomplete'
   const project = await KotlinAcceptance.connect();
   project.source('examples { observation quantity(title: Text) returns Number\nexample "one Dune": quantity("Dune") => 1 }');
   await project.buildAcceptance();
-  await project.replaceNativeText('src/test/kotlin/store/tests/acceptance/ShoppingAcceptance.kt', 'store.tests.dsl.expectData0(shopping.quantity("Dune"), 1.0)', 'println("The authored assertion was removed")');
+  await project.eraseExpectation('one Dune');
   await project.readGroup();
   project.expectReadProblem('output-conflict');
-  project.expectReadExcludes('store.tests.dsl.expectData0(shopping.quantity("Dune"), 1.0)');
+  project.expectReadExcludes('shopping.quantity("Dune")');
 }, 120_000);
 
 it('reports disabled generated tests as incomplete native search', async () => {

@@ -99,6 +99,7 @@ export class KotlinExamples {
     return fact.value.kind === 'none' ? 'Unit' : fact.value.kind === 'value' ? this.type(fact.value.type, operation) : this.problem('unspecified-native-result', operation, 'Specify the executable operation result.');
   }
   private expression(item: Item, receiver: string, expected?: TypeId, site = this.valueSite(item)): string {
+    const receiving = expected;
     if (expected) site = this.data.site(expected, site);
     while (expected) {
       site = this.data.site(expected, site);
@@ -119,6 +120,8 @@ export class KotlinExamples {
       }
     }
     const value = (text: string) => expected ? this.data.wrap(expected, item, text, this.valueType(item), site) ?? text : text;
+    const received = (text: string) => { const actual = receiving && this.valueType(item); return actual && receiving
+      ? this.data.adapt(text, actual, receiving, item, this.valueSite(item), site) : text; };
     switch (item.kind) {
       case 'number-literal': {
         const number = Number(item.token);
@@ -149,10 +152,10 @@ export class KotlinExamples {
         const binding = item.reference.resolution;
         if (binding.status === 'bound') {
           const declaration = this.inspection.read(binding.target);
-          if (declaration.kind === 'parameter') return this.name(declaration);
-          if (declaration.kind === 'fixture') return receiver + '.' + this.name(declaration);
+          if (declaration.kind === 'parameter') return received(this.name(declaration));
+          if (declaration.kind === 'fixture') return received(receiver + '.' + this.name(declaration));
         }
-        if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && item.reference.segments.length === 1 && this.locals.has(item.reference.segments[0]!)) return item.reference.segments[0]!;
+        if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && item.reference.segments.length === 1 && this.locals.has(item.reference.segments[0]!)) return received(item.reference.segments[0]!);
         return this.problem('unsupported-native-value', item, 'This value requires an explicit executable binding.');
       }
       case 'unary-expression': return value(item.operator === 'not' ? '(!' + this.expression(item.operand, receiver) + ')'
@@ -172,7 +175,7 @@ export class KotlinExamples {
       case 'member-expression': {
         const type = this.valueType(item.receiver);
         const field = type && this.data.fields(type, item).find(field => this.inspection.read(field.declaration, 'field').name === item.member.segments[0]);
-        return field ? '(' + this.expression(item.receiver, receiver, type) + ').' + this.data.field(field.declaration)
+        return field ? received('(' + this.expression(item.receiver, receiver, type) + ').' + this.data.field(field.declaration))
           : this.problem('missing-native-mapping', item, 'The checked data member needs its actual native property association.');
       }
       case 'call-expression': {
@@ -181,8 +184,8 @@ export class KotlinExamples {
         const parameters = this.types.callable(selected).parameters;
         const arguments_ = item.arguments.map((argument, index) => this.expression(argument, receiver, parameters[index]?.type.status === 'known' ? parameters[index].type.value : undefined,
           parameters[index] && { owner: parameters[index].declaration, path: '' })).join(', ');
-        if (this.operations.some(operation => operation.id === selected)) return receiver + '.' + this.name(operation) + '(' + arguments_ + ')';
-        if (target?.kind === 'function' && target.selector.length === 1) return target.packageName + '.' + target.name + '(' + arguments_ + ')';
+        if (this.operations.some(operation => operation.id === selected)) return received(receiver + '.' + this.name(operation) + '(' + arguments_ + ')');
+        if (target?.kind === 'function' && target.selector.length === 1) return received(target.packageName + '.' + target.name + '(' + arguments_ + ')');
         return this.problem('missing-native-mapping', item, 'This checked call requires a uniquely associated executable native target.');
       }
       default: return this.problem('unsupported-native-expression', item, 'Kotlin acceptance lowering is unavailable for ' + item.kind + '.');
@@ -205,7 +208,8 @@ export class KotlinExamples {
       switch (statement.kind) {
         case 'let': { const type = this.valueType(statement.value), value = this.expression(statement.value, 'this', type); if (type) this.locals.set(statement.name, type); this.localSites.set(statement.name, this.valueSite(statement.value)); return 'val ' + statement.name + ' = ' + value; }
         case 'do': return this.expression(statement.expression, 'this');
-        case 'return': return 'return ' + this.expression(statement.expression, 'this');
+        case 'return': { const result = this.types.callable(operation.id).result; return 'return ' + this.expression(statement.expression, 'this',
+          result.status === 'known' && result.value.kind === 'value' ? result.value.type : undefined, { owner: operation.id, path: '' }); }
         case 'assert': return this.assertion(statement.expression, 'this');
       }
     }).join('\n    ');
@@ -294,7 +298,7 @@ export class KotlinExamples {
       dependencies(item.value);
       const type = this.types.typeOf(item.declaredType.id);
       if (type.status !== 'known') { this.problem('invalid-native-type', item, 'A fixture needs its checked declared type.'); return; }
-      fixtures.push('  val ' + name + ': ' + this.type(type.value, item) + ' = ' + this.expression(item.value, 'this', type.value));
+      fixtures.push('  val ' + name + ': ' + this.type(type.value, item) + ' = ' + this.expression(item.value, 'this', type.value, { owner: item.id, path: '' }));
       dslArtifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: {
         file: prefix + '/dsl/' + this.className + '.kt', declaration: [{ kind: 'class', name: this.className }, { kind: 'property', name }],
       } } });
