@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { readFile, writeFile, mkdir, readdir, realpath } from 'node:fs/promises';
-import { dirname, resolve, join } from 'node:path';
+import { readFile, writeFile, mkdir, readdir, realpath, stat } from 'node:fs/promises';
+import { dirname, resolve, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { tmpdir, homedir } from 'node:os';
@@ -9,12 +9,22 @@ const packageUrl=import.meta.resolve('executable-specification-language'), packa
 const metadata=JSON.parse(await readFile(join(packageRoot,'package.json'),'utf8')), executable=resolve(packageRoot,metadata.bin.expec);
 const input=JSON.parse(await readFile('java-cli-input.json','utf8')), commands=[];
 const temporary=await realpath(tmpdir()), gradleHome=process.env.GRADLE_USER_HOME??join(homedir(),'.gradle');
+const javaHome=process.env.EXPEC_TEST_JAVA_HOME??process.env.JAVA_HOME, canonicalJavaHome=await realpath(javaHome);
+const jdkReads=new Set([javaHome, canonicalJavaHome]), visited=new Set();
+// The selected distribution may link its truststore outside javaHome. Grant only its actual selected targets.
+const selectedJdk=async(path)=>{
+  const actual=await realpath(path), within=relative(canonicalJavaHome,actual);
+  if(within==='..'||within.startsWith('..'+sep)||isAbsolute(within))jdkReads.add(actual);
+  if(visited.has(actual))return; visited.add(actual);
+  if((await stat(actual)).isDirectory())for(const name of await readdir(actual))await selectedJdk(join(actual,name));
+};
+for(const name of ['release','bin','lib','conf'])await selectedJdk(join(javaHome,name));
 const command=async(name,extra=[])=>{
   let native;
   const guarded = name === 'build' || name === 'test';
-  const env={...process.env,NODE_PATH:'',EXPEC_TEST_CHECKOUT_FILE:input.checkoutFile}; delete env.EXPEC_TEST_GRADLE;
+  const env={...process.env,TMP:temporary,TEMP:temporary,TMPDIR:temporary,NODE_PATH:'',EXPEC_TEST_CHECKOUT_FILE:input.checkoutFile}; delete env.EXPEC_TEST_GRADLE;
   const permission=guarded?['--permission','--allow-fs-read='+temporary,'--allow-fs-read='+process.cwd(),
-    '--allow-fs-read='+(process.env.EXPEC_TEST_JAVA_HOME??process.env.JAVA_HOME),'--allow-fs-read='+gradleHome,
+    ...[...jdkReads].map(path=>'--allow-fs-read='+path),'--allow-fs-read='+gradleHome,
     '--allow-fs-write='+temporary,'--allow-fs-write='+process.cwd(),'--allow-child-process','--import','./java-cli-guard.mjs']:[];
   try { native={code:0,...await promisify(execFile)(process.execPath,[...permission,executable,name,'--config','spec/expec.json','--json',...extra],{timeout:180_000,maxBuffer:8*1024*1024,windowsHide:true,env})}; }
   catch(error){if(typeof error.code!=='number'||error.killed)throw error;native={code:error.code,stdout:error.stdout,stderr:error.stderr};}
