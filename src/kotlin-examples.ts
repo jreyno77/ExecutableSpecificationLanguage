@@ -87,6 +87,7 @@ export class KotlinExamples {
       case 'record-expression': {
         const id = expected ?? this.valueType(item);
         if (!id) return this.problem('unsupported-native-data', item, 'A record needs its checked expected type.');
+        this.data.construct(id, item);
         const fields = this.data.fields(id, item);
         return this.type(id, item) + '(' + item.entries.map(entry => {
           const field = fields.find(field => this.inspection.read(field.declaration, 'field').name === entry.name);

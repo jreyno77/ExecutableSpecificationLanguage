@@ -96,8 +96,21 @@ fun main(args: Array<String>) {
                     if (node is KtTypeParameterListOwner) put("typeParameters", JsonArray(node.typeParameters.map { JsonPrimitive(it.name) }))
                     if (node is KtFunction) put("parameterNames", JsonArray(node.valueParameters.map { JsonPrimitive(it.name) }))
                     if (node is KtParameter) put("hasDefault", node.hasDefaultValue())
-                    if (node is KtProperty) put("mutable", node.isVar)
-                    if (node is KtParameter && node.hasValOrVar()) put("mutable", node.isMutable)
+                    if (node is KtProperty) {
+                        put("mutable", node.isVar)
+                        put("storedProperty", node.initializer != null && !node.hasDelegate() && node.receiverTypeReference == null
+                            && node.getter?.bodyExpression == null && node.setter?.bodyExpression == null
+                            && !node.hasModifier(KtTokens.OPEN_KEYWORD) && !node.hasModifier(KtTokens.ABSTRACT_KEYWORD))
+                    }
+                    if (node is KtParameter && node.hasValOrVar()) {
+                        put("mutable", node.isMutable)
+                        put("storedProperty", !node.hasModifier(KtTokens.OPEN_KEYWORD) && !node.hasModifier(KtTokens.ABSTRACT_KEYWORD))
+                    }
+                    if (node is KtClass) put("dataConstruction", !node.isInterface() && !node.isEnum() && !node.isAnnotation()
+                        && !node.hasModifier(KtTokens.INNER_KEYWORD) && node.secondaryConstructors.isEmpty()
+                        && node.primaryConstructorParameters.all { it.hasValOrVar() && (it.defaultValue == null || it.defaultValue?.text == "null") }
+                        && node.companionObjects.isEmpty() && node.superTypeListEntries.isEmpty()
+                        && node.declarations.none { it is KtProperty || it is KtClassInitializer })
                     if (node is KtClass && node !is KtEnumEntry && !node.isInterface()) put("zeroArgumentConstruction",
                         (node.primaryConstructor?.let { accessible(it) } ?: node.secondaryConstructors.isEmpty()) && node.primaryConstructorParameters.all { it.hasDefaultValue() || it.isVarArg }
                             || node.secondaryConstructors.any { constructor -> accessible(constructor) && constructor.valueParameters.all { it.hasDefaultValue() || it.isVarArg } })

@@ -31,7 +31,17 @@ export class KotlinData {
   }
   field(id: NodeId): string {
     const item = this.types.inspection.read(id), target = this.targets.get(id);
+    if (target?.kind === 'property' && !target.storedProperty) this.dataProblem('unsupported-comparison-data', item,
+      'Data observation requires an ordinary stored property with implicit accessors.', target);
     return target?.kind === 'property' ? target.name : this.problem(item, 'The declared data field needs an actual native property association.');
+  }
+  construct(id: TypeId, item: Item): void {
+    const shape = this.shape(id), target = shape.kind === 'declared' ? this.targets.get(shape.declaration) : undefined;
+    if (!target?.dataConstruction) this.dataProblem('unsupported-fixture-data', item,
+      'Authored fixture and expected records require ordinary primary construction without application initialization.', target);
+  }
+  private dataProblem(code: string, item: Item, message: string, target?: KotlinQuery['declarations'][number]): void {
+    this.problems.push({ code, message, at: item.origin, related: target ? [{ kind: 'dependency', path: ['project', target.file, target.nameRange.start, target.nameRange.end - target.nameRange.start] }] : [] });
   }
   fields(id: TypeId, item: Item) {
     const fact = this.types.fields(id);
