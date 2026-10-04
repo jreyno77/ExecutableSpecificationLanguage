@@ -6,7 +6,7 @@ import { TypeScriptCapture, diagnostic } from './typescript-capture.js';
 import { TypeScriptSymbols, nativeSelection, type Selector } from './typescript-symbols.js';
 import ts from 'typescript';
 import { AcceptanceBindings, acceptanceOptions as options } from './acceptance-bindings.js';
-import { acceptanceState, acceptanceStatePath } from './acceptance-state.js';
+import { acceptanceState, acceptanceStatePath, initialFixtureSelection } from './acceptance-state.js';
 import { AcceptancePreservation } from './acceptance-preservation.js';
 import { validDiff } from './output-contract.js';
 import { AcceptanceDocuments, nativeFixture, isNativeTest } from './acceptance-documents.js';
@@ -21,7 +21,8 @@ export const acceptanceOutput: OutputRegistration = {
     async plan(request, basedOn) {
       if (!basedOn.complete || basedOn.problems.length) return { problems: [...basedOn.problems, diagnostic('incomplete-project', 'Acceptance generation requires a complete captured project.', '')], deferred: [] };
       const stored = acceptanceState(basedOn, settings);
-      if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+      const selectingFixture = request.operation === 'update' && stored.value && initialFixtureSelection(stored.value, settings);
+      if (stored.problems.length && !selectingFixture) return { problems: stored.problems, deferred: [] };
       if (request.operation === 'delete') return removeAcceptance(request.id, basedOn, settings, stored.value);
       if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Provide the actual specification transition.');
       const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
@@ -35,7 +36,7 @@ export const acceptanceOutput: OutputRegistration = {
         const capture = new TypeScriptCapture(basedOn, 'acceptance', settings.configFile);
         try {
           const value = settings.fixture.value as unknown as { file: string; declaration: Selector[] };
-          if (!Array.isArray(value.declaration) || !isNativeTest(capture, nativeFixture(capture, settings))) return failure('incompatible-fixture', 'The selected exported value must be an actual native Vitest fixture.');
+          if (!Array.isArray(value.declaration) || !isNativeTest(capture, nativeFixture(capture, settings))) return { problems: [diagnostic('incompatible-fixture', 'The selected exported value must be an actual native Vitest fixture.', value.file)], deferred: [] };
           if (capture.problems.length) return { problems: capture.problems, deferred: [] };
           fixture = { file: value.file, name: value.declaration[0]!.name };
         } finally { capture.service.dispose(); }
@@ -102,7 +103,7 @@ export const acceptanceOutput: OutputRegistration = {
         ...request.current.specification.inspection.query('observation'), ...request.current.specification.inspection.query('check')]
         .filter(operation => operation.body.kind === 'available' || operation.kind === 'check').map(operation => request.current.id(operation.id));
       if (stored.value) {
-        const documents = new AcceptanceDocuments(basedOn, settings, stored.value);
+        const documents = new AcceptanceDocuments(basedOn, selectingFixture ? options.parse(JSON.parse(stored.value.options)) : settings, stored.value);
         try { const problems = documents.problems.filter(problem => ['generated-test-drift', 'unsupported-native-test', 'missing-native-test', 'ambiguous-native-test'].includes(problem.code));
           if (problems.length) return { problems: [...preservation.problems, ...problems], deferred: [] };
         } finally { documents.close(); }
