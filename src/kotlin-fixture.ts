@@ -14,13 +14,10 @@ export function selectedKotlinFixture(native: KotlinQuery, locator: ArtifactLoca
     && same(locator.value, { file: node.file, declaration: node.selector }));
   return selected.length === 1 ? selected[0] : undefined;
 }
-export function compatibleKotlinFixture(native: KotlinQuery, fixture: Declaration, domain: string, type: string, tests: readonly string[]): boolean {
+export function compatibleKotlinFixture(fixture: Declaration, domain: string, type: string): boolean {
   if (!fixture.zeroArgumentConstruction || fixture.typeParameters?.length || fixture.visibility === 'private') return false;
-  return native.declarations.some(node => node.kind === 'property' && node.name === domain && node.returnType === type
-    && ['public', 'protected'].includes(node.visibility) && (
-      node.file === fixture.file && same(node.selector.slice(0, -1), fixture.selector)
-      || native.references.some(reference => tests.includes(reference.file) && reference.name === domain
-        && reference.targetFile === node.file && same(reference.target, node.selector))));
+  const properties = fixture.readableProperties?.filter(property => property.name === domain) ?? [];
+  return properties.length === 1 && properties[0]!.type === type;
 }
 
 /** Changes only the PSI supertype that still resolves to the recorded default fixture. */

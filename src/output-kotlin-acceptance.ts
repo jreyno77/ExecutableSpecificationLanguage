@@ -147,8 +147,8 @@ class KotlinAcceptance implements OutputAdapter {
       if (compatible.problems.length) return compatible;
     }
     if (generated.problems.length) return { problems: generated.problems, deferred: generated.deferred };
-    if (fixture && (!this.settings.fixture || !compatibleKotlinFixture(generated.value, selectedKotlinFixture(generated.value, this.settings.fixture)!, this.settings.domain,
-      this.settings.package + '.dsl.' + className, [testFile]))) {
+    if (fixture && (!this.settings.fixture || !compatibleKotlinFixture(selectedKotlinFixture(generated.value, this.settings.fixture)!, this.settings.domain,
+      this.settings.package + '.dsl.' + className))) {
       return failure('invalid-native-fixture', 'The selected native base needs accessible zero-argument construction and its protected/public readable DSL property.', fixture.file);
     }
     const next = { format: 1, options: canonical(this.settings), subjects: request.current.baseline.elements.map(item => item.id), names, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };

@@ -20,7 +20,8 @@ const result = z.strictObject({
   imports: z.array(z.strictObject({ file: z.string().refine(literal), range })),
   declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), synthetic: z.literal(true).optional(), range, nameRange: range, bodyRange: range.optional(), superTypeRanges: z.array(range).optional(), typeRange: range.optional(), typePosition: z.number().int().nonnegative().optional(),
     packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
-    parameterNames: z.array(z.string()).optional(), hasDefault: z.boolean().optional(), typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), storedProperty: z.boolean().optional(), dataConstruction: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional() })),
+    parameterNames: z.array(z.string()).optional(), hasDefault: z.boolean().optional(), typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), storedProperty: z.boolean().optional(), dataConstruction: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional(),
+    readableProperties: z.array(z.strictObject({ name: z.string(), type: z.string() })).optional() })),
   references: z.array(z.strictObject({ file: z.string().refine(literal), range, name: z.string(), owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
   problems: z.array(z.strictObject({ file: z.string().refine(literal), range, message: z.string(), code: z.string() })),
 });

@@ -114,6 +114,13 @@ fun main(args: Array<String>) {
                     if (node is KtClass && node !is KtEnumEntry && !node.isInterface()) put("zeroArgumentConstruction",
                         (node.primaryConstructor?.let { accessible(it) } ?: node.secondaryConstructors.isEmpty()) && node.primaryConstructorParameters.all { it.hasDefaultValue() || it.isVarArg }
                             || node.secondaryConstructors.any { constructor -> accessible(constructor) && constructor.valueParameters.all { it.hasDefaultValue() || it.isVarArg } })
+                    if (node is KtClass && node !is KtEnumEntry) analyze(node) {
+                        put("readableProperties", JsonArray((node.symbol as KaNamedClassSymbol).memberScope.callables.filterIsInstance<KaPropertySymbol>()
+                            .filter { !it.isExtension && it.visibility.name in setOf("PUBLIC", "PROTECTED") }.map { property -> buildJsonObject {
+                                put("name", property.name.asString())
+                                put("type", property.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT))
+                            } }.toList()))
+                    }
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
                     if (node is KtClassOrObject) {
                         node.body?.let { put("bodyRange", text.range(it)) }

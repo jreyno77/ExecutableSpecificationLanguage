@@ -43,3 +43,10 @@ it('uses native finality for implicit overrides and final record classes', async
     ['Counts', false], ['OpenBook', false], ['ClosedBook', true], ['FinalSlot', true],
   ]);
 }, 60_000);
+
+it('reads the concrete type of an inherited fixture property without private or extension properties', async () => {
+  const result = await declarations('class Shopping\nopen class Base<T>(protected val shopping: T) { private val hidden = 1.0\nval String.extension get() = this }\nclass Fixture: Base<Shopping>(Shopping())');
+  expect(result.find(item => item.name === 'Fixture' && item.kind === 'class')?.readableProperties).toEqual([
+    { name: 'shopping', type: 'store.Shopping' },
+  ]);
+}, 60_000);
