@@ -57,4 +57,10 @@ describe('Kotlin declaration mapping boundaries', () => {
       { imports: [{ declaration: ['Book'], module: 'catalog', name: 'catalog.Book', as: 'CatalogBook' }] }, { catalog: 'type Book { title: Text }' });
     expect(result.problems.map(problem => problem.code)).toContain('native-name-conflict');
   });
+  it('does not validate a mapped external author label as an emitted native identifier', () => {
+    const result = declarations('use `Library book` from "catalog"\ntype Shelf { book: `Library book`\ntitle: Text }',
+      { imports: [{ declaration: ['Library book'], module: 'catalog', name: 'catalog.Book' }] }, { catalog: 'type `Library book` { title: Text }' });
+    expect(result.problems).toEqual([]);
+    expect(result.files[0]!.text).toContain('var title: String');
+  });
 });

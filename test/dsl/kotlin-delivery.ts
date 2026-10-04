@@ -68,6 +68,11 @@ export class KotlinDelivery {
   planContracts(): Promise<void> { return this.driver.plan(); }
   expectNoWritePlan(): void { expect(this.driver.planned.value === undefined).toBe(true); }
   expectProblem(code: string): void { expect(this.driver.planned.problems.map(problem => problem.code)).toContain(code); }
+  expectProblemAt(code: string, line: number, column: number): void {
+    expect(this.driver.planned.problems).toContainEqual(expect.objectContaining({ code, at: expect.objectContaining({
+      kind: 'source', range: expect.objectContaining({ sourceId: 'main.expec', start: expect.objectContaining({ line, column }) }),
+    }) }));
+  }
   expectNativeParameters(name: string, parameters: string[]): void {
     const id = this.driver.subject(this.driver.current, name);
     expect(this.driver.written.artifacts).toContainEqual(expect.objectContaining({ specId: id, locator: expect.objectContaining({
@@ -127,6 +132,6 @@ export class KotlinDelivery {
   runConsumer(text: string): Promise<void> { return this.driver.execute(text); }
   expectNativeCompilationPassed(): void { expect(this.driver.compiled, this.driver.compiled.stderr).toMatchObject({ code: 0 }); }
   expectNativeCompilationFailedAt(text: string): void { expect(this.driver.compiled.code).not.toBe(0); expect(this.driver.compiled.stderr).toContain(text); }
-  expectStdout(text: string): void { this.expectNativeCompilationPassed(); expect(this.driver.execution.code, this.driver.execution.stderr).toBe(0); expect(this.driver.execution.stdout.trim()).toBe(text); }
+  expectStdout(text: string): void { this.expectNativeCompilationPassed(); expect(this.driver.execution.code, this.driver.execution.stderr).toBe(0); expect(this.driver.execution.stdout.replaceAll('\r\n', '\n').trim()).toBe(text); }
   expectUnimplemented(name: string): void { this.expectNativeCompilationPassed(); expect(this.driver.execution.code).not.toBe(0); expect(this.driver.execution.stderr).toContain('NotImplementedError'); expect(this.driver.execution.stderr).toContain(name); }
 }

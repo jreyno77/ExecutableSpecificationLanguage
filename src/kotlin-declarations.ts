@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { decimal } from './decimal.js';
+import { TypeCompatibility } from './type-compatibility.js';
 import type { Diagnostic } from './checking.js';
 import type { Item } from './inspection-item.js';
 import type { NodeId } from './model.js';
@@ -46,6 +48,7 @@ export class KotlinDeclarations {
   private file = '';
   private artifacts: ArtifactAssociation[] = [];
   private restrictions = new Map<string, string>();
+  private restrictionTypes = new Map<string, TypeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinOptions, context?: OutputContext) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
     const modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
@@ -110,15 +113,24 @@ export class KotlinDeclarations {
       }
     }
   }
-  type(id: TypeId, owner: Item, qualified = false): string {
+  private hidesBuiltin(name: string, owner: Item): boolean {
+    if (this.current.baseline.elements.some(record => typeKinds.has(record.address.kind) && this.generated.has(this.current.node(record.id)) && this.name(this.inspection.read(this.current.node(record.id))) === name)
+      || [...this.mappings.values()].some(rule => (rule.as ?? rule.name.split('.').at(-1)) === name)) return true;
+    for (let item: Item | undefined = owner; item; item = this.inspection.parent(item.id)) {
+      if ('typeParameters' in item && item.typeParameters.some(parameter => this.name(parameter) === name)) return true;
+    }
+    return false;
+  }
+  type(id: TypeId, owner: Item, qualified = false, suffix = ''): string {
     const meaning = this.types.describe(id);
     if (meaning.kind === 'parameter') return this.name(this.inspection.read(meaning.declaration));
     if (meaning.kind === 'builtin' || meaning.kind === 'declared' || meaning.kind === 'alias') {
-      const declaration = this.inspection.read(meaning.declaration), args = meaning.arguments.map(type => this.type(type, owner, qualified));
+      const declaration = this.inspection.read(meaning.declaration), args = meaning.arguments.map((type, index) => this.type(type, owner, qualified, suffix + (meaning.kind === 'builtin' ? 'Element' : 'Argument' + (index + 1))));
       if (meaning.kind === 'builtin') {
         const name = this.inspection.read(meaning.declaration, 'builtin-type').name;
-        return name === 'List' ? (qualified ? 'kotlin.collections.' : '') + 'MutableList<' + args.join(', ') + '>'
-          : (qualified ? 'kotlin.' : '') + ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit' })[name as 'Text'];
+        const native = ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit', List: 'MutableList' })[name]!;
+        const prefix = qualified || this.hidesBuiltin(native, owner) ? name === 'List' ? 'kotlin.collections.' : 'kotlin.' : '';
+        return prefix + native + (name === 'List' ? '<' + args.join(', ') + '>' : '');
       }
       const mapping = this.mappings.get(declaration.id);
       let name: string;
@@ -135,8 +147,8 @@ export class KotlinDeclarations {
       this.checkScope(mapping?.as ?? mapping?.name.split('.').at(-1) ?? this.name(declaration), owner);
       return name + (args.length ? '<' + args.join(', ') + '>' : '');
     }
-    if (meaning.kind === 'optional') return this.type(meaning.inner, owner, qualified) + '?';
-    if (meaning.kind === 'tuple') { this.tuples.set(meaning.elements.length, owner); return (qualified ? this.options.package + '.' : '') + 'Tuple' + meaning.elements.length + '<' + meaning.elements.map(type => this.type(type, owner, qualified)).join(', ') + '>'; }
+    if (meaning.kind === 'optional') return this.type(meaning.inner, owner, qualified, suffix) + '?';
+    if (meaning.kind === 'tuple') { this.tuples.set(meaning.elements.length, owner); return (qualified ? this.options.package + '.' : '') + 'Tuple' + meaning.elements.length + '<' + meaning.elements.map((type, index) => this.type(type, owner, qualified, suffix + 'Item' + (index + 1))).join(', ') + '>'; }
     if (meaning.kind === 'literal' && owner.kind === 'field') {
       const parent = this.inspection.parent(owner.id), value = this.inspection.read(meaning.expression, 'literal-type').value;
       if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code' && value.kind === 'string-literal') {
@@ -146,7 +158,60 @@ export class KotlinDeclarations {
         this.associate(owner, [{ kind: 'class', name }]); return (qualified ? this.options.package + '.' : '') + name;
       }
     }
+    if (meaning.kind === 'literal' || meaning.kind === 'union') {
+      const name = this.nativeName(owner).split('.').map(part => part.slice(0, 1).toUpperCase() + part.slice(1)).join('')
+        + (owner.kind === 'alias-type-declaration' ? 'Value' : owner.kind === 'function' || owner.kind === 'capability' ? 'Result' : '') + suffix;
+      if (this.selected.some(item => this.name(item) === name) || this.restrictionTypes.has(name) && this.restrictionTypes.get(name) !== id) {
+        this.problem('native-name-conflict', owner, 'The anonymous restriction conflicts with another native declaration: ' + name);
+      } else if (!this.restrictionTypes.has(name)) {
+        this.restrictionTypes.set(name, id); this.restrictions.set(name, this.restriction(id, name, owner));
+        this.associate(owner, [{ kind: 'class', name }]);
+      }
+      return (qualified ? this.options.package + '.' : '') + name;
+    }
     this.problem('unsupported-native-type', owner, 'This type requires a named native restriction.'); return 'Any?';
+  }
+  private literal(item: Item<'literal-type'>): { type: string; value: string } {
+    if (item.value.kind === 'string-literal') return { type: 'kotlin.String', value: quote(item.value.value) };
+    if (item.value.kind === 'boolean-literal') return { type: 'kotlin.Boolean', value: String(item.value.value) };
+    const token = (item.negative ? '-' : '') + item.value.token, value = Number(token);
+    if (!Number.isFinite(value) || decimal(token) !== decimal(String(value))) this.problem('unsupported-number', item, 'This literal would change in the finite binary64 number profile.');
+    return { type: 'kotlin.Double', value: String(value) + (Number.isInteger(value) && !String(value).includes('e') ? '.0' : '') };
+  }
+  private restriction(id: TypeId, name: string, owner: Item, parameters = ''): string {
+    const shape = this.types.describe(id);
+    if (shape.kind === 'literal') {
+      const value = this.literal(this.inspection.read(shape.expression, 'literal-type'));
+      return 'data class ' + name + parameters + '(val value: ' + value.type + ') {\n    init { require(value == ' + value.value + ') { ' + quote('Expected ' + this.authored(owner)) + ' } }\n}';
+    }
+    if (shape.kind !== 'union') throw new Error('Expected a checked restriction.');
+    const text = shape.alternatives.map(type => this.types.describe(type)).flatMap(type => type.kind === 'literal' ? [this.inspection.read(type.expression, 'literal-type')] : []);
+    if (text.length === shape.alternatives.length && text.every(item => item.value.kind === 'string-literal')) {
+      const names = new Set<string>();
+      const cases = text.map(item => {
+        if (item.value.kind !== 'string-literal') throw new Error('Expected text literal.');
+        const value = item.value.value, native = value.slice(0, 1).toUpperCase() + value.slice(1);
+        if (!identifier(native) || names.has(native)) this.problem('unsupported-literal-name', item, 'Literal has no distinct Kotlin case name: ' + value);
+        names.add(native); return native + '(' + quote(value) + ')';
+      });
+      return 'enum class ' + name + '(val text: kotlin.String) { ' + cases.join(', ') + ' }';
+    }
+    const compatibility = new TypeCompatibility(this.types), names = new Set<string>();
+    const alternatives = shape.alternatives.map((type, index) => {
+      if (shape.alternatives.slice(0, index).some(other => compatibility.assignable(type, other).value !== false || compatibility.assignable(other, type).value !== false)) {
+        this.problem('ambiguous-native-union', owner, 'The native alternative must be uniquely determined by its checked type.');
+      }
+      const meaning = this.types.describe(type);
+      const literal = meaning.kind === 'literal' ? this.literal(this.inspection.read(meaning.expression, 'literal-type')) : undefined;
+      const variant = 'declaration' in meaning ? this.name(this.inspection.read(meaning.declaration))
+        : literal?.type === 'kotlin.String' ? 'Text' : literal?.type === 'kotlin.Double' ? 'Number' : literal?.type === 'kotlin.Boolean' ? 'Boolean'
+        : meaning.kind === 'tuple' ? 'Tuple' + meaning.elements.length : '';
+      if (!identifier(variant) || names.has(variant) || meaning.kind === 'parameter') this.problem('ambiguous-native-union', owner, 'Provide distinct named alternatives whose native representation is unambiguous.');
+      names.add(variant);
+      return '    data class ' + variant + parameters + '(val value: ' + (literal?.type ?? this.type(type, owner, true)) + ') : ' + name + parameters
+        + (literal ? ' { init { require(value == ' + literal.value + ') } }' : '');
+    });
+    return 'sealed interface ' + name + parameters + ' {\n' + alternatives.join('\n') + '\n}';
   }
   private parameters(items: readonly Item<'parameter'>[]): string {
     return items.map(item => this.name(item) + ': ' + this.type(this.known(this.types.typeOf(item.declaredType.id)), item)
@@ -169,18 +234,9 @@ export class KotlinDeclarations {
     if (item.kind === 'function') return this.callable(item, owners);
     if (item.kind === 'alias-type-declaration') {
       const target = this.known(this.types.typeOf(item.targetType.id)), shape = this.types.describe(target);
-      if (shape.kind === 'union' && shape.alternatives.every(type => this.types.describe(type).kind === 'literal')) {
-        const names = new Set<string>();
-        const cases = shape.alternatives.map(type => {
-          const meaning = this.types.describe(type);
-          if (meaning.kind !== 'literal') throw new Error('Expected checked literal.');
-          const literal = this.inspection.read(meaning.expression, 'literal-type');
-          if (literal.value.kind !== 'string-literal') { this.problem('unsupported-native-type', literal, 'This union requires a sealed native alternative.'); return ''; }
-          const text = literal.value.value, native = text.slice(0, 1).toUpperCase() + text.slice(1);
-          if (!identifier(native) || names.has(native)) this.problem('unsupported-literal-name', literal, 'Literal has no distinct Kotlin case name: ' + text);
-          names.add(native); return native + '(' + quote(text) + ')';
-        });
-        this.associate(item, [...owners, { kind: 'class', name }]); return 'enum class ' + name + '(val text: String) { ' + cases.join(', ') + ' }';
+      if (shape.kind === 'union' || shape.kind === 'literal') {
+        this.associate(item, [...owners, { kind: 'class', name }]);
+        return this.restriction(target, name, item, parameters);
       }
       this.associate(item, [...owners, { kind: 'typealias', name }]); return 'typealias ' + name + parameters + ' = ' + this.type(target, item);
     }
@@ -235,7 +291,7 @@ export class KotlinDeclarations {
         continue;
       }
       this.imports = new Map();
-      this.file = this.options.directory + '/' + this.options.package.replaceAll('.', '/') + '/' + this.name(item) + '.kt'; this.artifacts = []; this.restrictions = new Map();
+      this.file = this.options.directory + '/' + this.options.package.replaceAll('.', '/') + '/' + this.name(item) + '.kt'; this.artifacts = []; this.restrictions = new Map(); this.restrictionTypes = new Map();
       const declaration = this.declare(item);
       const text = 'package ' + this.options.package + '\n\n' + [...this.imports.values()].sort().map(value => 'import ' + value + '\n').join('')
         + (this.imports.size ? '\n' : '') + doc(['Number profile: finite binary64 (Kotlin Double).']) + declaration + '\n'
