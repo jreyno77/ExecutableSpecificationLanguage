@@ -29,6 +29,7 @@ export const kotlinOptions = z.strictObject({
 });
 export type KotlinOptions = z.infer<typeof kotlinOptions>;
 export interface KotlinFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly adopted?: boolean | undefined; readonly support?: true | undefined }
+export interface KotlinCarrier { readonly owner: NodeId; readonly path: string; readonly type: TypeId; readonly parameters: readonly NodeId[]; readonly artifact: ArtifactAssociation; readonly text: string; readonly member: 'text' | 'value'; readonly enumCases?: readonly string[] }
 const typeKinds = new Set(['class', 'interface', 'concept', 'component', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration']);
 const roots = new Set([...typeKinds, 'function']);
 const namedKinds = new Set([...roots, 'capability', 'field', 'parameter', 'type-parameter']);
@@ -40,6 +41,8 @@ const doc = (lines: readonly string[]): string => lines.length ? '/**\n' + lines
 export class KotlinDeclarations {
   readonly problems: Diagnostic[] = [];
   readonly constraints = new Set<string>();
+  readonly carriers: KotlinCarrier[] = [];
+  readonly companions: ArtifactAssociation[] = [];
   private readonly inspection;
   private readonly types;
   private readonly selected: Item[];
@@ -97,8 +100,9 @@ export class KotlinDeclarations {
     const record = this.current.baseline.elements.find(record => record.id === this.current.id(item.id))!;
     return (record.address.owner ? this.authored(this.inspection.read(this.current.node(record.address.owner))) + '.' : '') + (record.address.name ?? record.address.kind);
   }
-  private associate(item: Item, declaration: JsonValue[]): void {
-    this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file: this.file, declaration } } });
+  private associate(item: Item, declaration: JsonValue[], companion = false): ArtifactAssociation {
+    const artifact = { specId: this.current.id(item.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file: this.file, declaration } } };
+    this.artifacts.push(artifact); if (companion) this.companions.push(artifact); return artifact;
   }
   private checkScope(name: string, owner: Item): void {
     for (let item: Item | undefined = owner; item; item = this.inspection.parent(item.id)) {
@@ -148,14 +152,18 @@ export class KotlinDeclarations {
       if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code') {
         this.constraints.add(this.current.id(owner.id));
         const name = this.name(parent) + 'Code', names = new Set<string>();
-        const cases = this.known(this.types.error(this.types.declaredType(parent.id))).codes.map(value => {
+        const enumCases = this.known(this.types.error(this.types.declaredType(parent.id))).codes;
+        const cases = enumCases.map(value => {
           const entry = value.slice(0, 1).toUpperCase() + value.slice(1);
           if (!identifier(entry) || names.has(entry)) this.problem('unsupported-literal-name', owner, 'Error code has no distinct Kotlin case name: ' + value);
           names.add(entry); return entry + '(' + quote(value) + ')';
         });
         if (this.selected.some(item => this.name(item) === name)) this.problem('native-name-conflict', owner, 'The error code companion conflicts with another native declaration: ' + name);
-        this.restrictions.set(name, 'enum class ' + name + '(val value: kotlin.String) { ' + cases.join(', ') + ' }');
-        this.associate(owner, [{ kind: 'class', name }]); return (qualified ? this.options.package + '.' : '') + name;
+        const text = 'enum class ' + name + '(val value: kotlin.String) { ' + cases.join(', ') + ' }';
+        this.restrictions.set(name, text);
+        const artifact = this.associate(owner, [{ kind: 'class', name }], true);
+        this.carriers.push({ owner: owner.id, path: suffix, type: id, parameters: [], artifact, text, member: 'value', enumCases });
+        return (qualified ? this.options.package + '.' : '') + name;
       }
     }
     if (meaning.kind === 'literal' || meaning.kind === 'union') {
@@ -165,8 +173,11 @@ export class KotlinDeclarations {
       if (this.selected.some(item => this.name(item) === name) || this.restrictionTypes.has(name) && this.restrictionTypes.get(name) !== id) {
         this.problem('native-name-conflict', owner, 'The anonymous restriction conflicts with another native declaration: ' + name);
       } else if (!this.restrictionTypes.has(name)) {
-        this.restrictionTypes.set(name, id); this.restrictions.set(name, this.restriction(id, name, owner, parameters));
-        this.associate(owner, [{ kind: this.restrictionKind(id), name }]);
+        const text = this.restriction(id, name, owner, parameters);
+        this.restrictionTypes.set(name, id); this.restrictions.set(name, text);
+        const artifact = this.associate(owner, [{ kind: this.restrictionKind(id), name }], true);
+        this.carriers.push({ owner: owner.id, path: suffix, type: id, parameters: this.typeParameterNodes(id), artifact, text,
+          member: meaning.kind === 'union' && !parameters && meaning.alternatives.every(type => { const shape = this.types.describe(type); return shape.kind === 'literal' && this.inspection.read(shape.expression, 'literal-type').value.kind === 'string-literal'; }) ? 'text' : 'value' });
       }
       return (qualified ? this.options.package + '.' : '') + name + parameters;
     }
@@ -180,17 +191,21 @@ export class KotlinDeclarations {
     }) ? 'interface' : 'class';
   }
   private typeParameters(id: TypeId, seen = new Set<TypeId>()): string {
-    const parameters = new Set<string>();
+    const parameters = this.typeParameterNodes(id, seen).map(id => this.name(this.inspection.read(id)));
+    return parameters.length ? '<' + parameters.join(', ') + '>' : '';
+  }
+  private typeParameterNodes(id: TypeId, seen = new Set<TypeId>()): NodeId[] {
+    const parameters = new Set<NodeId>();
     const visit = (type: TypeId): void => {
       if (seen.has(type)) return; seen.add(type);
       const meaning = this.types.describe(type);
-      if (meaning.kind === 'parameter') parameters.add(this.name(this.inspection.read(meaning.declaration)));
+      if (meaning.kind === 'parameter') parameters.add(meaning.declaration);
       else if ('arguments' in meaning) meaning.arguments.forEach(visit);
       else if (meaning.kind === 'tuple') meaning.elements.forEach(visit);
       else if (meaning.kind === 'union') meaning.alternatives.forEach(visit);
       else if (meaning.kind === 'optional') visit(meaning.inner);
     };
-    visit(id); return parameters.size ? '<' + [...parameters].join(', ') + '>' : '';
+    visit(id); return [...parameters];
   }
   private literal(item: Item<'literal-type'>): { type: string; value: string } {
     if (item.value.kind === 'string-literal') return { type: 'kotlin.String', value: quote(item.value.value) };
@@ -285,7 +300,7 @@ export class KotlinDeclarations {
       });
       let text = (fields.length ? 'data ' : '') + 'class ' + name + parameters + '(' + content.join(', ') + ')';
       if (item.error) {
-        const companion = name + 'Exception'; this.associate(item, [...owners, { kind: 'class', name: companion }]);
+        const companion = name + 'Exception'; this.associate(item, [...owners, { kind: 'class', name: companion }], true);
         text += '\n\n' + doc(['Declared domain failure. Generic payload arguments remain data; JVM exception types are nongeneric.'])
           + 'class ' + companion + '(val details: ' + name + (item.typeParameters.length ? '<' + item.typeParameters.map(() => '*').join(', ') + '>' : '') + ') : ' + (this.hidesBuiltin('RuntimeException', item) ? 'kotlin.' : '') + 'RuntimeException(details.code.'
             + this.codeMember(this.known(this.types.typeOf(fields.find(field => field.name === 'code')!.declaredType.id))) + ')';

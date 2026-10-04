@@ -16,7 +16,7 @@ import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
 import { checkKotlinTests } from './kotlin-test-contract.js';
 import { compatibleKotlinFixture, migrateKotlinFixture, selectedKotlinFixture } from './kotlin-fixture.js';
-import { kotlinGeneratedFiles, kotlinTupleTypes } from './kotlin-output-state.js';
+import { kotlinDataCarriers, kotlinGeneratedFiles, kotlinTupleTypes } from './kotlin-output-state.js';
 import { kotlinOptions } from './kotlin-declarations.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
@@ -117,8 +117,11 @@ class KotlinAcceptance implements OutputAdapter {
     if (this.settings.fixture && !fixture) return failure('invalid-native-fixture', 'Select one actual native fixture class.');
     const driver = this.settings.driver && kotlinDriver(native.value, this.settings.driver);
     if (this.settings.driver && (!driver || driver.typeParameters?.length || !['public', 'internal'].includes(driver.visibility) || !fixture && !driver.zeroArgumentConstruction)) return failure('invalid-native-driver', 'Select an accessible native class; a required constructor dependency must come from a custom fixture.');
+    const companions = kotlinDataCarriers(snapshot, request.current, native.value, this.context);
+    if (!companions.value) return { problems: companions.problems, deferred: [] };
     const targets = new Map<NodeId, KotlinQuery['declarations'][number]>();
     for (const association of request.current.baseline.artifacts.filter(item => item.locator.outputId !== this.id && item.locator.format === 'kotlin-symbol-1')) {
+      if (companions.value.companions.has(canonical(association))) continue;
       const declarations = native.value.declarations.filter(item => canonical({ file: item.file, declaration: item.selector }) === canonical(association.locator.value));
       if (declarations.length !== 1) return failure('native-definition-unavailable', 'The executable native association must select one current declaration.');
       if (declarations[0]!.selector.some(item => item.name.startsWith('<anonymous@'))) return failure('invalid-native-mapping', 'Anonymous native owners cannot be adopted by a synthetic name.');
@@ -140,7 +143,7 @@ class KotlinAcceptance implements OutputAdapter {
         return failure('output-options-changed', 'A retained provider mapping cannot silently change native identity or local spelling.');
     }
     const generatedFiles = kotlinGeneratedFiles(snapshot, request.current, this.context); if (!generatedFiles.value) return { problems: generatedFiles.problems, deferred: generatedFiles.deferred };
-    const rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, tuples.value, generatedFiles.value, imports), files = rendered.files();
+    const rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, tuples.value, generatedFiles.value, imports, companions.value.carriers), files = rendered.files();
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
     const names = rendered.mapping();
     if (stored.value) {

@@ -9,7 +9,8 @@ import type { KotlinQuery } from './kotlin-query.js';
 import { kotlinName } from './kotlin-fixture.js';
 import { decimal } from './decimal.js';
 import { ExpressionChecker } from './expression-checker.js';
-import { KotlinData } from './kotlin-data.js';
+import { KotlinData, type KotlinDataSite } from './kotlin-data.js';
+import type { KotlinDataCarrier } from './kotlin-output-state.js';
 import { fromFact } from './checking.js';
 import { kotlinTuple } from './kotlin-tuples.js';
 import { selectKotlinMapping } from './kotlin-mapping.js';
@@ -31,11 +32,12 @@ export class KotlinExamples {
   private readonly modules: Set<string>;
   private readonly className: string;
   private readonly locals = new Map<string, TypeId>();
+  private readonly localSites = new Map<string, KotlinDataSite | undefined>();
   private readonly names = new Map<NodeId, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map(), generated: ReadonlySet<string> = new Set(), private readonly imports: readonly { id: string; name: string; as?: string }[] = []) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map(), generated: ReadonlySet<string> = new Set(), private readonly imports: readonly { id: string; name: string; as?: string }[] = [], carriers: readonly KotlinDataCarrier[] = []) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
-    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl', generated, new Map(imports.map(rule => [current.node(rule.id), rule.as ?? rule.name.split('.').at(-1)!])));
+    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl', generated, new Map(imports.map(rule => [current.node(rule.id), rule.as ?? rule.name.split('.').at(-1)!])), carriers);
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
@@ -73,6 +75,19 @@ export class KotlinExamples {
     if (!result.value) this.problem('native-value-unavailable', item, 'The existing expression contract must supply this value type.');
     return result.value;
   }
+  private valueSite(item: Item): KotlinDataSite | undefined {
+    if (item.kind === 'grouped-expression') return this.valueSite(item.inner);
+    if (item.kind === 'call-expression') { const owner = this.current.specification.call(item.id).value; return owner && { owner, path: '' }; }
+    if (item.kind === 'name-expression') {
+      const binding = item.reference.resolution;
+      return binding.status === 'bound' ? { owner: binding.target, path: '' } : this.localSites.get(item.reference.segments[0]!);
+    }
+    if (item.kind === 'member-expression') {
+      const type = this.valueType(item.receiver), field = type && this.data.fields(type, item).find(field => this.inspection.read(field.declaration, 'field').name === item.member.segments[0]);
+      return field ? { owner: field.declaration, path: '' } : undefined;
+    }
+    return undefined;
+  }
   private parameter(item: Item<'parameter'>): string {
     const fact = this.types.typeOf(item.declaredType.id);
     return this.name(item) + ': ' + (fact.status === 'known' ? this.type(fact.value, item) : this.problem('invalid-native-type', item, 'A checked parameter type is required.'));
@@ -83,8 +98,10 @@ export class KotlinExamples {
     if (fact.status !== 'known') return this.problem('invalid-native-type', operation, 'A checked callable result is required.');
     return fact.value.kind === 'none' ? 'Unit' : fact.value.kind === 'value' ? this.type(fact.value.type, operation) : this.problem('unspecified-native-result', operation, 'Specify the executable operation result.');
   }
-  private expression(item: Item, receiver: string, expected?: TypeId): string {
+  private expression(item: Item, receiver: string, expected?: TypeId, site = this.valueSite(item)): string {
+    if (expected) site = this.data.site(expected, site);
     while (expected) {
+      site = this.data.site(expected, site);
       const shape = this.data.shape(expected);
       if (shape.kind !== 'optional') break;
       expected = shape.inner;
@@ -97,11 +114,11 @@ export class KotlinExamples {
           return !checked.problems.length && !checked.deferred.length;
         });
         if (matches.length !== 1) return this.problem('unsupported-native-data', item, 'Expected data must select one checked union alternative.');
-        const text = this.expression(item, receiver, matches[0]);
-        return this.data.wrap(expected, item, text, matches[0]) ?? text;
+        const text = this.expression(item, receiver, matches[0], this.data.site(expected, site));
+        return this.data.wrap(expected, item, text, matches[0], site) ?? text;
       }
     }
-    const value = (text: string) => expected ? this.data.wrap(expected, item, text, this.valueType(item)) ?? text : text;
+    const value = (text: string) => expected ? this.data.wrap(expected, item, text, this.valueType(item), site) ?? text : text;
     switch (item.kind) {
       case 'number-literal': {
         const number = Number(item.token);
@@ -110,12 +127,12 @@ export class KotlinExamples {
       }
       case 'string-literal': return value(quote(item.value));
       case 'boolean-literal': return value(String(item.value));
-      case 'grouped-expression': return '(' + this.expression(item.inner, receiver, expected) + ')';
+      case 'grouped-expression': return '(' + this.expression(item.inner, receiver, expected, site) + ')';
       case 'list-expression': {
         const id = expected ?? this.valueType(item), shape = id && this.data.shape(id);
-        if (shape?.kind === 'tuple') return this.type(id!, item) + '(' + item.elements.map((element, index) => this.expression(element, receiver, shape.elements[index])).join(', ') + ')';
+        if (shape?.kind === 'tuple') return this.data.type(id!, item, false, site) + '(' + item.elements.map((element, index) => this.expression(element, receiver, shape.elements[index], this.data.child(site, 'Item' + (index + 1)))).join(', ') + ')';
         if (shape?.kind !== 'builtin' || this.inspection.read(shape.declaration, 'builtin-type').name !== 'List') return this.problem('unsupported-native-data', item, 'A list needs its checked element type.');
-        return 'mutableListOf<' + this.type(shape.arguments[0]!, item) + '>(' + item.elements.map(element => this.expression(element, receiver, shape.arguments[0]!)).join(', ') + ')';
+        return 'mutableListOf<' + this.data.type(shape.arguments[0]!, item, false, this.data.child(site, 'Element')) + '>(' + item.elements.map(element => this.expression(element, receiver, shape.arguments[0]!, this.data.child(site, 'Element'))).join(', ') + ')';
       }
       case 'record-expression': {
         const id = expected ?? this.valueType(item);
@@ -124,7 +141,7 @@ export class KotlinExamples {
         const fields = this.data.fields(id, item);
         return this.type(id, item) + '(' + item.entries.map(entry => {
           const field = fields.find(field => this.inspection.read(field.declaration, 'field').name === entry.name);
-          return field?.type.status === 'known' ? this.data.field(field.declaration) + ' = ' + this.expression(entry.value, receiver, field.type.value)
+          return field?.type.status === 'known' ? this.data.field(field.declaration) + ' = ' + this.expression(entry.value, receiver, field.type.value, { owner: field.declaration, path: '' })
             : this.problem('unsupported-native-data', entry, 'A checked record field is required.');
         }).join(', ') + ')';
       }
@@ -147,7 +164,7 @@ export class KotlinExamples {
           const type = this.valueType(item.left);
           if (!type) return this.problem('unsupported-native-data', item, 'Equality needs its checked operand type.');
           return (item.operator === '!=' ? '!' : '') + prefix + 'dataEqual(' + left + ', ' + right + ') { actual, expected -> '
-            + prefix + this.data.assertion('actual', 'expected', type, item) + ' }';
+            + prefix + this.data.assertion('actual', 'expected', type, item, this.valueSite(item.left)) + ' }';
         }
         const expression = '(' + prefix + 'finiteNumber(' + left + ') ' + item.operator + ' ' + prefix + 'finiteNumber(' + right + '))';
         return ['<', '<=', '>', '>='].includes(item.operator) ? expression : prefix + 'finiteNumber(' + expression + ')';
@@ -162,7 +179,8 @@ export class KotlinExamples {
         const selected = this.current.specification.call(item.id).value!;
         const operation = this.inspection.read(selected), target = this.targets.get(selected);
         const parameters = this.types.callable(selected).parameters;
-        const arguments_ = item.arguments.map((argument, index) => this.expression(argument, receiver, parameters[index]?.type.status === 'known' ? parameters[index].type.value : undefined)).join(', ');
+        const arguments_ = item.arguments.map((argument, index) => this.expression(argument, receiver, parameters[index]?.type.status === 'known' ? parameters[index].type.value : undefined,
+          parameters[index] && { owner: parameters[index].declaration, path: '' })).join(', ');
         if (this.operations.some(operation => operation.id === selected)) return receiver + '.' + this.name(operation) + '(' + arguments_ + ')';
         if (target?.kind === 'function' && target.selector.length === 1) return target.packageName + '.' + target.name + '(' + arguments_ + ')';
         return this.problem('missing-native-mapping', item, 'This checked call requires a uniquely associated executable native target.');
@@ -176,15 +194,16 @@ export class KotlinExamples {
   }
   private compare(actual: Item, expected: Item, receiver: string): string {
     const type = this.valueType(actual);
-    return type ? this.options.package + '.dsl.' + this.data.assertion(this.expression(actual, receiver, type), this.expression(expected, receiver, type), type, actual)
+    const site = this.valueSite(actual);
+    return type ? this.options.package + '.dsl.' + this.data.assertion(this.expression(actual, receiver, type, site), this.expression(expected, receiver, type, site), type, actual, site)
       : this.problem('unsupported-native-data', actual, 'Comparison needs its checked data type.');
   }
   private statements(operation: Operation): string {
     if (operation.body.kind !== 'available') return '';
-    this.locals.clear();
+    this.locals.clear(); this.localSites.clear();
     return operation.body.content.members.map(statement => {
       switch (statement.kind) {
-        case 'let': { const type = this.valueType(statement.value), value = this.expression(statement.value, 'this', type); if (type) this.locals.set(statement.name, type); return 'val ' + statement.name + ' = ' + value; }
+        case 'let': { const type = this.valueType(statement.value), value = this.expression(statement.value, 'this', type); if (type) this.locals.set(statement.name, type); this.localSites.set(statement.name, this.valueSite(statement.value)); return 'val ' + statement.name + ' = ' + value; }
         case 'do': return this.expression(statement.expression, 'this');
         case 'return': return 'return ' + this.expression(statement.expression, 'this');
         case 'assert': return this.assertion(statement.expression, 'this');
@@ -192,10 +211,11 @@ export class KotlinExamples {
     }).join('\n    ');
   }
   private steps(scenario: Item<'scenario'>): string {
+    this.localSites.clear();
     return scenario.steps.map(step => {
       const facts = this.current.specification.step(step.id).value!;
       this.locals.clear(); for (const value of facts.available) this.locals.set(this.inspection.read(value.name, 'name').decoded, value.type);
-      if (facts.capture) return 'val ' + this.inspection.read(facts.capture.name, 'name').decoded + ' = ' + this.expression(step.content, this.options.domain);
+      if (facts.capture) { const name = this.inspection.read(facts.capture.name, 'name').decoded; this.localSites.set(name, this.valueSite(step.content)); return 'val ' + name + ' = ' + this.expression(step.content, this.options.domain); }
       if (step.kind === 'then' && step.content.kind === 'prose-expectation') {
         this.obligations.push({ code: 'verification-required', at: step.content.origin, message: step.content.text.value, related: [] });
         return 'error(' + quote('Verification required: ' + step.content.text.value) + ')';

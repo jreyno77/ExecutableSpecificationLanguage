@@ -5,14 +5,22 @@ import type { NodeId } from './model.js';
 import type { TypeCatalog } from './type-catalog.js';
 import type { TypeId } from './types.js';
 import type { KotlinQuery } from './kotlin-query.js';
+import type { KotlinDataCarrier } from './kotlin-output-state.js';
+
+export interface KotlinDataSite { readonly owner: NodeId; readonly path: string }
 
 /** Native type spellings and type-directed data checks use the same supplied catalog. */
 export class KotlinData {
   readonly problems: Diagnostic[] = [];
-  private readonly comparisons = new Map<TypeId, { name: string; body: string }>();
+  private readonly comparisons: { id: TypeId; site: KotlinDataSite | undefined; name: string; body: string }[] = [];
   readonly generatedTuples = new Set<number>();
   constructor(private readonly types: TypeCatalog, private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>,
-    private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string, private readonly generated: ReadonlySet<string>, private readonly spellings: ReadonlyMap<NodeId, string> = new Map()) {}
+    private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string, private readonly generated: ReadonlySet<string>, private readonly spellings: ReadonlyMap<NodeId, string> = new Map(), private readonly carriers: readonly KotlinDataCarrier[] = []) {}
+  site(id: TypeId, site?: KotlinDataSite): KotlinDataSite | undefined {
+    const type = this.types.describe(id);
+    return type.kind === 'alias' && type.target.status === 'known' ? this.site(type.target.value, { owner: type.declaration, path: '' }) : site;
+  }
+  child(site: KotlinDataSite | undefined, path: string): KotlinDataSite | undefined { return site && { owner: site.owner, path: site.path + path }; }
   private tuple(arity: number, item: Item): string {
     if (this.tuples.has(arity)) return this.tuples.get(arity) ?? this.problem(item, 'Tuple data requires its unchanged generated carrier.');
     this.generatedTuples.add(arity); return this.tuplePackage + '.Tuple' + arity;
@@ -23,30 +31,49 @@ export class KotlinData {
     while (shape.kind === 'alias' && shape.target.status === 'known') shape = this.types.describe(shape.target.value);
     return shape;
   }
-  type(id: TypeId, item: Item, qualified = false): string {
+  type(id: TypeId, item: Item, qualified = false, site: KotlinDataSite | undefined = { owner: item.id, path: '' }): string {
     const type = this.types.describe(id);
     if (type.kind === 'parameter') return this.spellings.get(type.declaration) ?? this.problem(item, 'A generic native type needs its checked parameter spelling.');
     if (type.kind === 'builtin') {
       const name = this.types.inspection.read(type.declaration, 'builtin-type').name;
       const native = ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit', List: 'MutableList' } as Record<string, string>)[name]!;
       const prefix = qualified || [...this.spellings.values()].includes(native) ? name === 'List' ? 'kotlin.collections.' : 'kotlin.' : '';
-      return prefix + native + (name === 'List' ? '<' + this.type(type.arguments[0]!, item, qualified) + '>' : '');
+      return prefix + native + (name === 'List' ? '<' + this.type(type.arguments[0]!, item, qualified, this.child(site, 'Element')) + '>' : '');
     }
-    if (type.kind === 'optional') return this.type(type.inner, item, qualified) + '?';
-    if (type.kind === 'tuple') return this.tuple(type.elements.length, item) + '<' + type.elements.map(element => this.type(element, item, qualified)).join(', ') + '>';
+    if (type.kind === 'optional') return this.type(type.inner, item, qualified, site) + '?';
+    if (type.kind === 'tuple') return this.tuple(type.elements.length, item) + '<' + type.elements.map((element, index) => this.type(element, item, qualified, this.child(site, 'Item' + (index + 1)))).join(', ') + '>';
     if (type.kind === 'declared' || type.kind === 'alias') {
       const target = this.targets.get(type.declaration);
-      if (target) return (!qualified && this.spellings.get(type.declaration) || target.packageName + '.' + target.selector.map(item => item.name).join('.')) + (type.arguments.length ? '<' + type.arguments.map(id => this.type(id, item, qualified)).join(', ') + '>' : '');
+      if (target) return (!qualified && this.spellings.get(type.declaration) || target.packageName + '.' + target.selector.map(item => item.name).join('.')) + (type.arguments.length ? '<' + type.arguments.map((id, index) => this.type(id, item, qualified, this.child(site, 'Argument' + (index + 1)))).join(', ') + '>' : '');
     }
+    const carrier = this.restriction(id, site);
+    if (carrier?.name) return carrier.name + (carrier.arguments.length ? '<' + carrier.arguments.map(id => this.type(id, item, qualified)).join(', ') + '>' : '');
     return this.problem(item, 'This checked type needs an exact executable Kotlin representation.');
   }
-  private restriction(id: TypeId) {
+  private restriction(id: TypeId, site?: KotlinDataSite) {
     const type = this.types.describe(id);
+    if (type.kind === 'literal' || type.kind === 'union') {
+      const carrier = site && this.carriers.find(carrier => carrier.owner === site.owner && carrier.path === site.path);
+      if (!carrier || this.types.describe(carrier.type).kind !== type.kind) return;
+      const substitutions = new Map<NodeId, TypeId>();
+      const pair = (original: TypeId, actual: TypeId): void => {
+        const before = this.types.describe(original), after = this.types.describe(actual);
+        if (before.kind === 'parameter') substitutions.set(before.declaration, actual);
+        else if (before.kind === after.kind) {
+          const children = (shape: typeof before) => 'arguments' in shape ? shape.arguments : 'elements' in shape ? shape.elements : 'alternatives' in shape ? shape.alternatives : 'inner' in shape ? [shape.inner] : [];
+          children(before).forEach((part, index) => { const match = children(after)[index]; if (match) pair(part, match); });
+        }
+      };
+      pair(carrier.type, id);
+      return { shape: type, inner: id, target: carrier.target, name: carrier.target.packageName + '.' + carrier.target.selector.map(item => item.name).join('.'),
+        arguments: carrier.parameters.map(parameter => substitutions.get(parameter) ?? this.types.declaredType(parameter)), member: carrier.member, trusted: carrier.trusted, enumCases: carrier.enumCases };
+    }
     if (type.kind !== 'alias' || type.target.status !== 'known') return;
     const shape = this.types.describe(type.target.value);
     if (shape.kind !== 'literal' && shape.kind !== 'union') return;
     const target = this.targets.get(type.declaration);
-    return { type, shape, inner: type.target.value, target,
+    return { shape, inner: type.target.value, target, arguments: type.arguments, enumCases: undefined,
+      member: shape.kind === 'union' && !type.arguments.length ? 'text' : 'value', trusted: !!target && this.generated.has(target.file),
       name: target && target.packageName + '.' + target.selector.map(item => item.name).join('.') };
   }
   private textCases(id: TypeId): string[] | undefined {
@@ -69,16 +96,16 @@ export class KotlinData {
     }
     return this.problem(item, 'A union alternative needs a checked native representation.');
   }
-  wrap(id: TypeId, item: Item, value: string, actual?: TypeId): string | undefined {
-    const declared = this.types.describe(id), restriction = this.restriction(id);
-    if (!restriction) return declared.kind === 'alias' && declared.target.status === 'known' ? this.wrap(declared.target.value, item, value, actual) : undefined;
-    const { type, shape, inner, target, name } = restriction;
-    if (!target || !name || !this.generated.has(target.file)) {
+  wrap(id: TypeId, item: Item, value: string, actual?: TypeId, site?: KotlinDataSite): string | undefined {
+    const declared = this.types.describe(id), restriction = this.restriction(id, site);
+    if (!restriction) return declared.kind === 'alias' && declared.target.status === 'known' ? this.wrap(declared.target.value, item, value, actual, this.site(id, site)) : undefined;
+    const { shape, inner, target, name } = restriction;
+    if (!target || !name || !restriction.trusted) {
       this.dataProblem('unsupported-fixture-data', item, 'Expected restriction data requires its unchanged generated native definition.', target); return '__unsupported';
     }
-    const arguments_ = type.arguments.length ? '<' + type.arguments.map(id => this.type(id, item)).join(', ') + '>' : '';
-    const text = this.textCases(inner);
-    if (text && !type.arguments.length) {
+    const arguments_ = restriction.arguments.length ? '<' + restriction.arguments.map(id => this.type(id, item)).join(', ') + '>' : '';
+    const text = restriction.enumCases ?? this.textCases(inner);
+    if (text && !restriction.arguments.length) {
       return item.kind === 'string-literal' && text.includes(item.value)
         ? name + '.' + item.value.slice(0, 1).toUpperCase() + item.value.slice(1)
         : this.problem(item, 'A finite enum needs its checked literal value.');
@@ -115,22 +142,22 @@ export class KotlinData {
     if (fact.status === 'known' && fact.value.kind === 'available') return fact.value.fields;
     this.problem(item, 'Opaque runtime values need an explicit comparison contract.'); return [];
   }
-  assertion(actual: string, expected: string, id: TypeId, item: Item): string { return this.comparison(id, item) + '(' + actual + ', ' + expected + ')'; }
-  private comparison(id: TypeId, item: Item): string {
-    const previous = this.comparisons.get(id); if (previous) return previous.name;
-    const entry = { name: 'expectData' + this.comparisons.size, body: '' }; this.comparisons.set(id, entry);
-    const type = this.types.describe(id), nested = (type: TypeId, actual: string, expected: string, path = 'path') => this.comparison(type, item) + '(' + actual + ', ' + expected + ', ' + path + ', seenActual, seenExpected)';
+  assertion(actual: string, expected: string, id: TypeId, item: Item, site?: KotlinDataSite): string { return this.comparison(id, item, site) + '(' + actual + ', ' + expected + ')'; }
+  private comparison(id: TypeId, item: Item, site?: KotlinDataSite): string {
+    const previous = this.comparisons.find(entry => entry.id === id && entry.site?.owner === site?.owner && entry.site?.path === site?.path); if (previous) return previous.name;
+    const entry = { id, site, name: 'expectData' + this.comparisons.length, body: '' }; this.comparisons.push(entry);
+    const type = this.types.describe(id), nested = (type: TypeId, actual: string, expected: string, path = 'path', site?: KotlinDataSite) => this.comparison(type, item, site) + '(' + actual + ', ' + expected + ', ' + path + ', seenActual, seenExpected)';
     let body: string;
-    const restriction = this.restriction(id);
+    const restriction = this.restriction(id, site);
     if (restriction) {
-      const { type, shape, inner, target, name } = restriction;
-      if (!target || !name || !this.generated.has(target.file)) {
+      const { shape, inner, target, name } = restriction;
+      if (!target || !name || !restriction.trusted) {
         this.dataProblem('unsupported-comparison-data', item, 'Restricted data observation requires its unchanged generated native definition.', target); body = '__unsupported';
       } else {
-        const arguments_ = type.arguments.length ? '<' + type.arguments.map(() => '*').join(', ') + '>' : '';
-        const text = this.textCases(inner);
+        const arguments_ = restriction.arguments.length ? '<' + restriction.arguments.map(() => '*').join(', ') + '>' : '';
+        const text = restriction.enumCases ?? this.textCases(inner);
         if (shape.kind === 'literal' || text) {
-          const property = text && !type.arguments.length ? 'text' : 'value';
+          const property = restriction.member;
           const comparison = text ? (() => {
             const declaration = [...this.types.inspection.query('builtin-type')].find(item => item.name === 'Text')!;
             return this.types.declaredType(declaration.id);
@@ -139,23 +166,23 @@ export class KotlinData {
             + nested(comparison, 'actual.' + property, 'expected.' + property);
         } else body = 'when {\n    ' + shape.alternatives.map(alternative => {
           const variant = name + '.' + this.variant(alternative, item) + arguments_;
-          return 'actual is ' + variant + ' && expected is ' + variant + ' -> ' + nested(alternative, 'actual.value', 'expected.value');
+          return 'actual is ' + variant + ' && expected is ' + variant + ' -> ' + nested(alternative, 'actual.value', 'expected.value', 'path', this.site(id, site));
         }).join('\n    ') + '\n    else -> org.junit.jupiter.api.Assertions.fail<Unit>(path + ": declared union alternative")\n  }';
       }
-    } else if (type.kind === 'alias' && type.target.status === 'known') body = nested(type.target.value, 'actual', 'expected');
+    } else if (type.kind === 'alias' && type.target.status === 'known') body = nested(type.target.value, 'actual', 'expected', 'path', this.site(id, site));
     else if (type.kind === 'literal') {
       const value = this.types.inspection.read(type.expression, 'literal-type').value;
       body = this.primitive(value.kind === 'string-literal' ? 'String' : value.kind === 'number-literal' ? 'Double' : 'Boolean');
     }
-    else if (type.kind === 'optional') body = 'if (actual == null || expected == null) org.junit.jupiter.api.Assertions.assertTrue(actual == null && expected == null, path + ": optional presence")\n  else ' + nested(type.inner, 'actual', 'expected');
+    else if (type.kind === 'optional') body = 'if (actual == null || expected == null) org.junit.jupiter.api.Assertions.assertTrue(actual == null && expected == null, path + ": optional presence")\n  else ' + nested(type.inner, 'actual', 'expected', 'path', site);
     else if (type.kind === 'builtin' && this.types.inspection.read(type.declaration, 'builtin-type').name !== 'List') {
       body = this.primitive(this.type(id, item));
     } else if (type.kind === 'builtin') {
-      body = 'require(actual is List<*> && expected is List<*> && ordinaryList(actual) && ordinaryList(expected)) { path + ": expected ordinary List data" }\n  ' + this.guarded('org.junit.jupiter.api.Assertions.assertEquals(expected.size, actual.size, path + ".size")\n    for (index in expected.indices) ' + nested(type.arguments[0]!, 'actual[index]', 'expected[index]', 'path + "[" + index + "]"'));
+      body = 'require(actual is List<*> && expected is List<*> && ordinaryList(actual) && ordinaryList(expected)) { path + ": expected ordinary List data" }\n  ' + this.guarded('org.junit.jupiter.api.Assertions.assertEquals(expected.size, actual.size, path + ".size")\n    for (index in expected.indices) ' + nested(type.arguments[0]!, 'actual[index]', 'expected[index]', 'path + "[" + index + "]"', this.child(site, 'Element')));
     } else if (type.kind === 'tuple') {
       const name = this.tuple(type.elements.length, item), cast = name + '<' + type.elements.map(() => '*').join(', ') + '>';
       body = 'require(actual is ' + cast + ' && expected is ' + cast + ' && actual.javaClass == ' + name + '::class.java && expected.javaClass == ' + name + '::class.java) { path + ": expected declared tuple data" }\n  ' + this.guarded(type.elements.map((element, index) =>
-        nested(element, 'actual.item' + (index + 1), 'expected.item' + (index + 1), 'path + "[' + index + ']"')).join('\n    '));
+        nested(element, 'actual.item' + (index + 1), 'expected.item' + (index + 1), 'path + "[' + index + ']"', this.child(site, 'Item' + (index + 1)))).join('\n    '));
     } else if (type.kind === 'declared' && this.types.inspection.read(type.declaration).kind === 'record-type-declaration') {
       const target = this.targets.get(type.declaration), name = target && target.packageName + '.' + target.selector.map(item => item.name).join('.');
       if (!name) body = this.problem(item, 'Record comparison needs its actual native class.');
@@ -163,7 +190,7 @@ export class KotlinData {
         const cast = name + (type.arguments.length ? '<' + type.arguments.map(() => '*').join(', ') + '>' : '');
         body = 'require(actual is ' + cast + ' && expected is ' + cast + ' && actual.javaClass == ' + name + '::class.java && expected.javaClass == ' + name + '::class.java) { path + ": expected declared record data" }\n  ' + this.guarded(this.fields(id, item).map(field => {
           const declaration = this.types.inspection.read(field.declaration, 'field');
-          return field.type.status === 'known' ? nested(field.type.value, 'actual.' + this.field(field.declaration), 'expected.' + this.field(field.declaration), 'path + ' + JSON.stringify('.' + declaration.name).replaceAll('$', '\\$')) : this.problem(item, 'A checked field type is required.');
+          return field.type.status === 'known' ? nested(field.type.value, 'actual.' + this.field(field.declaration), 'expected.' + this.field(field.declaration), 'path + ' + JSON.stringify('.' + declaration.name).replaceAll('$', '\\$'), { owner: field.declaration, path: '' }) : this.problem(item, 'A checked field type is required.');
         }).join('\n    '));
       }
     } else body = this.problem(item, 'This checked data shape has no native comparison yet.');

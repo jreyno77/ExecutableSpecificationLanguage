@@ -5,9 +5,9 @@ import type { Check } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
 import type { KotlinQuery } from './kotlin-query.js';
 import { KotlinProject } from './kotlin-project.js';
-import { KotlinDeclarations, kotlinOptions } from './kotlin-declarations.js';
+import { KotlinDeclarations, kotlinOptions, type KotlinCarrier } from './kotlin-declarations.js';
 import { kotlinTuple } from './kotlin-tuples.js';
-import { identifier, locatorSchema, success } from './identity-baseline.js';
+import { canonical, identifier, locatorSchema, success } from './identity-baseline.js';
 import { hash, literal } from './project-files.js';
 import { readJson } from './json-data.js';
 import { outputProblem } from './output-documents.js';
@@ -20,6 +20,33 @@ const state = z.strictObject({ format: z.literal(1), options: z.string(), delete
 })) });
 
 export type KotlinOutputState = z.infer<typeof state>;
+export type KotlinDataCarrier = KotlinCarrier & { readonly target: KotlinQuery['declarations'][number]; readonly trusted: boolean };
+
+/** Generated companions have their own native role; current syntax, not a file hash, proves data purity. */
+export function kotlinDataCarriers(snapshot: ProjectSnapshot, current: IdentifiedSpecification, native: KotlinQuery, context?: OutputContext): Check<{
+  carriers: readonly KotlinDataCarrier[]; companions: ReadonlySet<string>;
+}> {
+  const stored = kotlinState(snapshot);
+  if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+  if (!stored.value) return success({ carriers: [], companions: new Set() });
+  const declarations = new KotlinDeclarations(current, kotlinOptions.parse(JSON.parse(stored.value.options)), context), files = declarations.render();
+  if (declarations.problems.length) return { problems: declarations.problems, deferred: [] };
+  const recorded = (artifact: KotlinCarrier['artifact']) => {
+    const file = files.find(file => file.artifacts.some(item => canonical(item) === canonical(artifact)));
+    return file && stored.value!.files.some(before => !before.adopted && before.id === file.id && before.path === file.path
+      && before.generated === file.text && before.artifacts.some(item => canonical(item) === canonical(artifact)));
+  };
+  const companions = new Set(declarations.companions.filter(recorded).map(item => canonical(item))), carriers: KotlinDataCarrier[] = [];
+  for (const carrier of declarations.carriers) {
+    if (!companions.has(canonical(carrier.artifact))) continue;
+    const matches = native.declarations.filter(node => canonical({ file: node.file, declaration: node.selector }) === canonical(carrier.artifact.locator.value));
+    if (matches.length !== 1) continue;
+    const target = matches[0]!, actual = snapshot.files.find(file => file.path === target.file);
+    const text = actual && new TextDecoder('utf-8', { fatal: true }).decode(actual.bytes);
+    carriers.push({ ...carrier, target, trusted: text?.slice(target.range.start, target.range.end) === carrier.text });
+  }
+  return success({ carriers, companions });
+}
 
 export function kotlinState(snapshot: ProjectSnapshot): Check<KotlinOutputState> {
   const source = snapshot.files.find(file => file.path === kotlinStatePath);
