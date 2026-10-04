@@ -21,6 +21,11 @@ interface ConsumerReport {
     passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
     broken: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
   };
+  nativeInputs?: {
+    complete: boolean; problems: unknown[]; evidence: { uri: string; version: string }[]; actualUri: string;
+    editable: string[]; before: string; after: string; laterVersion: string; targetExists: boolean; handwritten: string;
+    receipt: import('../../src/index.js').WriteResult;
+  };
   preservation?: {
     adopted: OutputWrite; updated?: OutputWrite; original: string; afterAdoption: string;
     source?: string; caller?: string; diagnostics?: unknown[]; runtime?: ProcessResult;
@@ -151,6 +156,12 @@ export class PackageDriver {
     await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
     await cp(join(resources, 'acceptance-consumer.mjs'), join(this.consumer, 'acceptance-consumer.mjs'));
     this.result = await run(process.execPath, ['acceptance-consumer.mjs'], this.consumer); await this.readReport();
+  }
+  async applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
+    await cp(join(resources, 'native-input-consumer.mjs'), join(this.consumer, 'native-input-consumer.mjs'));
+    await writeFile(join(this.consumer, 'native-input.json'), JSON.stringify(input));
+    this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
+    await this.readReport();
   }
   async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));

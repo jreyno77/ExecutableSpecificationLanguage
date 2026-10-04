@@ -7,6 +7,7 @@ import type { ProjectRead, ProjectSearch } from './project-inspection.js';
 import type { RelationshipObservation } from './relationship-reconciliation.js';
 import { literal, marker } from './project-files.js';
 import { packagePath, validateReadOnly } from './project-readonly.js';
+import { nativeInputs, protectsNativeInput } from './native-inputs.js';
 const require = (condition: unknown, message: string): void => { if (!condition) throw new TypeError(message); };
 function diagnostics(value: readonly Diagnostic[]): void {
   require(Array.isArray(value) && value.every(item => item && typeof item.code === 'string' && typeof item.message === 'string'
@@ -21,6 +22,7 @@ function coverage(value: RelationshipObservation['coverage'], snapshot: ProjectS
   require(!value.complete || snapshot.complete && !snapshot.problems.length && !!value.scope.length && !value.limitations.length, 'Incomplete project or limitations cannot claim complete coverage.');
 }
 export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, id: string): void {
+  require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.problems) && Array.isArray(result.deferred), 'Malformed output plan.'); diagnostics(result.problems);
   require(!result.deferred.length, 'An output plan cannot defer compiler requirements.');
   if (!result.value) { require(result.problems.length, 'A refused output plan must explain why.'); return; }
@@ -34,7 +36,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   for (const change of plan.changes) {
     require(change && ['write', 'remove', 'move'].includes(change.kind), 'Unknown output file operation.');
     for (const path of change.kind === 'move' ? [change.from, change.to] : [change.path]) {
-      require(literal(path) && !packagePath(path) && !snapshot.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
+      require(literal(path) && !packagePath(path) && !protectsNativeInput(snapshot, path) && !snapshot.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
         && path !== marker && !path.startsWith(marker + '/'), 'Output file path is not writable within this snapshot.');
       const key = process.platform === 'win32' ? path.toLowerCase() : path;
       require(!endpoints.some(other => key === other || key.startsWith(other + '/') || other.startsWith(key + '/')), 'Output changes overlap.'); endpoints.push(key);
@@ -47,6 +49,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   }
 }
 export function checkRead(result: ProjectRead, snapshot: ProjectSnapshot, id: string): void {
+  require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.artifacts), 'Malformed output read.'); diagnostics(result.problems); coverage(result.coverage, snapshot, id);
   for (const artifact of result.artifacts) {
     locator(artifact.at, id);
@@ -56,6 +59,7 @@ export function checkRead(result: ProjectRead, snapshot: ProjectSnapshot, id: st
   }
 }
 export function checkSearch(result: ProjectSearch, snapshot: ProjectSnapshot, id: string, subject: string): void {
+  require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.definitions), 'Malformed output search.'); diagnostics(result.problems); result.definitions.forEach(at => locator(at, id));
   for (const direction of ['incoming', 'outgoing'] as const) {
     const observation = result[direction];

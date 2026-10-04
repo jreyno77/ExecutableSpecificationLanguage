@@ -20,6 +20,18 @@ describe('Installed package consumers', () => {
     await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
   });
 
+  it('guards a planned write when an actual external native input changes through the installed package', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.applyWriteAfterNativeReplacement({
+      library: 'catalog.jar', before: 'version-one', after: 'version-two', file: 'result.txt', text: 'written',
+    });
+    consumer.expectExternalNativeChangeStopsWrite('result.txt', 'version-one', 'version-two');
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer();
+    consumer.expectDeclarationsAccepted();
+  });
+
   it('preserves an adopted implementation and its caller through an installed native rename', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

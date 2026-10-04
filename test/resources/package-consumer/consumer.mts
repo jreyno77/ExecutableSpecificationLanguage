@@ -48,6 +48,14 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
   return result;
 }
 
+export async function writeWithNativeEvidence(context: ProjectContext, uri: string, version: string): Promise<WriteResult> {
+  const snapshot: import('executable-specification-language').ProjectSnapshot = {
+    ...await context.readSnapshot(), nativeInputs: [{ uri, version }],
+  };
+  const captured: readonly { readonly uri: string; readonly version: string }[] = snapshot.nativeInputs ?? [];
+  return new FileProjectWriter(context).apply({ basedOn: snapshot, changes: [] });
+}
+
 export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
   return [...specification.inspection.query('call-expression')].map(call => specification.call(call.id));
 }
