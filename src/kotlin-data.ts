@@ -12,7 +12,7 @@ export class KotlinData {
   private readonly comparisons = new Map<TypeId, { name: string; body: string }>();
   readonly generatedTuples = new Set<number>();
   constructor(private readonly types: TypeCatalog, private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>,
-    private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string, private readonly generated: ReadonlySet<string>) {}
+    private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string, private readonly generated: ReadonlySet<string>, private readonly spellings: ReadonlyMap<NodeId, string> = new Map()) {}
   private tuple(arity: number, item: Item): string {
     if (this.tuples.has(arity)) return this.tuples.get(arity) ?? this.problem(item, 'Tuple data requires its unchanged generated carrier.');
     this.generatedTuples.add(arity); return this.tuplePackage + '.Tuple' + arity;
@@ -23,17 +23,20 @@ export class KotlinData {
     while (shape.kind === 'alias' && shape.target.status === 'known') shape = this.types.describe(shape.target.value);
     return shape;
   }
-  type(id: TypeId, item: Item): string {
+  type(id: TypeId, item: Item, qualified = false): string {
     const type = this.types.describe(id);
+    if (type.kind === 'parameter') return this.spellings.get(type.declaration) ?? this.problem(item, 'A generic native type needs its checked parameter spelling.');
     if (type.kind === 'builtin') {
       const name = this.types.inspection.read(type.declaration, 'builtin-type').name;
-      return name === 'List' ? 'MutableList<' + this.type(type.arguments[0]!, item) + '>' : ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit' } as Record<string, string>)[name]!;
+      const native = ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit', List: 'MutableList' } as Record<string, string>)[name]!;
+      const prefix = qualified || [...this.spellings.values()].includes(native) ? name === 'List' ? 'kotlin.collections.' : 'kotlin.' : '';
+      return prefix + native + (name === 'List' ? '<' + this.type(type.arguments[0]!, item, qualified) + '>' : '');
     }
-    if (type.kind === 'optional') return this.type(type.inner, item) + '?';
-    if (type.kind === 'tuple') return this.tuple(type.elements.length, item) + '<' + type.elements.map(element => this.type(element, item)).join(', ') + '>';
+    if (type.kind === 'optional') return this.type(type.inner, item, qualified) + '?';
+    if (type.kind === 'tuple') return this.tuple(type.elements.length, item) + '<' + type.elements.map(element => this.type(element, item, qualified)).join(', ') + '>';
     if (type.kind === 'declared' || type.kind === 'alias') {
       const target = this.targets.get(type.declaration);
-      if (target) return target.packageName + '.' + target.selector.map(item => item.name).join('.') + (type.arguments.length ? '<' + type.arguments.map(id => this.type(id, item)).join(', ') + '>' : '');
+      if (target) return (!qualified && this.spellings.get(type.declaration) || target.packageName + '.' + target.selector.map(item => item.name).join('.')) + (type.arguments.length ? '<' + type.arguments.map(id => this.type(id, item, qualified)).join(', ') + '>' : '');
     }
     return this.problem(item, 'This checked type needs an exact executable Kotlin representation.');
   }

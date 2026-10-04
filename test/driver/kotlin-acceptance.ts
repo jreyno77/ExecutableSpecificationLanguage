@@ -18,6 +18,12 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     await this.initialize(); this.outputs.register(kotlinAcceptanceOutput); await this.configureNative([this.junit]);
     await this.file('src/main/kotlin/Empty.kt', '// An ordinary empty main source set.\n');
   }
+  importType(selector: { id: string } | { declaration: string[]; module?: string }, name: string, as?: string): void {
+    const imports = (this.acceptanceOptions.imports ?? []) as ({ id?: string; declaration?: string[]; module?: string; name: string; as?: string })[];
+    const key = (item: typeof imports[number]) => JSON.stringify('id' in item ? { id: item.id } : { declaration: item.declaration, module: item.module });
+    const selected = { ...selector, name, ...as ? { as } : {} };
+    this.acceptanceOptions.imports = [...imports.filter(item => key(item) !== key(selected)), selected];
+  }
   async contracts(): Promise<void> {
     await this.build();
     if (!this.written.artifacts) throw new Error(JSON.stringify(this.written));

@@ -23,12 +23,13 @@ const result = z.strictObject({
     parameterNames: z.array(z.string()).optional(), hasDefault: z.boolean().optional(), typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), storedProperty: z.boolean().optional(), dataConstruction: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional(),
     readableProperties: z.array(z.strictObject({ name: z.string(), type: z.string() })).optional() })),
   references: z.array(z.strictObject({ file: z.string().refine(literal), range, name: z.string(), owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
+  typeChecks: z.array(z.strictObject({ file: z.string().refine(literal), name: z.string(), matches: z.boolean() })).optional(),
   problems: z.array(z.strictObject({ file: z.string().refine(literal), range, message: z.string(), code: z.string() })),
 });
 export type KotlinQuery = z.infer<typeof result>;
 
 /** Stages only supplied source bytes; native analysis reads the separately guarded artifacts. */
-export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string): Promise<Check<KotlinQuery>> {
+export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string, typeChecks: readonly { file: string; name: string }[] = []): Promise<Check<KotlinQuery>> {
   const problems: Diagnostic[] = [...snapshot.problems], configured = kotlinConfiguration(snapshot, configFile);
   problems.push(...configured.problems);
   const finding = (code: string, text: string, path = '') => problems.push(problem(snapshot.root, code, path, text));
@@ -60,7 +61,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
       const path = join(source, file.path); await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, file.bytes);
     }
     if (!problems.length) {
-      const input = join(scratch, 'request.json'); await fs.writeFile(input, JSON.stringify({ directory: source, classPath: config.classPath, sourceRoots: config.sourceRoots }));
+      const input = join(scratch, 'request.json'); await fs.writeFile(input, JSON.stringify({ directory: source, classPath: config.classPath, sourceRoots: config.sourceRoots, typeChecks }));
       const libraries = join(kotlinResources, 'lib'), jars = (await fs.readdir(libraries)).filter(name => name.endsWith('.jar')).sort().map(name => join(libraries, name));
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'JAVA_OPTS', 'CLASSPATH'].includes(key.toUpperCase())));
       const observed = await promisify(execFile)(join(config.javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),

@@ -33,9 +33,9 @@ export class KotlinExamples {
   private readonly locals = new Map<string, TypeId>();
   private readonly names = new Map<NodeId, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map(), generated: ReadonlySet<string> = new Set()) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map(), generated: ReadonlySet<string> = new Set(), private readonly imports: readonly { id: string; name: string; as?: string }[] = []) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
-    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl', generated);
+    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl', generated, new Map(imports.map(rule => [current.node(rule.id), rule.as ?? rule.name.split('.').at(-1)!])));
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
@@ -208,7 +208,15 @@ export class KotlinExamples {
     const files: KotlinFile[] = [], prefix = this.options.testRoot + '/' + this.options.package.replaceAll('.', '/');
     const groups = [...this.inspection.query('examples')].filter(item => this.owned(item));
     const methodNames = new Set<string>();
-    const add = (id: string, layer: string, name: string, body: string, artifacts: ArtifactAssociation[]) => files.push({ id, path: prefix + '/' + layer + '/' + name + '.kt', text: 'package ' + this.options.package + '.' + layer + '\n\n' + body + '\n', artifacts });
+    const localImports = new Set<string>();
+    for (const rule of this.imports) {
+      const name = rule.as ?? rule.name.split('.').at(-1)!;
+      if (localImports.has(name) || [this.className, this.className + 'Driver', this.className + 'Fixture', this.className + 'Acceptance', 'ExpecChecks'].includes(name))
+        this.problem('native-name-conflict', this.inspection.read(this.current.node(rule.id)), 'The imported type conflicts with another native name: ' + name);
+      localImports.add(name);
+    }
+    const imports = this.imports.map(rule => 'import ' + rule.name + (rule.as ? ' as ' + rule.as : '')).join('\n');
+    const add = (id: string, layer: string, name: string, body: string, artifacts: ArtifactAssociation[]) => files.push({ id, path: prefix + '/' + layer + '/' + name + '.kt', text: 'package ' + this.options.package + '.' + layer + '\n\n' + (name !== 'ExpecChecks' && imports ? imports + '\n\n' : '') + body + '\n', artifacts });
     const artifact = (id: NodeId, layer: string, className: string, method?: string, parameters?: string[]): ArtifactAssociation => ({ specId: this.current.id(id), locator: {
       outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: { file: prefix + '/' + layer + '/' + className + '.kt', declaration: [
         { kind: 'class', name: className }, ...method ? [{ kind: 'function', name: method, parameters: parameters ?? [] }] : [],
@@ -235,7 +243,7 @@ export class KotlinExamples {
     const group = groups[0]!, driver: string[] = [], methods: string[] = [], driverArtifacts = [artifact(group.id, 'driver', this.className + 'Driver')], dslArtifacts = [artifact(group.id, 'dsl', this.className)];
     for (const operation of this.operations) {
       const name = this.name(operation), parameters = operation.parameters.map(item => this.parameter(item)).join(', '), result = this.result(operation);
-      const canonical = operation.parameters.map(item => { const fact = this.types.typeOf(item.declaredType.id); return fact.status === 'known' ? this.type(fact.value, item).replace(/^(String|Double|Boolean|Unit)$/, 'kotlin.$1') : ''; });
+      const canonical = operation.parameters.map(item => { const fact = this.types.typeOf(item.declaredType.id); return fact.status === 'known' ? this.data.type(fact.value, item, true) : ''; });
       dslArtifacts.push(artifact(operation.id, 'dsl', this.className, name, canonical));
       if (operation.body.kind === 'available') {
         methods.push('  fun ' + name + '(' + parameters + '): ' + result + ' {\n    ' + this.statements(operation) + '\n  }');

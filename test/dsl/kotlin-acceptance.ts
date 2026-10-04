@@ -9,6 +9,8 @@ export class KotlinAcceptance {
   replaceNativeText(path: string, before: string, after: string): Promise<void> { return this.driver.replace(path, before, after); }
   nativeFile(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   testRoot(path: string): void { this.driver.acceptanceOptions.testRoot = path; }
+  external(module: string, text: string): void { this.driver.external(module, text); }
+  importType(selector: { id: string } | { declaration: string[]; module?: string }, name: string, as?: string): void { this.driver.importType(selector, name, as); }
   source(text: string, renames: Readonly<Record<string, string>> = {}, retired: readonly string[] = []): void { this.driver.source(text, renames, retired); }
   nameOperation(name: string, native: string): void { this.driver.nameOperation(name, native); }
   nameExample(title: string, native: string): void { this.driver.nameExample(title, native); }

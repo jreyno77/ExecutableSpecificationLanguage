@@ -11,6 +11,7 @@ import { validDiff } from './output-contract.js';
 import type { FileChange } from './project-writer.js';
 import { preserveKotlin, retireKotlin } from './kotlin-preservation.js';
 import { checkKotlinDriver, kotlinDriver, kotlinDriverBindings } from './kotlin-test-driver.js';
+import { kotlinDataImports } from './kotlin-data-imports.js';
 import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
 import { checkKotlinTests } from './kotlin-test-contract.js';
@@ -25,7 +26,7 @@ const options = kotlinOptions.omit({ directory: true, concepts: true }).extend({
 });
 const statePath = '.expec/outputs/' + Buffer.from('kotlin-acceptance').toString('hex') + '.json';
 const association = z.strictObject({ specId: z.string(), locator: locatorSchema });
-const state = z.strictObject({ format: z.literal(1), options: z.string(), context: z.string(), contracts: z.array(z.strictObject({ id: z.string(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })), deleted: z.array(z.string()).default([]), subjects: z.array(z.string()).default([]), names: z.array(z.strictObject({ id: z.string(), name: z.string() })).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
+const state = z.strictObject({ format: z.literal(1), options: z.string(), context: z.string(), contracts: z.array(z.strictObject({ id: z.string(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })), deleted: z.array(z.string()).default([]), subjects: z.array(z.string()).default([]), names: z.array(z.strictObject({ id: z.string(), name: z.string() })).default([]), imports: z.array(z.strictObject({ id: z.string(), name: z.string(), as: z.string().optional() })).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
   id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association),
 })) });
 export const kotlinAcceptanceOutput: OutputRegistration = {
@@ -77,10 +78,10 @@ class KotlinAcceptance implements OutputAdapter {
       || stored.value.contracts.some(item => fingerprints.get(item.id) !== item.fingerprint)))
       return failure(request.operation === 'insert' ? 'not-addition-only' : 'use-update', 'Recorded source declarations changed; use update before reconciling existing tests.');
     const beforeOptions = stored.value && options.parse(JSON.parse(stored.value.options));
-    const fixed = ({ fixture: _fixture, names: _names, ...settings }: z.infer<typeof options>) => canonical(settings);
+    const fixed = ({ fixture: _fixture, names: _names, imports: _imports, ...settings }: z.infer<typeof options>) => canonical(settings);
     const migrating = request.operation === 'update' && beforeOptions && !beforeOptions.fixture && this.settings.fixture && fixed(beforeOptions) === fixed(this.settings);
     if (beforeOptions && (fixed(beforeOptions) !== fixed(this.settings) || canonical(beforeOptions.fixture) !== canonical(this.settings.fixture) && !migrating)) return failure('output-options-changed', 'Native acceptance placement requires an explicit migration.');
-    if (this.settings.adoptExisting || this.settings.imports.length) return failure('native-preservation-unavailable', 'These explicit mappings require native compatibility checking.');
+    if (this.settings.adoptExisting) return failure('native-preservation-unavailable', 'These explicit mappings require native compatibility checking.');
     const native = await queryKotlin(snapshot, 'expec.kotlin.json');
     if (!native.value || native.problems.length && !this.settings.fixture) return { problems: native.problems, deferred: native.deferred };
     const className = this.settings.domain[0]!.toUpperCase() + this.settings.domain.slice(1), prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/');
@@ -105,8 +106,16 @@ class KotlinAcceptance implements OutputAdapter {
     const bindings = mapped.value;
     if (stored.value?.bindings?.some(before => !bindings.some(after => before.specId === after.specId && canonical(before.locator) === canonical(after.locator)))) return failure('output-options-changed', 'A retained native operation binding cannot silently change.');
     const tuples = kotlinTupleTypes(snapshot, native.value); if (!tuples.value) return { problems: tuples.problems, deferred: tuples.deferred };
+    const imported = await kotlinDataImports(request.current, this.settings, this.context, snapshot, native.value, targets, tuples.value);
+    if (!imported.value) return { problems: imported.problems, deferred: imported.deferred };
+    const imports = imported.value.imports;
+    if (stored.value) {
+      const retained = new Set(stored.value.subjects), selected = new Set([...stored.value.imports, ...imports].map(item => item.id));
+      if ([...selected].some(id => retained.has(id) && canonical(stored.value!.imports.filter(item => item.id === id)) !== canonical(imports.filter(item => item.id === id))))
+        return failure('output-options-changed', 'A retained provider mapping cannot silently change native identity or local spelling.');
+    }
     const generatedFiles = kotlinGeneratedFiles(snapshot, request.current, this.context); if (!generatedFiles.value) return { problems: generatedFiles.problems, deferred: generatedFiles.deferred };
-    const rendered = new KotlinExamples(request.current, this.settings, targets, this.context, fixture, driver, tuples.value, generatedFiles.value), files = rendered.files();
+    const rendered = new KotlinExamples(request.current, this.settings, imported.value.targets, this.context, fixture, driver, tuples.value, generatedFiles.value, imports), files = rendered.files();
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
     const names = rendered.mapping();
     if (stored.value) {
@@ -166,7 +175,7 @@ class KotlinAcceptance implements OutputAdapter {
     }
     const owned = new Set(files.flatMap(file => file.artifacts.map(item => item.specId)));
     const next = { format: 1, options: canonical(this.settings), context: request.current.baseline.context,
-      contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+      contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, imports, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
       artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : [], ...next.driver ? [next.driver] : [], ...next.bindings ?? []], obligations: rendered.obligations });

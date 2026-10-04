@@ -146,6 +146,23 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     const indentation = source.slice(source.lastIndexOf('\n', next.range.start - 1) + 1, next.range.start);
     edit(owner.file, { start: owner.bodyRange.end - 1, end: owner.bodyRange.end - 1 }, '\n' + indentation + text + '\n');
   }
+
+  // New generated type uses need their actual native import directives as well as declaration edits.
+  for (const file of desired) {
+    const prior = previous.find(item => item.id === file.id), path = prior?.path;
+    if (!path || !sources.has(path)) continue;
+    const oldImports = before.value.native.imports.filter(item => item.file === path).map(item => original.get(path)!.slice(item.range.start, item.range.end));
+    const actualImports = current.value.imports.filter(item => item.file === path).map(item => sources.get(path)!.slice(item.range.start, item.range.end));
+    const added = [...new Set(after.value.native.imports.filter(item => item.file === file.path)
+      .map(item => wanted.get(file.path)!.slice(item.range.start, item.range.end))
+      .filter(text => !oldImports.includes(text) && !actualImports.includes(text)))];
+    if (!added.length) continue;
+    const start = Math.min(...current.value.declarations.filter(node => node.file === path && node.selector.length === 1).map(node => node.range.start));
+    if (!Number.isFinite(start)) { refuse(path, 'New native imports require an actual declaration boundary.'); continue; }
+    edit(path, { start, end: start }, added.join('\n') + '\n\n');
+  }
+
+
   const changes: FileChange[] = [], moved = new Set<string>();
   for (const [file, items] of edits) {
     items.sort((a, b) => b.start - a.start || b.end - a.end);

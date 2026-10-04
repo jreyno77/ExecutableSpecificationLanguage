@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
+import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.types.Variance
 import java.nio.file.Files
 import java.nio.file.Path
@@ -75,6 +76,8 @@ fun main(args: Array<String>) {
         val references = mutableListOf<JsonElement>()
         val imports = mutableListOf<JsonElement>()
         val problems = mutableListOf<JsonElement>()
+        val typeChecks = mutableListOf<JsonElement>()
+        val requestedChecks = request["typeChecks"]?.jsonArray ?: JsonArray(emptyList())
         for (file in files) {
             val text = originals.getValue(file)
             for (directive in file.importDirectives) imports.add(buildJsonObject { put("file", text.file); put("range", text.range(directive)) })
@@ -82,6 +85,14 @@ fun main(args: Array<String>) {
                 if (node.name == null && node !is KtObjectDeclaration && node !is KtNamedFunction) continue
                 val selector = selector(node, text)
                 if (selector.isEmpty()) continue
+                if (node is KtNamedFunction && requestedChecks.any { it.jsonObject["file"]?.jsonPrimitive?.content == text.file && it.jsonObject["name"]?.jsonPrimitive?.content == node.name }) analyze(node) {
+                    val actual = node.bodyExpression?.expressionType
+                    val expected = node.returnType
+                    typeChecks.add(buildJsonObject {
+                        put("file", text.file); put("name", node.name)
+                        put("matches", node.typeReference != null && !node.hasBlockBody() && actual != null && actual !is KaErrorType && expected !is KaErrorType && expected.semanticallyEquals(actual))
+                    })
+                }
                 declarations.add(buildJsonObject {
                     put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", nativeName(node, text)); if (node.name == null) put("synthetic", true)
                     put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: (node.parent as? KtClassOrObject)?.nameIdentifier ?: node else node.nameIdentifier ?: node))
@@ -175,6 +186,7 @@ fun main(args: Array<String>) {
         }
         println(buildJsonObject {
             put("files", JsonArray(files.map { JsonPrimitive(originals.getValue(it).file) }))
+            put("typeChecks", JsonArray(typeChecks))
             put("declarations", JsonArray(declarations)); put("references", JsonArray(references.distinct())); put("problems", JsonArray(problems))
             put("imports", JsonArray(imports))
         })
