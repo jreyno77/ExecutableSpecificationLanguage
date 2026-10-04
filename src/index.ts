@@ -47,6 +47,7 @@ export { NpmDependencies, type NpmOptions, type PackageRead, type PackageObserva
 export * from './project-writer.js';
 export * from './output.js';
 export * from './output-typescript.js';
+export { acceptanceOutput } from './output-acceptance.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';
 export { umlOutput } from './uml-output.js';

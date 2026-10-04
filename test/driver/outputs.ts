@@ -241,6 +241,14 @@ export class OutputsDriver {
     await this.open('invalid', {});
   }
   async tryCreate(): Promise<void> { try { await this.create(); } catch (error) { this.error = error; } }
+  async registerAdapterReturningMalformedObligation(): Promise<void> {
+    this.outputs.register({ id: 'malformed-obligation', validate: () => [], open: () => ({ id: 'malformed-obligation',
+      plan: async (_request, basedOn) => ({ problems: [], deferred: [], value: { outputId: 'malformed-obligation', basedOn,
+        changes: [{ kind: 'write', path: 'untrusted.txt', bytes: Buffer.from('must not be written') }], artifacts: [],
+        obligations: [{ code: 7 }] as unknown as import('../../src/index.js').Diagnostic[] } }),
+      read: async () => { throw Error('Unused'); }, search: async () => { throw Error('Unused'); } }) });
+    await this.open('malformed-obligation', {});
+  }
   async dispose(): Promise<void> {
     this.restoreFailure?.();
     const name = relative(this.temporary, this.directory);
