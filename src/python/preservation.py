@@ -1,7 +1,8 @@
 """Lossless edits to explicitly identified declarations; no file writes or application execution."""
 import ast
+import json
 import libcst as cst
-from libcst.metadata import MetadataWrapper, PositionProvider
+from libcst.metadata import MetadataWrapper, PositionProvider, ScopeProvider
 
 
 def selector(artifact):
@@ -99,9 +100,49 @@ def has_comment(node):
     return visitor.found
 
 
+def retire(request):
+    module = cst.parse_module(request['before'])
+    nodes = declarations(module)
+    desired = associations(request['next'])
+    removed = [selector(item) for identity, item in associations(request['previous']).items() if identity not in desired]
+    selected = {nodes[key] for key in removed if key in nodes}
+    names = {key[0][1] for key in removed if len(key) == 1}
+
+    class Retire(cst.CSTTransformer):
+        def on_leave(self, original, updated):
+            if original in selected:
+                return cst.RemoveFromParent()
+            if isinstance(updated, cst.Assign) and len(updated.targets) == 1 and isinstance(updated.targets[0].target, cst.Name) and updated.targets[0].target.value == '__all__':
+                values = ast.literal_eval(module.code_for_node(updated.value))
+                return updated.with_changes(value=cst.parse_expression(json.dumps([name for name in values if name not in names])))
+            return updated
+    return module.visit(Retire()).code
+
+
+def support(module, artifacts):
+    owned = {selector(item)[0][1] for item in artifacts}
+    found = {}
+    for node in module.body:
+        tree = ast.parse(module.code_for_node(node))
+        first = tree.body[0]
+        if isinstance(first, ast.ImportFrom):
+            key = ('import', first.level, first.module)
+        elif isinstance(first, ast.Import):
+            key = ('import', tuple(alias.name for alias in first.names))
+        elif isinstance(first, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            key = ('name', first.name)
+        elif isinstance(first, ast.Assign) and len(first.targets) == 1 and isinstance(first.targets[0], ast.Name):
+            key = ('name', first.targets[0].id)
+        else:
+            continue
+        if key[0] != 'name' or key[1] not in owned:
+            found[key] = None if key in found else node
+    return found
+
+
 def preserve(request, root, facts=None, traces=None):
-    before = declarations(cst.parse_module(request["before"]))
-    after = declarations(cst.parse_module(request["after"]))
+    old_module, new_module = cst.parse_module(request['before']), cst.parse_module(request['after'])
+    before, after = declarations(old_module), declarations(new_module)
     previous = associations(request["previous"])
     desired = associations(request["next"])
     files = {item["locator"]["value"]["file"] for item in request["previous"]} | set(facts["files"] if facts else [])
@@ -110,8 +151,17 @@ def preserve(request, root, facts=None, traces=None):
     actual = {file: declarations(module) for file, module in modules.items()}
     replacements, additions, problems, names, removals = {}, {}, [], {}, set()
 
-    def problem(code, file, message):
-        problems.append({"code": code, "file": file, "message": message})
+    def destination(artifact):
+        file, move = artifact['locator']['value']['file'], request.get('move')
+        return move['from'] if move and file == move['to'] else file
+
+    def problem(code, file, message, start=None):
+        problems.append({"code": code, "file": file, "message": message, **({'start': start} if start is not None else {})})
+
+    def occupied(file, owner, name):
+        scopes = wrappers[file].resolve(ScopeProvider)
+        scope = scopes[modules[file]] if owner is modules[file] else scopes[owner.body.body[0]]
+        return list(scope.assignments[name])
 
     for identity, artifact in desired.items():
         key = selector(artifact)
@@ -133,7 +183,7 @@ def preserve(request, root, facts=None, traces=None):
                            and tuple((part["kind"], part["name"]) for part in item["declaration"]) == selector(old)]
                 if len(targets) != 1:
                     problem("python-definition-unavailable", file, "Renaming requires one exact native declaration."); continue
-                if key in actual[file]:
+                if key in actual[file] or any(assignment.node is not current for assignment in wrappers[file].resolve(ScopeProvider)[current].assignments[key[-1][1]]):
                     problem("native-name-conflict", file, "Another native declaration already uses the requested name."); continue
                 target = targets[0]["target"]
                 target_key = lambda item: (item["file"], item["line"], item["column"])
@@ -151,9 +201,21 @@ def preserve(request, root, facts=None, traces=None):
                 replacements[current] = wanted
             elif isinstance(current, cst.AnnAssign) and isinstance(wanted, cst.AnnAssign):
                 replacements[current] = current.with_changes(annotation=wanted.annotation)
+            elif isinstance(current, cst.ClassDef) and isinstance(wanted, cst.ClassDef):
+                replacements[current] = wanted
             else:
                 problem("unsupported-python-change", file, "This native declaration change needs explicit preservation support.")
         else:
+            if any(selector(item) == key[:depth] and identity not in previous for identity, item in desired.items() for depth in range(1, len(key))):
+                continue  # The new ancestor already carries its complete generated body.
+            file = destination(artifact)
+            if len(key) == 1 and wanted is not None:
+                if file not in modules:
+                    problem('python-definition-unavailable', file, 'A new declaration needs an existing generated module.'); continue
+                if occupied(file, modules[file], key[-1][1]):
+                    problem('native-name-conflict', file, 'An existing native binding already uses the requested name.'); continue
+                additions.setdefault(modules[file], []).append(wanted if not isinstance(wanted, cst.AnnAssign) else cst.SimpleStatementLine([wanted]))
+                continue
             owner = next((identity for identity, item in desired.items() if selector(item) == key[:-1]), None)
             saved = previous.get(owner)
             if not saved or not isinstance(wanted, cst.FunctionDef):
@@ -162,7 +224,7 @@ def preserve(request, root, facts=None, traces=None):
             parent = actual[file].get(selector(saved))
             if not isinstance(parent, cst.ClassDef) or not isinstance(parent.body, cst.IndentedBlock):
                 problem("python-definition-unavailable", file, "A new member requires an ordinary class suite."); continue
-            if selector(saved) + (key[-1],) in actual[file]:
+            if selector(saved) + (key[-1],) in actual[file] or occupied(file, parent, key[-1][1]):
                 problem("native-name-conflict", file, "An existing native declaration already has the requested name."); continue
             additions.setdefault(parent, []).append(wanted)
     for identity, artifact in previous.items():
@@ -173,7 +235,7 @@ def preserve(request, root, facts=None, traces=None):
             prior, current = before.get(key), actual[file].get(key)
             if identity[0] in request.get("authored", []):
                 problem("output-conflict", file, "Adoption does not grant ownership of handwritten declarations."); continue
-            if not isinstance(prior, cst.FunctionDef) or not isinstance(current, cst.FunctionDef):
+            if not isinstance(prior, (cst.ClassDef, cst.FunctionDef, cst.AnnAssign)) or not isinstance(current, type(prior)):
                 problem("unsupported-python-change", file, "This declaration needs an explicit native retirement strategy."); continue
             code = lambda node: cst.Module([]).code_for_node(node).replace("\r\n", "\n").strip()
             if code(current) != code(prior):
@@ -183,11 +245,43 @@ def preserve(request, root, facts=None, traces=None):
             if len(targets) != 1:
                 problem("incomplete-native-references", file, "Retirement requires one native declaration and its actual uses."); continue
             target_key = lambda item: (item["file"], item["line"], item["column"])
-            incoming = [use for use in facts["uses"] if any(target_key(target) == target_key(targets[0]) for target in use["targets"])
-                        or use["member"] and use["name"] == key[-1][1] and len(use["targets"]) != 1]
+            retiring = [(item['locator']['value']['file'], selector(item)) for identity, item in previous.items() if identity not in desired]
+            incoming = [use for use in facts["uses"] if not any(use['file'] == path and tuple((part['kind'], part['name']) for part in use['owner'])[:len(scope)] == scope for path, scope in retiring)
+                        and (any(target_key(target) == target_key(targets[0]) for target in use["targets"])
+                             or use["member"] and use["name"] == key[-1][1] and len(use["targets"]) != 1)]
             if incoming:
-                problem("native-reference-conflict", incoming[0]["file"], "A native caller still uses, or may use, the retiring declaration."); continue
+                for use in incoming:
+                    problem("native-reference-conflict", use['file'], "A native caller still uses, or may use, the retiring declaration.", use['start'])
+                continue
             removals.add(current)
+    # Generated module support (imports, exports and type variables) has its own ownership.
+    # A distributed adopted module receives only existing support; new bindings need a safe local destination.
+    old_support, new_support = support(old_module, request['previous']), support(new_module, request['next'])
+    destinations = {destination(item) for item in [*request['previous'], *request['next']]}
+    for file in destinations:
+        current_support = support(modules[file], [item for item in [*request['previous'], *request['next']] if destination(item) == file])
+        for key in old_support.keys() | new_support.keys():
+            prior, wanted, current = old_support.get(key), new_support.get(key), current_support.get(key)
+            code = lambda node: cst.Module([]).code_for_node(node).replace('\r\n', '\n').strip() if node else None
+            if code(prior) == code(wanted):
+                continue
+            if prior is not None and current is None:
+                problem('output-conflict', file, 'Generated module support is missing or ambiguous.'); continue
+            if current is not None and code(current) != code(prior):
+                problem('output-conflict', file, 'Handwritten module support competes with the requested contract.'); continue
+            if wanted is None:
+                if current: removals.add(current)
+            elif current is not None:
+                replacements[current] = wanted
+            elif len(destinations) != 1:
+                problem('unsupported-python-change', file, 'New shared imports require an explicit native module placement.')
+            else:
+                introduced = MetadataWrapper(cst.Module([wanted])).resolve(ScopeProvider)
+                for scope in set(introduced.values()):
+                    if type(scope).__name__ == 'GlobalScope':
+                        if any(occupied(file, modules[file], assignment.name) for assignment in scope.assignments):
+                            problem('native-name-conflict', file, 'A new support declaration would hide an existing native binding.')
+                additions.setdefault(modules[file], []).insert(0, wanted)
     if problems:
         return [], problems
 
@@ -215,11 +309,29 @@ def preserve(request, root, facts=None, traces=None):
             return result
 
         def leave_AnnAssign(self, original, updated):
+            if original in removals:
+                return cst.RemoveFromParent()
             wanted = replacements.get(original)
             return updated.with_changes(annotation=wanted.annotation) if wanted else updated
 
         def leave_ClassDef(self, original, updated):
-            return updated.with_changes(body=updated.body.with_changes(body=[*updated.body.body, *additions[original]])) if original in additions else updated
+            if original in removals:
+                return cst.RemoveFromParent()
+            wanted = replacements.get(original)
+            result = updated.with_changes(name=updated.name.with_changes(value=wanted.name.value), bases=wanted.bases, keywords=wanted.keywords) if wanted else updated
+            self.names[original.name] = result.name
+            return result.with_changes(body=result.body.with_changes(body=[*result.body.body, *additions[original]])) if original in additions else result
+
+        def leave_SimpleStatementLine(self, original, updated):
+            return cst.RemoveFromParent() if original in removals else replacements.get(original, updated)
+
+        def leave_Module(self, original, updated):
+            extra = additions.get(original, [])
+            imports = [node for node in extra if isinstance(node, cst.SimpleStatementLine) and isinstance(node.body[0], (cst.Import, cst.ImportFrom))]
+            other = [node for node in extra if node not in imports]
+            body = list(updated.body)
+            at = 1 if body and isinstance(body[0], cst.SimpleStatementLine) and isinstance(body[0].body[0], cst.ImportFrom) and cst.Module([]).code_for_node(body[0]).startswith('from __future__') else 0
+            return updated.with_changes(body=[*body[:at], *imports, *body[at:], *other])
 
     rewritten = []
     for file, wrapper in wrappers.items():

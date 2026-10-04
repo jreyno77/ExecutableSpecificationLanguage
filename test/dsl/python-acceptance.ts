@@ -94,6 +94,8 @@ export class PythonAcceptance {
   }
   tryGenerateTests(): Promise<void> { return this.driver.generate(); }
   expectGenerationProblem(code: string): void { this.expectUpdateProblem(code); }
+  keepExistingCatalogDsl(title: string): Promise<void> { return this.driver.keepExistingCatalogDsl(title); }
+  async expectCatalogDslUnchanged(): Promise<void> { expect(await this.driver.catalogDslText()).toBe(this.driver.catalogDsl); }
   async expectSelectedDriverUnchanged(): Promise<void> {
     const result = await this.driver.selectedDriverFiles(); expect(result.actual).toBe(result.expected); expect(result.duplicate).toBe(false);
   }

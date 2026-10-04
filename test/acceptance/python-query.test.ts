@@ -2,6 +2,16 @@ import { describe, it } from 'vitest';
 import { PythonQueries } from '../dsl/python-query.js';
 
 describe('current Python declarations and their actual consumers', { timeout: 120_000 }, () => {
+  it('refuses a guessed rename when a union receiver and reflective call leave consumers uncertain', async () => {
+    const p = await PythonQueries.connect();
+    p.source('class StoreGame { public save\ncapability save(snapshot: Text) returns Nothing }');
+    await p.file('src/store.py', 'class StoreGame:\n    def save(self, snapshot: str) -> None:\n        self.snapshot = snapshot\n');
+    await p.adoptStore('src/store.py');
+    await p.file('src/caller.py', 'from store import StoreGame\nclass Other:\n    def save(self, snapshot: str) -> None:\n        pass\ndef launch(game: StoreGame | Other, name: str) -> None:\n    game.save("Dune")\n    getattr(game, name)("Dune")\n');
+    p.mapMethod('StoreGame.save', 'src/store.py', 'StoreGame', 'save'); await p.search('StoreGame.save');
+    p.expectAmbiguousMember('src/caller.py', 'save', 2); p.expectLookupLimited('src/caller.py', 'getattr');
+    await p.tryRenameSave(); p.expectRenameRefused('dynamic-python-lookup'); await p.expectCapturedFilesUnchanged();
+  }, 240_000);
   it('reads every associated file with handwritten bodies and fresh changes', async () => {
     const p = await PythonQueries.connect();
     const game = 'from store.state import Snapshot\n# Keep the handwritten state.\nclass StoreGame:\n    def save(self, snapshot: Snapshot) -> None:\n        self._snapshot = snapshot\n';

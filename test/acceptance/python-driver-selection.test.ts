@@ -7,7 +7,10 @@ describe('readable Python tests can use an existing application driver', { timeo
   it('uses an explicitly selected driver without generating a duplicate', async () => {
     const p = await PythonAcceptance.create(); p.aShopperCanAddAnAvailableBook('Dune', 1);
     await p.useExistingBasketDriver({ copies: 1, parameter: 'book' });
-    await p.generateTests(); await p.expectSelectedDriverUnchanged();
+    await p.keepExistingCatalogDsl('Dune');
+    await p.generateTests(); await p.expectSelectedDriverUnchanged(); await p.expectCatalogDslUnchanged();
+    await p.rememberGeneratedFiles(); await p.generateTests();
+    p.expectNoEdits(); await p.expectRememberedFilesUnchanged(); await p.expectSelectedDriverUnchanged(); await p.expectCatalogDslUnchanged();
     await p.runTests(); p.expectPassed(1);
   });
   it('observes wrong behavior from the same selected driver', async () => {

@@ -3,12 +3,17 @@ import ast
 import json
 import pathlib
 import sys
+import importlib.util
 
 request = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 sys.path[:0] = request["sites"]
 import jedi
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, ParentNodeProvider
+
+specification = importlib.util.spec_from_file_location("expec_callables", pathlib.Path(__file__).with_name("callables.py"))
+callables = importlib.util.module_from_spec(specification)
+specification.loader.exec_module(callables)
 
 def inspect_files(request):
     root = pathlib.Path(request["root"])
@@ -59,7 +64,15 @@ def inspect_files(request):
         names = {(name.line, name.column): native(name) for name in script.get_names(all_scopes=True, definitions=True, references=False)}
         scope = []
 
+        def lookup_problem(node, message):
+            problems.append({"code": "dynamic-python-lookup", "file": filename,
+                             "start": offset(positions[node].start), "message": message})
+
+        callable_facts = callables.Callables(wrapper.module, parents, positions, script, request["stdlib"], request["sites"], lookup_problem)
+
         def record(node, name, kind):
+            if not callable_facts.visible(node):
+                return
             at = positions[name]
             target = names.get((at.start.line, at.start.column))
             if target:
@@ -120,12 +133,19 @@ def inspect_files(request):
                         imported(alias.name)
 
             def visit_AnnAssign(self, node):
+                callable_facts.assignment(node.target)
                 if isinstance(node.target, cst.Name):
                     annotation = node.annotation.annotation
                     at = positions[annotation]
                     targets = script.goto(at.start.line, at.start.column + 1, follow_imports=True, follow_builtin_imports=True)
                     kind = "type" if any(name.full_name == "typing.TypeAlias" for name in targets) else "field"
                     record(node, node.target, kind)
+
+            def visit_AssignTarget(self, node):
+                callable_facts.assignment(node.target)
+
+            def visit_AugAssign(self, node):
+                callable_facts.assignment(node.target)
 
             def visit_Name(self, node):
                 at = positions[node]
@@ -220,6 +240,9 @@ if "rewrite" in request and not result["problems"]:
     specification = importlib.util.spec_from_file_location("expec_preservation", pathlib.Path(__file__).with_name("preservation.py"))
     preservation = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(preservation)
+    if 'after' not in request['rewrite']:
+        request['rewrite']['after'] = preservation.retire(request['rewrite'])
+        result['generated'] = request['rewrite']['after']
     result["rewritten"], failures = preservation.preserve(request["rewrite"], root, result, traces)
     result["problems"].extend(failures)
     if not failures and (move := request["rewrite"].get("move")):

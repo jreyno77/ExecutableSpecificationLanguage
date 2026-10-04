@@ -9,6 +9,7 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
   scenarioRead!: ProjectRead;
   protected acceptanceOptions: Record<string, unknown> = {};
   private selectedDriver = '';
+  catalogDsl = '';
   private diff!: SpecDiff;
   async initializeAcceptance(): Promise<void> { await this.initialize(); await this.installFixture(); this.outputs.register(pythonAcceptanceOutput); }
   authorShopping(title: string, expected: number): void {
@@ -192,6 +193,11 @@ class ShoppingDriver:
     const output = this.outputs.open('python-acceptance', { domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     if (!output.value) throw Error(JSON.stringify(output)); this.scenarioRead = await output.value.read(this.current.id(operation.id));
   }
+  async keepExistingCatalogDsl(title: string): Promise<void> {
+    this.catalogDsl = '# Handwritten catalog DSL.\ndef available_title() -> str:\n    return ' + JSON.stringify(title) + '\n';
+    await this.file('test/dsl/catalog.py', this.catalogDsl);
+  }
+  catalogDslText(): Promise<string> { return fs.readFile(join(this.root, 'test/dsl/catalog.py'), 'utf8'); }
   async selectedDriverFiles(): Promise<{ expected: string; actual: string; duplicate: boolean }> {
     return { expected: this.selectedDriver, actual: await fs.readFile(join(this.root, 'test/driver/existing.py'), 'utf8'),
       duplicate: await fs.stat(join(this.root, 'test/driver/shopping_driver.py')).then(() => true, () => false) };

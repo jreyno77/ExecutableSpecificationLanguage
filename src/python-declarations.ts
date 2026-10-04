@@ -90,6 +90,7 @@ export class PythonDeclarations {
   }
   private parameters(items: readonly Item<'parameter'>[], owner: { kind: string; name: string }[]): string[] {
     return items.map(item => { this.associate(item, [...owner, { kind: 'parameter', name: this.name(item) }]);
+      if (owner.at(-1)?.kind === 'method' && this.name(item) === 'self') this.problem('native-name-conflict', item, 'Provide a Python parameter name distinct from the native self receiver.');
       if (item.hasDefault) this.obligations.push({ code: 'default-verification-required', at: item.origin, related: [],
         message: 'Verify the authored default for ' + item.name + (item.defaultValue ? ': ' + language(item.defaultValue) : '.') });
       return this.name(item) + ': ' + this.type(this.known(this.catalog.typeOf(item.declaredType.id))) + (item.hasDefault ? ' | Absent = Absent.value' : ''); });
@@ -132,7 +133,7 @@ export class PythonDeclarations {
         const member = unwrap(wrapped);
         if (member.kind === 'capability' || member.kind === 'function') body.push(this.callable(member, item, item.kind === 'interface'));
         else if (member.kind === 'field') { this.associate(member, [...path, { kind: 'field', name: this.name(member) }]); body.push(this.name(member) + ': ' + this.type(this.known(this.catalog.typeOf(member.declaredType.id)))); }
-        else if (member.kind === 'construction') { this.associate(member, [...path, { kind: 'method', name: '__init__' }]); body.push('def __init__(' + ['self', ...this.parameters(member.parameters, path)].join(', ') + ') -> None:\n    raise NotImplementedError(' + JSON.stringify('Not implemented: ' + name + ' construction') + ')'); }
+        else if (member.kind === 'construction') { const initializer = [...path, { kind: 'method', name: '__init__' }]; this.associate(member, initializer); body.push('def __init__(' + ['self', ...this.parameters(member.parameters, initializer)].join(', ') + ') -> None:\n    raise NotImplementedError(' + JSON.stringify('Not implemented: ' + name + ' construction') + ')'); }
       }
     }
     const declaration = 'class ' + name + (bases.length ? '(' + bases.join(', ') + ')' : '') + ':\n' + indent(body.join('\n\n') || 'pass');

@@ -24,6 +24,7 @@ const result = z.strictObject({
     owner: pythonSelector.or(z.tuple([])), member: z.boolean(), targets: z.array(target) })),
   problems: z.array(z.strictObject({ code: z.string(), file: z.string(), start: z.number().int().nonnegative().optional(), message: z.string() })),
   rewritten: z.array(z.strictObject({ file: z.string(), text: z.string() })).optional(),
+  generated: z.string().optional(),
   driver: z.array(declaration).optional(),
   fixture: z.strictObject({ name: z.string(), generator: z.boolean() }).optional(),
   owned: z.array(z.strictObject({ file: z.string(), text: z.string(), driver: z.boolean() })).optional(),
@@ -33,7 +34,7 @@ export const pythonTargetKey = (target: PythonFacts['declarations'][number]['tar
 
 /** Stages supplied editable bytes; native acquisition and stale-input refusal remain explicit. */
 export interface PythonRewrite {
-  before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[];
+  before: string; after?: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[];
   move?: { from: string; to: string; old: string; next: string };
 }
 type AcceptanceFile = { file: string; text: string; driver: boolean };

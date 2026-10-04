@@ -47,6 +47,12 @@ export class PythonQueries {
       && problem.at.path.includes(file) && typeof problem.at.path.at(-1) === 'number'
       && source.slice(problem.at.path.at(-1) as number).startsWith(token)), JSON.stringify(result.problems)).toBe(true);
   }
+  expectAmbiguousMember(file: string, token: string, candidates: number) {
+    const result = this.driver.searchResult;
+    expect(result.incoming.coverage.complete).toBe(false);
+    expect(result.incoming.unresolved.map(item => ({ ...this.driver.site(item.at), reason: item.reason })))
+      .toContainEqual(expect.objectContaining({ file, token, reason: 'The native member has ' + candidates + ' possible declarations.' }));
+  }
   expectComplete() {
     const result = this.driver.searchResult; expect(result.problems, JSON.stringify(result.problems)).toEqual([]);
     for (const direction of [result.incoming, result.outgoing]) { expect(direction.unresolved).toEqual([]); expect(direction.coverage.complete).toBe(true); }
@@ -67,10 +73,18 @@ export class PythonQueries {
   expectUseTextAt(token: string, expected: { file: string; line: number; utf16Column: number }) {
     expect(this.driver.searchResult.incoming.uses.map(use => this.driver.site(use.at))).toEqual([expect.objectContaining({ ...expected, token })]); this.expectComplete();
   }
-  async renameSave() {
+  async tryRenameSave() {
     this.driver.renameCapability('save', 'saveGame', 'class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }');
-    await this.driver.update(); expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
+    await this.driver.update();
+  }
+  async renameSave() {
+    await this.tryRenameSave(); expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
     expect(this.driver.written.receipt?.status).toBe('applied');
   }
+  expectRenameRefused(code: string) {
+    expect(this.driver.written.problems.map(problem => problem.code), JSON.stringify(this.driver.written)).toContain(code);
+    expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.written.artifacts).toBeUndefined();
+  }
+  async expectCapturedFilesUnchanged() { expect((await this.driver.context.readSnapshot()).files).toEqual(this.driver.snapshot.files); }
   async expectFile(file: string, text: string) { expect(await this.driver.text(file)).toBe(text); }
 }
