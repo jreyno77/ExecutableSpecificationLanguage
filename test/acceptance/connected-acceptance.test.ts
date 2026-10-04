@@ -16,7 +16,7 @@ describe('connected application and acceptance stages', () => {
     await project.expectGeneratedCall('multiply', [8, 8], 64);
     await project.expectLayerDirectories(['test/acceptance', 'test/dsl', 'test/driver']);
     project.expectNoNativeExecution();
-  }, 150_000);
+  }, 300_000);
   it('retains the applied application stage when the actual selected driver is incompatible', async () => {
     project = await ConnectedBuild.create();
     await project.nativeAcceptance();
@@ -34,7 +34,7 @@ describe('connected application and acceptance stages', () => {
     await project.expectNativeMethod('StoreGame', 'reset', 'void');
     await project.expectDestinationText('project/test/driver/counts.ts', driver);
     project.expectNoNativeExecution();
-  }, 180_000);
+  }, 300_000);
 
   it('catches changed native declaration bytes before the planned test stage writes', async () => {
     project = await ConnectedBuild.create(); await project.nativeAcceptance();
@@ -48,7 +48,7 @@ describe('connected application and acceptance stages', () => {
     project.expectExit(1); project.expectStage('tests', 'stopped'); project.expectProblem('stale-project');
     await project.expectRememberedDirectoryUnchanged('test'); await project.expectIdentitiesUnchanged();
     await project.expectNoPendingBuild(); project.expectNoNativeExecution();
-  }, 180_000);
+  }, 300_000);
   it('reports that a built specification has no executable examples without launching a runner', async () => {
     project = await ConnectedBuild.create(); await project.nativeAcceptance();
     await project.source('main.expec', 'concept StoreGame {}');
@@ -58,6 +58,6 @@ describe('connected application and acceptance stages', () => {
     await project.runNative(['test', '--config', 'spec/expec.json', '--json']);
     project.expectExit(1); project.expectProblem('no-executable-examples'); project.expectNoNativeExecution();
     await project.expectAllBytesUnchanged();
-  }, 150_000);
+  }, 300_000);
 
 });

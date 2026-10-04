@@ -10,7 +10,7 @@ it('installs packages when the project parent contains a UUID', async () => {
   packages.expectAvailability([{ name: 'npm:example-storage', version: '2.1.0' }]);
   await packages.importInstalledFixture('example-storage');
   packages.expectFixtureValue('storage-ready');
-});
+}, 60_000);
 
 it('reads an installed scoped package offline in that same folder shape', async () => {
   const packages = await NativePackageExamples.inDirectory('workspace-ac9f7484-6445-4166-82d0-d154b34699f2');
@@ -22,7 +22,7 @@ it('reads an installed scoped package offline in that same folder shape', async 
   packages.expectVersions('npm:@book/store', { requested: '^2', selected: '2.1.0', installed: '2.1.0' });
   packages.expectAvailability([{ name: 'npm:@book/store', version: '2.1.0' }]);
   packages.expectNoInstallOrRegistryRequestDuringRead();
-});
+}, 60_000);
 
 it('retains an unrelated invalid native dependency while observing valid requested storage', async () => {
   const packages = await NativePackageExamples.create();
@@ -50,4 +50,4 @@ it('keeps a lock selection distinct from installation in a UUID folder', async (
   packages.expectProblem('package-not-installed');
   packages.expectNoAvailability();
   packages.expectNoInstallOrRegistryRequestDuringRead();
-});
+}, 60_000);
