@@ -81,7 +81,7 @@ class KotlinAcceptance implements OutputAdapter {
     const fixed = ({ fixture: _fixture, names: _names, imports: _imports, ...settings }: z.infer<typeof options>) => canonical(settings);
     const migrating = request.operation === 'update' && beforeOptions && !beforeOptions.fixture && this.settings.fixture && fixed(beforeOptions) === fixed(this.settings);
     if (beforeOptions && (fixed(beforeOptions) !== fixed(this.settings) || canonical(beforeOptions.fixture) !== canonical(this.settings.fixture) && !migrating)) return failure('output-options-changed', 'Native acceptance placement requires an explicit migration.');
-    if (this.settings.adoptExisting) return failure('native-preservation-unavailable', 'These explicit mappings require native compatibility checking.');
+    if (this.settings.adoptExisting && !this.settings.driver) return failure('invalid-native-driver', 'Adoption requires an explicitly selected native driver and operation mappings.');
     const native = await queryKotlin(snapshot, 'expec.kotlin.json');
     if (!native.value || native.problems.length && !this.settings.fixture) return { problems: native.problems, deferred: native.deferred };
     const className = this.settings.domain[0]!.toUpperCase() + this.settings.domain.slice(1), prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/');

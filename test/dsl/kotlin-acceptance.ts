@@ -22,6 +22,7 @@ export class KotlinAcceptance {
   }
   resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> { return this.driver.resourceFixture(setupFailure, cleanupFailure); }
   addTestMember(text: string): Promise<void> { return this.driver.addTestMember(text); }
+  allowDriverAdoption(): void { this.driver.acceptanceOptions.adoptExisting = true; }
   selectDriver(file: string, name: string): void { this.driver.selectDriver(file, name); }
   mapOperation(name: string, file: string, owner: string, method: string, parameters: string[]): void { this.driver.mapOperation(name, file, owner, method, parameters); }
   selectFixture(file: string, name: string): void { this.driver.selectFixture(file, name); }
