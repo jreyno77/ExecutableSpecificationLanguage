@@ -23,7 +23,8 @@
   "packageManager": "npm@11.20.0",
   "scripts": {
     "grammar:generate": "langium generate",
-    "build": "npm run grammar:generate && tsc -p tsconfig.build.json",
+    "java:build": "node src/java-build.mjs",
+    "build": "npm run grammar:generate && npm run java:build && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
@@ -31,7 +32,7 @@
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
-    "check": "npm run grammar:generate && npm run typecheck && npm run test:unit && npm run test:acceptance && tsc -p tsconfig.build.json",
+    "check": "npm run grammar:generate && npm run java:build && npm run typecheck && npm run test:unit && npm run test:acceptance && tsc -p tsconfig.build.json",
     "release": "npm pack"
   },
   "dependencies": {

@@ -15,6 +15,11 @@ export class InitializationExamples {
   expectProposedPackages(packages: Configuration['packages']): void { expect(this.driver.prepared.value?.configuration.packages).toEqual(packages); }
   static withUnconnectedManifest(): Promise<InitializationExamples> { return this.withManifest(); }
   prepare(root: string, target: string): Promise<void> { return this.driver.prepare(root, target); }
+  prepareJava(root: string): Promise<void> {
+    if (!process.env.JAVA_HOME) throw new Error('The native Java fixture requires explicit JAVA_HOME.');
+    return this.driver.prepare(root, 'java', process.env.JAVA_HOME);
+  }
+  expectJavaToolchain(): void { this.expectPlannedJsonProperty('expec.java.json', ['javaHome'], process.env.JAVA_HOME); }
   apply(accepted: boolean): Promise<void> { return this.driver.apply(accepted); }
   async applyWithAlreadyAbortedSignal(accepted: boolean): Promise<void> { const controller = new AbortController(); controller.abort(); await this.driver.apply(accepted, controller.signal); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }

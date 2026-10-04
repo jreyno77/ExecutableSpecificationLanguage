@@ -8,10 +8,11 @@ import { ProjectConnector, nativePath, type ProjectContext } from './project-con
 import { FileProjectWriter, type FileChange, type WriteResult } from './project-writer.js';
 import { InitializationDestination, reject } from './initialization-destination.js';
 import { initialConfiguration, starter } from './initialization-profile.js';
+import { javaStarter } from './java-initialization.js';
 
 export interface InitializationPlan {
   readonly root: string;
-  readonly target: 'typescript';
+  readonly target: 'typescript' | 'java';
   readonly configuration: Configuration;
   readonly changes: readonly FileChange[];
 }
@@ -31,13 +32,17 @@ export class ProjectInitializer {
     if (!configurationSchema.safeParse(data).success) throw new TypeError('Provide a validated configuration.');
     this.configuration = structuredClone(configuration);
   }
-  async prepare(choice: { readonly root: string; readonly target: string }): Promise<Check<InitializationPlan>> {
+  async prepare(choice: { readonly root: string; readonly target: string; readonly javaHome?: string }): Promise<Check<InitializationPlan>> {
     if (!choice || !nativePath(choice.root) || typeof choice.target !== 'string') throw new TypeError('Provide a native destination and a target identifier.');
     const path = resolve(dirname(this.manifestLocation), choice.root);
     try {
-      if (choice.target !== 'typescript') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
-      const configuration = initialConfiguration(this.configuration, choice.root), destination = await InitializationDestination.capture(path);
-      const plan: InitializationPlan = { root: path, target: 'typescript', configuration, changes: starter(configuration.version) };
+      if (choice.target !== 'typescript' && choice.target !== 'java') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
+      const destination = await InitializationDestination.capture(path);
+      const java = choice.target === 'java' ? await javaStarter(this.configuration, choice.root, choice.javaHome ?? '') : undefined;
+      if (java && !java.value) return { problems: java.problems, deferred: java.deferred };
+      const configuration = java?.value?.configuration ?? initialConfiguration(this.configuration, choice.root);
+      const plan: InitializationPlan = { root: path, target: choice.target as InitializationPlan['target'], configuration,
+        changes: java?.value?.changes ?? starter(configuration.version) };
       this.plans.set(plan, { plan: structuredClone(plan), destination });
       return { value: plan, problems: [], deferred: [] };
     } catch (error) { return { problems: [finding(error, path)], deferred: [] }; }

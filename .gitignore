@@ -7,3 +7,6 @@ src/langium/generated/
 /AGENTS.md
 *.tsbuildinfo
 *.log
+src/java/
+src/java-native/.gradle/
+src/java-native/build/
