@@ -22,13 +22,15 @@ export const typescriptOptions = z.strictObject({
     .refine(value => !value.as || !!value.from, { message: 'A global mapping cannot have an import alias.' })).default([]),
 });
 export type TypeScriptOptions = z.infer<typeof typescriptOptions>;
-export interface NativeFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[] }
+export interface NativeContainer { readonly role: 'dsl' | 'driver'; readonly declaration: readonly import('./typescript-symbols.js').Selector[] }
+export interface NativeFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly container?: NativeContainer }
 type Import = TypeScriptOptions['imports'][number];
 type Concept = Item<'concept' | 'component' | 'class' | 'interface'>;
 const rootKinds = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'function']);
 const nativeDeclarations = new Set([...rootKinds, 'capability', 'field', 'construction', 'parameter', 'type-parameter']);
 const reserved = new Set(('break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with implements interface let package private protected public static yield any boolean constructor declare get module require number set string symbol type from of async await unknown never undefined').split(' '));
 const identifier = (text: string): boolean => /^[A-Za-z_$][\w$]*$/.test(text) && !reserved.has(text);
+export { identifier as nativeIdentifier };
 const property = (text: string): ts.PropertyName => identifier(text) ? f.createIdentifier(text) : f.createStringLiteral(text);
 const unwrap = (item: Item): Item => item.kind === 'local' ? item.declaration : item;
 
