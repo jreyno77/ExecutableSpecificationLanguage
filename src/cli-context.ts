@@ -6,12 +6,13 @@ import { cliProblem } from './cli-check.js';
 import type { Configuration } from './configuration.js';
 import type { ProjectContext, ProjectSnapshot } from './project-connection.js';
 import { hash } from './project-files.js';
+import { PythonContext } from './python-context.js';
 import { TypeScriptContext } from './typescript-context.js';
 import { nativeInputs } from './native-inputs.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {
-  private readonly native: TypeScriptContext[];
+  private readonly native: ProjectContext[];
   private readonly inputs: { uri: string; version: string }[];
   constructor(private readonly project: ProjectContext, private readonly checked: CheckedManifest,
     private readonly selected: Configuration['outputs'], inputs: readonly { uri: string; version: string }[] = [], private readonly acquisition?: ProjectSnapshot) {
@@ -22,6 +23,7 @@ export class BuildContext implements ProjectContext {
     }));
     const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) } : project;
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
+    if (checked.profile?.target === 'python') this.native.push(new PythonContext(nativeProject, checked.profile.configFile ? { configFile: checked.profile.configFile } : {}));
     this.inputs = [{ uri: pathToFileURL(checked.manifest).href, version: hash(Buffer.from(checked.text!)) },
       ...checked.captures.map(capture => ({ uri: capture.source.sourceId, version: capture.version.replace(/^sha256:/, '') })), ...checked.packageInputs ?? [], ...inputs];
   }

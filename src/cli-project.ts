@@ -3,6 +3,8 @@ import type { Diagnostic } from './checking.js';
 import type { CheckedManifest } from './cli-check.js';
 import { cliProblem } from './cli-check.js';
 import { ConfigurationFile } from './cli-configuration.js';
+import { installPython } from './python-acquisition.js';
+import { pythonExclusions } from './python-profile.js';
 import { NpmDependencies } from './npm-dependencies.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { ProjectInitializer } from './project-initializer.js';
@@ -21,7 +23,7 @@ export async function answer(question: string, signal: AbortSignal): Promise<str
   finally { terminal.close(); }
 }
 export async function initialize(loaded: CheckedManifest, selected: string,
-  choice: { root: string; target: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
+  choice: { root: string; target: string; python?: string; uv?: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
   const result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [] };
   const problem = (code: string, message: string) => { result.problems = [cliProblem(code, message, loaded.manifest)]; return result; };
   const connection = await new ProjectConnector(loaded.manifest).connect(loaded.configuration!);
@@ -31,7 +33,8 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     problems: [cliProblem('initialization-required', 'Choose expec init --root <directory> --target typescript --yes explicitly.', loaded.manifest)] };
   if (!choice) {
     if (!/^y(?:es)?$/i.test(await answer('Initialize a project (yes/no)', signal))) return { ...result, status: 'declined', exitCode: 3 };
-    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript)', signal) };
+    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript/python)', signal) };
+    if (choice.target === 'python') { choice.python = await answer('Python interpreter path', signal); choice.uv = await answer('uv executable path', signal); }
   }
   let manifest: ConfigurationFile;
   try { manifest = await ConfigurationFile.capture(selected, loaded.text!); }
@@ -53,13 +56,14 @@ export async function initialize(loaded: CheckedManifest, selected: string,
   return { ...result, status: write.status === 'applied' ? 'initialized' : 'configuration-unsaved',
     exitCode: write.status === 'applied' ? 0 : 1, problems: write.problems };
 }
-export async function install(loaded: CheckedManifest): Promise<CommandResult> {
-  const connection = await new ProjectConnector(loaded.manifest).connect(loaded.configuration!);
+export async function install(loaded: CheckedManifest, offline = false): Promise<CommandResult> {
+  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(loaded.configuration!);
   if (connection.value?.status !== 'connected') return { status: 'invalid', exitCode: 1, stages: [], problems: connection.problems.length ? connection.problems
     : [cliProblem('project-required', 'Connect a project with expec init before installing declared packages.', loaded.manifest)] };
   const project = connection.value.context.root, requested = loaded.configuration!.packages;
-  if (!requested.length) return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
-  const packages = await new NpmDependencies(project.path).install(requested);
+  if (!requested.length && loaded.profile?.target !== 'python') return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
+  const packages = loaded.profile?.target === 'python' ? await installPython(loaded.configuration!, loaded.manifest, { ...(loaded.profile.configFile ? { configFile: loaded.profile.configFile } : {}), offline })
+    : await new NpmDependencies(project.path).install(requested);
   return { status: packages.value ? 'installed' : 'installation-failed', exitCode: packages.value ? 0 : 1, project,
     problems: packages.problems, stages: [{ name: 'installation', status: packages.value ? 'applied' : 'stopped', packages }] };
 }
