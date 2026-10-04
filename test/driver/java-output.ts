@@ -1,4 +1,7 @@
-import { promises as fs, mkdtempSync, realpathSync } from 'node:fs';
+import { promises as fs, appendFileSync, mkdtempSync, realpathSync } from 'node:fs';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -6,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { Compiler, ConfigurationReader, FileProjectWriter, JavaContext, JavaProject, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer,
-  SpecificationIdentity, javaOutput, type ArtifactAssociation, type IdentifiedSpecification, type OutputWrite, type ProjectContext, type ProjectRead, type ProjectSearch, type ProjectSnapshot } from '../../src/index.js';
+  SpecificationIdentity, javaOutput, type ArtifactAssociation, type IdentifiedSpecification, type OutputWrite, type ProjectChanges, type ProjectContext, type ProjectRead, type ProjectSearch, type ProjectSnapshot } from '../../src/index.js';
 
 export class JavaOutputDriver {
   readonly temporary = realpathSync.native(tmpdir());
@@ -29,6 +32,10 @@ export class JavaOutputDriver {
   protected nativeOptions: Record<string, unknown> = {};
   catalogJar!: string;
   externalSource!: string;
+  queryProcess = { started: false, answered: false, closed: false, scratch: '', changed: false, mutationError: '', output: '' };
+  nativeWriteChange: 'before' | 'after-first' | undefined;
+  nativeWriteChanged = false;
+  readonly executionCanaries: string[] = [];
   async initialize(): Promise<void> {
     await fs.mkdir(this.root);
     for (const path of ['src/main/java', 'src/test/java']) await fs.mkdir(join(this.root, path), { recursive: true });
@@ -50,12 +57,39 @@ export class JavaOutputDriver {
   rememberCapture(): void { this.remembered = structuredClone(this.snapshot); }
   async searchRemembered(id: string): Promise<void> { this.searchResult = await new JavaProject({ outputId: 'java' }, this.associations).search(id, this.remembered); }
   async readRemembered(id: string): Promise<void> { this.readResult = await new JavaProject({ outputId: 'java' }, this.associations).read(id, this.remembered); }
-  async nativeProject(): Promise<void> {
+  async readCaptured(id: string): Promise<void> { this.readResult = await new JavaProject({ outputId: 'java' }, this.associations).read(id, this.snapshot); }
+  replaceCapturedSource(path: string, text: string): void {
+    const source = this.snapshot.files.find(file => file.path === path);
+    if (!source) throw new Error('No captured source: ' + path);
+    Object.assign(source, { bytes: Buffer.from(text) });
+  }
+  async searchWhileCatalogChanges(id: string): Promise<void> {
+    await this.capture();
+    const spawn = childProcess.spawn, trace = this.queryProcess;
+    const observation = vi.spyOn(childProcess, 'spawn').mockImplementation(((...args: Parameters<typeof spawn>) => {
+      const child = Reflect.apply(spawn, childProcess, args);
+      if (Array.isArray(args[1]) && args[1].includes('ExpecJava')) {
+        trace.started = true; trace.scratch = String(args[1].at(-1));
+        child.stdout!.on('data', data => { trace.output += String(data); });
+        child.stdout!.once('data', () => {
+          trace.answered = true;
+          try { appendFileSync(this.catalogJar, '\nchanged-during-query\n'); trace.changed = true; }
+          catch (error) { trace.mutationError = String(error); }
+        });
+        child.once('close', () => { trace.closed = true; });
+      }
+      return child;
+    }) as typeof spawn);
+    syncBuiltinESMExports();
+    try { this.searchResult = await new JavaProject({ outputId: 'java' }, this.associations).search(id, this.snapshot); }
+    finally { observation.mockRestore(); syncBuiltinESMExports(); }
+  }
+  async nativeProject(build = ''): Promise<void> {
     const javaHome = process.env.JAVA_HOME;
     if (!javaHome) throw new Error('Java native acceptance requires an explicit JAVA_HOME for JDK 21.');
     await this.configure(javaHome, this.nativeOptions);
     await this.file('settings.gradle', "rootProject.name = 'java-consumer'\n");
-    await this.file('build.gradle', await fs.readFile(fileURLToPath(new URL('../resources/java-project/build.gradle', import.meta.url)), 'utf8'));
+    await this.file('build.gradle', await fs.readFile(fileURLToPath(new URL('../resources/java-project/build.gradle', import.meta.url)), 'utf8') + build);
     for (const path of ['gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties']) {
       await fs.mkdir(dirname(join(this.root, path)), { recursive: true });
       await fs.copyFile(fileURLToPath(new URL('../../src/java/wrapper/' + path, import.meta.url)), join(this.root, path));
@@ -75,6 +109,35 @@ export class JavaOutputDriver {
       'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties', '.expec/java/dependencies.gradle', 'gradle.lockfile']
       .map(async path => ({ path, version: createHash('sha256').update(await fs.readFile(join(this.root, path))).digest('hex') })));
     await fs.writeFile(path, JSON.stringify(report)); await this.capture();
+  }
+  async inspectionCanaries(): Promise<void> {
+    const marker = (name: string) => join(this.directory, name + '.executed');
+    const staticMarker = marker('static'), processorMarker = marker('processor'), buildMarker = marker('build');
+    this.executionCanaries.push(staticMarker, processorMarker, buildMarker);
+    const write = (path: string) => 'java.nio.file.Files.writeString(java.nio.file.Path.of(' + JSON.stringify(path) + '), "executed");';
+    await this.nativeCatalog('public class Book { public String title; static { try { ' + write(staticMarker)
+      + ' } catch (Exception e) { throw new RuntimeException(e); } } public static void main(String[] args) {} }');
+    const bin = join(process.env.JAVA_HOME!, 'bin'), suffix = process.platform === 'win32' ? '.exe' : '';
+    const classes = join(this.directory, 'catalog/classes'), processor = join(this.directory, 'InspectionProcessor.java');
+    await fs.writeFile(processor, 'package catalog; @javax.annotation.processing.SupportedAnnotationTypes("*") '
+      + '@javax.annotation.processing.SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_21) '
+      + 'public class InspectionProcessor extends javax.annotation.processing.AbstractProcessor { '
+      + 'public boolean process(java.util.Set<? extends javax.lang.model.element.TypeElement> annotations, javax.annotation.processing.RoundEnvironment round) {'
+      + 'try { ' + write(processorMarker) + ' } catch (Exception e) { throw new RuntimeException(e); } return false; } }');
+    await this.execute(join(bin, 'javac' + suffix), ['-proc:none', '--release', '21', '-d', classes, processor]);
+    if (this.native.code) throw new Error(this.native.stderr);
+    const services = join(classes, 'META-INF/services'); await fs.mkdir(services, { recursive: true });
+    await fs.writeFile(join(services, 'javax.annotation.processing.Processor'), 'catalog.InspectionProcessor\n');
+    await this.execute(join(bin, 'jar' + suffix), ['--update', '--file', this.catalogJar, '-C', classes, '.']);
+    if (this.native.code) throw new Error(this.native.stderr);
+    await this.execute(join(bin, 'java' + suffix), ['-cp', this.catalogJar, 'catalog.Book']);
+    if (this.native.code || await fs.readFile(staticMarker, 'utf8') !== 'executed') throw new Error('Static initialization canary did not execute.');
+    await this.execute(join(bin, 'javac' + suffix), ['--release', '21', '-processorpath', this.catalogJar,
+      '-processor', 'catalog.InspectionProcessor', '-d', classes, join(this.directory, 'catalog/Book.java')]);
+    if (this.native.code || await fs.readFile(processorMarker, 'utf8') !== 'executed') throw new Error('Annotation processor canary did not execute.');
+    await this.nativeProject('\nnew File(' + JSON.stringify(buildMarker.replaceAll('\\', '/')) + ').text = "executed"\n');
+    if (await fs.readFile(buildMarker, 'utf8') !== 'executed') throw new Error('Native build canary did not execute during explicit setup.');
+    for (const path of this.executionCanaries) await fs.unlink(path);
   }
   externalSourceText(): Promise<string> { return fs.readFile(this.externalSource, 'utf8'); }
   async upstreamEvidence(conflict = false): Promise<void> {
@@ -135,9 +198,25 @@ export class JavaOutputDriver {
   async create(options: Record<string, unknown>): Promise<void> {
     this.contractOptions = options;
     const outputs = new Outputs(); outputs.register(javaOutput);
-    const opened = outputs.open('java', options, this.context, new FileProjectWriter(this.context), this.workspaceModules ? { workspaceModules: this.workspaceModules } : undefined);
+    const writer = this.nativeWriteChange ? { apply: (plan: ProjectChanges) => this.applyWhileCatalogChanges(plan) } : new FileProjectWriter(this.context);
+    const opened = outputs.open('java', options, this.context, writer, this.workspaceModules ? { workspaceModules: this.workspaceModules } : undefined);
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
     await this.capture();
+  }
+  private async applyWhileCatalogChanges(plan: ProjectChanges) {
+    const context = this.context, first = plan.changes[0];
+    if (first?.kind !== 'write') throw new Error('The native guard example needs a concrete first write.');
+    const change = () => { appendFileSync(this.catalogJar, '\nchanged-during-apply\n'); this.nativeWriteChanged = true; };
+    if (this.nativeWriteChange === 'before') change();
+    return new FileProjectWriter({ root: context.root, readSnapshot: async () => {
+      if (!this.nativeWriteChanged) {
+        const actual = await fs.readFile(join(this.root, first.path)).catch(error => {
+          if (error.code === 'ENOENT') return undefined; throw error;
+        });
+        if (actual?.equals(Buffer.from(first.bytes))) change();
+      }
+      return context.readSnapshot();
+    } }).apply(plan);
   }
   async writtenFiles(): Promise<string[]> { return (await this.ordinary.readSnapshot()).files.filter(file => file.path.endsWith('.java') || file.path.startsWith('.expec/outputs/')).map(file => file.path); }
   async javac(text: string): Promise<void> {

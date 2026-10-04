@@ -1,10 +1,13 @@
 import { expect } from 'vitest';
+import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { JavaOutputDriver } from '../driver/java-output.js';
+import type { ProjectRead } from '../../src/index.js';
 
 export class JavaExamples {
   private rememberedSearch: unknown;
+  private retainedRead: ProjectRead | undefined;
   private static readonly instances: JavaExamples[] = [];
   private constructor(readonly driver: JavaOutputDriver) {}
   static async connect(): Promise<JavaExamples> {
@@ -19,6 +22,39 @@ export class JavaExamples {
   replaceCatalogJar(source: string): Promise<void> { return this.driver.nativeCatalog(source); }
   searchUsingRememberedCapture(id: string): Promise<void> { return this.driver.searchRemembered(id); }
   readUsingRememberedCapture(id: string): Promise<void> { return this.driver.readRemembered(id); }
+  readCurrentCapture(id: string): Promise<void> { return this.driver.readCaptured(id); }
+  replaceCapturedSource(path: string, text: string): void { this.driver.replaceCapturedSource(path, text); }
+  retainRead(): void { this.retainedRead = this.driver.readResult; }
+  expectRetainedRead(path: string, text: string): void {
+    const artifact = this.retainedRead?.artifacts.find(item => item.file.path === path);
+    expect(artifact).toBeDefined(); expect(Buffer.from(artifact!.file.bytes).toString('utf8')).toBe(text);
+    expect(this.retainedRead?.coverage.complete).toBe(true); expect(this.retainedRead?.problems).toEqual([]);
+  }
+  searchWhileCatalogChanges(id: string): Promise<void> { return this.driver.searchWhileCatalogChanges(id); }
+  async expectFinishedNativeQueryAndCleanup(): Promise<void> {
+    expect(this.driver.queryProcess).toMatchObject({ started: true, answered: true, changed: true, closed: true, mutationError: '' });
+    const answer = JSON.parse(this.driver.queryProcess.output);
+    expect(answer.declarations).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'store.Read' })]));
+    expect(answer.uses).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'catalog.Book', member: { kind: 'field', name: 'title' } })]));
+    await expect(fs.lstat(this.driver.queryProcess.scratch)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  changeCatalogBeforeApplyingPlan(): void { this.driver.nativeWriteChange = 'before'; }
+  changeCatalogAfterFirstWrite(): void { this.driver.nativeWriteChange = 'after-first'; }
+  async expectNativeWriteStopped(applied: string[]): Promise<void> {
+    expect(this.driver.nativeWriteChanged).toBe(true);
+    expect(this.driver.written.receipt?.status).toBe('stopped');
+    expect(this.driver.written.problems.some(problem => problem.code === 'stale-project')).toBe(true);
+    const outcomes = this.driver.written.receipt!.outcomes;
+    expect(outcomes.filter(item => item.state === 'applied').map(item => item.change.kind === 'move' ? item.change.to : item.change.path)).toEqual(applied);
+    expect(outcomes.slice(applied.length).every(item => item.state === 'not-applied')).toBe(true);
+    expect(this.driver.written.artifacts).toBeUndefined();
+    expect(await this.driver.writtenFiles()).toEqual(applied);
+  }
+  installInspectionCanaries(): Promise<void> { return this.driver.inspectionCanaries(); }
+  async expectNoExecutionCanaryEffects(): Promise<void> {
+    expect(this.driver.executionCanaries).toHaveLength(3);
+    for (const path of this.driver.executionCanaries) await expect(fs.lstat(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
   async installExternalSource(path: string, source: string): Promise<void> { await this.driver.nativeSource(path, source); await this.driver.nativeProject(); }
   expectExternalSourceTarget(type: string, field: string): void { this.expectExternalMember(type, { kind: 'field', name: field }, this.driver.externalSource); }
   async expectReadonlyIncoming(type: string, call: string, token: string): Promise<void> {
