@@ -125,13 +125,13 @@ export class PackageDriver {
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
     if (version.stdout.trim() !== '11.20.0') throw new Error(`Expected npm 11.20.0, received ${version.stdout}`);
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }
   static async finish(): Promise<void> { if (this.directory) await cleanup(this.directory); }
 
   async install(options: { withoutFile?: string; withoutDependency?: string } = {}): Promise<void> {
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.consumer = join(this.directory, 'consumer');
     let artifact = PackageDriver.artifact;
     if (options.withoutFile || options.withoutDependency) {
@@ -367,7 +367,7 @@ function child(parent: string, path: string): string {
   return target;
 }
 async function cleanup(directory: string): Promise<void> {
-  const name = relative(resolve(tmpdir()), resolve(directory));
+  const name = relative(await realpath(tmpdir()), await realpath(directory));
   if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-package-')) throw new Error('Refusing to remove an unexpected fixture directory');
   await rm(directory, { recursive: true, force: true });
 }
