@@ -51,14 +51,19 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
-    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of 3
+    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 2 }
+          - { os: ubuntu-latest, shard: 2, total: 2 }
+          - { os: windows-latest, shard: 1, total: 4 }
+          - { os: windows-latest, shard: 2, total: 4 }
+          - { os: windows-latest, shard: 3, total: 4 }
+          - { os: windows-latest, shard: 4, total: 4 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,7 +78,7 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
-        run: npm run test:pilot -- --shard=${{ matrix.shard }}/3 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -82,14 +87,17 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   installed-package:
-    name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of 2
+    name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        shard: [1, 2]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 1 }
+          - { os: windows-latest, shard: 1, total: 3 }
+          - { os: windows-latest, shard: 2, total: 3 }
+          - { os: windows-latest, shard: 3, total: 3 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,7 +112,7 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed package consumers
-        run: npm run test:package -- --shard=${{ matrix.shard }}/2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:

@@ -30,7 +30,7 @@ export class ConnectedBuildDriver {
   afterWriterRelease?: { count: number; path: string; text: string };
   result!: { code: number; stdout: string; stderr: string };
   report: any;
-  private launcher?: string;
+  protected launcher?: string;
   static async prepare(): Promise<void> { requireCompiledCheckout(); }
   async initialize(connected: boolean): Promise<void> {
     this.parent = await realpath(tmpdir());

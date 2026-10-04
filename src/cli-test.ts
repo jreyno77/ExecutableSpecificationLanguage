@@ -40,7 +40,8 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   if (!associated.value) return fail('generation-required', 'Current source requires generation or explicit identity correspondence.');
   const compared = identity.compare(saved.value.baseline, associated.value);
   if (!compared.value || compared.value.contextChanged || compared.value.changes.length) return fail('generation-required', 'Current source differs from its confirmed generated specification.');
-  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, context, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
+  const selection = { root: snapshot.root, readSnapshot: async () => structuredClone(snapshot) };
+  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, selection, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
   if (!opened.value) return { ...result, problems: opened.problems };
   const selections: SelectedTest[] = [];
   for (const association of associated.value.baseline.artifacts.filter(item => item.locator.outputId === 'acceptance' && item.locator.format === 'vitest-test-1')) {
