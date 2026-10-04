@@ -36,6 +36,17 @@ const materialize = (snapshot: ProjectSnapshot, plan: OutputPlan): ProjectSnapsh
 };
 
 describe('native preservation decisions', { timeout: 30_000 }, () => {
+  it('renames a record member independently of an unrelated lexical name', async () => {
+    const user = author('type Book { title: Text }'), adapter = output();
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, captured({}));
+    expect(first.problems).toEqual([]);
+    const snapshot = materialize(captured({}), first.value!);
+    const current = user.rename('type Book { name: Text }', 'title', 'name');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    const file = materialize(snapshot, result.value!).files.find(file => file.path === 'src/Book.ts')!;
+    expect(Buffer.from(file.bytes).toString()).toContain('name: string');
+  });
   it('requires an explicit association for an existing represented member', async () => {
     const user = author('class Store { public save\ncapability save() returns Nothing }');
     const mapped = user.map(user.initial, 'Store', 'game.ts', [{ kind: 'class', name: 'Store' }]);

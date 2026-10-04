@@ -18,6 +18,7 @@ export interface CheckedManifest {
   project?: ProjectRoot;
   specification?: Specification;
   captures: readonly SourceCapture[];
+  workspaceModules?: readonly string[];
   problems: readonly Diagnostic[];
   syntax: readonly SyntaxDiagnostic[];
   deferred: readonly Requirement[];
@@ -56,6 +57,7 @@ export async function checkManifest(filename: string, profiles: readonly OutputP
   if (!libraries.value || !dependencies.value) return result;
   const sources = await new SourceLoader(result.manifest).load(configuration, dependencies.value, libraries.value);
   result.captures = [...result.captures, ...sources.captures];
+  result.workspaceModules = sources.captures.flatMap(capture => capture.model ? [capture.model.locator] : []);
   result.syntax = [...result.syntax, ...sources.syntax]; result.problems = [...result.problems, ...sources.problems];
   if (!sources.value) return result;
   const compiled = new Compiler().compile({ resolution: new SourceComposer(sources.value.locate).compose(sources.value.entries) });

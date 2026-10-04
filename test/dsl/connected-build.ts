@@ -1,9 +1,11 @@
 import { readFile, stat } from 'node:fs/promises';
+import ts from 'typescript';
 import { expect } from 'vitest';
 import { ConnectedBuildDriver } from '../driver/connected-build.js';
 
 export class ConnectedBuild {
   private manifestRegions: string[] = [];
+  private directories = new Map<string, { path: string; text: string }[]>();
   private constructor(private readonly driver: ConnectedBuildDriver) {}
   static async create(options: { connected?: boolean } = {}): Promise<ConnectedBuild> {
     const driver = new ConnectedBuildDriver(); await driver.initialize(options.connected ?? true); return new ConnectedBuild(driver);
@@ -15,6 +17,13 @@ export class ConnectedBuild {
   async rememberAllBytes(): Promise<void> { this.driver.before = await this.driver.capture(); }
   async requirePackage(alias: string, name: string, version: string, phases: string[]): Promise<void> {
     this.driver.manifest.packages = [{ alias, name, version, phases }]; await this.driver.saveManifest();
+  }
+  servePinnedCompiler(destination: string): Promise<void> { return this.driver.serveCompiler(destination); }
+  expectNativeBuild(destination: string): Promise<void> { return this.driver.nativeBuild(destination); }
+  async expectNativeClassIn(destination: string, name: string): Promise<void> {
+    const files = await this.driver.filesUnder(destination + '/src');
+    const nodes = files.filter(file => file.path.endsWith('.ts')).flatMap(file => [...ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true).statements]);
+    expect(nodes.filter(ts.isClassDeclaration).filter(node => node.name?.text === name)).toHaveLength(1);
   }
   serveRealPackage(name: string, version: string): Promise<void> { return this.driver.servePackage(name, version); }
   async expectActualInstalledVersion(name: string, version: string): Promise<void> {
@@ -31,6 +40,9 @@ export class ConnectedBuild {
       }
     }
   }
+  registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> { return this.driver.registerOutputs(outputs); }
+  async rememberDirectory(path: string): Promise<void> { this.directories.set(path, await this.driver.filesUnder('project/' + path)); }
+  async expectRememberedDirectoryUnchanged(path: string): Promise<void> { expect(await this.driver.filesUnder('project/' + path)).toEqual(this.directories.get(path)); }
   async outputs(outputs: { id: string; options: object }[]): Promise<void> { this.driver.manifest.outputs = outputs; await this.driver.saveManifest(); }
   destinationFile(name: string, text: string): Promise<void> { return this.driver.write(name, text); }
   runInteractive(args: string[], answers: string[]): Promise<void> { return this.driver.run(args, '', answers); }
@@ -65,8 +77,83 @@ export class ConnectedBuild {
     else expect(this.driver.result.stdout + this.driver.result.stderr).toContain(name + ': ' + status);
   }
   expectProblem(code: string): void { expect(this.driver.report.problems).toEqual(expect.arrayContaining([expect.objectContaining({ code })])); }
+  async runFrom(directory: string, args: string[]): Promise<void> { await this.driver.write(directory + '/.keep', ''); await this.driver.run(args, directory); }
+  async version(version: string): Promise<void> { this.driver.manifest.version = version; await this.driver.saveManifest(); }
+  expectReportedVersion(version: string): void { expect(this.driver.report.version).toBe(version); }
+  async identity(path: string): Promise<string> {
+    const ledger = JSON.parse(await readFile(this.driver.path('project/.expec/identity.json'), 'utf8'));
+    const elements = ledger.baseline.elements as { id: string; address: { owner: string | null; name: string | null } }[];
+    let owner: string | null = null;
+    for (const name of path.split('.')) {
+      const matches = elements.filter(item => item.address.owner === owner && item.address.name === name);
+      expect(matches).toHaveLength(1); owner = matches[0]!.id;
+    }
+    return owner!;
+  }
+  async expectIdentity(path: string, id: string): Promise<void> { expect(await this.identity(path)).toBe(id); }
+  decisions(data: unknown): Promise<void> { return this.driver.write('changes.json', JSON.stringify(data)); }
+  async implementMethod(owner: string, name: string, body: string): Promise<void> {
+    const sources = await this.driver.nativeSources();
+    const source = sources.find(source => source.statements.some(node => ts.isClassDeclaration(node) && node.name?.text === owner))!;
+    const declaration = source.statements.filter(ts.isClassDeclaration).find(node => node.name?.text === owner)!;
+    const method = declaration.members.filter(ts.isMethodDeclaration).find(node => node.name.getText() === name)!;
+    expect(method.body).toBeDefined();
+    await this.driver.write(source.fileName, source.text.slice(0, method.body!.getStart() + 1) + '\n' + body + '\n' + source.text.slice(method.body!.end - 1));
+  }
+  async expectMethodBody(owner: string, name: string, body: string): Promise<void> {
+    const declarations = (await this.driver.nativeSources()).flatMap(source => [...source.statements]).filter(ts.isClassDeclaration).filter(node => node.name?.text === owner);
+    expect(declarations).toHaveLength(1);
+    const methods = declarations[0]!.members.filter(ts.isMethodDeclaration).filter(node => node.name.getText() === name);
+    expect(methods).toHaveLength(1); expect(methods[0]!.body?.getText()).toContain(body);
+  }
+  async rememberIdentities(): Promise<void> { this.driver.identities = await readFile(this.driver.path('project/.expec/identity.json'), 'utf8'); }
+  async expectIdentitiesUnchanged(): Promise<void> { expect(await readFile(this.driver.path('project/.expec/identity.json'), 'utf8')).toBe(this.driver.identities); }
+  changeAfterOutputWrite(source: string, path: string, text: string): void { this.driver.afterOutputWrite = { source, path, text }; }
+  changeAfterWriterRelease(count: number, path: string, text: string): void { this.driver.afterWriterRelease = { count, path, text }; }
+  failActualWrite(path: string): void { this.driver.failure = { operation: 'write', path }; }
+  failPendingRemoval(): void { this.driver.failure = { operation: 'remove', path: '.expec/build-pending.json' }; }
+  clearActualWriteFailure(): void { delete this.driver.failure; }
+  async expectPendingBuildRetained(): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-pending.json'))).isFile()).toBe(true); }
+  async rememberPendingIdentities(names = ['First', 'Second']): Promise<void> {
+    const pending = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));
+    this.driver.pendingIds = Object.fromEntries(pending.candidate.elements.filter((item: any) => item.address.owner === null).map((item: any) => [item.address.name, item.id]));
+    expect(Object.keys(this.driver.pendingIds!)).toEqual(names);
+  }
+  async expectPendingIdentitiesBecameConfirmed(): Promise<void> {
+    expect(this.driver.pendingIds).toBeDefined();
+    for (const [name, id] of Object.entries(this.driver.pendingIds!)) await this.expectIdentity(name, id);
+  }
+  expectFileOutcome(path: string, state: string): void {
+    const outcomes = this.driver.report.stages.flatMap((stage: any) => stage.receipt?.outcomes ?? []);
+    expect(outcomes).toContainEqual(expect.objectContaining({ change: expect.objectContaining({ path }), state }));
+  }
+  async expectNativeClass(name: string): Promise<void> {
+    const nodes = (await this.driver.nativeSources()).flatMap(source => [...source.statements]).filter(ts.isClassDeclaration).filter(node => node.name?.text === name);
+    expect(nodes).toHaveLength(1);
+  }
+  expectNoPendingBuild(): Promise<void> { return this.expectNoDestinationFile('project/.expec/build-pending.json'); }
+  async expectNoOutputUnder(path: string): Promise<void> { expect((await this.driver.filesUnder(path)).map(file => file.path.split(/[\\/]/).at(-1))).toEqual(['.keep']); }
+  async expectNativeMethod(owner: string, name: string, returns: string): Promise<void> {
+    const declarations = (await this.driver.nativeSources()).flatMap(source => [...source.statements]).filter(ts.isClassDeclaration).filter(node => node.name?.text === owner);
+    expect(declarations).toHaveLength(1);
+    const methods = declarations[0]!.members.filter(ts.isMethodDeclaration).filter(node => node.name.getText() === name);
+    expect(methods).toHaveLength(1); expect(methods[0]!.type?.getText()).toBe(returns);
+  }
+  async expectNativeType(name: string, fields: Record<string, string>, optional: string[] = []): Promise<void> {
+    const declarations = (await this.driver.nativeSources()).flatMap(source => [...source.statements]).filter(ts.isTypeAliasDeclaration).filter(node => node.name.text === name);
+    expect(declarations).toHaveLength(1);
+    expect(ts.isTypeLiteralNode(declarations[0]!.type)).toBe(true);
+    const members = (declarations[0]!.type as ts.TypeLiteralNode).members.filter(ts.isPropertySignature);
+    expect(Object.fromEntries(members.map(field => [field.name.getText(), field.type?.getText()]))).toEqual(fields);
+    expect((declarations[0]!.type as ts.TypeLiteralNode).members.filter(ts.isPropertySignature).filter(item => item.questionToken).map(item => item.name.getText())).toEqual(optional);
+  }
+  async expectDocumentation(subject: string, text: string): Promise<void> {
+    const docs = (await this.driver.filesUnder('project/docs')).map(file => file.text).join('\n');
+    expect(docs).toContain(subject); expect(docs).toContain(text);
+  }
+  async expectNativeInvocationThrows(name: string, message: string): Promise<void> { expect(await this.driver.invoke(name)).toContain(message); }
   run(args: string[]): Promise<void> { return this.driver.run(args); }
-  expectExit(code: number): void { expect(this.driver.result, this.driver.result.stderr).toMatchObject({ code }); }
+  expectExit(code: number): void { expect(this.driver.result, this.driver.result.stdout + this.driver.result.stderr).toMatchObject({ code }); }
   expectStatus(status: string): void { if (this.driver.report) expect(this.driver.report).toMatchObject({ format: 1, status }); else expect(this.driver.result.stdout + this.driver.result.stderr).toContain(status + ':'); }
   async expectAllBytesUnchanged(): Promise<void> { expect(await this.driver.capture()).toEqual(this.driver.before); }
   expectNoNativeExecution(): void {

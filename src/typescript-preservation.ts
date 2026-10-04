@@ -270,7 +270,8 @@ export class TypeScriptPreservation {
     let name = 'name' in node ? node.name as ts.Node : node; if (ts.isComputedPropertyName(name)) name = name.expression;
     const source = name.getSourceFile(), position = name.getStart() + (ts.isStringLiteralLike(name) ? 1 : 0), checker = capture.program!.getTypeChecker(), selected = checker.getSymbolAtLocation(name);
     const namespace = ts.isParameter(node) ? ts.SymbolFlags.Value : ts.isTypeParameterDeclaration(node) ? ts.SymbolFlags.Type : ts.SymbolFlags.Value | ts.SymbolFlags.Type;
-    if (checker.getSymbolsInScope(node, namespace).some(symbol => symbol.getName() === newName && symbol !== selected)) { this.problem(capture, 'native-name-conflict', node, 'The new name conflicts with an existing native binding.'); return; }
+    const member = ts.isPropertyDeclaration(node) || ts.isPropertySignature(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node);
+    if (!member && checker.getSymbolsInScope(node, namespace).some(symbol => symbol.getName() === newName && symbol !== selected)) { this.problem(capture, 'native-name-conflict', node, 'The new name conflicts with an existing native binding.'); return; }
     if (!this.complete(capture, symbols, id, node, 'incomplete-native-rename')) return;
     const info = capture.service.getRenameInfo(source.fileName, position, { providePrefixAndSuffixTextForRename: true });
     const locations = info.canRename ? capture.service.findRenameLocations(source.fileName, position, false, false, { providePrefixAndSuffixTextForRename: true }) : undefined;

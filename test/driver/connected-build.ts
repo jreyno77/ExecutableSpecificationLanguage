@@ -1,10 +1,13 @@
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import ts from 'typescript';
+import { pathToFileURL } from 'node:url';
 import { NativePackageDriver } from './native-packages.js';
 
 const execute = promisify(execFile);
@@ -15,10 +18,16 @@ export class ConnectedBuildDriver {
   manifest: Record<string, unknown> = { formatVersion: 1, version: '1.0.0', project: { root: '../project' },
     build: { entries: ['main.expec'] }, outputs: [] };
   before: Record<string, string> = {};
+  identities?: string;
   private registry?: NativePackageDriver;
   manifestChange?: Record<string, unknown>;
+  failure?: { operation: "write" | "remove"; path: string };
+  pendingIds?: Record<string, string>;
+  afterOutputWrite?: { source: string; path: string; text: string };
+  afterWriterRelease?: { count: number; path: string; text: string };
   result!: { code: number; stdout: string; stderr: string };
   report: any;
+  private launcher?: string;
   static async prepare(): Promise<void> {
     await execute(process.execPath, [join(checkout, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
       { cwd: checkout, timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
@@ -60,8 +69,17 @@ export class ConnectedBuildDriver {
       'const close = handle.close.bind(handle); handle.close = async () => { await close(); if (!changed) { changed = true;' +
       'const file = ' + JSON.stringify(this.path('spec/expec.json')) + '; const data = JSON.parse(await fs.readFile(file, "utf8"));' +
       'await fs.writeFile(file, JSON.stringify(Object.assign(data, ' + JSON.stringify(this.manifestChange) + '))); } }; } return handle; };');
+    if (this.failure) prelude.push('import { promises as faultyFs } from "node:fs"; const failure = ' + JSON.stringify({ ...this.failure, path: this.path('project/' + this.failure.path) }) + ';' +
+      'const operation = failure.operation === "write" ? "open" : "unlink", original = faultyFs[operation]; faultyFs[operation] = async (...args) => {' +
+      'if (String(args[0]) === failure.path && (operation === "unlink" || args[1] !== "r")) throw Object.assign(Error("Deliberate native fixture write refusal"), {code:"EACCES"}); return original(...args); };');
+    if (this.afterWriterRelease) prelude.push('import { promises as changedFs } from "node:fs"; import { dirname as changeParent } from "node:path"; const mutation = ' + JSON.stringify({ ...this.afterWriterRelease, path: this.path('project/' + this.afterWriterRelease.path), lock: this.path('project/.expec/write.lock') }) + ';' +
+      'const unlink = changedFs.unlink; let releases = 0; changedFs.unlink = async (...args) => { const result = await unlink(...args); if (String(args[0]) === mutation.lock && ++releases === mutation.count) {' +
+      'await changedFs.mkdir(changeParent(mutation.path), {recursive:true}); await changedFs.writeFile(mutation.path, mutation.text); } return result; };');
+    if (this.afterOutputWrite) prelude.push('import { promises as outputFs } from "node:fs"; const outputMutation = ' + JSON.stringify({ ...this.afterOutputWrite, source: this.path('project/' + this.afterOutputWrite.source), path: this.path('project/' + this.afterOutputWrite.path) }) + ';' +
+      'const outputOpen = outputFs.open; let outputChanged = false; outputFs.open = async (...args) => { const handle = await outputOpen(...args); if (String(args[0]) === outputMutation.source && args[1] !== "r") {' +
+      'const close = handle.close.bind(handle); handle.close = async () => { await close(); if (!outputChanged) { outputChanged = true; await outputFs.writeFile(outputMutation.path, outputMutation.text); } }; } return handle; };');
     const command = [...(prelude.length ? ['--import', 'data:text/javascript,' + encodeURIComponent(prelude.join('\n'))] : []),
-      join(checkout, 'dist/cli-entry.js'), ...args];
+      this.launcher ?? join(checkout, 'dist/cli-entry.js'), ...args];
     if (answers) {
       this.result = await new Promise((resolveResult, reject) => {
         const child = spawn(process.execPath, command, { cwd: this.path(cwd), env: { ...process.env, NODE_PATH: '' }, stdio: 'pipe' });
@@ -87,6 +105,48 @@ export class ConnectedBuildDriver {
       this.result = { code: result.code, stdout: result.stdout, stderr: result.stderr };
     }
     this.report = args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
+  }
+  async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
+    this.launcher = this.path('launcher/connected-output.mjs');
+    await this.write(this.launcher, await readFile(join(checkout, 'test/resources/connected-output.mjs'), 'utf8'));
+    await this.write('launcher/outputs.json', JSON.stringify({ library: join(checkout, 'dist/index.js'), outputs: outputs.map(item => ({ ...item,
+      ...(item.afterPlan ? { afterPlan: { ...item.afterPlan, path: this.path(item.afterPlan.path) } } : {}),
+    })) }));
+  }
+  async filesUnder(path: string): Promise<{ path: string; text: string }[]> {
+    const result: { path: string; text: string }[] = [];
+    const walk = async (directory: string): Promise<void> => {
+      for (const item of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, item.name);
+        if (item.isDirectory()) await walk(path);
+        else if (item.isFile()) result.push({ path, text: await readFile(path, 'utf8') });
+      }
+    };
+    await walk(this.path(path)); return result;
+  }
+  async nativeSources(): Promise<ts.SourceFile[]> {
+    return (await this.filesUnder('project/src')).filter(file => file.path.endsWith('.ts')).map(file => ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true));
+  }
+  async invoke(name: string): Promise<string> {
+    const sources = await this.nativeSources(), source = sources.find(source => source.statements.some(node => ts.isFunctionDeclaration(node) && node.name?.text === name));
+    if (!source) throw Error('Expected actual generated function ' + name);
+    const native = ts.transpileModule(source.text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }, reportDiagnostics: true });
+    if (native.diagnostics?.length) throw Error('Generated function did not transpile.');
+    await this.write('native-consumer/function.mjs', native.outputText);
+    const result = await execute(process.execPath, ['--input-type=module', '-e', 'const module = await import(' + JSON.stringify(pathToFileURL(this.path('native-consumer/function.mjs')).href) + '); try { module[' + JSON.stringify(name) + '](); process.exitCode = 1; } catch (error) { console.log(error.message); }'], { cwd: this.directory, timeout: 10_000 });
+    return result.stdout.trim();
+  }
+  async serveCompiler(destination: string): Promise<void> {
+    this.registry = new NativePackageDriver(); await this.registry.initialize();
+    const directory = join(checkout, 'node_modules/typescript'), manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    if (manifest.name !== 'typescript' || manifest.version !== '5.9.3') throw Error('Use the actual pinned TypeScript package.');
+    const packed = await this.registry.npm(this.registry.directory, ['pack', directory, '--offline', '--json']);
+    const bytes = await readFile(join(this.registry.directory, JSON.parse(packed.stdout)[0].filename));
+    this.registry.packages.set('typescript', new Map([['5.9.3', { manifest, bytes, integrity: 'sha512-' + createHash('sha512').update(bytes).digest('base64') }]]));
+    await this.write(destination + '/.npmrc', 'registry=' + this.registry.registry + '\ncache=' + this.path('cache').replaceAll('\\', '/') + '\nfetch-retries=0\n');
+  }
+  async nativeBuild(destination: string): Promise<void> {
+    await execute(process.execPath, [this.path(destination + '/node_modules/typescript/bin/tsc'), '--noEmit', '-p', this.path(destination + '/tsconfig.json')], { cwd: this.path(destination), timeout: 20_000 });
   }
   async servePackage(name: string, version: string): Promise<void> {
     this.registry = new NativePackageDriver(); await this.registry.initialize(); await this.registry.publish(name, version);

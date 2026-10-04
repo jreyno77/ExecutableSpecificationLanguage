@@ -18,6 +18,24 @@ describe('choosing a connected project', () => {
     await project.expectAllBytesUnchanged();
   }, 40_000);
 
+  it('keeps explicit initialization actionable when declared packages need the missing connection', async () => {
+    project = await ConnectedBuild.create({ connected: false });
+    await project.source('main.expec', 'concept StoreGame {}\n');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    await project.requirePackage('typescript', 'npm:typescript', '5.9.3', ['build']);
+    await project.rememberAllBytes();
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(3);
+    project.expectStatus('action-required');
+    project.expectProblem('project-required');
+    project.expectMessageContains('expec init');
+    await project.expectAllBytesUnchanged();
+    await project.run(['init', '--config', 'spec/expec.json', '--root', '../store-game', '--target', 'typescript', '--yes', '--json']);
+    project.expectExit(0);
+    await project.expectDeclaredPackage('typescript', 'npm:typescript', '5.9.3', ['build']);
+    await project.expectNoDestinationFile('store-game/node_modules');
+  }, 40_000);
+
   it('declines an interactive destination without writing the manifest or project', async () => {
     project = await ConnectedBuild.create({ connected: false });
     await project.source('main.expec', 'concept StoreGame {}\n');
@@ -123,4 +141,24 @@ describe('choosing a connected project', () => {
     project.expectStage('installation', 'not-run');
     await project.expectAllBytesUnchanged();
   }, 40_000);
+  it('reconnects after explicit initialization and builds after actual compiler installation', async () => {
+    project = await ConnectedBuild.create({ connected: false });
+    await project.source('main.expec', 'concept StoreGame {}\n');
+    await project.outputs([{ id: 'markdown', options: { directory: 'docs' } }]);
+    await project.run(['init', '--config', 'spec/expec.json', '--root', '../store-game', '--target', 'typescript', '--yes', '--json']);
+    project.expectExit(0);
+    await project.expectSelectedOutputs(['markdown', 'typescript']);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1);
+    project.expectProblem('unavailable-package');
+    await project.expectNoDestinationFile('store-game/src/StoreGame.ts');
+    await project.servePinnedCompiler('store-game');
+    await project.run(['install', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(0);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(0);
+    await project.expectNativeClassIn('store-game', 'StoreGame');
+    await project.expectNativeBuild('store-game');
+  }, 100_000);
+
 });

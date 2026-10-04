@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { Diagnostic } from './checking.js';
 import { checkManifest, readManifest, cliProblem } from './cli-check.js';
+import { build } from './cli-build.js';
 import { initialize, install } from './cli-project.js';
 import { ProjectConnector } from './project-connection.js';
 import { Outputs, contractListOutput, structureListOutput, type OutputRegistration } from './output.js';
@@ -90,11 +91,15 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     }
     const details = { ...(checked.configuration ? { version: checked.configuration.version } : {}),
       ...(checked.project ? { project: checked.project } : {}), problems: checked.problems, syntax: checked.syntax, deferred: checked.deferred };
-    if (!checked.specification) return report('invalid', 1, details);
+    if (!checked.specification) {
+      if (command === 'build' && checked.problems.some(problem => problem.code === 'project-required')) return report('action-required', 3,
+        { ...details, problems: [...details.problems, cliProblem('initialization-required', 'Run expec init --root <directory> --target typescript --yes, then expec install before this build can be checked.', manifest)] });
+      return report('invalid', 1, details);
+    }
     if (command === 'check') return report('checked', 0, details);
     if (command === 'build') {
       if (!checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
-      const connection = await new ProjectConnector(manifest).connect(checked.configuration!);
+      let connection = await new ProjectConnector(manifest).connect(checked.configuration!);
       if (!connection.value) return report('invalid', 1, { ...details, problems: connection.problems });
       if (connection.value.status === 'unconnected') {
         const initialized = await initialize(checked, selected, undefined, false, interactive, controller.signal);
@@ -103,6 +108,11 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
         if (!checked.specification) return report('invalid', 1, { ...(checked.configuration ? { version: checked.configuration.version } : {}), project: initialized.project,
           stages: [...initialized.stages, { name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }], syntax: checked.syntax,
           deferred: checked.deferred, problems: [...checked.problems, cliProblem('installation-required', 'Run expec install explicitly before continuing this build.', manifest)] });
+        connection = await new ProjectConnector(manifest).connect(checked.configuration!);
+      }
+      if (connection.value?.status === 'connected') {
+        const result = await build(checked, connection.value.context, outputs, new Set(['acceptance', ...supplied.tests.map(output => output.id)]), controller.signal, typeof values.decisions === 'string' ? resolve(cwd, values.decisions) : undefined);
+        return report(result.status, result.exitCode, { ...details, ...result });
       }
     }
     return report('not-implemented', 1, details);
