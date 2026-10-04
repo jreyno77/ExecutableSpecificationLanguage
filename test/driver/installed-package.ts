@@ -170,8 +170,9 @@ export class PackageDriver {
     const checkoutFile = join(checkout, 'src/index.ts');
     await stat(checkoutFile);
     await writeFile(join(this.consumer, 'catalog-input.json'), JSON.stringify({ source, checkoutFile }));
-    this.result = await run(process.execPath, ['--permission', '--allow-fs-read=' + this.consumer,
-      '--allow-fs-write=' + this.consumer, 'cli-catalog-consumer.mjs'], this.consumer);
+    const consumer = await realpath(this.consumer);
+    this.result = await run(process.execPath, ['--permission', '--allow-fs-read=' + consumer,
+      '--allow-fs-write=' + consumer, 'cli-catalog-consumer.mjs'], consumer);
     if (this.result.code !== 0) throw Error('Installed catalog failed. ' + output(this.result));
     const { packageUrl, ...observed } = JSON.parse(await readFile(join(this.consumer, 'catalog-observed.json'), 'utf8'));
     this.report = { packageUrl, customCli: { ...observed, result: JSON.parse(this.result.stdout) } };
