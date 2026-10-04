@@ -7,6 +7,8 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
   scenario = '';
   remembered: readonly ProjectFile[] = [];
   scenarioRead!: ProjectRead;
+  protected acceptanceOptions: Record<string, unknown> = {};
+  private selectedDriver = '';
   private diff!: SpecDiff;
   async initializeAcceptance(): Promise<void> { await this.initialize(); await this.installFixture(); this.outputs.register(pythonAcceptanceOutput); }
   authorShopping(title: string, expected: number): void {
@@ -28,7 +30,7 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
 }`);
   }
   async generate(): Promise<void> {
-    const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     this.written = output.value ? await output.value.create(this.current) : { problems: output.problems };
     if (!this.written.problems.length) this.scenario = await fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8');
   }
@@ -40,7 +42,7 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     if (!compared.value) throw Error(JSON.stringify(compared)); this.diff = compared.value;
   }
   async updateTests(): Promise<void> {
-    const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     this.written = output.value ? await output.value.update(this.diff, this.current) : { problems: output.problems };
   }
   async changeGeneratedQuantity(value: number): Promise<void> {
@@ -66,9 +68,13 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     if (!source.includes('        _expec.expect_data(actual, expected)')) throw Error('The actual generated quantity assertion was not found.');
     await this.file(path, source.replace('        _expec.expect_data(actual, expected)', '        pass  # This lost the promised assertion.'));
   }
+  async addDriverNamedNeighbor(): Promise<void> {
+    const path = 'test/dsl/shopping.py';
+    await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\ndef neighbor(_ExpecDriver: str) -> str:\n    return _ExpecDriver\n');
+  }
   async readScenario(): Promise<void> {
     const scenario = [...this.current.specification.inspection.query('scenario')][0]!;
-    const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     if (!output.value) throw Error(JSON.stringify(output)); this.scenarioRead = await output.value.read(this.current.id(scenario.id));
   }
   authorBook(): void {
@@ -127,6 +133,71 @@ class ShoppingDriver:
     def bookQuantity(self, title: str) -> float:
         return float(self.basket.quantity(title))
 `);
+  }
+  async useExistingBasketDriver(options: { copies?: number; parameter?: string; returns?: 'str' | 'Any' | 'bool'; requiredConstructorArgument?: boolean }): Promise<void> {
+    await this.implementBasket(options.copies ?? 1);
+    const generated = 'test/driver/shopping_driver.py';
+    let source = (await fs.readFile(join(this.root, generated), 'utf8')).replace('class ShoppingDriver:', 'class HandwrittenShopping:');
+    if (options.parameter) source = source.replaceAll('title', options.parameter);
+    if (options.requiredConstructorArgument) source = source.replace('def __init__(self)', 'def __init__(self, configuration: str)');
+    if (options.returns) {
+      source = source.replace('-> float:', '-> ' + options.returns + ':');
+      if (options.returns === 'Any') source = 'from typing import Any\n' + source;
+      if (options.returns === 'str') source = source.replace('return float(self.basket.quantity(title))', 'return "one"');
+      if (options.returns === 'bool') source = source.replace('return float(self.basket.quantity(title))', 'return True');
+    }
+    this.selectedDriver = '# Existing application adapter.\n' + source;
+    await this.file('test/driver/existing.py', this.selectedDriver); await fs.unlink(join(this.root, generated));
+    this.acceptanceOptions = { driver: { outputId: 'python-acceptance', format: 'python-symbol-1', value: {
+      file: 'test/driver/existing.py', declaration: [{ kind: 'class', name: 'HandwrittenShopping' }],
+    } } };
+  }
+  async useExistingBookDriver(options: { copiesType: 'float' | 'Any'; unrelatedAnyHelper?: boolean }): Promise<void> {
+    this.selectedDriver = 'from typing import Any, NotRequired, TypedDict\n\nclass ObservedBook(TypedDict):\n    title: str\n    copies: ' + options.copiesType
+      + '\n    note: NotRequired[str]\n\nclass HandwrittenShopping:\n    def book(self) -> ObservedBook:\n        return {"title": "Dune", "copies": 1.0}\n'
+      + (options.unrelatedAnyHelper ? '\n    def unrelated(self, input: Any) -> Any:\n        return input\n' : '');
+    await this.file('test/driver/existing.py', this.selectedDriver);
+    this.acceptanceOptions = { driver: { outputId: 'python-acceptance', format: 'python-symbol-1', value: {
+      file: 'test/driver/existing.py', declaration: [{ kind: 'class', name: 'HandwrittenShopping' }],
+    } } };
+  }
+  async shadowSelectedDriver(): Promise<void> {
+    await this.file('src/driver/__init__.py', ''); await this.file('test/driver/__init__.py', '');
+    await this.file('src/driver/existing.py', this.selectedDriver.replace('return float(self.basket.quantity(title))', 'return 99.0'));
+  }
+  async useInheritedBasketDriver(): Promise<void> {
+    await this.useExistingBasketDriver({ copies: 1 });
+    await this.file('test/driver/base.py', this.selectedDriver.replace('HandwrittenShopping', 'BasketBase'));
+    this.selectedDriver = 'from driver.base import BasketBase\n\nclass HandwrittenShopping(BasketBase):\n    pass\n';
+    await this.file('test/driver/existing.py', this.selectedDriver);
+  }
+  async supplyDriverNumberType(options: { typed: boolean; startupCanary?: boolean }): Promise<void> {
+    const sites = join(this.root, '.venv', ...(process.platform === 'win32' ? ['Lib', 'site-packages'] : ['lib', 'python3.12', 'site-packages']));
+    await fs.mkdir(join(sites, 'expec_count'), { recursive: true });
+    await fs.writeFile(join(sites, 'expec_count', '__init__.py'), 'from typing import TypeAlias\nCount: TypeAlias = float\n');
+    if (options.typed) await fs.writeFile(join(sites, 'expec_count', 'py.typed'), '');
+    if (options.startupCanary) {
+      await fs.writeFile(join(sites, 'expec_startup.pth'), 'import pathlib; pathlib.Path(' + JSON.stringify(join(this.root, 'startup-ran')) + ').write_text("unexpected startup")\n');
+      const control = await this.python('import site, sys; site.addsitedir(sys.argv[1])', [sites]);
+      if (control.code || !await this.startupRan()) throw Error('The fixture startup canary is not executable: ' + control.text);
+      await fs.unlink(join(this.root, 'startup-ran'));
+    }
+    this.selectedDriver = 'from expec_count import Count\n' + this.selectedDriver.replace('-> float:', '-> Count:');
+    await this.file('test/driver/existing.py', this.selectedDriver);
+  }
+  async startupRan(): Promise<boolean> { return fs.stat(join(this.root, 'startup-ran')).then(() => true, () => false); }
+  async readOperation(name: string): Promise<void> {
+    const operation = [...this.current.specification.inspection.query('observation')].find(item => item.name === name);
+    if (!operation) throw Error('No authored observation named ' + name);
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
+    if (!output.value) throw Error(JSON.stringify(output)); this.scenarioRead = await output.value.read(this.current.id(operation.id));
+  }
+  async selectedDriverFiles(): Promise<{ expected: string; actual: string; duplicate: boolean }> {
+    return { expected: this.selectedDriver, actual: await fs.readFile(join(this.root, 'test/driver/existing.py'), 'utf8'),
+      duplicate: await fs.stat(join(this.root, 'test/driver/shopping_driver.py')).then(() => true, () => false) };
+  }
+  async acceptanceFiles(): Promise<string[]> {
+    return (await this.context.readSnapshot()).files.filter(file => file.path.startsWith('test/acceptance/') || file.path.startsWith('test/dsl/')).map(file => file.path);
   }
   async runGeneratedTests(): Promise<void> {
     const sites = join(this.root, '.venv', ...(process.platform === 'win32' ? ['Lib', 'site-packages'] : ['lib', 'python3.12', 'site-packages']));

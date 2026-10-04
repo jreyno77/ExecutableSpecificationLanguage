@@ -94,6 +94,9 @@ def inspect_files(request):
 
             def visit_FunctionDef(self, node):
                 kind = "method" if scope and scope[-1]["kind"] == "class" else "function"
+                if (kind == "method" and node.name.value in ("__getattr__", "__getattribute__")) or (not scope and node.name.value == "__getattr__"):
+                    problems.append({"code": "dynamic-python-lookup", "file": filename, "start": offset(positions[node.name].start),
+                                     "message": "A custom lookup hook prevents complete native relationship coverage."})
                 record(node, node.name, kind)
                 scope.append({"kind": kind, "name": node.name.value})
 
@@ -148,6 +151,43 @@ def inspect_files(request):
 
 root = pathlib.Path(request["root"])
 result = inspect_files(request)
+if "consumer" in request and not result["problems"]:
+    import os, site
+    site.PREFIXES = []
+    site.ENABLE_USER_SITE = False
+    sys.path[:] = request["stdlib"] + [str(pathlib.Path(path) / "lib-dynload") for path in request["stdlib"]
+                                      if (pathlib.Path(path) / "lib-dynload").is_dir()] + request["sites"]
+    from mypy import api
+    consumer, config = root.parent / "contract.py", root.parent / "mypy.ini"
+    consumer.write_text(request["consumer"], encoding="utf-8")
+    config.write_text("[mypy]\n", encoding="utf-8")
+    os.environ["MYPYPATH"] = os.pathsep.join(request["mainPaths"] + request["testPaths"] + request["sourcePaths"])
+    out, err, status = api.run(["--strict", "--disallow-any-expr", "--disallow-any-unimported", "--follow-imports=silent",
+                                "--python-executable", sys.executable, "--python-version", "3.12", "--config-file", str(config),
+                                "--cache-dir", str(root.parent / "mypy-cache"), "--no-incremental", str(consumer)])
+    if status:
+        result["problems"].append({"code": "incompatible-native-operation", "file": request["file"], "message": out + err})
+    else:
+        probe = inspect_files({**request, "files": ["../contract.py"]})
+        result["problems"].extend(probe["problems"])
+        constructed = [use for use in probe["uses"] if use["name"] == "_ExpecDriver"
+                       and use["owner"] == [{"kind": "function", "name": "_expec_construct"}]]
+        if not constructed or any(use["targets"] != [request["target"]] for use in constructed):
+            result["problems"].append({"code": "invalid-native-driver", "file": request["file"],
+                                       "message": "The generated import does not select the requested driver class."})
+        result["driver"] = []
+        operations = sorted((item for item in probe["declarations"] if len(item["declaration"]) == 1
+                             and item["declaration"][0]["name"].startswith("_expec_operation_")),
+                            key=lambda item: int(item["declaration"][0]["name"].rsplit("_", 1)[1]))
+        for operation in operations:
+            calls = [use for use in probe["uses"] if use["owner"] == operation["declaration"] and use["member"]]
+            methods = [item for item in result["declarations"] if len(calls) == 1 and calls[0]["targets"] == [item["target"]]
+                       and item["declaration"][-1]["kind"] == "method"]
+            if len(methods) != 1:
+                result["problems"].append({"code": "invalid-native-driver", "file": request["file"],
+                                           "message": "A selected operation needs one actual method definition in the captured project."})
+            else:
+                result["driver"].append(methods[0])
 traces = {}
 if "tests" in request and not result["problems"]:
     import importlib.util

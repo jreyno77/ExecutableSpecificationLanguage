@@ -15,14 +15,16 @@ import { nativeInputs } from './native-inputs.js';
 
 export const pythonSelector = z.array(z.strictObject({ kind: z.enum(['class', 'function', 'method', 'field', 'parameter', 'type']), name: z.string().min(1) })).min(1);
 const target = z.strictObject({ file: z.string(), line: z.number().int().positive(), column: z.number().int().nonnegative(), name: z.string(), kind: z.string(), builtin: z.boolean() });
+const declaration = z.strictObject({ file: z.string(), declaration: pythonSelector, start: z.number().int().nonnegative(), end: z.number().int().nonnegative(),
+  begin: z.number().int().nonnegative(), finish: z.number().int().nonnegative(), target });
 const result = z.strictObject({
   files: z.array(z.string()),
-  declarations: z.array(z.strictObject({ file: z.string(), declaration: pythonSelector, start: z.number().int().nonnegative(), end: z.number().int().nonnegative(),
-    begin: z.number().int().nonnegative(), finish: z.number().int().nonnegative(), target })),
+  declarations: z.array(declaration),
   uses: z.array(z.strictObject({ file: z.string(), start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), name: z.string(),
     owner: pythonSelector.or(z.tuple([])), member: z.boolean(), targets: z.array(target) })),
   problems: z.array(z.strictObject({ code: z.string(), file: z.string(), start: z.number().int().nonnegative().optional(), message: z.string() })),
   rewritten: z.array(z.strictObject({ file: z.string(), text: z.string() })).optional(),
+  driver: z.array(declaration).optional(),
 });
 export type PythonFacts = z.infer<typeof result>;
 export const pythonTargetKey = (target: PythonFacts['declarations'][number]['target']): string => canonical([target.file, target.line, target.column]);
@@ -33,7 +35,7 @@ export interface PythonRewrite {
   move?: { from: string; to: string; old: string; next: string };
 }
 type AcceptanceFile = { file: string; text: string; driver: boolean };
-export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
+export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] } | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
   if (!snapshot.complete || !configuration.value || problems.length) return { problems };
@@ -56,7 +58,8 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
     }
     const request = { root, cache: join(temporary, 'cache'), files: files.map(file => file.path), sites: environment.value.environment.sites,
       main: profile.sourceRoots.main, paths: [...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib],
-      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite ? rewrite : { rewrite } : {}) };
+      stdlib: environment.value.python.stdlib, sourcePaths: profile.sourcePath,
+      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite || 'consumer' in rewrite ? rewrite : { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
     problems.push(...await inputs.verify());

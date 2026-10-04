@@ -30,6 +30,7 @@ export class PythonAcceptance {
   }
   rememberGeneratedFiles(): Promise<void> { return this.driver.rememberGeneratedFiles(); }
   addReadableNativeEdits(): Promise<void> { return this.driver.addReadableNativeEdits(); }
+  addDriverNamedNeighbor(): Promise<void> { return this.driver.addDriverNamedNeighbor(); }
   removeExpectedQuantity(): Promise<void> { return this.driver.removeExpectedQuantity(); }
   readScenario(): Promise<void> { return this.driver.readScenario(); }
   expectNoEdits(): void { expect(this.driver.written.receipt?.status).toBe('unchanged'); expect(this.driver.written.receipt?.outcomes).toEqual([]); }
@@ -79,6 +80,24 @@ export class PythonAcceptance {
     expect(['applied', 'unchanged']).toContain(this.driver.written.receipt?.status);
   }
   implementBasket(copies: number): Promise<void> { return this.driver.implementBasket(copies); }
+  useExistingBasketDriver(options: Parameters<PythonAcceptanceDriver['useExistingBasketDriver']>[0]): Promise<void> { return this.driver.useExistingBasketDriver(options); }
+  useExistingBookDriver(options: Parameters<PythonAcceptanceDriver['useExistingBookDriver']>[0]): Promise<void> { return this.driver.useExistingBookDriver(options); }
+  shadowSelectedDriver(): Promise<void> { return this.driver.shadowSelectedDriver(); }
+  useInheritedBasketDriver(): Promise<void> { return this.driver.useInheritedBasketDriver(); }
+  supplyDriverNumberType(options: Parameters<PythonAcceptanceDriver['supplyDriverNumberType']>[0]): Promise<void> { return this.driver.supplyDriverNumberType(options); }
+  async expectStartupNotRun(): Promise<void> { expect(await this.driver.startupRan()).toBe(false); }
+  readOperation(name: string): Promise<void> { return this.driver.readOperation(name); }
+  expectOperationFiles(paths: string[]): void {
+    expect(this.driver.scenarioRead.problems, JSON.stringify(this.driver.scenarioRead.problems)).toEqual([]);
+    expect(this.driver.scenarioRead.coverage.complete).toBe(true);
+    expect(this.driver.scenarioRead.artifacts.map(artifact => artifact.file.path).sort()).toEqual([...paths].sort());
+  }
+  tryGenerateTests(): Promise<void> { return this.driver.generate(); }
+  expectGenerationProblem(code: string): void { this.expectUpdateProblem(code); }
+  async expectSelectedDriverUnchanged(): Promise<void> {
+    const result = await this.driver.selectedDriverFiles(); expect(result.actual).toBe(result.expected); expect(result.duplicate).toBe(false);
+  }
+  async expectNoAcceptanceWrites(): Promise<void> { expect(await this.driver.acceptanceFiles()).toEqual([]); }
   runTests(): Promise<void> { return this.driver.runGeneratedTests(); }
   expectPassed(count: number): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text).toContain(count + ' passed'); }
   expectWrongQuantity(actual: number, expected: number): void {
