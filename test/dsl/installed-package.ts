@@ -100,7 +100,7 @@ export class PackageExamples {
     expect(workspace.books).toEqual([name]); expect(workspace.parameters).toBe(parameters);
     expect(workspace.bothParametersUseBook).toBe(true); expect(workspace.bookIdentityRecords).toBe(1);
   }
-  provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
+  provideLocalLibraryAndNativeRegistry(parent = '') { return this.driver.provideDependencies(parent); }
   installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
   loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }
   expectAcquiredFieldType(name: string, type: string) {

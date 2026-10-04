@@ -41,10 +41,10 @@ describe('Installed package consumers', () => {
     consumer.expectDeclarationsAccepted();
   });
 
-  it('acquires packages and composes private library sources through the installed public product', async () => {
+  it('acquires packages in a UUID folder through the installed public product', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
-    await consumer.provideLocalLibraryAndNativeRegistry();
+    await consumer.provideLocalLibraryAndNativeRegistry('workspace-ac9f7484-6445-4166-82d0-d154b34699f2');
     await consumer.installConfiguredStorage();
     consumer.expectSelectedAndInstalledStorage('2.1.0');
     await consumer.loadAcquiredLibrary('use Book from "books"\nfunction save(book: Book) returns Nothing');

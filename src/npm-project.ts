@@ -1,8 +1,8 @@
 import { promises as fs, type BigIntStats } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import os from 'node:os';
 import { readJson } from './json-data.js';
-import { errorCode, fail, ProjectFiles, sameIdentity, type ObservedFile } from './project-files.js';
+import { errorCode, fail, literal, ProjectFiles, sameIdentity, type ObservedFile } from './project-files.js';
 
 /** Native manifest and package evidence use the existing guarded project-file operations. */
 export class NpmProject {
@@ -76,10 +76,10 @@ export class NpmProject {
     return { observation, ...(observation.value.state === 'file' ? { data: parse(this.files, observation, path) } : {}) };
   }
   location(path: string): string {
-    if (!isAbsolute(path)) fail(this.files.root, 'invalid-native-output', '', 'Native package location must be absolute.');
-    const child = relative(this.files.root.path, resolve(path));
-    if (!child || isAbsolute(child) || child === '..' || child.startsWith('..' + sep)) fail(this.files.root, 'unsupported-package-location', '', 'Native package location is outside the selected project.');
-    return child.split(sep).join('/');
+    if (!literal(path) || /[\\*]/.test(path) || /^[A-Za-z]:/.test(path)) {
+      fail(this.files.root, 'unsupported-package-location', '', 'Native package location must be a literal path within the selected project.');
+    }
+    return path;
   }
 }
 function parse(files: ProjectFiles, observed: ObservedFile, path: string): Record<string, unknown> {
