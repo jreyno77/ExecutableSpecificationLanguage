@@ -151,8 +151,8 @@ def root_resource() -> Iterator[None]:
   output(id: string, options: Record<string, unknown>): Promise<void> { return this.driver.output(id, options); }
   async outputs(outputs: { id: string; options: Record<string, unknown> }[]): Promise<void> { this.driver.manifest.outputs = outputs; await this.driver.saveManifest(); }
   requirePackage(alias: string, name: string, version: string, phase: string): Promise<void> { return this.driver.require(alias, name, version, phase); }
-  async rememberNativeAndProjectFiles(): Promise<void> { this.driver.before = await this.driver.capture(); }
-  async expectNativeAndProjectFilesUnchanged(): Promise<void> { expect(await this.driver.capture()).toEqual(this.driver.before); }
+  async rememberNativeAndProjectFiles(): Promise<void> { this.driver.before = await this.driver.captureNativeFiles(); }
+  async expectNativeAndProjectFilesUnchanged(): Promise<void> { expect(await this.driver.captureNativeFiles()).toEqual(this.driver.before); }
   expectProblem(code: string): void { expect(this.driver.result.code).toBe(1); expect(this.driver.report.problems).toContainEqual(expect.objectContaining({ code })); }
   expectRequestedSelectedInstalled(name: string, requested: string, selected: string, installed: string): void {
     expect(this.driver.result.code, this.driver.result.stdout + this.driver.result.stderr).toBe(0);

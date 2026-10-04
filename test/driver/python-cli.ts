@@ -1,5 +1,6 @@
-import { readFile, readdir, stat, unlink, utimes } from 'node:fs/promises';
+import { readFile, readdir, readlink, stat, unlink, utimes } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -29,6 +30,19 @@ class ShoppingDriver:
     def bookQuantity(self, title: str) -> float:
         return float(self.basket.quantity(title))
 `);
+  }
+  async captureNativeFiles(): Promise<Record<string, string>> {
+    const found: Record<string, string> = {};
+    const walk = async (directory: string): Promise<void> => {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name), key = relative(this.directory, path).replaceAll('\\', '/');
+        if (entry.isSymbolicLink()) found[key] = JSON.stringify(['link', await readlink(path)]);
+        else if (entry.isFile()) found[key] = JSON.stringify(['file', (await readFile(path)).toString('base64')]);
+        else if (entry.isDirectory()) { found[key] = JSON.stringify(['directory']); await walk(path); }
+        else throw Error('Unexpected special Python fixture entry: ' + key);
+      }
+    };
+    await walk(this.directory); return found;
   }
   nativeSnapshot?: ProjectSnapshot;
   async captureNativeProject(): Promise<void> {
