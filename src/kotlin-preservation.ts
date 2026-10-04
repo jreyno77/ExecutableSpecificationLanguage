@@ -9,7 +9,7 @@ import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 import { compareKotlin } from './kotlin-comparison.js';
 
 type Declaration = KotlinQuery['declarations'][number];
-type Edit = { start: number; end: number; text: string };
+type Edit = { start: number; end: number; text: string; replacesBinding?: true };
 type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[] };
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 const key = (file: string, selector: Declaration['selector']) => canonical({ file, declaration: selector });
@@ -33,10 +33,10 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const oldSymbols = symbols(previous), newSymbols = symbols(desired), currentById = new Map<string, Declaration>();
   const references = (node: Declaration) => current.value!.references.filter(reference => reference.targetFile === node.file
     && (same(reference.target, node.selector) || reference.role === 'construction' && same(reference.target?.slice(0, -1), node.selector)));
-  const edit = (file: string, range: { start: number; end: number }, text: string) => {
+  const edit = (file: string, range: { start: number; end: number }, text: string, replacesBinding = false) => {
     if (sources.get(file)?.slice(range.start, range.end) === text) return;
     const changes = edits.get(file) ?? [];
-    if (!changes.some(change => same(change, { ...range, text }))) changes.push({ ...range, text });
+    if (!changes.some(change => change.start === range.start && change.end === range.end && change.text === text)) changes.push({ ...range, text, ...(replacesBinding ? { replacesBinding: true as const } : {}) });
     edits.set(file, changes);
   };
   for (const [id, address] of oldSymbols) {
@@ -50,7 +50,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       if (references(node).some(reference => !(reference.file === node.file && reference.range.start >= node.range.start && reference.range.end <= node.range.end))) {
         refuse(node.file, 'A current native caller still uses the retired declaration.'); continue;
       }
-      edit(node.file, node.range, ''); continue;
+      edit(node.file, node.range, '', true); continue;
     }
     if (old.kind !== next.kind) { refuse(node.file, 'Native declaration category cannot change over an implementation.'); continue; }
     if (old.name !== next.name) {
@@ -61,7 +61,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       const oldType = original.get(old.file)!.slice(old.typeRange.start, old.typeRange.end), nextType = wanted.get(next.file)!.slice(next.typeRange.start, next.typeRange.end);
       if (oldType !== nextType) {
         if (sources.get(node.file)!.slice(node.typeRange.start, node.typeRange.end) !== oldType) refuse(node.file, 'Both the author and specification changed this type annotation.');
-        else edit(node.file, node.typeRange, nextType);
+        else edit(node.file, node.typeRange, nextType, true);
       }
     }
     if (old.kind === 'function' && !same(old.selector.at(-1)?.parameters, next.selector.at(-1)?.parameters)) refuse(node.file, 'Parameter changes require explicit native signature preservation.');
@@ -109,5 +109,37 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       const bytes = change.bytes!; proposed.set(path, { path, bytes, version: hash(bytes) }); }
   }
   const verified = await queryKotlin({ ...snapshot, files: [...proposed.values()] }, 'expec.kotlin.json');
-  return verified.problems.length || !verified.value ? { problems: verified.problems, deferred: [] } : success(changes);
+  if (verified.problems.length || !verified.value) return { problems: verified.problems, deferred: [] };
+  const movedFiles = new Map(changes.flatMap(change => change.kind === 'move' ? [[change.from, change.to] as const] : []));
+  for (const reference of changedBindings(current.value, verified.value, edits, movedFiles)) {
+    problems.push(problem(snapshot.root, 'native-binding-changed', reference.file, 'A surviving native reference changes target at UTF-16 offset ' + reference.range.start + '.'));
+  }
+  return problems.length ? { problems, deferred: [] } : success(changes);
+}
+
+/** Declaration sites retain identity across edits even when their names or signatures change. */
+function changedBindings(before: KotlinQuery, after: KotlinQuery, edits: ReadonlyMap<string, readonly Edit[]>, moved: ReadonlyMap<string, string>): KotlinQuery['references'] {
+  const position = (file: string, range: { start: number; end: number }) => {
+    let offset = 0, length = range.end - range.start;
+    for (const edit of edits.get(file) ?? []) {
+      if (edit.end <= range.start) offset += edit.text.length - (edit.end - edit.start);
+      else if (edit.start === range.start && edit.end === range.end) length = edit.text.length;
+      else if (edit.start < range.end && edit.end > range.start) return undefined;
+    }
+    return { file: moved.get(file) ?? file, range: { start: range.start + offset, end: range.start + offset + length } };
+  };
+  const declaration = (query: KotlinQuery, reference: KotlinQuery['references'][number]) => query.declarations.find(node =>
+    node.file === reference.targetFile && same(node.selector, reference.target));
+  return before.references.filter(reference => {
+    if (edits.get(reference.file)?.some(edit => edit.replacesBinding && edit.start <= reference.range.start && edit.end >= reference.range.end)) return false;
+    const site = position(reference.file, reference.range);
+    if (!site) return true;
+    const matches = after.references.filter(item => item.file === site.file && same(item.range, site.range));
+    if (matches.length !== 1) return true;
+    const next = matches[0]!;
+    if (reference.external) return reference.external !== next.external;
+    const target = declaration(before, reference), actual = declaration(after, next);
+    const expected = target && position(target.file, target.nameRange);
+    return !target || !actual || !expected || target.kind !== actual.kind || actual.file !== expected.file || !same(actual.nameRange, expected.range);
+  });
 }

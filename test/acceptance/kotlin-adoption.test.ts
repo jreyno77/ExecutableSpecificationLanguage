@@ -77,3 +77,31 @@ it('preserves a compatible handwritten default when adopting its callable', asyn
   await project.runConsumer('fun main() { println(store.title()) }');
   project.expectStdout('Dune');
 }, 90_000);
+
+it('refuses a rename that would capture a real caller with a different local function', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('function save() returns Text');
+  await project.buildContracts();
+  await project.implement('save', 'return "Dune"');
+  const caller = 'package store\nfun launch(): String {\n    fun load(): String = "wrong"\n    return save()\n}\n';
+  await project.file('src/main/kotlin/store/Launcher.kt', caller);
+  project.change('function load() returns Text', { save: 'load' });
+  await project.expectUpdateRefused('native-binding-changed');
+  project.expectFileText('src/main/kotlin/store/Launcher.kt', caller);
+  project.expectMissingFile('src/main/kotlin/store/load.kt');
+}, 120_000);
+
+it('renames a parameter in its signature, implementation and named callers', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('function save(title: Text) returns Text');
+  await project.buildContracts();
+  await project.implement('save', 'return title');
+  await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = save(title = "Dune")\n');
+  project.change('function save(book: Text) returns Text', { 'save.title': 'save.book' });
+  await project.updateContracts();
+  project.expectFileContains('src/main/kotlin/store/save.kt', 'fun save(book: String): String');
+  project.expectFileContains('src/main/kotlin/store/save.kt', 'return book');
+  project.expectFileText('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = save(book = "Dune")\n');
+  await project.runConsumer('fun main() { println(store.launch()) }');
+  project.expectStdout('Dune');
+}, 120_000);
