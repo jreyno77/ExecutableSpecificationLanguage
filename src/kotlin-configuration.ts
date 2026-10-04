@@ -39,6 +39,14 @@ export const kotlinBuildInput = (path: string, config: string) => path === confi
 export function kotlinConfiguration(snapshot: ProjectSnapshot, configFile: string): Check<KotlinConfiguration> {
   const problems: Diagnostic[] = [];
   const report = (code: string, file: string, message: string) => problems.push(problem(snapshot.root, code, file, message));
+  const checkExcluded = (root: string) => {
+    const segment = root.split('/').find(part => snapshot.excludeNames.includes(part));
+    const omitted = snapshot.excluded.find(path => path === root || path.startsWith(root + '/') || root.startsWith(path + '/'));
+    if (segment || omitted) report('excluded-kotlin-input', omitted ?? root,
+      'Selected Kotlin input ' + root + ' intersects excluded path ' + (omitted ?? root) + '. Choose an unexcluded input location or a capture policy that includes it.');
+  };
+  for (const path of [configFile, kotlinReportPath]) checkExcluded(path);
+  if (problems.length) return { problems, deferred: [] };
   const json = (path: string): unknown => {
     const file = snapshot.files.find(file => file.path === path);
     if (!file) { report('native-inputs-unavailable', path, 'Missing captured Kotlin prerequisite: ' + path + '. Run explicit install.'); return; }
@@ -58,11 +66,7 @@ export function kotlinConfiguration(snapshot: ProjectSnapshot, configFile: strin
   if (!data.inputs.some(input => input.path === configFile) || !data.inputs.some(input => /(?:^|\/)build\.gradle(?:\.kts)?$/.test(input.path))
     || new Set(data.inputs.map(input => input.path)).size !== data.inputs.length
     || canonical(inputs) !== canonical([...data.inputs].sort((a, b) => a.path.localeCompare(b.path)))) report('native-configuration-stale', kotlinReportPath, 'Native build inputs changed; run explicit install to refresh the classpath.');
-  for (const root of [configFile, kotlinReportPath, ...data.sourceRoots.main, ...data.sourceRoots.test, ...data.javaRoots?.main ?? [], ...data.javaRoots?.test ?? []]) {
-    const segment = root.split('/').find(part => snapshot.excludeNames.includes(part));
-    const omitted = snapshot.excluded.find(path => path === root || path.startsWith(root + '/') || root.startsWith(path + '/'));
-    if (segment || omitted) report('excluded-kotlin-input', omitted ?? root, 'Selected Kotlin input ' + (omitted ?? root) + ' intersects excluded segment ' + (segment ?? omitted!.split('/').at(-1)) + '.');
-  }
+  for (const root of [...data.sourceRoots.main, ...data.sourceRoots.test, ...data.javaRoots?.main ?? [], ...data.javaRoots?.test ?? []]) checkExcluded(root);
   for (const file of snapshot.files) if (file.path.endsWith('.java') && [...data.sourceRoots.main, ...data.sourceRoots.test,
     ...data.javaRoots?.main ?? [], ...data.javaRoots?.test ?? []].some(root => file.path.startsWith(root + '/')))
     report('unsupported-native-input', file.path, 'Java source consumers are outside this Kotlin-only native profile.');

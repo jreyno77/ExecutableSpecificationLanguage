@@ -12,6 +12,16 @@ async function project() {
 const adapter = () => kotlinOutput.open({ package: 'store' });
 
 describe('Kotlin output ownership and transition contracts', () => {
+  it('refuses a selected output directory hidden by the supplied capture policy', async () => {
+    const fixture = await project();
+    const output = kotlinOutput.open({ package: 'store', directory: 'build/kotlin' });
+    const result = await output.plan({ operation: 'create', current: fixture.current }, await fixture.context.readSnapshot());
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('excluded-kotlin-input');
+    const { promises: fs } = await import('node:fs'), { join } = await import('node:path');
+    await expect(fs.readFile(join(fixture.root, 'build/kotlin/store/StoreGame.kt'))).rejects.toMatchObject({ code: 'ENOENT' });
+  }, 60_000);
+
   it('requires native input evidence before planning project mutations', async () => {
     const fixture = await project(), captured = await fixture.context.readSnapshot();
     const result = await adapter().plan({ operation: 'create', current: fixture.current }, { ...captured, nativeInputs: [] });

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
-import { FileProjectWriter, KotlinContext, KotlinProject } from '../../src/index.js';
+import { FileProjectWriter, KotlinContext, KotlinProject, ProjectConnector } from '../../src/index.js';
 
 const instances: KotlinDeliveryDriver[] = [];
 afterEach(async () => { for (const driver of instances.splice(0)) await driver.dispose(); });
@@ -25,6 +25,16 @@ async function captureFixture() {
 }
 
 describe('captured Kotlin prerequisites', () => {
+  it('identifies a pruned selected configuration instead of asking for installation', async () => {
+    const { driver } = await captureFixture();
+    await driver.file('build/expec.kotlin.json', JSON.stringify({ javaHome: process.env.EXPEC_TEST_JAVA_HOME,
+      sourceRoots: { main: ['src/main/kotlin'], test: ['src/test/kotlin'] } }));
+    const snapshot = await new KotlinContext(driver.context, { configFile: 'build/expec.kotlin.json' }).readSnapshot();
+    expect(snapshot.complete).toBe(false);
+    expect(snapshot.problems).toContainEqual(expect.objectContaining({ code: 'excluded-kotlin-input', message: expect.stringContaining('build/expec.kotlin.json') }));
+    expect(snapshot.problems.map(problem => problem.code)).not.toContain('native-inputs-unavailable');
+  }, 30_000);
+
   it('captures actual JDK and classpath bytes as guarded evidence', async () => {
     const { context, library } = await captureFixture();
     const snapshot = await context.readSnapshot();
@@ -49,6 +59,19 @@ describe('captured Kotlin prerequisites', () => {
     const snapshot = await context.readSnapshot();
     expect(snapshot.complete).toBe(false);
     expect(snapshot.problems).toContainEqual(expect.objectContaining({ code: 'excluded-kotlin-input', message: expect.stringContaining('src/main/kotlin/store/build') }));
+  }, 30_000);
+
+  it('respects a supplied context which captures additional cache files', async () => {
+    const { driver } = await captureFixture();
+    await driver.file('.gradle/work/record.bin', 'Captured by the caller policy.');
+    const connected = await new ProjectConnector(driver.manifest, { excludeNames: ['.git'] }).connect(driver.configuration);
+    expect(connected.value?.status).toBe('connected');
+    if (connected.value?.status !== 'connected') throw Error(JSON.stringify(connected));
+    const snapshot = await new KotlinContext(connected.value.context).readSnapshot();
+    expect(snapshot.complete).toBe(true); expect(snapshot.problems).toEqual([]);
+    expect(snapshot.excludeNames).toEqual(['.git']);
+    const captured = snapshot.files.find(file => file.path === '.gradle/work/record.bin');
+    expect(captured).toBeDefined(); expect(Buffer.from(captured!.bytes).toString('utf8')).toBe('Captured by the caller policy.');
   }, 30_000);
 
   it('queries supplied source bytes without revisiting the live source directories', async () => {
