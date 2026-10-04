@@ -209,8 +209,11 @@ if "tests" in request and not result["problems"]:
     integrity = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(integrity)
     result["problems"].extend(integrity.check(request["tests"], root))
+    if 'retireTests' in request and not result['problems']:
+        request['desiredTests'] = integrity.retire(request['tests'], request['testIdentities']['previous'], request['retireTests'], root)
+        result['owned'] = [{key: item[key] for key in ('file', 'text', 'driver')} for item in request['desiredTests']]
     if "desiredTests" in request and not result["problems"]:
-        result["rewritten"], failures = integrity.preserve(request["tests"], request["desiredTests"], root, result["files"], traces)
+        result["rewritten"], failures = integrity.preserve(request["tests"], request["desiredTests"], root, result["files"], traces, request.get('testIdentities'), result)
         result["problems"].extend(failures)
 if "rewrite" in request and not result["problems"]:
     import importlib.util

@@ -26,6 +26,7 @@ const result = z.strictObject({
   rewritten: z.array(z.strictObject({ file: z.string(), text: z.string() })).optional(),
   driver: z.array(declaration).optional(),
   fixture: z.strictObject({ name: z.string(), generator: z.boolean() }).optional(),
+  owned: z.array(z.strictObject({ file: z.string(), text: z.string(), driver: z.boolean() })).optional(),
 });
 export type PythonFacts = z.infer<typeof result>;
 export const pythonTargetKey = (target: PythonFacts['declarations'][number]['target']): string => canonical([target.file, target.line, target.column]);
@@ -37,7 +38,8 @@ export interface PythonRewrite {
 }
 type AcceptanceFile = { file: string; text: string; driver: boolean };
 type PytestFixture = { file: string; name: string; consumer?: string };
-type InspectionRequest = (PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] }
+type InspectionRequest = (PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[];
+  testIdentities?: { previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; restoreOnly?: boolean }; retireTests?: readonly string[] }
   | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] } | { fixture: PytestFixture }) & { fixture?: PytestFixture };
 export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: InspectionRequest): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };

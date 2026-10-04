@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
-import type { OutputRegistration } from './output.js';
+import type { OutputPlan, OutputRegistration } from './output.js';
 import type { Check } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
+import type { FileChange } from './project-writer.js';
 import { canonical, failure, identifier, locatorSchema, success } from './identity-baseline.js';
 import { pythonName, pythonOptions } from './python-declarations.js';
 import { pythonPath, pythonConfiguration } from './python-profile.js';
@@ -20,6 +21,8 @@ export const pythonAcceptanceOptions = pythonOptions.omit({ module: true, direct
 const saved = z.strictObject({ format: z.literal(1), options: z.string(),
   files: z.array(z.strictObject({ file: z.string().refine(pythonPath), text: z.string(), hash: z.string().regex(/^[a-f0-9]{64}$/), driver: z.boolean() })),
   artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })),
+  groups: z.array(z.strictObject({ id: identifier, members: z.array(identifier) })).default([]),
+  deleted: z.array(identifier).default([]),
 });
 type State = z.infer<typeof saved>;
 const statePath = '.expec/outputs/707974686f6e2d616363657074616e6365.json';
@@ -43,17 +46,49 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         if (result.options !== canonical(options)) return failure('output-options-changed', 'Python acceptance mappings require an explicit migration.', [statePath]);
         if (new Set(result.files.map(file => file.file)).size !== result.files.length || !result.files.length
           || result.files.some(file => hash(Buffer.from(file.text)) !== file.hash || file.driver !== (file.file === driverPath))) throw Error('Invalid native ownership.');
+        if (new Set(result.deleted).size !== result.deleted.length || result.deleted.some(id => result.artifacts.some(item => item.specId === id) || result.groups.some(group => group.id === id)))
+          throw Error('Invalid retired ownership.');
         native(result); return success(result);
       } catch { return failure('invalid-output-state', 'Recorded Python acceptance ownership is invalid.', [statePath]); }
     };
     const integrity = async (snapshot: ProjectSnapshot, current?: State) => current ? (await inspectPython(snapshot, options.configFile, { tests: current.files })).problems : [];
+    const preserve = async (snapshot: ProjectSnapshot, previous: State, next?: State, retired: readonly string[] = [], restoreOnly = false): Promise<Check<OutputPlan>> => {
+      const artifacts = next?.artifacts ?? previous.artifacts.filter(item => !retired.includes(item.specId));
+      const result = await inspectPython(snapshot, options.configFile, { tests: previous.files,
+        ...next ? { desiredTests: next.files } : { retireTests: retired }, testIdentities: { previous: previous.artifacts, next: artifacts, restoreOnly } });
+      if (result.problems.length || !result.value?.rewritten) return { problems: result.problems.length ? result.problems
+        : failure('python-preservation-unavailable', 'Native acceptance preservation returned no result.').problems, deferred: [] };
+      if (!next) {
+        if (!result.value.owned) return failure('python-preservation-unavailable', 'Native retirement returned no ownership baseline.');
+        next = { ...previous, artifacts, deleted: [...new Set([...previous.deleted, ...retired])], files: result.value.owned.map(file => ({ ...file, hash: hash(Buffer.from(file.text)) })),
+          groups: previous.groups.filter(group => !retired.includes(group.id)).map(group => ({ ...group, members: group.members.filter(id => !retired.includes(id)) })) };
+      }
+      const changes: FileChange[] = result.value.rewritten.flatMap(file => hash(Buffer.from(file.text)) === snapshot.files.find(item => item.path === file.file)?.version ? []
+        : [{ kind: 'write' as const, path: file.file, bytes: Buffer.from(file.text) }]);
+      for (const file of previous.files) if (!next.files.some(item => item.file === file.file)) changes.push({ kind: 'remove', path: file.file });
+      const bytes = Buffer.from(canonical(next, 2) + '\n');
+      if (hash(bytes) !== snapshot.files.find(file => file.path === statePath)?.version) changes.push({ kind: 'write', path: statePath, bytes });
+      return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts });
+    };
     return { id: 'python-acceptance',
       async plan(request, snapshot) {
-        if (request.operation === 'delete') return failure('unsupported-native-acceptance', 'Python acceptance retirement is not implemented.');
         if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Provide the actual specification transition.');
+        if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts'))))
+          return failure('not-addition-only', 'Use update when existing Python examples change.');
         if (options.fixture && !fixture) return failure('invalid-native-fixture', 'Select one Python fixture by its actual native locator.');
         if (options.driver && !selected) return failure('invalid-native-driver', 'Select one Python acceptance class by its actual native locator.');
         const previous = state(snapshot); if (previous.problems.length) return { problems: previous.problems, deferred: [] };
+        if (request.operation === 'delete') {
+          identifier.parse(request.id);
+          const stored = previous.value, group = stored?.groups.find(group => group.id === request.id);
+          if (!stored || !group && !stored.artifacts.some(item => item.specId === request.id))
+            return stored?.deleted.includes(request.id) ? success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: stored.artifacts })
+              : failure('not-found', 'This Python acceptance output has never owned that identifier.');
+          return preserve(snapshot, stored, undefined, [request.id, ...group?.members ?? []]);
+        }
+        const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
+        if (previous.value && [...previous.value.deleted, ...previous.value.groups.map(group => group.id), ...previous.value.artifacts.map(item => item.specId)].some(id => !known.has(id)))
+          return failure('unknown-output-identity', 'Current identity must retain or explicitly retire earlier subjects.');
         const inspected = await inspectPython(snapshot, options.configFile, previous.value ? { tests: previous.value.files, ...fixtureSelection ? { fixture: fixtureSelection } : {} }
           : fixtureSelection ? { fixture: fixtureSelection } : undefined);
         if (!inspected.value || inspected.problems.length && !(fixture && inspected.value.fixture && inspected.problems.every(problem => problem.code === 'unresolved-python-import')))
@@ -96,7 +131,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         const files = examples.files(), consumer = examples.driverCheck();
         if (examples.problems.length) return { problems: examples.problems, deferred: [] };
         files.unshift({ path: options.testRoot + '/dsl/comparison.py', text: await readFile(new URL('./python/comparison.py', import.meta.url), 'utf8') });
-        if (!previous.value) for (const file of files) {
+        for (const file of files.filter(file => !previous.value?.files.some(item => item.file === file.path))) {
           if (snapshot.files.some(existing => existing.path === file.path)) return failure('output-conflict', 'Existing Python acceptance files require native preserving reconciliation.', [file.path]);
           if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes this acceptance destination.', [file.path]);
         }
@@ -105,24 +140,27 @@ export const pythonAcceptanceOutput: OutputRegistration = {
           const path = options.testRoot + '/' + layer + '/__init__.py';
           if (!snapshot.files.some(file => file.path === path)) changes.unshift({ kind: 'write', path, bytes: Buffer.from('') });
         }
-        const candidate = previous.value ? snapshot : { ...snapshot, files: [...snapshot.files, ...changes.map(change => ({ path: change.path, bytes: change.bytes, version: hash(change.bytes) }))] };
+        const candidate = { ...snapshot, files: [...snapshot.files, ...changes.filter(change => !snapshot.files.some(file => file.path === change.path))
+          .map(change => ({ path: change.path, bytes: change.bytes, version: hash(change.bytes) }))] };
         const fixtureCheck = fixtureSelection ? { fixture: { ...fixtureSelection, consumer: examples.fixtureCheck()! } } : undefined;
         const checked = await inspectPython(candidate, options.configFile, consumer ? { consumer, file: selected!.file, target: target!, ...fixtureCheck } : fixtureCheck);
         if (checked.problems.length) return { problems: checked.problems, deferred: [] };
         const bound = imports(checked.value!); if (bound.problems.length) return { problems: bound.problems, deferred: [] };
         if (consumer) examples.bindDriver(checked.value!.driver ?? []);
         if (examples.problems.length) return { problems: examples.problems, deferred: [] };
-        const next: State = { format: 1, options: canonical(options), files: files.map(file => ({ file: file.path, text: file.text, hash: hash(Buffer.from(file.text)), driver: file.path === driverPath })), artifacts: examples.artifacts };
+        const next: State = { format: 1, options: canonical(options), deleted: [], files: files.map(file => ({ file: file.path, text: file.text, hash: hash(Buffer.from(file.text)), driver: file.path === driverPath })), artifacts: examples.artifacts,
+          groups: [...request.current.specification.inspection.query('examples')].filter(group => group.origin.kind === 'source' && [request.current.specification.entry, ...context?.workspaceModules ?? []].includes(group.origin.module))
+            .map(group => ({ id: request.current.id(group.id), members: group.members.filter(item => item.kind === 'scenario' || item.kind === 'example').map(item => request.current.id(item.id)) })) };
         if (previous.value) {
+          const oldIds = new Set([...previous.value.artifacts.map(item => item.specId), ...previous.value.groups.map(group => group.id)]);
+          const nextIds = new Set([...next.artifacts.map(item => item.specId), ...next.groups.map(group => group.id)]);
+          next.deleted = [...new Set([...previous.value.deleted, ...oldIds])].filter(id => !nextIds.has(id));
           if (canonical(previous.value) === canonical(next)) return success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
-          if (request.operation !== 'update') return failure('use-update', 'Use update for changed existing Python examples.');
-          const rewritten = await inspectPython(snapshot, options.configFile, { tests: previous.value.files, desiredTests: next.files });
-          if (rewritten.problems.length || !rewritten.value?.rewritten) return { problems: rewritten.problems.length ? rewritten.problems
-            : failure('python-preservation-unavailable', 'Native acceptance preservation returned no result.').problems, deferred: [] };
-          const changes = rewritten.value.rewritten.flatMap(file => hash(Buffer.from(file.text)) === snapshot.files.find(item => item.path === file.file)?.version ? []
-            : [{ kind: 'write' as const, path: file.file, bytes: Buffer.from(file.text) }]);
-          changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
-          return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts, obligations: examples.obligations });
+          if (request.operation === 'create' && (!previous.value.deleted.some(id => nextIds.has(id)) || [...oldIds].some(id => !nextIds.has(id))
+            || [...nextIds].some(id => !oldIds.has(id) && !previous.value!.deleted.includes(id))))
+            return failure('use-update', 'Use update for changed existing Python examples.');
+          const result = await preserve(snapshot, previous.value, next, [], request.operation === 'create');
+          return result.value ? success({ ...result.value, obligations: examples.obligations }) : result;
         }
         changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
         return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: examples.artifacts, obligations: examples.obligations });
