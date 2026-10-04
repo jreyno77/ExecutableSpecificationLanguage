@@ -7,6 +7,7 @@ export class KotlinAcceptance {
     const driver = new KotlinAcceptanceDriver(), example = new KotlinAcceptance(driver); await driver.prepare(); return example;
   }
   nativeFile(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
+  testRoot(path: string): void { this.driver.acceptanceOptions.testRoot = path; }
   source(text: string): void { this.driver.source(text); }
   implementDriver(text: string): Promise<void> { return this.driver.driver(text); }
   buildContracts(): Promise<void> { return this.driver.contracts(); }
@@ -14,6 +15,19 @@ export class KotlinAcceptance {
   async buildAcceptance(): Promise<void> {
     await this.driver.generate(); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
   }
+  resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> { return this.driver.resourceFixture(setupFailure, cleanupFailure); }
+  addTestMember(text: string): Promise<void> { return this.driver.addTestMember(text); }
+  selectFixture(file: string, name: string): void { this.driver.selectFixture(file, name); }
+  rememberFile(path: string): Promise<void> { return this.driver.rememberFile(path); }
+  async expectFileUnchanged(path: string): Promise<void> { expect(await this.driver.unchangedFile(path)).toBe(true); }
+  async updateAcceptance(): Promise<void> {
+    await this.driver.generate(true); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
+  }
+  expectNoRuntimeOutput(text: string): void { expect(this.driver.execution.stdout + this.driver.execution.stderr).not.toContain(text); }
+  async expectAcceptanceRefused(code: string): Promise<void> {
+    await this.driver.generate(true); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
+  }
+  expectRuntimeOutput(text: string): void { expect(this.driver.execution.stdout + this.driver.execution.stderr).toContain(text); }
   expectVisibleSteps(steps: string[]): void {
     const text = [...this.driver.files].filter(([path]) => path.includes('/acceptance/')).map(([, text]) => text).join('\n');
     for (const step of steps) expect(text).toContain(step);

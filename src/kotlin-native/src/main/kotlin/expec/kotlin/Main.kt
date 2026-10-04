@@ -102,7 +102,10 @@ fun main(args: Array<String>) {
                         (node.primaryConstructor?.let { accessible(it) } ?: node.secondaryConstructors.isEmpty()) && node.primaryConstructorParameters.all { it.hasDefaultValue() || it.isVarArg }
                             || node.secondaryConstructors.any { constructor -> accessible(constructor) && constructor.valueParameters.all { it.hasDefaultValue() || it.isVarArg } })
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
-                    if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
+                    if (node is KtClassOrObject) {
+                        node.body?.let { put("bodyRange", text.range(it)) }
+                        put("superTypeRanges", JsonArray(node.superTypeListEntries.mapNotNull { it.typeReference }.map { text.range(it) }))
+                    }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
                     if (node is KtNamedFunction) node.valueParameterList?.let { put("typePosition", text.range(it).getValue("end")) }
                 })

@@ -29,7 +29,7 @@ export class KotlinExamples {
   private readonly className: string;
   private readonly locals = new Map<string, TypeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number]) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
     this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets);
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
@@ -182,7 +182,7 @@ export class KotlinExamples {
         } else body = this.compare(example.actual, example.expected, this.options.domain);
         return '  @org.junit.jupiter.api.Test\n  @org.junit.jupiter.api.DisplayName(' + quote(example.title.value) + ')\n  fun ' + method + '() {\n    ' + body + '\n  }';
       });
-      add(this.current.id(group.id), 'acceptance', name, 'class ' + name + ' : ' + this.options.package + '.dsl.' + this.className + 'Fixture() {\n' + bodies.join('\n\n') + '\n}', artifacts);
+      add(this.current.id(group.id), 'acceptance', name, 'class ' + name + ' : ' + (this.fixture ? this.fixture.packageName + '.' + this.fixture.selector.map(item => item.name).join('.') : this.options.package + '.dsl.' + this.className + 'Fixture') + '() {\n' + bodies.join('\n\n') + '\n}', artifacts);
     }
     if (!groups.length) return files;
     const group = groups[0]!, driver: string[] = [], methods: string[] = [], driverArtifacts: ArtifactAssociation[] = [], dslArtifacts: ArtifactAssociation[] = [];

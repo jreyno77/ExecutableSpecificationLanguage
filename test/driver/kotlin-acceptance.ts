@@ -9,6 +9,8 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   private readonly junit = process.env.EXPEC_TEST_JUNIT_CONSOLE;
   private readonly implementations = new Map<string, string>();
   failureContext = '';
+  readonly acceptanceOptions: Record<string, unknown> = {};
+  private readonly remembered = new Map<string, string>();
   readonly outcomes: { title: string; status: string; failure: string }[] = [];
   async prepare(): Promise<void> {
     if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR.');
@@ -26,10 +28,32 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     await this.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', previous, body); this.implementations.set(name, body);
   }
   async driver(text: string): Promise<void> { await this.file('src/test/kotlin/store/tests/driver/ShoppingDriver.kt', text); }
-  async generate(): Promise<void> {
-    const output = this.outputs.open('kotlin-acceptance', { package: 'store.tests', domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+  async resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> {
+    const file = 'src/test/kotlin/store/tests/dsl/ResourceShopping.kt';
+    await this.file(file, 'package store.tests.dsl\nopen class ResourceShopping {\n'
+      + '  private var server: java.net.ServerSocket? = null\n  protected lateinit var shopping: Shopping\n'
+      + '  @org.junit.jupiter.api.BeforeEach fun connect() {\n'
+      + '    server = java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())\n'
+      + (setupFailure ? '    error(' + JSON.stringify(setupFailure) + ')\n' : '    shopping = Shopping(store.tests.driver.ShoppingDriver())\n')
+      + '  }\n  @org.junit.jupiter.api.AfterEach fun disconnect() {\n'
+      + '    server!!.close()\n    println("RESOURCE_CLOSED=" + server!!.isClosed)\n'
+      + (cleanupFailure ? '    error(' + JSON.stringify(cleanupFailure) + ')\n' : '') + '  }\n}\n');
+    this.selectFixture(file, 'ResourceShopping');
+  }
+  async addTestMember(text: string): Promise<void> {
+    const path = 'src/test/kotlin/store/tests/acceptance/ShoppingAcceptance.kt', source = await fs.readFile(join(this.root, path), 'utf8');
+    const end = source.lastIndexOf('}'); if (end < 0) throw new Error('Missing arranged native test class.');
+    await this.file(path, source.slice(0, end) + text + '\n' + source.slice(end));
+  }
+  selectFixture(file: string, name: string): void { this.acceptanceOptions.fixture = { outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
+  async rememberFile(path: string): Promise<void> { this.remembered.set(path, await fs.readFile(join(this.root, path), 'utf8')); }
+  async unchangedFile(path: string): Promise<boolean> { return this.remembered.has(path) && this.remembered.get(path) === await fs.readFile(join(this.root, path), 'utf8'); }
+  async generate(update = false): Promise<void> {
+    const output = this.outputs.open('kotlin-acceptance', { package: 'store.tests', domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     if (output.value) this.output = output.value;
-    this.written = output.value ? await output.value.create(this.current) : { problems: output.problems }; this.files = await this.capturedFiles();
+    const compared = this.identity.compare(this.current.baseline, this.current);
+    if (!compared.value) throw new Error(JSON.stringify(compared));
+    this.written = output.value ? await (update ? output.value.update(this.diff ?? compared.value, this.current) : output.value.create(this.current)) : { problems: output.problems }; this.files = await this.capturedFiles();
     if (this.written.problems.length) this.failureContext = JSON.stringify({ result: this.written, capture: (await this.context.readSnapshot()).problems });
   }
   async readOperation(name: string): Promise<void> {

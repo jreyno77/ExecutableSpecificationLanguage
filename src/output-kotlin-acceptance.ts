@@ -10,6 +10,8 @@ import { outputProblem } from './output-documents.js';
 import { validDiff } from './output-contract.js';
 import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
+import { checkKotlinTests } from './kotlin-test-contract.js';
+import { compatibleKotlinFixture, migrateKotlinFixture, selectedKotlinFixture } from './kotlin-fixture.js';
 import { kotlinOptions } from './kotlin-declarations.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
@@ -18,8 +20,9 @@ const options = kotlinOptions.omit({ directory: true, concepts: true }).extend({
   domain: z.string().regex(/^[a-z][A-Za-z0-9]*$/), driver: locatorSchema.optional(), fixture: locatorSchema.optional(),
 });
 const statePath = '.expec/outputs/' + Buffer.from('kotlin-acceptance').toString('hex') + '.json';
-const state = z.strictObject({ format: z.literal(1), options: z.string(), files: z.array(z.strictObject({
-  id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(z.strictObject({ specId: z.string(), locator: locatorSchema })),
+const association = z.strictObject({ specId: z.string(), locator: locatorSchema });
+const state = z.strictObject({ format: z.literal(1), options: z.string(), fixture: association.optional(), files: z.array(z.strictObject({
+  id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association),
 })) });
 export const kotlinAcceptanceOutput: OutputRegistration = {
   id: 'kotlin-acceptance', validate: value => { const parsed = options.safeParse(value); return parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path as (string | number)[], message: issue.message })); },
@@ -36,7 +39,8 @@ class KotlinAcceptance implements OutputAdapter {
     try {
       const stored = state.parse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes), (_code, message) => { throw Error(message); }));
       if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || file.artifacts.some(item => item.locator.outputId !== this.id))) throw Error('Invalid generated baseline.');
-      new KotlinProject({ outputId: this.id }, stored.files.flatMap(file => file.artifacts));
+      if (canonical(options.parse(JSON.parse(stored.options))) !== stored.options) throw Error('Invalid recorded options.');
+      new KotlinProject({ outputId: this.id }, [...stored.files.flatMap(file => file.artifacts), ...stored.fixture ? [stored.fixture] : []]);
       return success(stored);
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin acceptance ownership is invalid.')], deferred: [] }; }
   }
@@ -45,10 +49,19 @@ class KotlinAcceptance implements OutputAdapter {
     const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
     if (request.operation === 'delete') return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
     if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Supply the actual identity transition.');
-    if (stored.value && stored.value.options !== canonical(this.settings)) return failure('output-options-changed', 'Native acceptance placement requires an explicit migration.');
-    if (this.settings.driver || this.settings.fixture || this.settings.adoptExisting || this.settings.names.length || this.settings.imports.length) return failure('native-preservation-unavailable', 'These explicit mappings require native compatibility checking.');
+    const beforeOptions = stored.value && options.parse(JSON.parse(stored.value.options));
+    const fixed = ({ fixture: _fixture, ...settings }: z.infer<typeof options>) => canonical(settings);
+    const migrating = request.operation === 'update' && beforeOptions && !beforeOptions.fixture && this.settings.fixture && fixed(beforeOptions) === fixed(this.settings);
+    if (stored.value && stored.value.options !== canonical(this.settings) && !migrating) return failure('output-options-changed', 'Native acceptance placement requires an explicit migration.');
+    if (this.settings.driver || this.settings.adoptExisting || this.settings.names.length || this.settings.imports.length) return failure('native-preservation-unavailable', 'These explicit mappings require native compatibility checking.');
     const native = await queryKotlin(snapshot, 'expec.kotlin.json');
-    if (!native.value || native.problems.length) return { problems: native.problems, deferred: native.deferred };
+    if (!native.value || native.problems.length && !this.settings.fixture) return { problems: native.problems, deferred: native.deferred };
+    const className = this.settings.domain[0]!.toUpperCase() + this.settings.domain.slice(1), prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/');
+    const testFile = prefix + '/acceptance/' + className + 'Acceptance.kt';
+    const intact = await checkKotlinTests(snapshot, native.value, stored.value?.files ?? [], prefix + '/driver/' + className + 'Driver.kt');
+    if (intact.problems.length) return { problems: intact.problems, deferred: intact.deferred };
+    const fixture = this.settings.fixture && selectedKotlinFixture(native.value, this.settings.fixture);
+    if (this.settings.fixture && !fixture) return failure('invalid-native-fixture', 'Select one actual native fixture class.');
     const targets = new Map<NodeId, KotlinQuery['declarations'][number]>();
     for (const association of request.current.baseline.artifacts.filter(item => item.locator.outputId !== this.id && item.locator.format === 'kotlin-symbol-1')) {
       const declarations = native.value.declarations.filter(item => canonical({ file: item.file, declaration: item.selector }) === canonical(association.locator.value));
@@ -58,27 +71,43 @@ class KotlinAcceptance implements OutputAdapter {
       if (before && canonical(before) !== canonical(declarations[0])) return failure('ambiguous-native-target', 'Select one executable Kotlin target for this source declaration.');
       targets.set(id, declarations[0]!);
     }
-    const rendered = new KotlinExamples(request.current, this.settings, targets, this.context), files = rendered.files();
+    const rendered = new KotlinExamples(request.current, this.settings, targets, this.context, fixture), files = rendered.files();
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
+    const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
+    if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId))) || stored.value?.fixture && !known.has(stored.value.fixture.specId)) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
+    if (stored.value?.files.some(before => !files.some(file => file.path === before.path))) return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
+    const changes: { kind: 'write'; path: string; bytes: Uint8Array }[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
     for (const file of files) {
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('excluded-kotlin-input', 'The output path intersects an excluded capture path.', file.path);
       const actual = snapshot.files.find(item => item.path === file.path), previous = stored.value?.files.find(item => item.path === file.path);
-      if (actual && (!previous || actual.version !== previous.hash)) return failure('output-conflict', 'Current native acceptance text needs declaration-level preservation.', file.path);
+      if (actual && !previous) return failure('output-conflict', 'Current native acceptance text needs declaration-level ownership.', file.path);
+      if (previous && !actual) return failure('output-conflict', 'Previously owned native acceptance text is missing.', file.path);
+      let bytes = actual?.bytes ?? Buffer.from(file.text);
+      if (previous && previous.generated !== file.text) {
+        if (!migrating || !fixture || file.path !== testFile) return failure('native-preservation-unavailable', 'Changed acceptance contracts require native ownership reconciliation.', file.path);
+        const text = migrateKotlinFixture(snapshot, native.value, file.path, this.settings.package + '.dsl.' + className + 'Fixture', fixture);
+        if (text === undefined) return failure('output-conflict', 'The test no longer extends its recorded default fixture.', file.path);
+        bytes = Buffer.from(text);
+      }
+      const version = hash(bytes);
+      proposed.set(file.path, { path: file.path, bytes, version });
+      if (actual?.version !== version) changes.push({ kind: 'write', path: file.path, bytes });
     }
-    const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
-    if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId)))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
-    if (stored.value?.files.some(before => !files.some(file => file.path === before.path && file.text === before.generated))) return failure('native-preservation-unavailable', 'Changed acceptance contracts require native ownership reconciliation.');
-    const generated = await queryKotlin({ ...snapshot, files: [...snapshot.files.filter(file => !files.some(after => after.path === file.path)), ...files.map(file => ({ path: file.path, bytes: Buffer.from(file.text), version: hash(Buffer.from(file.text)) }))] }, 'expec.kotlin.json');
+    const generated = await queryKotlin({ ...snapshot, files: [...proposed.values()] }, 'expec.kotlin.json');
     if (!generated.value || generated.problems.length) return { problems: generated.problems, deferred: generated.deferred };
-    const next = { format: 1, options: canonical(this.settings), files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
-    return success({ outputId: this.id, basedOn: snapshot, changes: [...files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) })),
+    if (fixture && (!this.settings.fixture || !compatibleKotlinFixture(generated.value, selectedKotlinFixture(generated.value, this.settings.fixture)!, this.settings.domain,
+      this.settings.package + '.dsl.' + className, [testFile]))) {
+      return failure('invalid-native-fixture', 'The selected native base needs accessible zero-argument construction and its protected/public readable DSL property.', fixture.file);
+    }
+    const next = { format: 1, options: canonical(this.settings), ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+    return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
-      artifacts: files.flatMap(file => file.artifacts), obligations: rendered.obligations });
+      artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : []], obligations: rendered.obligations });
   }
   async read(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) } };
-    return new KotlinProject({ outputId: this.id }, stored.value?.files.flatMap(file => file.artifacts) ?? []).read(id, snapshot);
+    return new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : []]).read(id, snapshot);
   }
   async search(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
@@ -86,6 +115,6 @@ class KotlinAcceptance implements OutputAdapter {
       const coverage = { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) };
       return { definitions: [], problems: stored.problems, incoming: { subject: id, direction: 'incoming' as const, coverage, uses: [], unresolved: [] }, outgoing: { subject: id, direction: 'outgoing' as const, coverage, uses: [], unresolved: [] } };
     }
-    return new KotlinProject({ outputId: this.id }, stored.value?.files.flatMap(file => file.artifacts) ?? []).search(id, snapshot);
+    return new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : []]).search(id, snapshot);
   }
 }
