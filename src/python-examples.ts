@@ -124,6 +124,7 @@ export class PythonExamples {
         if (item.operator === '==' || item.operator === '!=') return (item.operator === '!=' ? 'not ' : '') + '_expec.equal(' + this.comparison(item.left, item.right, receiver) + ')';
         const left = this.expression(item.left, receiver), right = this.expression(item.right, receiver);
         if (item.operator === 'and' || item.operator === 'or') return '(' + left + ' ' + item.operator + ' ' + right + ')';
+        if (item.operator === '%') return '_expec.remainder(' + left + ', ' + right + ')';
         const value = '(_expec.number(' + left + ') ' + item.operator + ' _expec.number(' + right + '))';
         return ['<', '<=', '>', '>='].includes(item.operator) ? value : '_expec.number(' + value + ')';
       }

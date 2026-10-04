@@ -55,6 +55,10 @@ export class PythonAcceptance {
     expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);
     expect(this.driver.runtime.text).toContain('AssertionError'); expect(this.driver.runtime.text).toContain('1 failed');
   }
+  expectArithmeticFailure(operation: string): void {
+    expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);
+    expect(this.driver.runtime.text).toContain(operation + ' by zero'); expect(this.driver.runtime.text).toContain('1 failed');
+  }
   expectVerificationRequired(text: string): void {
     expect(this.driver.written.obligations).toMatchObject([{ code: 'unimplemented-verification', message: expect.stringContaining(text) }]);
     this.expectUnimplemented(text);

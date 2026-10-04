@@ -15,6 +15,28 @@ async function compare(example: string): Promise<void> {
 describe('Python comparison observes ordinary finite data', () => {
   it('accepts an exact integer count and treats negative zero as zero', () => compare('expect_data(1, 1.0)\nexpect_data(-0.0, 0.0)'));
   it('keeps Boolean separate from Number', () => compare('assert not equal(True, 1.0)\nassert not equal(False, 0.0)'));
+  it('keeps the dividend sign in a finite remainder', () => compare('expect_data(remainder(-5, 2), -1)\nexpect_data(remainder(5, -2), 1)\nexpect_data(remainder(-0.0, 2), 0)'));
+  it('refuses a zero remainder divisor rather than returning comparison data', () => compare(`
+try:
+    remainder(1, -0.0)
+except AssertionError as error:
+    assert str(error) == "remainder by zero"
+else:
+    raise AssertionError("Zero divisor was accepted")`));
+  it('rejects numeric conversion hooks and an overflowing integer without invoking the hook', () => compare(`
+hooks = []
+class Count(int):
+    def __float__(self):
+        hooks.append("called")
+        return 1.0
+for value in [Count(1), 10 ** 10000]:
+    try:
+        number(value)
+    except AssertionError as error:
+        assert "Number" in str(error)
+    else:
+        raise AssertionError("Invalid Number was accepted")
+assert hooks == []`));
   it('rejects an inexact integer and nonfinite observations', () => compare(`
 for value in [9007199254740993, float("nan"), float("inf"), 10 ** 400]:
     try:

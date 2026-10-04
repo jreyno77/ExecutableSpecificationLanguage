@@ -3,6 +3,35 @@ import { PythonAcceptance } from '../dsl/python-acceptance.js';
 
 afterEach(() => PythonAcceptance.dispose());
 describe('readable Python acceptance tests that reach the application', { timeout: 240_000 }, () => {
+  it('keeps negative remainders consistent with the authored arithmetic', async () => {
+    const p = await PythonAcceptance.create();
+    p.source(`examples {
+      observation remainder(left: Number, right: Number) returns Number { return left % right }
+      example "negative dividend": remainder(-5, 2) => -1
+      example "negative divisor": remainder(5, -2) => 1
+    }`);
+    await p.generateTests(); await p.runTests(); p.expectPassed(2);
+  });
+
+  it('uses binary64 division and treats negative zero as zero', async () => {
+    const p = await PythonAcceptance.create();
+    p.source(`examples {
+      observation divide(left: Number, right: Number) returns Number { return left / right }
+      example "one divided by two": divide(1, 2) => 0.5
+      example "negative zero": divide(-0, 2) => 0
+    }`);
+    await p.generateTests(); await p.runTests(); p.expectPassed(2);
+  });
+
+  it('keeps division by zero a failed executable expectation', async () => {
+    const p = await PythonAcceptance.create();
+    p.source(`examples {
+      observation divide(left: Number, right: Number) returns Number { return left / right }
+      example "division by zero": divide(1, 0) => 0
+    }`);
+    await p.generateTests(); await p.runTests(); p.expectArithmeticFailure('division');
+  });
+
   it('updates an expected quantity while preserving the implemented driver and human edits', async () => {
     const shopping = await PythonAcceptance.create();
     shopping.aShopperCanAddAnAvailableBook('Dune', 1);

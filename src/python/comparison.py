@@ -17,6 +17,13 @@ def number(value: object) -> float:
     return result
 
 
+def remainder(left: object, right: object) -> float:
+    dividend, divisor = number(left), number(right)
+    if divisor == 0:
+        raise AssertionError("remainder by zero")
+    return number(math.fmod(dividend, divisor))
+
+
 def data(value: object, active: set[int] | None = None) -> tuple[object, ...]:
     if type(value) is bool:
         return ("Boolean", value)
