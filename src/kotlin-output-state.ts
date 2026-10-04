@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import type { IdentifiedSpecification } from './specification-identity.js';
+import type { OutputContext } from './output.js';
 import type { Check } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
 import type { KotlinQuery } from './kotlin-query.js';
 import { KotlinProject } from './kotlin-project.js';
-import { kotlinOptions } from './kotlin-declarations.js';
+import { KotlinDeclarations, kotlinOptions } from './kotlin-declarations.js';
 import { kotlinTuple } from './kotlin-tuples.js';
 import { identifier, locatorSchema, success } from './identity-baseline.js';
 import { hash, literal } from './project-files.js';
@@ -51,4 +53,19 @@ export function kotlinTupleTypes(snapshot: ProjectSnapshot, native: KotlinQuery)
       ? options.package + '.Tuple' + arity : undefined);
   }
   return success(tuples);
+}
+
+/** Construction of a generated restriction is trusted only while its actual bytes match this contract. */
+export function kotlinGeneratedFiles(snapshot: ProjectSnapshot, current: IdentifiedSpecification, context?: OutputContext): Check<ReadonlySet<string>> {
+  const stored = kotlinState(snapshot);
+  if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+  if (!stored.value) return success(new Set());
+  const declarations = new KotlinDeclarations(current, kotlinOptions.parse(JSON.parse(stored.value.options)), context);
+  const files = declarations.render();
+  if (declarations.problems.length) return { problems: declarations.problems, deferred: [] };
+  return success(new Set(files.filter(file => {
+    const recorded = stored.value!.files.find(before => before.id === file.id && before.path === file.path && !before.adopted);
+    const actual = snapshot.files.find(actual => actual.path === file.path);
+    return recorded?.generated === file.text && actual && Buffer.from(actual.bytes).equals(Buffer.from(file.text));
+  }).map(file => file.path)));
 }

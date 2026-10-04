@@ -33,9 +33,9 @@ export class KotlinExamples {
   private readonly locals = new Map<string, TypeId>();
   private readonly names = new Map<NodeId, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map()) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map(), generated: ReadonlySet<string> = new Set()) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
-    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl');
+    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl', generated);
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
@@ -57,8 +57,7 @@ export class KotlinExamples {
     return identifier(name) ? name : this.problem('invalid-native-name', item, 'An explicit valid Kotlin name is required: ' + name);
   }
   private type(id: TypeId, item: Item): string { return this.data.type(id, item); }
-  private valueType(item: Item): TypeId | undefined {
-    const result = this.expressions.typeOf(item.id, reference => {
+  private readonly valueScope = (reference: Item<'reference'>) => {
       const binding = reference.resolution;
       if (binding.status === 'bound') {
         const target = this.inspection.read(binding.target);
@@ -68,7 +67,9 @@ export class KotlinExamples {
         const value = this.locals.get(reference.segments[0]!); return value ? { value, problems: [], deferred: [] } : undefined;
       }
       return undefined;
-    });
+  };
+  private valueType(item: Item): TypeId | undefined {
+    const result = this.expressions.typeOf(item.id, this.valueScope);
     if (!result.value) this.problem('native-value-unavailable', item, 'The existing expression contract must supply this value type.');
     return result.value;
   }
@@ -88,14 +89,27 @@ export class KotlinExamples {
       if (shape.kind !== 'optional') break;
       expected = shape.inner;
     }
+    if (expected && (item.kind === 'record-expression' || item.kind === 'list-expression')) {
+      const shape = this.data.shape(expected);
+      if (shape.kind === 'union') {
+        const matches = shape.alternatives.filter(type => {
+          const checked = this.expressions.checkValue(item.id, type, this.valueScope);
+          return !checked.problems.length && !checked.deferred.length;
+        });
+        if (matches.length !== 1) return this.problem('unsupported-native-data', item, 'Expected data must select one checked union alternative.');
+        const text = this.expression(item, receiver, matches[0]);
+        return this.data.wrap(expected, item, text, matches[0]) ?? text;
+      }
+    }
+    const value = (text: string) => expected ? this.data.wrap(expected, item, text, this.valueType(item)) ?? text : text;
     switch (item.kind) {
       case 'number-literal': {
         const number = Number(item.token);
-        return Number.isFinite(number) && decimal(item.token) === decimal(String(number)) ? String(number) + (Number.isInteger(number) && !String(number).includes('e') ? '.0' : '')
+        return Number.isFinite(number) && decimal(item.token) === decimal(String(number)) ? value(String(number) + (Number.isInteger(number) && !String(number).includes('e') ? '.0' : ''))
           : this.problem('unsupported-number-literal', item, 'This literal cannot round-trip through finite binary64.');
       }
-      case 'string-literal': return quote(item.value);
-      case 'boolean-literal': return String(item.value);
+      case 'string-literal': return value(quote(item.value));
+      case 'boolean-literal': return value(String(item.value));
       case 'grouped-expression': return '(' + this.expression(item.inner, receiver, expected) + ')';
       case 'list-expression': {
         const id = expected ?? this.valueType(item), shape = id && this.data.shape(id);
@@ -124,8 +138,8 @@ export class KotlinExamples {
         if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && item.reference.segments.length === 1 && this.locals.has(item.reference.segments[0]!)) return item.reference.segments[0]!;
         return this.problem('unsupported-native-value', item, 'This value requires an explicit executable binding.');
       }
-      case 'unary-expression': return item.operator === 'not' ? '(!' + this.expression(item.operand, receiver) + ')'
-        : '(' + item.operator + this.options.package + '.dsl.finiteNumber(' + this.expression(item.operand, receiver) + '))';
+      case 'unary-expression': return value(item.operator === 'not' ? '(!' + this.expression(item.operand, receiver) + ')'
+        : '(' + item.operator + this.options.package + '.dsl.finiteNumber(' + this.expression(item.operand, receiver) + '))');
       case 'binary-expression': {
         const prefix = this.options.package + '.dsl.', left = this.expression(item.left, receiver), right = this.expression(item.right, receiver);
         if (item.operator === 'and' || item.operator === 'or') return '(' + left + (item.operator === 'and' ? ' && ' : ' || ') + right + ')';
