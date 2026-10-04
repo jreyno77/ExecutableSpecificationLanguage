@@ -2,15 +2,16 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Check } from './checking.js';
 import type { Configuration } from './configuration.js';
-import { bareModule } from './configuration-schema.js';
 import type { SourceDocument, SyntaxDiagnostic } from './grammar/source.js';
 import { LangiumModel } from './langium-model.js';
 import { LangiumReader } from './langium/reader.js';
-import type { ModuleModel, ModelNode } from './model.js';
+import type { ModuleModel, NodeId } from './model.js';
 import type { ResolutionDependencies } from './resolution.js';
 import type { ProblemLocation } from './resolution/problem.js';
 import type { ModuleLocator } from './source-composer.js';
+import type { LoadedLibraries } from './library-loader.js';
 import { nativePath, SourceFiles } from './source-files.js';
+import { localFilename, validLocator, references, ordinal } from './source-references.js';
 
 export interface SourceCapture {
   readonly source: Readonly<SourceDocument>;
@@ -34,7 +35,8 @@ export class SourceLoader {
     if (!nativePath(manifestLocation) || !isAbsolute(manifestLocation)) throw new TypeError('Provide a fully qualified absolute manifest filename.');
     this.directory = dirname(manifestLocation);
   }
-  async load(configuration: Configuration, dependencies: ResolutionDependencies): Promise<SourceLoad> {
+  async load(input: Configuration, dependencies: ResolutionDependencies, libraries?: LoadedLibraries): Promise<SourceLoad> {
+    const configuration = structuredClone(input);
     const files = new SourceFiles(this.directory, configuration), syntax: SyntaxDiagnostic[] = [];
     const models = new Map<string, ModuleModel>(), selected = new Map(dependencies.modules
       .filter(model => configuration.libraries.some(library => library.module === model.locator)).map(model => [model.locator, model]));
@@ -42,9 +44,12 @@ export class SourceLoader {
       if (typeof model[method] !== 'function') throw new TypeError('Supplied module ' + model.locator + ' needs a callable ' + method + '().');
     }
     const mappings = new Map<string, string | undefined>(), visited = new Set<string>(), parsed = new Set<string>();
+    const acquired = captureLibraries(libraries, selected, mappings, files);
     const entries: ModuleModel[] = [], entryUses = new Map<string, ProblemLocation>();
     const names = [...configuration.build.entries], packages = dependencies.packages.map(item => ({ ...item, phases: [...item.phases] }));
     await files.initialize();
+    await files.initialize(configuration.libraries.flatMap((library, index) => library.source === undefined ? [] : [{ path: library.source,
+      at: { kind: 'dependency' as const, path: ['manifest', configuration.sourceId, 'libraries', index, 'source'] } }]), 'excluded');
     const read = async (selectedPath: string, at: ProblemLocation): Promise<ModuleModel | undefined> => {
       const capture = await files.read(selectedPath, at);
       if (!capture) return undefined;
@@ -71,10 +76,12 @@ export class SourceLoader {
         let target: ModuleModel | undefined;
         if (/^\.{1,2}\//.test(text)) {
           if (!local) {
-            files.problem('unsupported-library-source', 'Supplied library ' + model.locator + ' has no captured filesystem root for ' + text + '.', at);
-            continue;
-          }
-          target = await read(resolve(dirname(fileURLToPath(model.locator)), text), at);
+            if (!acquired.has(model.locator)) {
+              files.problem('unsupported-library-source', 'Supplied library ' + model.locator + ' has no captured filesystem root for ' + text + '.', at);
+              continue;
+            }
+            target = acquired.get(mappings.get(key) ?? '');
+          } else target = await read(resolve(dirname(fileURLToPath(model.locator)), text), at);
         } else target = selected.get(text);
         mappings.set(key, target?.locator);
         if (target) await visit(target, models.has(target.locator));
@@ -98,7 +105,7 @@ export class SourceLoader {
     })).sort((a, b) => ordinal(a.source.sourceId, b.source.sourceId));
     const problems = files.problems.sort((a, b) => ordinal(JSON.stringify(a.at), JSON.stringify(b.at)) || ordinal(a.code, b.code));
     syntax.sort((a, b) => ordinal(a.primaryRange.sourceId, b.primaryRange.sourceId) || a.primaryRange.start.offset - b.primaryRange.start.offset);
-    const supplied = [...models.values(), ...selected.values()];
+    const supplied = [...new Set([...models.values(), ...selected.values(), ...acquired.values()])];
     return { captures: Object.freeze(captures), syntax, problems, deferred: [],
       ...(!problems.length && !syntax.length ? { value: {
         entries: entries.map(entry => ({ entry, dependencies: { modules: supplied.filter(model => model !== entry), packages } })),
@@ -106,20 +113,67 @@ export class SourceLoader {
       } } : {}) };
   }
 }
-function localFilename(path: string): boolean {
-  return nativePath(path) && !/[\\*?\[\]{}]/.test(path) && !/^(?:\/|[a-z][a-z\d+.-]*:)/i.test(path) && path.endsWith('.expec');
+
+/** Capture the supplied relative graph; the provider owns its filesystem provenance. */
+function captureLibraries(input: LoadedLibraries | undefined, selected: ReadonlyMap<string, ModuleModel>,
+  mappings: Map<string, string | undefined>, files: SourceFiles): Map<string, ModuleModel> {
+  const models = new Map<string, ModuleModel>();
+  if (input === undefined) return models;
+  if (!input || !Array.isArray(input.inventory) || !Array.isArray(input.modules) || typeof input.locate !== 'function') {
+    throw new TypeError('Provide library inventory, models and a callable locator.');
+  }
+  const problem = (message: string, path: readonly (string | number)[]) => files.problem('invalid-library-input', message,
+    { kind: 'dependency', path: ['libraries', ...path] });
+  const sourceOwners = new Map<string, string>();
+  for (const [index, model] of input.modules.entries()) {
+    for (const method of ['roots', 'nodes', 'node', 'children', 'parent', 'resolution'] as const) {
+      if (!model || typeof model[method] !== 'function') throw new TypeError('A library model needs callable ' + method + '().');
+    }
+    if (typeof model.locator !== 'string' || !model.locator.trim() || models.has(model.locator)) {
+      problem('Library module locators must be nonblank and unique.', ['modules', index]); continue;
+    }
+    models.set(model.locator, model);
+    const seen = new Set<NodeId>();
+    const visit = (id: NodeId): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const node = model.node(id);
+      if (node.origin.kind !== 'builtin' && node.origin.module !== model.locator) problem('A library node has a foreign module owner.', ['modules', index]);
+      if (node.origin.kind === 'source') {
+        const source = node.origin.range.sourceId, owner = sourceOwners.get(source);
+        if (owner !== undefined && owner !== model.locator) problem('A source belongs to different supplied library modules.', ['modules', index]);
+        else sourceOwners.set(source, model.locator);
+      }
+      for (const child of model.children(id)) visit(child);
+    };
+    for (const id of model.roots()) visit(id);
+  }
+  const reached = new Set<string>(), entries = new Set<string>();
+  const visit = (model: ModuleModel): void => {
+    if (reached.has(model.locator)) return;
+    reached.add(model.locator);
+    for (const { text, at } of references(model)) {
+      if (!/^\.{1,2}\//.test(text)) continue;
+      const key = JSON.stringify([model.locator, text]);
+      if (!mappings.has(key)) {
+        const target = input.locate(model.locator, text);
+        if (target !== undefined && (typeof target !== 'string' || !target.trim())) throw new TypeError('A library locator must return a nonblank key or undefined.');
+        mappings.set(key, target);
+      }
+      const target = models.get(mappings.get(key) ?? '');
+      if (!target) files.problem('invalid-library-input', 'A captured relative reference needs its supplied target.', at);
+      else visit(target);
+    }
+  };
+  for (const [index, item] of input.inventory.entries()) {
+    if (!item || !item.model || typeof item.version !== 'string') throw new TypeError('Provide a versioned library model.');
+    const model = item.model;
+    if (entries.has(model.locator) || selected.get(model.locator) !== model || models.get(model.locator) !== model) {
+      problem('The acquired entry must be the exact selected model, supplied once.', ['inventory', index]);
+    }
+    entries.add(model.locator);
+    if (models.get(model.locator) === model) visit(model);
+  }
+  for (const locator of models.keys()) if (!reached.has(locator)) problem('A supplied library module is not reached from an acquired entry.', ['modules', locator]);
+  return models;
 }
-function validLocator(text: string): boolean {
-  return /^\.{1,2}\//.test(text) ? localFilename(text) : bareModule(text);
-}
-function references(model: ModuleModel): { text: string; at: ProblemLocation }[] {
-  const directives: ModelNode<'use' | 'include' | 'examples-attachment'>[] =
-    [...model.nodes('use'), ...model.nodes('include'), ...model.nodes('examples-attachment')];
-  const result = directives.map(node => {
-    const literal = model.node(node.locator, 'string-literal');
-    return { text: literal.value, at: literal.origin };
-  });
-  for (const node of model.nodes('reference')) if (node.lookup?.kind === 'module') result.push({ text: node.lookup.locator, at: node.origin });
-  return result.sort((a, b) => a.at.kind === 'source' && b.at.kind === 'source' ? a.at.range.start.offset - b.at.range.start.offset : 0);
-}
-function ordinal(a: string, b: string): number { return a < b ? -1 : a > b ? 1 : 0; }

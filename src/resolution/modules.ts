@@ -14,9 +14,10 @@ export class Modules {
   get composing(): boolean { return !!this.policy; }
   private readonly located = new Map<string, string | undefined>();
 
-  constructor(entry: ModuleModel, supplied: readonly ModuleModel[], private readonly policy?: ModuleLocator) {
-    const inputs = [entry, ...supplied].map(inspection => new SourceIndex(inspection));
-    const locations = inputs.map((_, index): ProblemLocation => ({
+  constructor(entry: ModuleModel, supplied: readonly ModuleModel[], private readonly policy?: ModuleLocator,
+    workspace?: { readonly roots: readonly ModuleModel[]; readonly locations: readonly ProblemLocation[] }) {
+    const models = [entry, ...supplied], inputs = models.map(inspection => new SourceIndex(inspection));
+    const locations = workspace?.locations ?? inputs.map((_, index): ProblemLocation => ({
       kind: 'dependency', path: index === 0 ? ['entry', 'locator'] : ['modules', index - 1, 'locator'],
     }));
     const byLocator = new Map<string, SourceIndex>();
@@ -98,8 +99,9 @@ export class Modules {
         if (dependency && !this.failures.has(target)) visit(dependency);
       }
     };
-    visit(inputs[0]!);
-    const ordered = [inputs[0]!, ...[...reached.values()].filter(input => input !== inputs[0])
+    const roots = workspace ? workspace.roots.map(root => inputs[models.indexOf(root)]!) : [inputs[0]!];
+    for (const root of roots) visit(root);
+    const ordered = [roots[0]!, ...[...reached.values()].filter(input => input !== roots[0])
       .sort((a, b) => a.locator < b.locator ? -1 : a.locator > b.locator ? 1 : 0)];
     this.rejectIncludeCycles(ordered);
     const consumed = new Set([...this.includes.values()].flatMap(edges => edges.flatMap(({ directive }) => [directive.id, directive.locator])));

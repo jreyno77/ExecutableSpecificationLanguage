@@ -1,6 +1,8 @@
 import type { Diagnostic } from './checking.js';
 import type { ProjectContext, ProjectRoot, ProjectSnapshot } from './project-connection.js';
 import { ProjectFiles, fail, hash, literal, marker, message, problem, sameIdentity, sameObservation, type ObservedFile } from './project-files.js';
+import { packagePath, sameReadOnly, validateReadOnly } from './project-readonly.js';
+import { nativeInputs, protectsNativeInput, sameNativeInputs } from './native-inputs.js';
 
 export interface ProjectWriter { apply(input: ProjectChanges, signal?: AbortSignal): Promise<WriteResult> }
 export interface ProjectChanges { readonly basedOn: ProjectSnapshot; readonly changes: readonly FileChange[] }
@@ -35,8 +37,8 @@ export class FileProjectWriter implements ProjectWriter {
       const fresh = await this.context.readSnapshot();
       await files.verifyLock();
       if (!fresh.complete || fresh.problems.length) fail(root, 'incomplete-project', '', 'A complete current project snapshot is required.');
-      if (!sameRoot(root, fresh.root) || !sameList(basedOn.excludeNames, fresh.excludeNames)) {
-        fail(root, 'stale-project', '', 'Project root or exclusion policy changed.');
+      if (!sameRoot(root, fresh.root) || !sameList(basedOn.excludeNames, fresh.excludeNames) || !sameReadOnly(basedOn, fresh) || !sameNativeInputs(basedOn, fresh)) {
+        fail(root, 'stale-project', '', 'Project root, exclusions, or native inputs changed.');
       }
       const actual = fresh.files.filter(file => file.path !== marker);
       if (!sameList([...basedOn.excluded].sort(), [...fresh.excluded].sort())
@@ -92,6 +94,8 @@ export class FileProjectWriter implements ProjectWriter {
             await files.write(change.to, target.bytes, checked.get(change.to)!, Number(source.info!.mode & 0o777n));
             const destination = await files.read(change.to);
             if (!sameObservation(destination.value, desired[1]!)) fail(root, 'verification-failed', change.to, 'Move destination was not verified; source was retained.');
+            expected.set(change.to, target.version);
+            cancel(); await guard(); cancel();
             currentPath = change.from;
             await files.remove(change.from, source);
           }
@@ -142,6 +146,8 @@ function validate(root: ProjectRoot, baseline: ProjectSnapshot, changes: readonl
   const invalid = (path: string, text: string) => fail(root, 'invalid-change', path, text);
   if (!baseline.complete || baseline.problems.length) fail(root, 'incomplete-project', '', 'A complete baseline is required.');
   if (!sameRoot(root, baseline.root)) fail(root, 'stale-project', '', 'The baseline belongs to another project root.');
+  if (!validateReadOnly(baseline)) invalid('', 'Read-only native evidence must be valid, separate, and hash-verified.');
+  if (!nativeInputs(baseline)) invalid('', 'Native inputs require unique canonical local file URLs and SHA256 byte versions.');
   if (baseline.excludeNames.includes('.expec')) invalid('.expec', 'The writer coordination directory cannot be excluded.');
   if (new Set(baseline.files.map(file => file.path)).size !== baseline.files.length
     || baseline.files.some(file => !literal(file.path) || !/^[a-f0-9]{64}$/.test(file.version) || hash(file.bytes) !== file.version)
@@ -151,9 +157,9 @@ function validate(root: ProjectRoot, baseline: ProjectSnapshot, changes: readonl
     if (!['write', 'remove', 'move'].includes(change.kind)) invalid('', 'Unknown file operation.');
     for (const path of paths(change)) {
       const reserved = process.platform === 'win32' ? path.toLowerCase() : path;
-      if (!literal(path) || path.split('/').some(part => baseline.excludeNames.includes(part))
+      if (!literal(path) || packagePath(path) || protectsNativeInput(baseline, path) || baseline.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) || path.split('/').some(part => baseline.excludeNames.includes(part))
         || reserved === marker || reserved.startsWith(marker + '/') || reserved === '.expec') {
-        invalid(path, 'Provide a literal, included file path outside writer coordination.');
+        invalid(path, 'Provide a literal, included file path outside writer coordination and protected native inputs.');
       }
       if (used.some(other => path === other || path.startsWith(other + '/') || other.startsWith(path + '/'))) {
         invalid(path, 'File operations cannot overlap or use another endpoint as a parent.');

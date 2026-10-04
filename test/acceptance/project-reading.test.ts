@@ -436,19 +436,20 @@ describe('the supplied capture bounds TypeScript configuration and resolution', 
     project.expectNoAmbientProjectFileReads();
   });
 
-  it('uses a package declaration when its manifest and bytes are explicitly captured', async () => {
-    const project = await ProjectReading.create({ excludeNames: ['.git'] });
+  it('uses a captured read-only package declaration without claiming its native symbol', async () => {
+    const project = await ProjectReading.create();
     await project.files({
       'node_modules/storage-lib/package.json': '{"name":"storage-lib","types":"index.d.ts"}',
       'node_modules/storage-lib/index.d.ts': 'export declare class Storage { write(value: string): void }',
       'store.ts': 'import { Storage } from "storage-lib";\nexport class StoreGame { storage = new Storage(); }',
     });
     project.associateSymbol('store', 'store.ts', [{ kind: 'class', name: 'StoreGame' }]);
-    project.associateSymbol('storage', 'node_modules/storage-lib/index.d.ts', [{ kind: 'class', name: 'Storage' }]);
+    project.captureNativeDependencies();
 
     await project.search('store');
 
-    project.expectOutgoingTo('storage', { file: 'store.ts', text: 'Storage', within: 'new Storage()', role: 'construct' });
+    project.expectNativeTarget({ file: 'node_modules/storage-lib/index.d.ts', declaration: 'export declare class Storage { write(value: string): void }' },
+      { file: 'store.ts', text: 'Storage', within: 'new Storage()', role: 'construct' });
     project.expectSearchCompleteWithinDeclaredScope();
   });
 

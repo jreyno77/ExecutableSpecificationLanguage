@@ -9,6 +9,73 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
+  expectShoppingSteps(steps: string[]): void {
+    this.expectConsumerRan(); const observed = this.driver.report.acceptance!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    for (const step of steps) expect(observed.scenario).toContain(step);
+  }
+  expectShoppingPassed(title: string): void {
+    expect(this.driver.report.acceptance!.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+  }
+  expectBrokenBasketFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.acceptance!.broken;
+    expect(observed).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+  }
+  expectAcceptanceAndDriverPreserved(): void {
+    const observed = this.driver.report.acceptance!;
+    expect(observed.driverAfter).toBe(observed.driverBefore); expect(observed.unchangedTests).toBe(true);
+  }
+  applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
+    return this.driver.applyWriteAfterNativeReplacement(input);
+  }
+  expectExternalNativeChangeStopsWrite(file: string, before: string, after: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeInputs!;
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes).toMatchObject([{ change: { kind: 'write', path: file }, state: 'not-applied',
+      before: [{ path: file, state: 'absent' }], after: [{ path: file, state: 'absent' }] }]);
+    expect(native.targetExists).toBe(false);
+    expect(native.before).toBe(before); expect(native.after).toBe(after);
+    expect(native.evidence).toHaveLength(1);
+    expect(native.evidence[0]).toEqual({ uri: native.actualUri, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.laterVersion).not.toBe(native.evidence[0]!.version);
+    expect(native.editable).not.toContain(native.actualUri);
+    expect(native.handwritten).toBe('Keep this handwritten note.');
+  }
+  compileWorkspace(files: Record<string, string>, entries: string[]) { return this.driver.compileWorkspace(files, entries); }
+  expectWorkspaceFunctions(names: string[]) {
+    this.expectConsumerRan(); expect(this.driver.report.workspace?.functions).toEqual(names);
+  }
+  expectSharedWorkspaceType(name: string, parameters: number) {
+    const workspace = this.driver.report.workspace!;
+    expect(workspace.books).toEqual([name]); expect(workspace.parameters).toBe(parameters);
+    expect(workspace.bothParametersUseBook).toBe(true); expect(workspace.bookIdentityRecords).toBe(1);
+  }
+  provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
+  installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
+  loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }
+  expectAcquiredFieldType(name: string, type: string) {
+    this.expectConsumerRan(); expect(this.driver.report.acquisition?.problems).toEqual([]); expect(this.driver.report.acquisition?.syntax).toEqual([]);
+    expect(this.driver.report.acquisition?.fields).toContainEqual({ name, type });
+  }
+  expectSelectedAndInstalledStorage(version: string) {
+    this.expectConsumerRan(); const packages = this.driver.report.acquisition?.packages;
+    expect(packages).toEqual({ value: [{ name: 'npm:example-storage', version }], packages: [{ name: 'npm:example-storage', requested: '^2', selected: version, installed: version }], problems: [], deferred: [] });
+  }
+  expectNoLibraryModuleInWorkspaceOwnership() {
+    const report = this.driver.report.acquisition!;
+    expect(report.libraryOrigins).toHaveLength(2); expect(report.workspace).toHaveLength(1);
+    expect(report.workspace![0]).toMatch(/\/main\.expec$/);
+    expect(report.libraryOrigins!.every(source => source.includes('/libraries/books/'))).toBe(true);
+    expect(report.libraryOrigins!.some(source => report.workspace!.includes(source))).toBe(false);
+  }
   installPackageWithoutFile(path: string): Promise<void> { return this.driver.install({ withoutFile: path }); }
   installPackageWithoutDependency(name: string): Promise<void> { return this.driver.install({ withoutDependency: name }); }
   check(text: string): Promise<void> { return this.driver.check(text); }
@@ -21,6 +88,117 @@ export class PackageExamples {
   writeCountConsumer(title: string): Promise<void> { return this.driver.writeCountConsumer(title); }
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
+
+  preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    return this.driver.preserveTypeScript(input);
+  }
+  expectAdoptedSourceUnchanged(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.preservation!;
+    expect(observed.adopted).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.afterAdoption).toBe(observed.original); expect(observed.generatedDuplicate).toBe(false);
+  }
+  expectPreservedNativeSource(source: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.updated).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.retainedIdentity).toBe(true); expect(observed.source).toContain(source);
+    expect(observed.source).not.toContain('Not implemented');
+  }
+  expectPreservedCaller(source: string): void { expect(this.driver.report.preservation?.caller).toContain(source); }
+  expectPreservedRuntimeOutput(text: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.diagnostics).toEqual([]); expect(observed.runtime).toMatchObject({ code: 0, stderr: '' });
+    expect(observed.runtime!.stdout.trim()).toBe(text);
+  }
+
+  captureNativeDependencies(packages: Record<string, string>): Promise<void> { return this.driver.captureNativeDependencies(packages); }
+  expectInstalledMethodConsumer(file: string, name: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeContext!, text = native.files[file]!, start = text.indexOf(name);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.search.problems).toEqual([]);
+    expect(native.search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.outgoing).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
+    expect(native.search.incoming.uses).toContainEqual({ target: { kind: 'project', id: expect.any(String) },
+      at: { outputId: 'native', format: 'typescript-site-1', value: {
+        file, version: native.versions[file], start, end: start + name.length, role: 'call',
+      } },
+    });
+  }
+  expectReadOnlyNativeEvidence(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.readonly).toContainEqual({ path, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.editable).not.toContain(path);
+    expect(native.packages).toEqual({ vitest: '5.0.2', '@types/node': '24.13.6' });
+    expect(native.capturedText).toBe(native.originalText);
+    expect(native.diskText).toBe(native.originalText + '\n// Installed consumer changes consulted evidence.\n');
+  }
+  expectChangedNativeEvidenceStopsWrite(path: string): void {
+    const native = this.driver.report.nativeContext!;
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes.some(outcome => outcome.state === 'applied')).toBe(false);
+    expect(native.notesExist, 'No prepared ' + path + ' write should have happened.').toBe(false);
+  }
+  initializeProject(root: string, target: string): Promise<void> { return this.driver.initializeProject(root, target); }
+  expectInstalledInitialization(paths: string[]): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.initialization!;
+    expect(observed.prepared.problems).toEqual([]);
+    expect(observed.prepared.value?.changes.map(change => change.kind === 'move' ? change.to : change.path)).toEqual(paths);
+    expect(observed.result).toMatchObject({ status: 'applied', problems: [], deferred: [], write: { status: 'applied', problems: [] } });
+    expect(observed.connectedRoot?.path).toBe(observed.selectedRoot?.actual);
+    expect(observed.result?.createdRoot).toBe(observed.selectedRoot?.requested);
+    expect(observed.snapshot).toMatchObject({ complete: true, problems: [], excluded: [] });
+    expect(observed.snapshot?.files.map(file => file.path).sort()).toEqual([...paths].sort());
+    expect(observed.snapshot?.files).toContainEqual({ path: 'src/index.ts', text: 'export {};\n' });
+    expect(observed.beforeBuildEntries?.sort()).toEqual(['.gitignore', 'package.json', 'src', 'tsconfig.json']);
+    expect(JSON.parse(observed.manifest)).toEqual({ formatVersion: 1, version: '0.1.0', build: { entries: ['store.expec'] } });
+  }
+  expectInstalledToolchainAcquired(name: string, version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.acquisition).toMatchObject({ problems: [], deferred: [],
+      packages: [{ name: 'npm:' + name, requested: version, selected: version, installed: version }] });
+    expect(observed.result?.value?.configuration.packages).toEqual([
+      { alias: name, name: 'npm:' + name, version, phases: ['build'] },
+    ]);
+  }
+  expectInstalledStarterBuild(version: string): void {
+    const observed = this.driver.report.initialization!;
+    expect(observed.typescript?.version).toBe(version);
+    expect(this.driver.compilerInsideProject).toBe(true);
+    expect(observed.build?.code, observed.build?.output).toBe(0);
+    expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
+  }
+
+  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
+    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised, handwrittenParameter);
+  }
+  expectInstalledTypeScriptScaffold(message: string): void {
+    this.expectConsumerRan();
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.validDiagnostics).toEqual([]);
+    expect(observed.runtime).toEqual({ name: 'Error', message });
+    expect(observed.notes).toBe('Keep the deployment note.');
+    expect(observed.typescript.version).toBe('5.9.3');
+    expect(this.driver.typescriptInsideConsumer).toBe(true);
+  }
+  expectInvalidNativeArgument(text: string): void {
+    expect(this.driver.report.typescriptOutput?.invalidDiagnostics).toEqual([
+      { code: 2345, file: 'invalid.mts', text, message: "Argument of type 'number' is not assignable to parameter of type 'string'." },
+    ]);
+  }
+  expectConflictingNativeSignatureProtected(): void {
+    const observed = this.driver.report.typescriptOutput!;
+    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'contract-drift' }));
+    expect(observed.update?.receipt).toBeUndefined();
+    expect(observed.after).toBe(observed.handwritten);
+    expect(observed.after).toContain('// Keep the handwritten retry rationale.');
+    expect(observed.baseline).toBe(observed.source);
+    expect(observed.baseline).not.toContain('handwritten retry rationale');
+    expect(observed.stateAfter).toBe(observed.stateBefore);
+  }
 
   readTypeScriptProject(files: Record<string, string>): Promise<void> { return this.driver.readTypeScriptProject(files); }
   expectInstalledProjectFile(file: string, text: string): void {
