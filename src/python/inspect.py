@@ -149,4 +149,19 @@ if "rewrite" in request and not problems:
     specification.loader.exec_module(preservation)
     result["rewritten"], failures = preservation.preserve(request["rewrite"], root, result)
     result["problems"].extend(failures)
+    if not failures and (move := request["rewrite"].get("move")):
+        from libcst.helpers import calculate_module_and_package
+        specification = importlib.util.spec_from_file_location("expec_relocation", pathlib.Path(__file__).with_name("relocation.py"))
+        relocation = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(relocation)
+        for item in result["rewritten"]:
+            if item["file"] == move["from"]:
+                item.update(file=move["to"], text=request["rewrite"]["after"])
+                continue
+            selected = next(path for path in request["mainPaths"] + request["testPaths"] if (root / item["file"]).is_relative_to(path))
+            package = calculate_module_and_package(selected, root / item["file"]).package
+            try:
+                item["text"] = relocation.relocate(cst.parse_module(item["text"].encode("utf-8")), move["old"], move["next"], package).bytes.decode("utf-8")
+            except ValueError as error:
+                result["problems"].append({"code": "incomplete-native-references", "file": item["file"], "message": str(error)})
 print(json.dumps(result, ensure_ascii=True))

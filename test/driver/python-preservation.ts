@@ -8,6 +8,7 @@ import { PythonProjectDriver } from './python-project.js';
 export class PythonPreservationDriver extends PythonProjectDriver {
   diff!: SpecDiff;
   readonly captureProblems: Diagnostic[] = [];
+  private module = 'store.contracts';
   override async installFixture(): Promise<void> {
     await super.installFixture(); const actual = this.context;
     this.context = { root: actual.root, readSnapshot: async () => { const snapshot = await actual.readSnapshot(); this.captureProblems.push(...snapshot.problems); return snapshot; } };
@@ -40,8 +41,13 @@ export class PythonPreservationDriver extends PythonProjectDriver {
     const diff = this.identity.compare(before, this.current); if (!diff.value) throw new Error(JSON.stringify(diff)); this.diff = diff.value;
   }
   async update(): Promise<void> {
-    const opened = this.outputs.open('python', { module: 'store.contracts' }, this.context, new FileProjectWriter(this.context));
+    const opened = this.outputs.open('python', { module: this.module }, this.context, new FileProjectWriter(this.context));
     this.written = opened.value ? await opened.value.update(this.diff, this.current) : { problems: opened.problems }; this.remember();
+  }
+  relocate(module: string): void {
+    this.module = module;
+    const diff = this.identity.compare(this.current.baseline, this.current);
+    if (!diff.value) throw new Error(JSON.stringify(diff)); this.diff = diff.value;
   }
   async implementSave(body: string): Promise<void> {
     const path = 'src/store/contracts.py', text = await this.text(path), stub = 'raise NotImplementedError("Not implemented: StoreGame.save")';

@@ -29,6 +29,12 @@ async function preserve(before: string, current: string, after: string, { added 
 }
 const before = 'class StoreGame:\n    def save(self, title: str) -> None:\n        raise NotImplementedError()\n';
 describe('native Python declaration edits', () => {
+  it('refuses removing a parameter that carries a handwritten comment', async () => {
+    const generated = 'class StoreGame:\n    def save(self, title: str, copies: float) -> None:\n        raise NotImplementedError()\n';
+    const current = 'class StoreGame:\n    def save(\n        self,\n        title: str,\n        copies: float,  # Keep this copy rationale.\n    ) -> None:\n        raise NotImplementedError()\n';
+    const result = await preserve(generated, current, before);
+    expect(result.problems.map(problem => problem.code)).toContain('output-conflict'); expect(result.files).toEqual([]);
+  });
   it('removes only an unreferenced unchanged generated method', async () => {
     const result = await preserve(before, before, 'class StoreGame:\n    pass\n', { retired: ['save'] });
     expect(result.problems).toEqual([]); expect(result.files[0]?.text).not.toContain('def save'); expect(result.files[0]?.text).toContain('class StoreGame:');

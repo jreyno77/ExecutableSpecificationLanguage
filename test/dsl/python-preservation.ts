@@ -12,8 +12,11 @@ export class PythonEvolution {
   change(text: string): void { this.driver.change(text); }
   renameCapability(from: string, to: string, text: string): void { this.driver.renameCapability(from, to, text); }
   retireCapability(name: string, text: string): void { this.driver.retireCapability(name, text); }
+  relocate(module: string): void { this.driver.relocate(module); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   async expectFileText(path: string, text: string): Promise<void> { expect(await this.driver.text(path)).toBe(text); }
+  async expectFileAbsent(path: string): Promise<void> { await expect(this.driver.text(path)).rejects.toMatchObject({ code: 'ENOENT' }); }
+  async checkConsumer(text: string): Promise<void> { await this.driver.checkConsumer(text); expect(this.driver.native.code, this.driver.native.text).toBe(0); }
   expectDefinitionFiles(files: string[]): void { expect([...new Set(this.driver.written.artifacts?.map(item => (item.locator.value as { file: string }).file))].sort()).toEqual(files); }
   update(): Promise<void> { return this.driver.update(); }
   implementSave(body: string): Promise<void> { return this.driver.implementSave(body); }

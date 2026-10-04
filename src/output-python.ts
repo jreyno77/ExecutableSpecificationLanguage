@@ -19,6 +19,7 @@ const schema = z.strictObject({ format: z.literal(1), options: z.string(), path:
 type State = z.infer<typeof schema>;
 const statePath = '.expec/outputs/707974686f6e.json';
 const placement = ({ adoptExisting: _permission, ...options }: PythonOptions): string => canonical(options);
+const contract = ({ module: _module, directory: _directory, adoptExisting: _permission, ...options }: PythonOptions): string => canonical(options);
 type Location = { file: string; declaration: { kind: string; name: string }[] };
 
 /** Retained subjects keep their actual files; new members follow their mapped native owner. */
@@ -50,10 +51,12 @@ class PythonOutput implements OutputAdapter {
     const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
     try {
       const state = schema.parse(readJson(new TextDecoder('utf8', { fatal: true }).decode(file.bytes), (_code, message) => { throw Error(message); }));
-      if (hash(Buffer.from(state.generated)) !== state.hash || new Set(state.authored).size !== state.authored.length
+      if (hash(Buffer.from(state.generated)) !== state.hash || state.artifacts.some(item => item.locator.format !== 'python-symbol-1')
+        || new Set(state.authored).size !== state.authored.length
         || state.authored.some(id => !state.artifacts.some(item => item.specId === id))) throw Error('Invalid generated ownership.');
       new PythonProject({ outputId: this.id }, state.artifacts);
-      return state.options === placement(this.options) ? success(state) : failure('output-options-changed', 'Python placement requires an explicit migration.', [statePath]);
+      return contract(pythonOptions.parse(JSON.parse(state.options))) === contract(this.options) ? success(state)
+        : failure('output-options-changed', 'Python contract mappings require an explicit migration.', [statePath]);
     } catch { return failure('invalid-output-state', 'Recorded Python ownership or generated text is invalid.', [statePath]); }
   }
   async read(id: string, snapshot: ProjectSnapshot) {
@@ -92,7 +95,13 @@ class PythonOutput implements OutputAdapter {
         adopted.push(matches[0]!);
       }
     }
-    const artifacts = locate(file.artifacts, previous?.artifacts ?? adopted);
+    const moving = previous && previous.path !== file.path;
+    if (moving && request.operation !== 'update') return failure('use-update', 'Use update to move an existing Python module.');
+    if (moving && (previous.authored.length || previous.artifacts.some(item => (item.locator.value as Location).file !== previous.path)
+      || snapshot.files.find(item => item.path === previous.path)?.version !== previous.hash))
+      return failure('output-conflict', 'Only an unchanged generated module can move; handwritten content stays in its existing file.', [previous.path]);
+    if (moving && snapshot.files.some(item => item.path === file.path)) return failure('output-conflict', 'The requested Python module destination already exists.', [file.path]);
+    const artifacts = moving ? [...file.artifacts] : locate(file.artifacts, previous?.artifacts ?? adopted);
     const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)),
       authored: previous?.authored ?? [...new Set(adopted.map(item => item.specId))], artifacts };
     const changes: FileChange[] = [];
@@ -101,12 +110,14 @@ class PythonOutput implements OutputAdapter {
       if (previous.artifacts.some(item => !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must retain or explicitly retire earlier subjects.');
       if (request.operation === 'create' && previous.hash !== next.hash) return failure('use-update', 'Use update for changed existing Python contracts.');
       const inspected = await inspectPython(snapshot, this.options.configFile, { before: previous.generated, after: next.generated,
-        previous: previous.artifacts, next: next.artifacts, authored: previous.authored });
+        previous: previous.artifacts, next: next.artifacts, authored: previous.authored,
+        ...(moving ? { move: { from: previous.path, to: next.path, old: pythonOptions.parse(JSON.parse(previous.options)).module, next: this.options.module } } : {}) });
       if (inspected.problems.length || !inspected.value?.rewritten) return { problems: inspected.problems.length ? inspected.problems : [outputProblem('python-preservation-unavailable', file.path, 'Native preservation returned no result.')], deferred: [] };
       for (const rewritten of inspected.value.rewritten) {
         const bytes = Buffer.from(rewritten.text), before = snapshot.files.find(item => item.path === rewritten.file);
         if (!before || before.version !== hash(bytes)) changes.push({ kind: 'write', path: rewritten.file, bytes });
       }
+      if (moving) changes.push({ kind: 'remove', path: previous.path });
     } else if (supplied.length) {
       const inspected = await inspectPython(snapshot, this.options.configFile, { before: file.text, after: file.text, previous: artifacts, next: artifacts });
       if (inspected.problems.length || !inspected.value?.rewritten) return { problems: inspected.problems.length ? inspected.problems : [outputProblem('python-preservation-unavailable', file.path, 'Native adoption returned no result.')], deferred: [] };
@@ -114,12 +125,14 @@ class PythonOutput implements OutputAdapter {
         return failure('output-conflict', 'Initial adoption must preserve every handwritten byte.');
     } else {
       if (snapshot.files.some(item => item.path === file.path)) return failure('output-conflict', 'Existing Python code needs explicit preserving adoption.', [file.path]);
+      changes.push({ kind: 'write', path: file.path, bytes: Buffer.from(file.text) });
+    }
+    if (moving || !previous && !supplied.length) {
       const parts = file.path.split('/');
       for (let depth = 2; depth < parts.length; depth++) {
         const path = parts.slice(0, depth).join('/') + '/__init__.py';
         if (!snapshot.files.some(item => item.path === path)) changes.push({ kind: 'write', path, bytes: Buffer.from('') });
       }
-      changes.push({ kind: 'write', path: file.path, bytes: Buffer.from(file.text) });
     }
     for (const change of changes) if (change.kind === 'write' && change.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
     const bytes = Buffer.from(canonical(next, 2) + '\n');

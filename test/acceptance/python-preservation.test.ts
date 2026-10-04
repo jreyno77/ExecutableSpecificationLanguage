@@ -3,6 +3,24 @@ import { PythonEvolution } from '../dsl/python-preservation.js';
 
 afterEach(() => PythonEvolution.dispose());
 describe('Python contracts evolve around handwritten implementation', { timeout: 240_000 }, () => {
+  it('moves a purely generated module and updates its actual native consumer', async () => {
+    const p = await PythonEvolution.create();
+    p.source('class StoreGame { public save\ncapability save(title: Text) returns Nothing }'); await p.generate();
+    const launcher = '# Keep this import alias and comment.\nfrom store.contracts import StoreGame as Game\ndef start() -> Game:\n    return Game()\n';
+    await p.file('src/launcher.py', launcher);
+    p.relocate('store.api'); await p.update(); p.expectApplied();
+    await p.expectFileAbsent('src/store/contracts.py'); await p.expectFileText('src/launcher.py', launcher.replace('store.contracts', 'store.api'));
+    p.expectDefinitionFiles(['src/store/api.py']);
+    await p.checkConsumer('from launcher import start\nfrom store.api import StoreGame\ngame: StoreGame = start()');
+    await p.run('from launcher import start\ntry:\n    start().save("Dune")\nexcept NotImplementedError:\n    print("save needs implementation")'); p.expectOutput('save needs implementation');
+  });
+  it('refuses a module move that would relocate handwritten implementation', async () => {
+    const p = await PythonEvolution.create();
+    p.source('class StoreGame { public save\ncapability save(title: Text) returns Nothing }'); await p.generate();
+    await p.implementSave('self.saved = title  # Keep this implementation.');
+    p.relocate('store.api'); await p.update(); p.expectRefused('output-conflict');
+    await p.expectFileAbsent('src/store/api.py'); await p.expectSaveImplementationKept('self.saved = title  # Keep this implementation.');
+  });
   it('retires an unused generated capability and retains the implemented save capability', async () => {
     const p = await PythonEvolution.create();
     p.source('class StoreGame { public save, unused\ncapability save(title: Text) returns Nothing\ncapability unused() returns Nothing }'); await p.generate();

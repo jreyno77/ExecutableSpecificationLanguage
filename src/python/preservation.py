@@ -87,6 +87,23 @@ def signature(current, wanted):
                                 returns=annotation(current.returns, wanted.returns))
 
 
+def parameters(signature):
+    for field in ("posonly_params", "params", "kwonly_params", "star_arg", "star_kwarg"):
+        value = getattr(signature, field)
+        yield from (item for item in (value if isinstance(value, (tuple, list)) else [value]) if isinstance(item, cst.Param))
+
+
+def has_comment(node):
+    class Comments(cst.CSTVisitor):
+        found = False
+
+        def visit_Comment(self, node):
+            self.found = True
+    visitor = Comments()
+    node.visit(visitor)
+    return visitor.found
+
+
 def preserve(request, root, facts=None):
     before = declarations(cst.parse_module(request["before"]))
     after = declarations(cst.parse_module(request["after"]))
@@ -133,6 +150,9 @@ def preserve(request, root, facts=None):
                     elif use["member"] and len(use["targets"]) != 1:
                         problem("incomplete-native-references", use["file"], "An uncertain native member cannot authorize this rename.")
             if isinstance(current, cst.FunctionDef) and isinstance(wanted, cst.FunctionDef):
+                retained = {parameter.name.value for parameter in parameters(wanted.params)}
+                if any(has_comment(parameter) for parameter in parameters(current.params) if parameter.name.value not in retained):
+                    problem("output-conflict", file, "Removing this parameter would discard its handwritten comment."); continue
                 replacements[current] = wanted
             elif isinstance(current, cst.AnnAssign) and isinstance(wanted, cst.AnnAssign):
                 replacements[current] = current.with_changes(annotation=wanted.annotation)

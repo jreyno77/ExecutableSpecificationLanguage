@@ -28,7 +28,10 @@ export type PythonFacts = z.infer<typeof result>;
 export const pythonTargetKey = (target: PythonFacts['declarations'][number]['target']): string => canonical([target.file, target.line, target.column]);
 
 /** Stages supplied editable bytes; native acquisition and stale-input refusal remain explicit. */
-export interface PythonRewrite { before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[] }
+export interface PythonRewrite {
+  before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[];
+  move?: { from: string; to: string; old: string; next: string };
+}
 export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
