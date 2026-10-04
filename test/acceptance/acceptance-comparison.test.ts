@@ -55,7 +55,7 @@ example "plain book": book() => dune }`);
 function book() returns Book
 examples { fixture dune: Book = { title: "Dune", copies: 1 }
 example "same record": book() => dune }`);
-    await project.mapApplicationReturning('book', 'return Object.assign(Object.create(null), { copies: 1, title: "Dune" });', 'export interface Book { title: string; copies: number }');
+    await project.mapApplicationReturning('book', 'return Object.assign(Object.create(null), { copies: 1, title: "Dune" }) as Book;', 'export interface Book { title: string; copies: number }');
     await project.generate({ domain: 'books' }); await project.runGeneratedVitest(); project.expectTestsPassed(['same record']);
     await project.replaceApplicationBody('book', 'return { title: "Dune", copies: 1, note: "extra" };'); await project.runGeneratedVitest();
     project.expectRecordDifference('same record', 'note', 'extra');
@@ -65,7 +65,7 @@ example "same record": book() => dune }`);
 function book() returns Book
 examples { fixture dune: Book = { title: "Dune" }
 example "data only": book() => dune }`);
-    await project.mapApplicationReturning('book', 'return { get title() { throw Error("getter ran"); } };', 'export interface Book { title: string }');
+    await project.mapApplicationReturning('book', 'return { get title(): string { throw Error("getter ran"); } };', 'export interface Book { title: string }');
     await project.generate({ domain: 'books' }); await project.runGeneratedVitest();
     project.expectComparisonDataFailure('data only', '$.title', 'accessor'); project.expectNoRuntimeFailureMessage('getter ran');
   }, 60_000);
