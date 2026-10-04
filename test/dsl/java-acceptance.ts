@@ -86,6 +86,9 @@ export class JavaAcceptance {
   installBarrierBasket(): Promise<void> { return this.driver.barrierBasket(); }
   runTests(options: {parallel?:boolean;classes?:string[]}={}): Promise<void> { return this.driver.run(options.parallel,options.classes); }
   expectIndependentBaskets(): void {
+    const initial=this.driver.native.stdout.split(/\r?\n/).filter(line=>/^DRIVER:\d+:INITIAL:Dune:/.test(line));
+    expect(initial).toHaveLength(2); expect(initial.map(line=>line.split(':')[1]).sort()).toEqual(['1','2']);
+    expect(initial.every(line=>line.endsWith(':INITIAL:Dune:0.0'))).toBe(true);
     const lines=this.driver.native.stdout.split(/\r?\n/).filter(line=>/^DRIVER:\d+:BASKET:Dune:/.test(line));
     expect(lines).toHaveLength(2); expect(lines.map(line=>line.split(':')[1]).sort()).toEqual(['1','2']);
     expect(lines.every(line=>line.endsWith(':BASKET:Dune:1.0'))).toBe(true);

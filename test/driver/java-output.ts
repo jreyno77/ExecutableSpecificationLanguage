@@ -1,4 +1,4 @@
-import { promises as fs, appendFileSync, mkdtempSync, realpathSync } from 'node:fs';
+import { promises as fs, appendFileSync, writeFileSync, mkdtempSync, realpathSync } from 'node:fs';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { vi } from 'vitest';
@@ -36,6 +36,7 @@ export class JavaOutputDriver {
   queryProcess = { started: false, answered: false, closed: false, interrupted: false, scratch: '', changed: false, mutationError: '', output: '' };
   nativeWriteChange: 'before' | 'after-first' | undefined;
   nativeWriteChanged = false;
+  externalWriteText: string | undefined;
   readonly executionCanaries: string[] = [];
   async initialize(): Promise<void> {
     await fs.mkdir(this.root);
@@ -212,7 +213,11 @@ export class JavaOutputDriver {
   private async applyWhileCatalogChanges(plan: ProjectChanges) {
     const context = this.context, first = plan.changes[0];
     if (first?.kind !== 'write') throw new Error('The native guard example needs a concrete first write.');
-    const change = () => { appendFileSync(this.catalogJar, '\nchanged-during-apply\n'); this.nativeWriteChanged = true; };
+    const change = () => {
+      if (this.externalWriteText !== undefined) writeFileSync(this.externalSource, this.externalWriteText);
+      else appendFileSync(this.catalogJar, '\nchanged-during-apply\n');
+      this.nativeWriteChanged = true;
+    };
     if (this.nativeWriteChange === 'before') change();
     return new FileProjectWriter({ root: context.root, readSnapshot: async () => {
       if (!this.nativeWriteChanged) {

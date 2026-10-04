@@ -20,6 +20,13 @@ export class JavaCommands {
   catalog(): Promise<void> { return this.driver.localCatalog(); }
   requireCatalog(version?: string): Promise<void> { return this.driver.requireCatalog(version); }
   implementBasket(copies: number): Promise<void> { return this.driver.implementBasket(copies); }
+  removeGeneratedCall(call: string): Promise<void> { return this.driver.removeGeneratedCall(call); }
+  testObservingNativeProcesses(): Promise<void> { return this.driver.testObservingNativeProcesses(); }
+  expectNoNativeExecution(): void {
+    expect(this.driver.report.stages.some((stage: { name: string }) => stage.name === 'execution' || stage.name.startsWith('compilation:'))).toBe(false);
+    expect(this.driver.nativeCalls.some(call => call.includes('ExpecJava'))).toBe(true);
+    expect(this.driver.nativeCalls.some(call => /javac(?:\.exe)?$/.test(call[0]!) || call.includes('org.junit.platform.console.ConsoleLauncher'))).toBe(false);
+  }
   expectStatus(status: string, code = 0): void { expect(this.driver.report.status, JSON.stringify(this.driver.report)).toBe(status); expect(this.driver.result.code, this.driver.result.stderr).toBe(code); }
   expectProblem(code: string): void { expect(this.driver.report.problems.map((problem: { code: string }) => problem.code), JSON.stringify(this.driver.report)).toContain(code); }
   async expectNoProject(): Promise<void> { await expect(fs.stat(this.driver.path('project'))).rejects.toMatchObject({ code: 'ENOENT' }); }

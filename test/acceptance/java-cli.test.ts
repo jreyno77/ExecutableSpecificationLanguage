@@ -40,4 +40,13 @@ describe('Java follows the ordinary connected CLI workflow', { timeout: 300_000 
     await p.initialize(); p.expectStatus('initialized'); await p.install(); p.expectStatus('installed');
     await p.build(); p.expectStatus('built'); await p.test(); p.expectExecutedTitles(['Local Dune']);
   });
+  it('refuses execution after the owned Dune assertion was removed', async () => {
+    const p = await JavaCommands.create();
+    await p.source('examples { setup available(title: Text)\naction add(title: Text)\nobservation quantity(title: Text) returns Number\ncheck expectQuantity(title: Text, expected: Number) { assert quantity(title) == expected }\nscenario "Dune quantity" { given available("Dune")\nwhen add("Dune")\nthen expectQuantity("Dune", 1) } }');
+    await p.initialize(); p.expectStatus('initialized'); await p.install(); p.expectStatus('installed');
+    await p.build(); p.expectStatus('built');
+    await p.implementBasket(1); await p.test(); p.expectNativeTest(true, 1);
+    await p.removeGeneratedCall('shopping.expectQuantity("Dune", 1.0);');
+    await p.testObservingNativeProcesses(); p.expectProblem('generated-test-drift'); p.expectNoNativeExecution();
+  });
 });

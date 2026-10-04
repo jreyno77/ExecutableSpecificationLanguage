@@ -8,6 +8,8 @@ import type { ProjectRead } from '../../src/index.js';
 export class JavaExamples {
   private rememberedSearch: unknown;
   private retainedRead: ProjectRead | undefined;
+  private retainedReports: { snapshot: unknown; read: unknown; search: unknown } | undefined;
+  private retainedBytes = '';
   private static readonly instances: JavaExamples[] = [];
   private constructor(readonly driver: JavaOutputDriver) {}
   static async connect(): Promise<JavaExamples> {
@@ -49,9 +51,15 @@ export class JavaExamples {
     await expect(fs.lstat(this.driver.queryProcess.scratch)).rejects.toMatchObject({ code: 'ENOENT' });
   }
   changeCatalogBeforeApplyingPlan(): void { this.driver.nativeWriteChange = 'before'; }
+  changeExternalSourceBeforeApplyingPlan(text: string): void { this.driver.nativeWriteChange = 'before'; this.driver.externalWriteText = text; }
+  retainCurrentReports(): void {
+    this.retainedReports = { snapshot: this.driver.snapshot, read: this.driver.readResult, search: this.driver.searchResult };
+    this.retainedBytes = JSON.stringify(this.retainedReports);
+  }
+  expectEarlierReportsUnchanged(): void { expect(this.retainedReports).toBeDefined(); expect(JSON.stringify(this.retainedReports)).toBe(this.retainedBytes); }
   changeCatalogAfterFirstWrite(): void { this.driver.nativeWriteChange = 'after-first'; }
   async expectNativeWriteStopped(applied: string[]): Promise<void> {
-    expect(this.driver.nativeWriteChanged).toBe(true);
+    expect(this.driver.nativeWriteChanged, JSON.stringify(this.driver.written)).toBe(true);
     expect(this.driver.written.receipt?.status).toBe('stopped');
     expect(this.driver.written.problems.some(problem => problem.code === 'stale-project')).toBe(true);
     const outcomes = this.driver.written.receipt!.outcomes;
@@ -150,7 +158,13 @@ export class JavaExamples {
     expect(found, JSON.stringify(this.driver.searchResult)).toBe(true);
   }
   expectNativeCatalogEvidence(editableSources: string[]): void {
-    const uri = pathToFileURL(this.driver.catalogJar).href;
+    this.expectNativeEvidence(this.driver.catalogJar, editableSources);
+  }
+  expectNativeSourceEvidence(editableSources: string[]): void {
+    this.expectNativeEvidence(this.driver.externalSource, editableSources);
+  }
+  private expectNativeEvidence(path: string, editableSources: string[]): void {
+    const uri = pathToFileURL(path).href;
     expect(this.driver.snapshot.nativeInputs).toEqual(expect.arrayContaining([expect.objectContaining({ uri, version: expect.stringMatching(/^[a-f0-9]{64}$/) })]));
     expect(this.driver.searchResult.outgoing.coverage.scope.some(at => at.format === 'native-input-1' && (at.value as { uri: string }).uri === uri)).toBe(true);
     expect(this.driver.snapshot.files.some(file => pathToFileURL(join(this.driver.snapshot.root.path, file.path)).href === uri)).toBe(false);

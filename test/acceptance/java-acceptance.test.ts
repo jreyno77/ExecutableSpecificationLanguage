@@ -57,6 +57,8 @@ describe('JUnit uses checked native evaluation order and finite numbers', { time
     await p.generate(); p.expectGeneratedSteps(['shopping.positive()']);
     await p.driverMethods('public double quantity() { return Double.POSITIVE_INFINITY; }');
     await p.runTests(); p.expectTests(0,1); p.expectFailure('finite Number required');
+    await p.driverMethods('public double quantity() { return Double.NaN; }');
+    await p.runTests(); p.expectTests(0,1); p.expectFailure('finite Number required');
   });
   it('rejects nonfinite arithmetic instead of treating infinity as a comparison value', async () => {
     const p = await JavaAcceptance.connect();

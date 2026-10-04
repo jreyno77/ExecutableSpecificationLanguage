@@ -83,6 +83,7 @@ export class JavaPreservation {
   expectFileAbsent(path: string): void { expect(this.driver.snapshot.files.some(file => file.path === path)).toBe(false); }
   mapStoreGame(file: string): void { this.driver.mapStoreGame(file); }
   async update(text: string, rename?: [string, string], retire: string[] = []): Promise<void> { this.driver.revise(text, rename, retire); await this.driver.update(); }
+  async insert(text: string): Promise<void> { this.driver.revise(text); await this.driver.insert(); }
   async rememberFile(path: string): Promise<void> { await this.driver.capture(); this.before = this.text(path); }
   async rememberWrites(): Promise<void> { await this.driver.capture(); this.filesBefore = this.driver.snapshot.files.map(({ path, bytes }) => ({ path, bytes: Uint8Array.from(bytes) })); }
   async expectNoWrites(): Promise<void> {

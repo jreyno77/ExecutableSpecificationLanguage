@@ -44,6 +44,26 @@ describe('native Java evidence outlives the actual query', { timeout: 90_000 }, 
 
     await p.expectNativeWriteStopped([]);
   });
+  it('refuses a generated contract after its selected external source changes', async () => {
+    const p = await JavaExamples.connect();
+    await p.installExternalSource('catalog/Book.java', 'package catalog; public class Book { public String title; }');
+    p.source('opaque type Book\nclass Read { construction(book: Book) }');
+    p.changeExternalSourceBeforeApplyingPlan('package catalog; public class Book { public int title; }');
+
+    await p.createContracts({ package: 'store', imports: [{ module: 'main', declaration: ['Book'], name: 'catalog.Book' }] });
+
+    await p.expectNativeWriteStopped([]);
+  });
+  it('keeps earlier source, read and search reports unchanged after actual generation', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    const file = 'src/main/java/store/Store.java', source = 'package store; class Store { String title="Dune"; }';
+    await p.file(file, source); p.mapType('store', file, 'store.Store');
+    await p.read('store'); p.expectReadText(file, source); await p.search('store'); p.expectCoverageComplete(); p.retainCurrentReports();
+
+    p.source('class Book {}'); await p.createContracts({ package: 'store' }); p.expectContractsWritten();
+
+    p.expectEarlierReportsUnchanged();
+  });
   it('retains the actual applied prefix when native evidence changes between writes', async () => {
     const p = await JavaExamples.connect(); await p.installCatalogJar('public class Book {}');
     p.source('class Book {}\nclass Store {}'); p.changeCatalogAfterFirstWrite();

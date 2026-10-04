@@ -225,7 +225,7 @@ it('inserts and deletes a generated record without changing an adopted implement
   p.source(contract); const file = 'src/main/java/store/Store.java';
   await p.file(file, 'package store; public class Store { public String title() { return "Dune"; } }');
   p.mapStore(file, 'store.Store', 'title', []); await p.adopt(); p.expectWritten(); await p.rememberFile(file);
-  await p.update(contract + '\ntype Book { title: Text }'); p.expectWritten(); p.expectFileUnchanged(file);
+  await p.insert(contract + '\ntype Book { title: Text }'); p.expectWritten(); p.expectFileUnchanged(file);
   await p.runJava('System.out.print(new store.Book("Dune").title()+new store.Store().title());'); p.expectStdout('DuneDune');
   await p.remove('Book'); p.expectDeletionWritten(['Store', 'title']); p.expectFileAbsent('src/main/java/store/Book.java'); p.expectFileUnchanged(file);
 });

@@ -9,6 +9,16 @@ import { join, resolve } from 'node:path';
 
 // These are Node-host guards, not an operating-system sandbox for the native JVM.
 assert.throws(() => fs.readFileSync(process.env.EXPEC_TEST_CHECKOUT_FILE), { code: 'ERR_ACCESS_DENIED' });
+for (const name of ['open', 'readFile', 'readdir', 'realpath', 'stat', 'lstat', 'access']) {
+  const original = fs.promises[name];
+  fs.promises[name] = async function (...args) {
+    try { return await original.apply(this, args); }
+    catch (error) {
+      if (error.code === 'ERR_ACCESS_DENIED') process.stderr.write('JAVA-CLI-DENIED:' + JSON.stringify({ operation: name, path: String(args[0]), resource: error.resource }) + '\n');
+      throw error;
+    }
+  };
+}
 const denied = () => { throw Error('Java query/build/test must not acquire packages or use the network.'); };
 net.connect = net.createConnection = http.request = http.get = https.request = https.get = denied;
 globalThis.fetch = denied;

@@ -276,7 +276,7 @@ describe('Java read-only source dependencies retain their origin', { timeout: 90
     const file = 'src/main/java/store/Read.java';
     await p.file(file, 'package store; class Read { String title(catalog.Book book) { return book.title; } }');
     p.mapType('read', file, 'store.Read'); await p.search('read');
-    p.expectExternalSourceTarget('catalog.Book', 'title'); p.expectCoverageComplete();
+    p.expectExternalSourceTarget('catalog.Book', 'title'); p.expectNativeSourceEvidence([file]); p.expectCoverageComplete();
   });
   it('retains the actual read-only caller location without claiming editable source ownership', async () => {
     const p = await JavaExamples.connect();

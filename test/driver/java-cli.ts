@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ConnectedBuildDriver } from './connected-build.js';
 
 /** Ordinary CLI processes, a real Maven fixture, and actual project implementation. */
@@ -9,6 +10,7 @@ export class JavaCliDriver extends ConnectedBuildDriver {
   readonly javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME!;
   lock!: Buffer;
   buildText = '';
+  nativeCalls: string[][] = [];
   async initializeJava(): Promise<void> { await this.initialize(false); }
   async cli(command: string, extra: string[] = []): Promise<void> {
     await this.run([command, '--config', 'spec/expec.json', '--json', ...extra], '', undefined, 240_000);
@@ -51,5 +53,30 @@ public class ShoppingDriver {
   public double quantity(String title) { double actual=basket.getOrDefault(title,0.0); System.out.println("BASKET:"+title+":"+actual); return actual; }
 }
 `);
+  }
+  async removeGeneratedCall(call: string): Promise<void> {
+    const files = await this.filesUnder('project/src/test/java/generated/tests/acceptance');
+    const found = files.filter(file => file.text.includes(call));
+    if (found.length !== 1) throw Error('Select exactly one actual generated call: ' + call);
+    await fs.writeFile(found[0]!.path, found[0]!.text.replace(call, ''));
+  }
+  async testObservingNativeProcesses(): Promise<void> {
+    const log = this.path('native-calls.jsonl'), observer = this.path('native-observer.mjs');
+    await fs.writeFile(log, '');
+    await fs.writeFile(observer, 'import process from "node:child_process"; import {appendFileSync} from "node:fs"; import {syncBuiltinESMExports} from "node:module"; '
+      + 'const spawn=process.spawn; process.spawn=(command,args,...rest)=>{appendFileSync(' + JSON.stringify(log)
+      + ',JSON.stringify([String(command),...args])+"\\n"); return spawn(command,args,...rest);}; syncBuiltinESMExports();');
+    const args = ['--import', pathToFileURL(observer).href, fileURLToPath(new URL('../../dist/cli-entry.js', import.meta.url)), 'test', '--config', 'spec/expec.json', '--json'];
+    try {
+      const result = await promisify(execFile)(process.execPath, args, { cwd: this.directory, timeout: 240_000, maxBuffer: 4 * 1024 * 1024 });
+      this.result = { ...result, code: 0 };
+    } catch (error) {
+      const result = error as { code: number; stdout: string; stderr: string };
+      if (typeof result.code !== 'number') throw error;
+      this.result = result;
+    }
+    if (!this.result.stdout.trim()) throw Error(this.result.stderr || 'The observed CLI returned no JSON.');
+    this.report = JSON.parse(this.result.stdout);
+    this.nativeCalls = (await fs.readFile(log, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   }
 }

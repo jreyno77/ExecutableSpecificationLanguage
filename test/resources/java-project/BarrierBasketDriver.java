@@ -7,6 +7,7 @@ public class ShoppingDriver {
     private final java.util.Set<String> catalog = new java.util.HashSet<>();
     private final java.util.Map<String, Double> basket = new java.util.HashMap<>();
     public void available(String title) {
+        System.out.println("DRIVER:" + id + ":INITIAL:" + title + ":" + basket.getOrDefault(title, 0.0));
         catalog.add(title);
         try { arrivals.await(10, java.util.concurrent.TimeUnit.SECONDS); }
         catch (Exception failure) { throw new AssertionError("Both real scenarios must reach the barrier", failure); }

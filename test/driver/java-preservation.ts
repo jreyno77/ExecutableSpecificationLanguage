@@ -68,5 +68,8 @@ export class JavaPreservationDriver extends JavaOutputDriver {
   async update(): Promise<void> {
     this.written = await this.output().update(this.diff, this.current); this.confirm(); await this.capture();
   }
+  async insert(): Promise<void> {
+    this.written = await this.output().insert(this.diff, this.current); this.confirm(); await this.capture();
+  }
   async searchOwned(name: string): Promise<void> { this.searchResult = await this.output().search(this.id(name)); await this.capture(); }
 }
