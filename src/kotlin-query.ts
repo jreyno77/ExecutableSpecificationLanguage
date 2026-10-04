@@ -17,6 +17,7 @@ export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'i
   .refine(value => value.kind !== 'constructor' || value.name === '<init>' && value.parameters !== undefined && value.receiver === undefined)).min(1);
 const result = z.strictObject({
   files: z.array(z.string().refine(literal)),
+  imports: z.array(z.strictObject({ file: z.string().refine(literal), range })),
   declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional(),
     packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
     typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional() })),
@@ -66,7 +67,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
       value = result.parse(JSON.parse(observed.stdout));
       if (new Set(value.files).size !== value.files.length || value.files.some(path => !snapshot.files.some(file => file.path === path && path.endsWith('.kt') && roots.some(root => path.startsWith(root + '/'))))) throw new Error('Native query claimed an uncaptured source file.');
       for (const observed of value.problems) finding('kotlin-' + observed.code, observed.message, observed.file);
-      for (const observation of [...value.declarations, ...value.references, ...value.problems]) {
+      for (const observation of [...value.declarations, ...value.references, ...value.imports, ...value.problems]) {
         const file = snapshot.files.find(file => file.path === observation.file);
         if (!file || observation.range.end > new TextDecoder('utf-8', { fatal: true }).decode(file.bytes).length) throw new Error('Native query returned an invalid source range.');
       }

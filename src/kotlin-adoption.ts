@@ -3,8 +3,9 @@ import type { ProjectSnapshot } from './project-connection.js';
 import type { ArtifactAssociation } from './specification-identity.js';
 import type { KotlinFile } from './kotlin-declarations.js';
 import { canonical, success } from './identity-baseline.js';
-import { hash, problem } from './project-files.js';
+import { problem } from './project-files.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
+import { compareKotlin } from './kotlin-comparison.js';
 
 type Declaration = KotlinQuery['declarations'][number];
 const address = (node: Declaration) => canonical({ file: node.file, declaration: node.selector });
@@ -12,15 +13,27 @@ const signature = (node: Declaration) => canonical({ kind: node.kind, selector: 
   visibility: node.visibility, returnType: node.returnType, typeParameters: node.typeParameters, mutable: node.mutable });
 
 /** Explicit associations identify existing implementations; native facts establish contract compatibility. */
-export async function adoptKotlin(snapshot: ProjectSnapshot, files: readonly KotlinFile[], associations: readonly ArtifactAssociation[]): Promise<Check<KotlinFile[]>> {
+export async function adoptKotlin(snapshot: ProjectSnapshot, files: readonly KotlinFile[], associations: readonly ArtifactAssociation[], packageName: string): Promise<Check<KotlinFile[]>> {
   const current = await queryKotlin(snapshot, 'expec.kotlin.json');
   if (!current.value || current.problems.length) return { problems: current.problems, deferred: [] };
-  const expected = await queryKotlin({ ...snapshot, files: [...snapshot.files.filter(file => !file.path.endsWith('.kt')),
-    ...files.map(file => ({ path: file.path, bytes: Buffer.from(file.text), version: hash(Buffer.from(file.text)) }))] }, 'expec.kotlin.json');
+  const owned = associations.filter(item => item.locator.outputId === 'kotlin' && files.some(file => file.artifacts.some(expected => expected.specId === item.specId)));
+  files = files.map(file => {
+    const paths = new Set(owned.filter(item => item.specId === file.id && item.locator.format === 'kotlin-symbol-1'
+      && (item.locator.value as { declaration: unknown[] }).declaration.length === 1).map(item => (item.locator.value as { file: string }).file));
+    if (paths.size !== 1) return file;
+    const path = [...paths][0]!;
+    return { ...file, path, artifacts: file.artifacts.map(item => ({ ...item, locator: { ...item.locator, value: { ...item.locator.value as { file: string }, file: path } } })) };
+  });
+  for (const file of files) for (const contract of file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1')) {
+    const selector = (contract.locator.value as { declaration: unknown[] }).declaration;
+    if (selector.length === 1 && !owned.some(item => item.specId === contract.specId) && current.value.declarations.some(node => node.packageName === packageName && node.selector.length === 1
+      && canonical(node.selector) === canonical(selector))) return { problems: [problem(snapshot.root, 'unowned-declaration', file.path, 'Existing Kotlin declarations require explicit associations.')], deferred: [] };
+  }
+  const expected = await compareKotlin(snapshot, current.value, files, owned);
   if (!expected.value || expected.problems.length) return { problems: expected.problems, deferred: [] };
   const problems = [], adopted: KotlinFile[] = [], claimed = new Set<string>();
   for (const file of files) {
-    const root = expected.value.declarations.find(node => node.file === file.path && node.selector.length === 1);
+    const root = expected.value.native.declarations.find(node => node.file === file.path && node.selector.length === 1);
     const supplied = associations.filter(item => item.locator.outputId === 'kotlin' && file.artifacts.some(expected => expected.specId === item.specId));
     if (!supplied.length) {
       if (root && current.value.declarations.some(node => node.packageName === root.packageName && canonical(node.selector) === canonical(root.selector))) {
@@ -30,7 +43,7 @@ export async function adoptKotlin(snapshot: ProjectSnapshot, files: readonly Kot
     }
     const selected: ArtifactAssociation[] = [];
     for (const contract of file.artifacts) {
-      const wanted = expected.value.declarations.find(node => address(node) === canonical(contract.locator.value));
+      const wanted = expected.value.native.declarations.find(node => address(node) === canonical(contract.locator.value));
       const matches = supplied.filter(item => item.specId === contract.specId && item.locator.format === 'kotlin-symbol-1')
         .flatMap(item => current.value!.declarations.filter(node => address(node) === canonical(item.locator.value)).map(node => ({ item, node })));
       if (!wanted || matches.length !== 1) {

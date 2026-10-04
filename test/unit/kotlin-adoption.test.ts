@@ -19,6 +19,46 @@ async function refused(fixture: KotlinDeliveryDriver, code: string) {
 }
 
 describe('explicit Kotlin adoption verifies actual native contract facts', () => {
+  it('allows an unrelated native class with the same name in another package', async () => {
+    const fixture = new KotlinDeliveryDriver(); fixtures.push(fixture);
+    await fixture.initialize(); await fixture.configureNative(); fixture.options = { adoptExisting: true };
+    fixture.source('class StoreGame {}');
+    await fixture.file('src/main/kotlin/other/StoreGame.kt', 'package other\nclass StoreGame\n');
+    await fixture.build();
+    expect(fixture.written.problems).toEqual([]);
+    expect(fixture.written.receipt?.status).toBe('applied');
+    expect(fixture.files.get('src/main/kotlin/other/StoreGame.kt')).toBe('package other\nclass StoreGame\n');
+    expect(fixture.files.get('src/main/kotlin/store/StoreGame.kt')).toContain('class StoreGame');
+  }, 90_000);
+
+  it('keeps an unowned provider type in the native comparison of a shared file', async () => {
+    const fixture = new KotlinDeliveryDriver(); fixtures.push(fixture);
+    await fixture.initialize(); await fixture.configureNative();
+    fixture.options = { adoptExisting: true, imports: [{ declaration: ['SystemConfig'], name: 'store.SystemConfig' }] };
+    fixture.source('opaque type SystemConfig\nclass StoreGame { public save\ncapability save(config: SystemConfig) returns Text }');
+    const path = 'src/main/kotlin/store/Shared.kt';
+    const implementation = 'package store\nclass SystemConfig(val title: String)\nclass StoreGame { fun save(config: SystemConfig): String = config.title }\n';
+    await fixture.file(path, implementation);
+    fixture.associate('StoreGame', path, [{ kind: 'class', name: 'StoreGame' }]);
+    fixture.associate('StoreGame.save', path, [{ kind: 'class', name: 'StoreGame' }, { kind: 'function', name: 'save', parameters: ['store.SystemConfig'] }]);
+    await fixture.build();
+    expect(fixture.written.problems).toEqual([]);
+    expect(fixture.written.receipt?.status).toBe('applied');
+    expect(fixture.files.get(path)).toBe(implementation);
+    expect(fixture.files.has('src/main/kotlin/store/StoreGame.kt')).toBe(false);
+    fixture.source('opaque type SystemConfig\nclass StoreGame { public save, load\ncapability save(config: SystemConfig) returns Text\ncapability load(config: SystemConfig) returns Text }');
+    await fixture.update();
+    expect(fixture.written.problems).toEqual([]);
+    expect(fixture.written.receipt?.status).toBe('applied');
+    expect(fixture.files.get(path)).toContain('class SystemConfig(val title: String)');
+    expect(fixture.files.get(path)).toContain('fun save(config: SystemConfig): String = config.title');
+    expect(fixture.files.get(path)).toContain('fun load(config: SystemConfig): String');
+    await fixture.execute('fun main() { println(store.StoreGame().save(store.SystemConfig("Dune"))) }');
+    expect(fixture.compiled.code, fixture.compiled.stderr).toBe(0);
+    expect(fixture.execution.stdout.trim()).toBe('Dune');
+    expect(fixture.execution.code, fixture.execution.stderr).toBe(0);
+  }, 120_000);
+
   it('does not infer ownership of an unmapped member from its mapped class', async () => {
     await refused(await adoption('class StoreGame { fun save() = "saved" }', false), 'unowned-declaration');
   }, 60_000);

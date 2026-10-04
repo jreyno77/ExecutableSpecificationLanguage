@@ -68,9 +68,11 @@ fun main(args: Array<String>) {
         val originals = files.associateWith { NativeText(directory, it) }
         val declarations = mutableListOf<JsonElement>()
         val references = mutableListOf<JsonElement>()
+        val imports = mutableListOf<JsonElement>()
         val problems = mutableListOf<JsonElement>()
         for (file in files) {
             val text = originals.getValue(file)
+            for (directive in file.importDirectives) imports.add(buildJsonObject { put("file", text.file); put("range", text.range(directive)) })
             for (node in file.collectDescendantsOfType<KtNamedDeclaration>()) {
                 if (node.name == null) continue
                 val selector = selector(node)
@@ -144,6 +146,7 @@ fun main(args: Array<String>) {
         println(buildJsonObject {
             put("files", JsonArray(files.map { JsonPrimitive(originals.getValue(it).file) }))
             put("declarations", JsonArray(declarations)); put("references", JsonArray(references)); put("problems", JsonArray(problems))
+            put("imports", JsonArray(imports))
         })
     } catch (error: Throwable) {
         code = 1; error.printStackTrace(System.err)

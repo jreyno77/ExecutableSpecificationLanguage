@@ -6,6 +6,7 @@ import type { ArtifactAssociation } from './specification-identity.js';
 import { canonical, success } from './identity-baseline.js';
 import { hash, problem } from './project-files.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
+import { compareKotlin } from './kotlin-comparison.js';
 
 type Declaration = KotlinQuery['declarations'][number];
 type Edit = { start: number; end: number; text: string };
@@ -17,17 +18,16 @@ const key = (file: string, selector: Declaration['selector']) => canonical({ fil
 export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[]): Promise<Check<readonly FileChange[]>> {
   const problems: Diagnostic[] = [], edits = new Map<string, Edit[]>();
   const refuse = (path: string, message: string) => problems.push(problem(snapshot.root, 'output-conflict', path, message));
-  const generated = (files: readonly { path: string; text: string }[]): ProjectSnapshot => ({ ...snapshot,
-    files: [...snapshot.files.filter(file => !file.path.endsWith('.kt')), ...files.map(file => ({ path: file.path, bytes: Buffer.from(file.text), version: hash(Buffer.from(file.text)) }))] });
   const current = await queryKotlin(snapshot, 'expec.kotlin.json');
   if (!current.value || current.problems.length) return { problems: current.problems, deferred: [] };
-  const before = await queryKotlin(generated(previous.map(file => ({ path: file.path, text: file.generated }))), 'expec.kotlin.json');
-  const after = await queryKotlin(generated(desired), 'expec.kotlin.json');
+  const owned = previous.flatMap(file => file.artifacts);
+  const before = await compareKotlin(snapshot, current.value, previous.map(file => ({ ...file, text: file.generated })), owned);
+  const after = await compareKotlin(snapshot, current.value, desired, owned);
   if (!before.value || before.problems.length || !after.value || after.problems.length) return { problems: [...before.problems, ...after.problems], deferred: [] };
   const sources = new Map(snapshot.files.filter(file => current.value!.files.includes(file.path)).map(file => [file.path, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)]));
-  const original = new Map(previous.map(file => [file.path, file.generated])), wanted = new Map(desired.map(file => [file.path, file.text]));
+  const original = before.value.sources, wanted = after.value.sources;
   const declarations = (query: KotlinQuery) => new Map(query.declarations.map(node => [key(node.file, node.selector), node]));
-  const oldNodes = declarations(before.value), newNodes = declarations(after.value), currentNodes = declarations(current.value);
+  const oldNodes = declarations(before.value.native), newNodes = declarations(after.value.native), currentNodes = declarations(current.value);
   const symbols = (files: readonly { artifacts: readonly ArtifactAssociation[] }[]) => new Map(files.flatMap(file => file.artifacts
     .filter(item => item.locator.format === 'kotlin-symbol-1').map(item => [item.specId, canonical(item.locator.value)] as const)));
   const oldSymbols = symbols(previous), newSymbols = symbols(desired), currentById = new Map<string, Declaration>();

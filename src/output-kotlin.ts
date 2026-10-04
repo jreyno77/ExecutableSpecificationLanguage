@@ -59,7 +59,7 @@ class KotlinOutput implements OutputAdapter {
       } })) } : file;
     });
     if (!previous && this.options.adoptExisting && !declarations.problems.length) {
-      const adopted = await adoptKotlin(snapshot, files, request.current.baseline.artifacts);
+      const adopted = await adoptKotlin(snapshot, files, request.current.baseline.artifacts, this.options.package);
       if (!adopted.value) return { problems: adopted.problems, deferred: adopted.deferred }; files = adopted.value;
     }
     const mappings = declarations.mapping(), problems = [...declarations.problems];
