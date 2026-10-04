@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
                 if (selector.isEmpty()) continue
                 declarations.add(buildJsonObject {
                     put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", if (node is KtConstructor<*>) "<init>" else node.name)
-                    put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: node.valueParameterList ?: node else node.nameIdentifier ?: node))
+                    put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: (node.parent as? KtClassOrObject)?.nameIdentifier ?: node else node.nameIdentifier ?: node))
                     put("packageName", file.packageFqName.asString())
                     put("visibility", when {
                         node.hasModifier(KtTokens.PRIVATE_KEYWORD) -> "private"
@@ -95,14 +95,14 @@ fun main(args: Array<String>) {
                     if (node is KtParameter) put("hasDefault", node.hasDefaultValue())
                     if (node is KtProperty) put("mutable", node.isVar)
                     if (node is KtParameter && node.hasValOrVar()) put("mutable", node.isMutable)
-                    if (node is KtClass && !node.isInterface()) put("zeroArgumentConstruction",
+                    if (node is KtClass && node !is KtEnumEntry && !node.isInterface()) put("zeroArgumentConstruction",
                         (node.primaryConstructor?.let { accessible(it) } ?: node.secondaryConstructors.isEmpty()) && node.primaryConstructorParameters.all { it.hasDefaultValue() || it.isVarArg }
                             || node.secondaryConstructors.any { constructor -> accessible(constructor) && constructor.valueParameters.all { it.hasDefaultValue() || it.isVarArg } })
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
                     if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
                 })
-                if (node is KtClass && node.primaryConstructor == null && node.secondaryConstructors.isEmpty() && !node.isInterface()) analyze(node) {
+                if (node is KtClass && node !is KtEnumEntry && node.primaryConstructor == null && node.secondaryConstructors.isEmpty() && !node.isInterface()) analyze(node) {
                     for (constructor in (node.symbol as KaNamedClassSymbol).declaredMemberScope.constructors.filter { it.psi == node }) declarations.add(buildJsonObject {
                         put("file", text.file); put("kind", "constructor"); put("name", "<init>")
                         put("selector", JsonArray(selector + buildJsonObject {
@@ -164,6 +164,7 @@ private fun parents(element: PsiElement): Sequence<PsiElement> = generateSequenc
 private fun sourceDeclaration(psi: PsiElement?): KtNamedDeclaration? = psi as? KtNamedDeclaration
 private fun kind(node: KtNamedDeclaration): String = when (node) {
     is KtConstructor<*> -> "constructor"
+    is KtEnumEntry -> "property"
     is KtClass -> if (node.isInterface()) "interface" else "class"
     is KtObjectDeclaration -> "object"
     is KtNamedFunction -> "function"

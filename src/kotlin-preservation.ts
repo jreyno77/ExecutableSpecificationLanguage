@@ -28,9 +28,18 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const original = before.value.sources, wanted = after.value.sources;
   const declarations = (query: KotlinQuery) => new Map(query.declarations.map(node => [key(node.file, node.selector), node]));
   const oldNodes = declarations(before.value.native), newNodes = declarations(after.value.native), currentNodes = declarations(current.value);
-  const symbols = (files: readonly { artifacts: readonly ArtifactAssociation[] }[]) => new Map(files.flatMap(file => file.artifacts
-    .filter(item => item.locator.format === 'kotlin-symbol-1').map(item => [item.specId, canonical(item.locator.value)] as const)));
+  const symbols = (files: readonly { artifacts: readonly ArtifactAssociation[] }[]) => {
+    const result = new Map<string, string>(), counts = new Map<string, number>();
+    for (const item of files.flatMap(file => file.artifacts).filter(item => item.locator.format === 'kotlin-symbol-1')) {
+      const selector = (item.locator.value as { declaration: Declaration['selector'] }).declaration;
+      const role = item.specId + ':' + selector.at(-1)!.kind, index = counts.get(role) ?? 0;
+      counts.set(role, index + 1); result.set(role + ':' + index, canonical(item.locator.value));
+    }
+    return result;
+  };
   const oldSymbols = symbols(previous), newSymbols = symbols(desired), currentById = new Map<string, Declaration>();
+  const retired = [...oldSymbols].flatMap(([id, address]) => !newSymbols.has(id) && currentNodes.has(address) ? [currentNodes.get(address)!] : []);
+  const contains = (node: Declaration, file: string, range: { start: number; end: number }) => node.file === file && node.range.start <= range.start && node.range.end >= range.end;
   const references = (node: Declaration) => current.value!.references.filter(reference => reference.targetFile === node.file
     && (same(reference.target, node.selector) || reference.role === 'construction' && same(reference.target?.slice(0, -1), node.selector)));
   const edit = (file: string, range: { start: number; end: number }, text: string, replacesBinding = false) => {
@@ -44,10 +53,11 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (!old || !node) { refuse(old?.file ?? '', 'A previously generated declaration is unavailable or changed identity.'); continue; }
     currentById.set(id, node);
     if (!next) {
+      if (retired.some(parent => parent !== node && contains(parent, node.file, node.range))) continue;
       if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)) {
         problems.push(problem(snapshot.root, 'handwritten-removal', node.file, 'The retired declaration contains handwritten changes.')); continue;
       }
-      if (references(node).some(reference => !(reference.file === node.file && reference.range.start >= node.range.start && reference.range.end <= node.range.end))) {
+      if (references(node).some(reference => !retired.some(removed => contains(removed, reference.file, reference.range)))) {
         refuse(node.file, 'A current native caller still uses the retired declaration.'); continue;
       }
       edit(node.file, node.range, '', true); continue;

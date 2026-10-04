@@ -149,12 +149,17 @@ export class KotlinDeclarations {
     }
     if (meaning.kind === 'optional') return this.type(meaning.inner, owner, qualified, suffix) + '?';
     if (meaning.kind === 'tuple') { this.tuples.set(meaning.elements.length, owner); return (qualified ? this.options.package + '.' : '') + 'Tuple' + meaning.elements.length + '<' + meaning.elements.map((type, index) => this.type(type, owner, qualified, suffix + 'Item' + (index + 1))).join(', ') + '>'; }
-    if (meaning.kind === 'literal' && owner.kind === 'field') {
-      const parent = this.inspection.parent(owner.id), value = this.inspection.read(meaning.expression, 'literal-type').value;
-      if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code' && value.kind === 'string-literal') {
-        const name = this.name(parent) + 'Code', entry = value.value.slice(0, 1).toUpperCase() + value.value.slice(1);
-        if (!identifier(entry)) this.problem('unsupported-literal-name', owner, 'Error code has no Kotlin case name: ' + value.value);
-        this.restrictions.set(name, 'enum class ' + name + '(val value: String) { ' + entry + '(' + quote(value.value) + ') }');
+    if ((meaning.kind === 'literal' || meaning.kind === 'union') && owner.kind === 'field') {
+      const parent = this.inspection.parent(owner.id);
+      if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code') {
+        const name = this.name(parent) + 'Code', names = new Set<string>();
+        const cases = this.known(this.types.error(this.types.declaredType(parent.id))).codes.map(value => {
+          const entry = value.slice(0, 1).toUpperCase() + value.slice(1);
+          if (!identifier(entry) || names.has(entry)) this.problem('unsupported-literal-name', owner, 'Error code has no distinct Kotlin case name: ' + value);
+          names.add(entry); return entry + '(' + quote(value) + ')';
+        });
+        if (this.selected.some(item => this.name(item) === name)) this.problem('native-name-conflict', owner, 'The error code companion conflicts with another native declaration: ' + name);
+        this.restrictions.set(name, 'enum class ' + name + '(val value: kotlin.String) { ' + cases.join(', ') + ' }');
         this.associate(owner, [{ kind: 'class', name }]); return (qualified ? this.options.package + '.' : '') + name;
       }
     }
@@ -203,12 +208,12 @@ export class KotlinDeclarations {
     const shape = this.types.describe(id);
     if (shape.kind === 'literal') {
       const value = this.literal(this.inspection.read(shape.expression, 'literal-type'));
-      return 'data class ' + name + parameters + '(val value: ' + value.type + ') {\n    init { require(value == ' + value.value + ') { ' + quote('Expected ' + this.authored(owner)) + ' } }\n}';
+      return 'data class ' + name + parameters + '(val value: ' + value.type + ') {\n    init { kotlin.require(value == ' + value.value + ') { ' + quote('Expected ' + this.authored(owner)) + ' } }\n}';
     }
     if (shape.kind !== 'union') throw new Error('Expected a checked restriction.');
     const text = shape.alternatives.map(type => this.types.describe(type)).flatMap(type => type.kind === 'literal' ? [this.inspection.read(type.expression, 'literal-type')] : []);
     if (text.length === shape.alternatives.length && text.every(item => item.value.kind === 'string-literal')) {
-      if (parameters) return 'data class ' + name + parameters + '(val value: kotlin.String) {\n    init { require('
+      if (parameters) return 'data class ' + name + parameters + '(val value: kotlin.String) {\n    init { kotlin.require('
         + text.map(item => 'value == ' + this.literal(item).value).join(' || ') + ') { ' + quote('Expected ' + this.authored(owner)) + ' } }\n}';
       const names = new Set<string>();
       const cases = text.map(item => {
@@ -232,17 +237,24 @@ export class KotlinDeclarations {
       if (!identifier(variant) || names.has(variant) || meaning.kind === 'parameter') this.problem('ambiguous-native-union', owner, 'Provide distinct named alternatives whose native representation is unambiguous.');
       names.add(variant);
       return '    data class ' + variant + parameters + '(val value: ' + (literal?.type ?? this.type(type, owner, true)) + ') : ' + name + parameters
-        + (literal ? ' { init { require(value == ' + literal.value + ') } }' : '');
+        + (literal ? ' { init { kotlin.require(value == ' + literal.value + ') } }' : '');
     });
     return 'sealed interface ' + name + parameters + ' {\n' + alternatives.join('\n') + '\n}';
   }
+  private codeMember(type: TypeId): string {
+    const meaning = this.types.describe(type);
+    if (meaning.kind !== 'alias') return 'value';
+    const target = this.known(meaning.target), declaration = this.inspection.read(meaning.declaration);
+    return this.types.describe(target).kind === 'union' && declaration.kind === 'alias-type-declaration' && !declaration.typeParameters.length
+      ? 'text' : this.codeMember(target);
+  }
   private parameters(items: readonly Item<'parameter'>[]): string {
     return items.map(item => this.name(item) + ': ' + this.type(this.known(this.types.typeOf(item.declaredType.id)), item)
-      + (item.hasDefault ? ' = throw NotImplementedError(' + quote('Unimplemented default: ' + this.authored(item)) + ')' : '')).join(', ');
+      + (item.hasDefault ? ' = throw ' + (this.hidesBuiltin('NotImplementedError', item) ? 'kotlin.' : '') + 'NotImplementedError(' + quote('Unimplemented default: ' + this.authored(item)) + ')' : '')).join(', ');
   }
   private callable(item: Item<'function' | 'capability'>, owner: JsonValue[] = [], signature = false, private_ = false): string {
     const facts = this.types.callable(item.id), result = this.known(facts.result), name = this.name(item);
-    const returns = result.kind === 'value' ? this.type(result.type, item) : result.kind === 'none' ? 'Unit' : 'Any?';
+    const returns = result.kind === 'value' ? this.type(result.type, item) : result.kind === 'none' ? (this.hidesBuiltin('Unit', item) ? 'kotlin.Unit' : 'Unit') : (this.hidesBuiltin('Any', item) ? 'kotlin.Any?' : 'Any?');
     const parameters = item.parameters.map(parameter => this.type(this.known(this.types.typeOf(parameter.declaredType.id)), parameter, true));
     const selector = [...owner, { kind: 'function', name, parameters }];
     this.associate(item, selector);
@@ -252,7 +264,7 @@ export class KotlinDeclarations {
     if (item.body.kind === 'available') lines.push(...item.body.content.members.map(member => member.kind === 'promises' ? member.text : language(member)));
     lines.push(...item.failures.map(failure => '@throws ' + language(failure) + ': declared exceptional completion, unverified implementation obligation.'));
     return doc(lines) + (private_ ? 'private ' : '') + 'fun ' + name + '(' + this.parameters(item.parameters) + '): ' + returns
-      + (signature ? '' : ' {\n    throw NotImplementedError(' + quote('Not implemented: ' + this.authored(item)) + ')\n}');
+      + (signature ? '' : ' {\n    throw ' + (this.hidesBuiltin('NotImplementedError', item) ? 'kotlin.' : '') + 'NotImplementedError(' + quote('Not implemented: ' + this.authored(item)) + ')\n}');
   }
   private declare(item: Item, owners: JsonValue[] = []): string {
     const name = this.name(item), parameters = 'typeParameters' in item && item.typeParameters.length ? '<' + item.typeParameters.map(item => this.name(item)).join(', ') + '>' : '';
@@ -279,7 +291,8 @@ export class KotlinDeclarations {
       if (item.error) {
         const companion = name + 'Exception'; this.associate(item, [...owners, { kind: 'class', name: companion }]);
         text += '\n\n' + doc(['Declared domain failure. Generic payload arguments remain data; JVM exception types are nongeneric.'])
-          + 'class ' + companion + '(val details: ' + name + (item.typeParameters.length ? '<' + item.typeParameters.map(() => '*').join(', ') + '>' : '') + ') : RuntimeException(details.code.value)';
+          + 'class ' + companion + '(val details: ' + name + (item.typeParameters.length ? '<' + item.typeParameters.map(() => '*').join(', ') + '>' : '') + ') : ' + (this.hidesBuiltin('RuntimeException', item) ? 'kotlin.' : '') + 'RuntimeException(details.code.'
+            + this.codeMember(this.known(this.types.typeOf(fields.find(field => field.name === 'code')!.declaredType.id))) + ')';
       }
       return text;
     }
@@ -304,7 +317,7 @@ export class KotlinDeclarations {
         return roots.has(member.kind) ? ['private ' + this.declare(member, owner)] : [];
       });
       if (construction && kind === 'class') members.unshift(doc(['Unverified implementation obligation: ' + this.authored(construction) + '.'])
-        + 'init { throw NotImplementedError(' + quote('Not implemented: ' + this.authored(construction)) + ') }');
+        + 'init { throw ' + (this.hidesBuiltin('NotImplementedError', item) ? 'kotlin.' : '') + 'NotImplementedError(' + quote('Not implemented: ' + this.authored(construction)) + ') }');
       return kind + ' ' + name + parameters + (construction && kind === 'class' ? '(' + this.parameters(construction.parameters) + ')' : '')
         + ' {\n' + members.map(text => text.split('\n').map(line => '    ' + line).join('\n')).join('\n\n') + '\n}';
     }

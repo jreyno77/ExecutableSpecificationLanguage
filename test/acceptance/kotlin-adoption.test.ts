@@ -105,3 +105,28 @@ it('renames a parameter in its signature, implementation and named callers', asy
   await project.runConsumer('fun main() { println(store.launch()) }');
   project.expectStdout('Dune');
 }, 120_000);
+
+it('renames an error family together with its data and exception companions', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('error type Rejected { code: "rejected"\ndetail: Text }');
+  await project.buildContracts();
+  await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun failure() = RejectedException(Rejected(RejectedCode.Rejected, "Dune"))\n');
+  project.change('error type Denied { code: "rejected"\ndetail: Text }', { Rejected: 'Denied' });
+  await project.updateContracts();
+  project.expectMissingFile('src/main/kotlin/store/Rejected.kt');
+  project.expectFileText('src/main/kotlin/store/Launcher.kt', 'package store\nfun failure() = DeniedException(Denied(DeniedCode.Rejected, "Dune"))\n');
+  await project.runConsumer('fun main() { println(store.failure().details.detail) }');
+  project.expectStdout('Dune');
+}, 120_000);
+
+it('retires an unchanged class and its members without overlapping their removals', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('class OldGame { public save\ncapability save(title: Text) returns Nothing }\nclass Kept {}');
+  await project.buildContracts();
+  project.change('class Kept {}', {}, ['OldGame', 'OldGame.save', 'OldGame.save.title']);
+  await project.updateContracts();
+  project.expectFileMissingText('src/main/kotlin/store/OldGame.kt', 'class OldGame');
+  project.expectFileContains('src/main/kotlin/store/Kept.kt', 'class Kept');
+  await project.runConsumer('fun main() { println(store.Kept()::class.simpleName) }');
+  project.expectStdout('Kept');
+}, 120_000);
