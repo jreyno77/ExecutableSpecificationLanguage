@@ -9,6 +9,97 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
+  buildPublicCatalog(source: string): Promise<void> { return this.driver.buildPublicCatalog(source); }
+  expectPublicCatalog(text: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.customCli!;
+    expect(observed.result).toMatchObject({ status: 'built', exitCode: 0, problems: [], stages: [
+      expect.objectContaining({ name: 'contracts', status: 'applied' }), { name: 'tests', status: 'not-run' },
+    ] });
+    expect(observed.catalog).toBe(text); expect(observed.note).toBe('Keep this handwritten note.');
+  }
+  expectCheckoutAndPrivateImportsBlocked(): void {
+    expect(this.driver.report.customCli).toMatchObject({ checkoutDenied: 'ERR_ACCESS_DENIED', privateImportDenied: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+  }
+  expectInstalledCommandCheckedWithoutWriting(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.cli!;
+    expect(observed.result).toMatchObject({ format: 1, status: 'checked', exitCode: 0, version: '1.2.3', problems: [], syntax: [], stages: [] });
+    expect(observed.stderr).toBe(''); expect(observed.manifestAfter).toBe(observed.manifestBefore);
+    expect(observed.files).toEqual(['notes.txt']); expect(observed.note).toBe('Keep this handwritten note.');
+    expect(observed.executable.replaceAll('\\', '/')).toContain('/node_modules/executable-specification-language/dist/cli-entry.js');
+  }
+  generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
+  runInstalledHttpLifecycle(): Promise<void> { return this.driver.runHttpLifecycle(); }
+  expectHttpScenarioPassed(title: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.lifecycle!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    expect(observed.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+    expect(observed.passed.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual: 1 }));
+  }
+  expectHttpNoOpFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.lifecycle!;
+    expect(observed.broken).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.broken.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+    expect(observed.broken.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual }));
+    expect(observed.unchangedTests).toBe(true);
+  }
+  expectHttpServersClosed(): void {
+    for (const run of [this.driver.report.lifecycle!.passed, this.driver.report.lifecycle!.broken]) {
+      const started = run.events.filter(event => event.event === 'started'); expect(started).toHaveLength(1);
+      expect(run.events.filter(event => event.event === 'closed')).toEqual([expect.objectContaining({ id: started[0]!.id, listening: false })]);
+    }
+  }
+  expectShoppingSteps(steps: string[]): void {
+    this.expectConsumerRan(); const observed = this.driver.report.acceptance!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    for (const step of steps) expect(observed.scenario).toContain(step);
+  }
+  expectShoppingPassed(title: string): void {
+    expect(this.driver.report.acceptance!.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+  }
+  expectBrokenBasketFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.acceptance!.broken;
+    expect(observed).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+  }
+  expectAcceptanceAndDriverPreserved(): void {
+    const observed = this.driver.report.acceptance!;
+    expect(observed.driverAfter).toBe(observed.driverBefore); expect(observed.unchangedTests).toBe(true);
+  }
+  applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
+    return this.driver.applyWriteAfterNativeReplacement(input);
+  }
+  expectExternalNativeChangeStopsWrite(file: string, before: string, after: string): void {
+    this.expectConsumerRan();
+    const native = this.driver.report.nativeInputs!;
+    expect(native.complete).toBe(true); expect(native.problems).toEqual([]);
+    expect(native.receipt.status).toBe('stopped');
+    expect(native.receipt.problems).toContainEqual(expect.objectContaining({ code: 'stale-project' }));
+    expect(native.receipt.outcomes).toMatchObject([{ change: { kind: 'write', path: file }, state: 'not-applied',
+      before: [{ path: file, state: 'absent' }], after: [{ path: file, state: 'absent' }] }]);
+    expect(native.targetExists).toBe(false);
+    expect(native.before).toBe(before); expect(native.after).toBe(after);
+    expect(native.evidence).toHaveLength(1);
+    expect(native.evidence[0]).toEqual({ uri: native.actualUri, version: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(native.laterVersion).not.toBe(native.evidence[0]!.version);
+    expect(native.editable).not.toContain(native.actualUri);
+    expect(native.handwritten).toBe('Keep this handwritten note.');
+  }
+  compileWorkspace(files: Record<string, string>, entries: string[]) { return this.driver.compileWorkspace(files, entries); }
+  expectWorkspaceFunctions(names: string[]) {
+    this.expectConsumerRan(); expect(this.driver.report.workspace?.functions).toEqual(names);
+  }
+  expectSharedWorkspaceType(name: string, parameters: number) {
+    const workspace = this.driver.report.workspace!;
+    expect(workspace.books).toEqual([name]); expect(workspace.parameters).toBe(parameters);
+    expect(workspace.bothParametersUseBook).toBe(true); expect(workspace.bookIdentityRecords).toBe(1);
+  }
   provideLocalLibraryAndNativeRegistry() { return this.driver.provideDependencies(); }
   installConfiguredStorage() { return this.driver.acquireDependencies('install'); }
   loadAcquiredLibrary(source: string) { return this.driver.acquireDependencies('compile', source); }
@@ -39,6 +130,27 @@ export class PackageExamples {
   writeCountConsumer(title: string): Promise<void> { return this.driver.writeCountConsumer(title); }
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
+
+  preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
+    return this.driver.preserveTypeScript(input);
+  }
+  expectAdoptedSourceUnchanged(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.preservation!;
+    expect(observed.adopted).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.afterAdoption).toBe(observed.original); expect(observed.generatedDuplicate).toBe(false);
+  }
+  expectPreservedNativeSource(source: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.updated).toMatchObject({ problems: [], receipt: { status: 'applied', problems: [] } });
+    expect(observed.retainedIdentity).toBe(true); expect(observed.source).toContain(source);
+    expect(observed.source).not.toContain('Not implemented');
+  }
+  expectPreservedCaller(source: string): void { expect(this.driver.report.preservation?.caller).toContain(source); }
+  expectPreservedRuntimeOutput(text: string): void {
+    const observed = this.driver.report.preservation!;
+    expect(observed.diagnostics).toEqual([]); expect(observed.runtime).toMatchObject({ code: 0, stderr: '' });
+    expect(observed.runtime!.stdout.trim()).toBe(text);
+  }
 
   captureNativeDependencies(packages: Record<string, string>): Promise<void> { return this.driver.captureNativeDependencies(packages); }
   expectInstalledMethodConsumer(file: string, name: string): void {
@@ -101,8 +213,8 @@ export class PackageExamples {
     expect(observed.emitted).toEqual({ 'dist/index.js': 'export {};\n', 'dist/index.d.ts': 'export {};\n' });
   }
 
-  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string): Promise<void> {
-    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised);
+  generateTypeScript(source: string, validConsumer: string, invalidConsumer: string, revised: string, handwrittenParameter: string): Promise<void> {
+    return this.driver.generateTypeScript(source, validConsumer, invalidConsumer, revised, handwrittenParameter);
   }
   expectInstalledTypeScriptScaffold(message: string): void {
     this.expectConsumerRan();
@@ -119,9 +231,9 @@ export class PackageExamples {
       { code: 2345, file: 'invalid.mts', text, message: "Argument of type 'number' is not assignable to parameter of type 'string'." },
     ]);
   }
-  expectHandwrittenNativeFileProtected(): void {
+  expectConflictingNativeSignatureProtected(): void {
     const observed = this.driver.report.typescriptOutput!;
-    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'output-conflict' }));
+    expect(observed.update?.problems).toContainEqual(expect.objectContaining({ code: 'contract-drift' }));
     expect(observed.update?.receipt).toBeUndefined();
     expect(observed.after).toBe(observed.handwritten);
     expect(observed.after).toContain('// Keep the handwritten retry rationale.');

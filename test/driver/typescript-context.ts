@@ -52,18 +52,7 @@ export class NativeContextDriver {
     await this.file(`node_modules/${name}/package.json`, JSON.stringify({ name: name.split('/node_modules/').at(-1), version: '1.0.0', ...metadata }));
     for (const [path, text] of Object.entries(entries)) await this.file(`node_modules/${name}/${path}`, text);
   }
-  async install(packages: Record<string, string>): Promise<void> {
-    const modules = fileURLToPath(new URL('../../node_modules/', import.meta.url)), copied = new Set<string>();
-    const copy = async (name: string, expected?: string): Promise<void> => {
-      if (copied.has(name)) return; copied.add(name);
-      const directory = join(modules, name), metadata = JSON.parse(await files.readFile(join(directory, 'package.json'), 'utf8'));
-      if (expected && metadata.version !== expected) throw Error(`Fixture needs actual ${name}@${expected}, found ${metadata.version}`);
-      await files.cp(directory, this.path('node_modules/' + name), { recursive: true, dereference: false });
-      for (const dependency of Object.keys(metadata.dependencies ?? {})) await copy(dependency);
-      for (const dependency of Object.keys(metadata.peerDependencies ?? {})) if (fs.existsSync(join(modules, dependency, 'package.json'))) await copy(dependency);
-    };
-    for (const [name, version] of Object.entries(packages)) await copy(name, version);
-  }
+  install(packages: Record<string, string>): Promise<void> { return copyInstalledPackages(this.root, packages); }
   select(id: string, file: string, declaration: { kind: string; name: string; static?: boolean }[]): void {
     this.associations.push({ specId: id, locator: { outputId: 'native', format: 'typescript-symbol-1', value: { file, declaration } } });
   }
@@ -135,3 +124,17 @@ export class NativeContextDriver {
   }
   hash(bytes: Uint8Array): string { return createHash('sha256').update(bytes).digest('hex'); }
 }
+
+export async function copyInstalledPackages(root: string, packages: Record<string, string>): Promise<void> {
+    const modules = fileURLToPath(new URL('../../node_modules/', import.meta.url)), copied = new Set<string>();
+    const copy = async (name: string, expected?: string): Promise<void> => {
+      if (copied.has(name)) return; copied.add(name);
+      const directory = join(modules, name), metadata = JSON.parse(await files.readFile(join(directory, 'package.json'), 'utf8'));
+      if (expected && metadata.version !== expected) throw Error(`Fixture needs actual ${name}@${expected}, found ${metadata.version}`);
+      await files.cp(directory, join(root, 'node_modules', name), { recursive: true, dereference: false });
+      for (const dependency of Object.keys(metadata.dependencies ?? {})) await copy(dependency);
+      for (const dependency of Object.keys(metadata.peerDependencies ?? {})) if (fs.existsSync(join(modules, dependency, 'package.json'))) await copy(dependency);
+      for (const dependency of Object.keys(metadata.optionalDependencies ?? {})) if (fs.existsSync(join(modules, dependency, 'package.json'))) await copy(dependency);
+    };
+    for (const [name, version] of Object.entries(packages)) await copy(name, version);
+  }

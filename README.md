@@ -458,10 +458,14 @@ For loaded workspace sources, supply `{ workspaceModules: [...] }` as the fifth
 The entry is always included. Other source modules are generated only when in
 that captured set; provider dependencies require native mappings. This keeps
 documentation visibility separate from authority to generate implementation code.
-Native `read` and `search` use `TypeScriptProject`. Updates preserve untouched
-files and refuse handwritten edits to files they would replace or remove. The
-private output state retains only last-generated text for later comparison;
-preservation-aware editing of handwritten bodies is a subsequent task.
+Native `read` and `search` use `TypeScriptProject`. Updates preserve handwritten
+bodies, private helpers and comments while changing owned contracts and proven
+native references. Enable `adoptExisting: true` on `create` to adopt explicitly
+mapped declarations; every represented member needs its own native association.
+Shared adopted files retain their placement. Generated-only baselines stay separate
+from handwritten code. Competing signature edits, implemented removals, incomplete
+rename scope and unsafe overload signature changes return conflicts without writes.
+Overload renames update all signatures; changed promises remain unverified obligations.
 
 An output keeps options and live context, captures fresh files for each operation,
 and applies through the supplied writer. `plan(request, snapshot)` returns ordinary
@@ -587,6 +591,107 @@ Pass its packages to `NpmDependencies.install` explicitly; then `npm run build`
 compiles the starter. Conflicting compiler requirements are rejected before creation.
 A stopped result preserves any created root and actual writer receipt; inspect it
 before recovery. Accepted previews are single-use, including failed attempts.
+## Generate readable acceptance tests
+
+After application synchronization, open the acceptance output against a fresh project
+capture with its native declarations:
+
+```ts
+import { acceptanceOutput, FileProjectWriter, Outputs, TypeScriptContext } from 'executable-specification-language';
+
+const outputs = new Outputs();
+outputs.register(acceptanceOutput);
+const project = new TypeScriptContext(connectedProject, {
+  configFile: 'tsconfig.json', imports: ['vitest'],
+});
+const opened = outputs.open('acceptance', { domain: 'shopping', configFile: 'tsconfig.json' },
+  project, new FileProjectWriter(project), { workspaceModules });
+if (opened.value) {
+  const result = await opened.value.create(current);
+  // Inspect problems and obligations; confirm returned associations only after success.
+}
+```
+
+The pinned target is TypeScript 5.9.3 and Vitest 5.0.2. Generated tests retain authored
+titles, inputs and expected values. They call the domain DSL, which implements checked
+compositions and assertions or delegates runtime work to a driver. Missing runtime
+methods and prose-only expectations fail explicitly and produce `obligations`.
+Generation does not install packages, run the application or claim the tests passed.
+
+The default `test/acceptance`, `test/dsl` and `test/driver` layers use a fresh DSL/driver
+instance per test. Existing classes and native Vitest fixtures require exact
+`acceptance/typescript-symbol-1` associations and initial `adoptExisting: true`.
+Application mappings retain their original output namespace. Updates preserve
+handwritten bodies and refuse competing edits; `read` and `search` inspect current
+native callbacks and report changed generated assertions. Runtime resource lifecycle
+management belongs to the native fixture.
+
+After default generation, select an authored fixture importing the generated DSL:
+
+```ts
+const fixture = { outputId: 'acceptance', format: 'typescript-symbol-1', value: {
+  file: 'test/dsl/http-shopping-test.ts', declaration: [{ kind: 'variable', name: 'test' }],
+} };
+const selected = outputs.open('acceptance', {
+  domain: 'shopping', configFile: 'tsconfig.json', fixture,
+}, project, new FileProjectWriter(project), { workspaceModules });
+const diff = identities.compare(current.baseline, current);
+if (selected.value && diff.value) {
+  const result = await selected.value.update(diff.value, current);
+  // Inspect the receipt and confirm only actually applied associations.
+}
+```
+
+This first default-to-authored selection preserves the old default fixture and
+handwritten callers. Repeating it is unchanged; replacing an authored fixture or
+changing placement remains an unsupported migration. Unselected default stubs
+remain visible scaffolds, not proof of missing selected-runtime behavior.
+
+Use Vitest's native test-scoped fixtures for resources. Finish acquisition and
+register cleanup in one fixture; put fallible preparation in its dependent DSL
+fixture so setup and cleanup failures both remain visible:
+
+```ts
+import { test as baseTest } from 'vitest';
+import { Shopping } from './shopping.js';
+import { HttpShoppingDriver } from '../driver/http-shopping.js';
+import { startShop } from '../../src/shop.js';
+
+export const test = baseTest
+  .extend('shop', async ({}, { onCleanup }) => {
+    const server = await startShop();
+    onCleanup(() => server.close());
+    return server;
+  })
+  .extend('shopping', async ({ shop }) => {
+    await shop.prepareCatalog();
+    return new Shopping(new HttpShoppingDriver(shop.url));
+  });
+```
+
+The project supplies `startShop` and its driver; partial acquisition cleans up its
+own resources. Compilation/generation never starts them. Invoke native Vitest
+explicitly for runtime results; type compatibility and generation do not establish
+a pass. Source `.expec` fixtures remain data-only.
+
+## Connected commands
+
+The installed package provides the `expec` command. Start with an `expec.json` manifest and authored source entries. Paths in the manifest stay relative to that file, including when commands run from another directory.
+
+```sh
+expec check --config spec/expec.json
+expec init --config spec/expec.json --root ../store-game --target typescript --yes
+expec install --config spec/expec.json
+expec build --config spec/expec.json
+expec test --config spec/expec.json
+```
+
+Initialization and installation are explicit. Build checks the supplied source, preserves confirmed identities, applies selected contracts, then reads the actual project before generating acceptance tests. It reports unfinished implementations; it does not run them. Test requires current generated evidence and project-installed Vitest 5.0.2, selects the actual generated callbacks, and retains assertion and cleanup failures. Handwritten implementation edits may be tested without rebuilding; changed generated assertions require repair or generation.
+
+Use `--json` for one format-1 report on stdout; native application logs go to stderr. Exit codes are 0 for success, 1 for failed/invalid work, 2 for command usage, 3 for a required author decision, and 130 for cancellation. Failed writes retain actual receipts and recognized pending intent; a later build resumes only a verified unchanged prefix. Identity rename/retirement decisions use `build --decisions changes.json`.
+
+A deliberate custom launcher can import `runCli` and pass `{ contracts: [registration], tests: [registration] }` using ordinary `OutputRegistration` implementations. It receives the same checked specification and guarded project boundaries. Configuration does not load executable plugins.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.
@@ -610,6 +715,6 @@ This separate suite runs in Windows/Linux CI and may need registry access; insta
 scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
 and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
-`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. The connected-build CLI, additional language targets and npm publication remain subsequent work.
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. Additional language targets and npm publication remain subsequent work.
 
 Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).
