@@ -28,6 +28,14 @@ describe('native Java evidence outlives the actual query', { timeout: 90_000 }, 
 
     p.expectReadText(file, changed); p.expectRetainedRead(file, original);
   });
+  it('reports an interrupted actual native process and removes its scratch without changing an earlier read', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    const file = 'src/main/java/store/Store.java', source = 'package store; class Store { String title="Dune"; }';
+    await p.file(file, source); p.mapType('store', file, 'store.Store');
+    await p.read('store'); p.expectReadText(file, source); p.retainRead();
+    await p.interruptNativeQuery('store');
+    await p.expectNativeFailureAndCleanup(); p.expectRetainedRead(file, source);
+  });
   it('refuses every planned write after the selected JAR changes', async () => {
     const p = await JavaExamples.connect(); await p.installCatalogJar('public class Book {}');
     p.source('class Book {}\nclass Store {}'); p.changeCatalogBeforeApplyingPlan();

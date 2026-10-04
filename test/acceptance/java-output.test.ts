@@ -18,6 +18,16 @@ describe('explicit Java native prerequisites', () => {
 });
 
 describe('native Java questions over captured source', { timeout: 90_000 }, () => {
+  it('reports real missing and extra relationships instead of matching native names', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    p.source('class A {}\nclass B {}\nclass C {}\nclass D {}\nclass Use {}');
+    const file = 'src/main/java/store/Use.java';
+    await p.file(file, 'package store; class A {} class B {} class C {} class D {} class Use { A a; B b; D d; }');
+    p.mapAuthoredType('A', file, 'store.A'); p.mapAuthoredType('B', file, 'store.B'); p.mapAuthoredType('C', file, 'store.C');
+    p.mapAuthoredType('D', file, 'store.D'); p.mapAuthoredType('Use', file, 'store.Use');
+    await p.search('Use'); p.expectCoverageComplete(); p.reconcileOutgoingWith(['A', 'B', 'C']);
+    p.expectRelationships(['A', 'B'], ['C'], ['D']);
+  });
   it('uses an actual external JAR without inventing editable dependency source', async () => {
     const p = await JavaExamples.connect(); await p.installCatalogJar('public class Book { public String title; }');
     const file = 'src/main/java/store/Read.java';
@@ -213,6 +223,14 @@ describe('Java contracts remain native and readable', { timeout: 90_000 }, () =>
     await p.createContracts({ package: 'store' });
     p.expectContractProblemAt('unsupported-native-number', '9007199254740993');
     p.expectContractProblemAt('unsupported-native-type', 'Text | Number'); await p.expectNoWrites();
+  });
+  it('refuses conflicting native erasure and generic names before writes', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    p.source('type Book { title: Text }\ntype Box<T> { item: Book }\nfunction first(books: List<Book>) returns Nothing\nfunction second(titles: List<Text>) returns Nothing');
+    await p.createContracts({ package: 'store', names: [{ declaration: ['Box', 'T'], name: 'Book' },
+      { declaration: ['first'], name: 'save' }, { declaration: ['second'], name: 'save' }] });
+    p.expectNativeConflict('native-name-conflict', 'Book'); p.expectNativeConflict('native-signature-conflict', 'save');
+    await p.expectNoWrites();
   });
   it('uses an actual mapped opaque native type without wrapping it', async () => {
     const p = await JavaExamples.connect(); await p.installNativeProfile();

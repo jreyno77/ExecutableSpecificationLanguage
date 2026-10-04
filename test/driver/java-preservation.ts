@@ -1,4 +1,6 @@
-import { SpecificationIdentity, type SpecDiff, type IdentityDecision, type Check, type OutputPlan } from '../../src/index.js';
+import { SpecificationIdentity, FileProjectWriter, type WriteResult, type SpecDiff, type IdentityDecision, type Check, type OutputPlan } from '../../src/index.js';
+import { promises as fs } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { JavaOutputDriver } from './java-output.js';
 
 /** Explicit authored correspondence and native code; all edits go through the public Java output. */
@@ -7,6 +9,22 @@ export class JavaPreservationDriver extends JavaOutputDriver {
   private readonly identity = new SpecificationIdentity(() => 'java-preserved-' + ++this.next);
   diff!: SpecDiff;
   plan!: Check<OutputPlan>;
+  appliedPlan!: WriteResult;
+  readonly copiedJdk = join(this.directory, 'jdk');
+  async isolateToolchain(): Promise<void> {
+    await fs.cp(process.env.JAVA_HOME!, this.copiedJdk, { recursive: true, dereference: true });
+    await this.nativeProject('', this.copiedJdk);
+  }
+  async catalogAt(path: string, source: string): Promise<void> {
+    await this.nativeCatalog(source);
+    const destination = join(this.root, path); await fs.mkdir(dirname(destination), { recursive: true });
+    await fs.copyFile(this.catalogJar, destination); this.catalogJar = destination;
+    this.nativeOptions = { classPath: { main: [destination], test: [] } }; await this.nativeProject();
+  }
+  async applyPlan(ordinary = false): Promise<void> {
+    if (!this.plan.value) throw new Error(JSON.stringify(this.plan));
+    this.appliedPlan = await new FileProjectWriter(ordinary ? this.ordinary : this.context).apply(this.plan.value); await this.capture();
+  }
   private id(name: string): string {
     const records = this.current.baseline.elements.filter(record => record.address.name === name);
     if (records.length !== 1) throw new Error('Name must identify exactly one authored fixture declaration: ' + name);

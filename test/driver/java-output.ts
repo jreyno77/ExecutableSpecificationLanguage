@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { Compiler, ConfigurationReader, FileProjectWriter, JavaContext, JavaProject, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer,
-  SpecificationIdentity, javaOutput, type ArtifactAssociation, type IdentifiedSpecification, type OutputWrite, type ProjectChanges, type ProjectContext, type ProjectRead, type ProjectSearch, type ProjectSnapshot } from '../../src/index.js';
+  SpecificationIdentity, reconcileRelationships, javaOutput, type Reconciliation, type ArtifactAssociation, type IdentifiedSpecification, type OutputWrite, type ProjectChanges, type ProjectContext, type ProjectRead, type ProjectSearch, type ProjectSnapshot } from '../../src/index.js';
 
 export class JavaOutputDriver {
   readonly temporary = realpathSync.native(tmpdir());
@@ -22,6 +22,7 @@ export class JavaOutputDriver {
   readonly associations: ArtifactAssociation[] = [];
   readResult!: ProjectRead;
   searchResult!: ProjectSearch;
+  compared!: Reconciliation;
   current!: IdentifiedSpecification;
   sourceText = '';
   contractOptions: Record<string, unknown> | undefined;
@@ -32,7 +33,7 @@ export class JavaOutputDriver {
   protected nativeOptions: Record<string, unknown> = {};
   catalogJar!: string;
   externalSource!: string;
-  queryProcess = { started: false, answered: false, closed: false, scratch: '', changed: false, mutationError: '', output: '' };
+  queryProcess = { started: false, answered: false, closed: false, interrupted: false, scratch: '', changed: false, mutationError: '', output: '' };
   nativeWriteChange: 'before' | 'after-first' | undefined;
   nativeWriteChanged = false;
   readonly executionCanaries: string[] = [];
@@ -63,15 +64,16 @@ export class JavaOutputDriver {
     if (!source) throw new Error('No captured source: ' + path);
     Object.assign(source, { bytes: Buffer.from(text) });
   }
-  async searchWhileCatalogChanges(id: string): Promise<void> {
+  async searchWhileCatalogChanges(id: string, interrupt = false): Promise<void> {
     await this.capture();
     const spawn = childProcess.spawn, trace = this.queryProcess;
     const observation = vi.spyOn(childProcess, 'spawn').mockImplementation(((...args: Parameters<typeof spawn>) => {
       const child = Reflect.apply(spawn, childProcess, args);
       if (Array.isArray(args[1]) && args[1].includes('ExpecJava')) {
         trace.started = true; trace.scratch = String(args[1].at(-1));
+        if (interrupt) child.once('spawn', () => { trace.interrupted = child.kill(); });
         child.stdout!.on('data', data => { trace.output += String(data); });
-        child.stdout!.once('data', () => {
+        if (!interrupt) child.stdout!.once('data', () => {
           trace.answered = true;
           try { appendFileSync(this.catalogJar, '\nchanged-during-query\n'); trace.changed = true; }
           catch (error) { trace.mutationError = String(error); }
@@ -84,8 +86,7 @@ export class JavaOutputDriver {
     try { this.searchResult = await new JavaProject({ outputId: 'java' }, this.associations).search(id, this.snapshot); }
     finally { observation.mockRestore(); syncBuiltinESMExports(); }
   }
-  async nativeProject(build = ''): Promise<void> {
-    const javaHome = process.env.JAVA_HOME;
+  async nativeProject(build = '', javaHome = process.env.JAVA_HOME): Promise<void> {
     if (!javaHome) throw new Error('Java native acceptance requires an explicit JAVA_HOME for JDK 21.');
     await this.configure(javaHome, this.nativeOptions);
     await this.file('settings.gradle', "rootProject.name = 'java-consumer'\n");
@@ -99,7 +100,7 @@ export class JavaOutputDriver {
     // cross-spawn is the production package's existing portable native command boundary.
     const { default: spawn } = await import('cross-spawn');
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(gradle, ['--no-daemon', '-p', this.root, 'captureClasspaths', '--write-locks'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(gradle, ['--no-daemon', '-p', this.root, 'captureClasspaths', '--write-locks'], { env: { ...process.env, JAVA_HOME: javaHome }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = ''; child.stdout!.on('data', value => output += String(value)); child.stderr!.on('data', value => output += String(value));
       const timeout = setTimeout(() => { child.kill(); reject(new Error('Native fixture acquisition exceeded 60 seconds.')); }, 60_000);
       child.once('error', reject); child.once('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(output)); });
@@ -163,6 +164,11 @@ export class JavaOutputDriver {
     this.nativeOptions = { classPath: { main: [this.catalogJar], test: [] } };
   }
   mapType(specId: string, file: string, type: string): void { this.associations.push({ specId, locator: { outputId: 'java', format: 'java-symbol-1', value: { file, type } } }); }
+  mapAuthoredType(name: string, file: string, type: string): void { this.mapType(this.subject(name), file, type); }
+  reconcile(names: string[]): void {
+    const result = reconcileRelationships(this.current, names.map(name => this.subject(name)), this.searchResult.outgoing);
+    if (!result.value) throw new Error(JSON.stringify(result)); this.compared = result.value;
+  }
   mapMethod(specId: string, file: string, type: string, name: string, parameters: string[]): void {
     this.associations.push({ specId, locator: { outputId: 'java', format: 'java-symbol-1', value: { file, type, member: { kind: 'method', name, parameters, static: false } } } });
   }
@@ -179,7 +185,7 @@ export class JavaOutputDriver {
   }
   private subject(name: string): string { return this.current?.baseline.elements.find(item => item.address.name === name)?.id ?? name; }
   async read(id: string): Promise<void> { await this.capture(); this.readResult = this.contractOptions ? await this.output().read(this.subject(id)) : await new JavaProject({ outputId: 'java' }, this.associations).read(id, this.snapshot); }
-  async search(id: string): Promise<void> { await this.capture(); this.searchResult = this.contractOptions ? await this.output().search(this.subject(id)) : await new JavaProject({ outputId: 'java' }, this.associations).search(id, this.snapshot); }
+  async search(id: string): Promise<void> { await this.capture(); this.searchResult = this.contractOptions ? await this.output().search(this.subject(id)) : await new JavaProject({ outputId: 'java' }, this.associations).search(this.subject(id), this.snapshot); }
   library(locator: string, text: string): void {
     const parsed = new LangiumReader().read({ sourceId: locator + '.expec', text });
     if (parsed.status !== 'accepted') throw new Error(JSON.stringify(parsed));

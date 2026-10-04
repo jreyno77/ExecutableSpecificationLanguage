@@ -203,6 +203,17 @@ it('moves an untouched generated public class and its proven callers on a type r
   await p.runJava('System.out.print(new store.Launcher().make().getClass().getSimpleName());'); p.expectStdout('Shop');
 });
 
+it('refuses moving an implemented capability to another owner', { timeout: 120_000 }, async () => {
+  const p = await JavaPreservation.connect();
+  p.source('class Store { public save\ncapability save(title: Text) returns Nothing }\nclass Archive {}');
+  const file = 'src/main/java/store/Store.java';
+  await p.file(file, 'package store; public class Store { public void save(String title) { System.out.print(title); } }');
+  p.mapStore(file, 'store.Store', 'save', ['java.lang.String']); await p.adopt(); p.expectWritten();
+  await p.rememberWrites();
+  await p.update('class Store {}\nclass Archive { public save\ncapability save(title: Text) returns Nothing }', ['save', 'save']);
+  p.expectProblemCode('implemented-move'); p.expectConflictAt(file, 'save'); await p.expectNoWrites();
+});
+
 it('removes an uncommented unused parameter while retaining the adopted method body', { timeout: 120_000 }, async () => {
   const p = await JavaPreservation.connect();
   p.source('class Store { public save\ncapability save(title: Text, copies: Number) returns Nothing }');

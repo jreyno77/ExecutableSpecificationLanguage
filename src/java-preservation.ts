@@ -91,6 +91,8 @@ export class JavaPreservation {
     this.problems.push(...actual.problems);
     const empty = { files: [], changes: [] };
     if (this.problems.length) return empty;
+    this.implementedMoves(previous, desired, actual.facts);
+    if (this.problems.length) return empty;
     for (const item of mappings.filter(item => item.locator.format === 'java-symbol-1')) {
       const at = address(item), candidates = desired.flatMap(file => file.artifacts).filter(wanted => wanted.specId === item.specId
         && wanted.locator.format === 'java-symbol-1' && address(wanted).member?.kind === at.member?.kind && address(wanted).parameter === at.parameter);
@@ -245,6 +247,22 @@ export class JavaPreservation {
       const comment = source.comments.find(at => at.start >= start && at.start < source.close);
       if (comment) this.problems.push(javaProblem('handwritten-comment-conflict', 'Removing this parameter would discard its handwritten comment.', node.file, comment.start, comment.length));
       else patch(node.file, start, source.close, '');
+    }
+  }
+  private implementedMoves(previous: readonly JavaBaseline[], desired: readonly JavaFile[], actual: JavaFacts): void {
+    const old = previous.flatMap(file => file.artifacts), next = desired.flatMap(file => file.artifacts);
+    const owner = (items: readonly ArtifactAssociation[], item: ArtifactAssociation) => items.find(root => root.locator.format === 'java-symbol-1'
+      && !address(root).member && address(root).file === address(item).file && address(root).type === address(item).type)?.specId;
+    for (const file of previous) for (const item of file.artifacts) {
+      if (item.locator.format !== 'java-symbol-1' || !address(item).member || address(item).parameter !== undefined) continue;
+      const current = this.snapshot.files.find(source => source.path === file.path);
+      if (!file.adopted?.includes(item.specId) && current && hash(current.bytes) === file.hash) continue;
+      const from = owner(old, item), destinations = next.filter(candidate => candidate.specId === item.specId
+        && candidate.locator.format === 'java-symbol-1' && address(candidate).member?.kind === address(item).member?.kind
+        && address(candidate).parameter === undefined);
+      if (!from || !destinations.some(candidate => owner(next, candidate) && owner(next, candidate) !== from)) continue;
+      for (const node of selected(actual, item)) this.problems.push(javaProblem('implemented-move',
+        'The native declaration contains adopted or handwritten source; moving it to another owner requires explicit preservation.', node.file, node.start, node.length));
     }
   }
   private async nativeView(desired: readonly JavaFile[], mappings: readonly ArtifactAssociation[], actual: JavaFacts, owned: readonly JavaBaseline[] = []) {

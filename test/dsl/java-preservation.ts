@@ -1,5 +1,7 @@
 import { expect } from 'vitest';
 import { pathToFileURL } from 'node:url';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { JavaPreservationDriver } from '../driver/java-preservation.js';
 
 export class JavaPreservation {
@@ -15,6 +17,43 @@ export class JavaPreservation {
   configureOutput(options:Record<string,unknown>):void { this.driver.contractOptions={package:'store',...options}; }
   source(text: string): void { this.driver.source(text); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
+  capture(): Promise<void> { return this.driver.capture(); }
+  selectCatalogJarAt(path: string, source: string): Promise<void> { return this.driver.catalogAt(path, source); }
+  changeSelectedJar(): void { appendFileSync(this.driver.catalogJar, '\nchanged-selected-library\n'); }
+  useIsolatedToolchain(): Promise<void> { return this.driver.isolateToolchain(); }
+  changeSelectedJdkImage(): void {
+    const image = join(this.driver.copiedJdk, 'lib', 'modules');
+    expect(this.driver.plan.value?.basedOn.nativeInputs?.some(input => input.uri === pathToFileURL(image).href)).toBe(true);
+    appendFileSync(image, '\nchanged-selected-image\n');
+  }
+  async planRename(from: string, to: string): Promise<void> { this.driver.revise('class ' + to + ' {}', [from, to]); await this.driver.planUpdate(); }
+  applyPlan(): Promise<void> { return this.driver.applyPlan(); }
+  applyUsingPlainProjectContext(): Promise<void> { return this.driver.applyPlan(true); }
+  expectPlanAvailable(): void { expect(this.driver.plan.problems).toEqual([]); expect(this.driver.plan.value).toBeDefined(); }
+  expectAppliedPlan(status: 'applied' | 'stopped', paths?: string[]): void {
+    expect(this.driver.appliedPlan.status).toBe(status);
+    if (status === 'stopped') expect(this.driver.appliedPlan.problems.map(problem => problem.code)).toContain('stale-project');
+    if (paths) expect(this.driver.appliedPlan.outcomes.filter(item => item.state === 'applied')
+      .map(item => item.change.kind === 'move' ? item.change.to : item.change.path)).toEqual(paths);
+  }
+  expectExcludedEntries(paths: string[]): void { expect(this.driver.snapshot.excluded).toEqual(expect.arrayContaining(paths)); }
+  expectNoCapturedFilesBelow(paths: string[]): void {
+    expect(this.driver.snapshot.files.filter(file => paths.some(path => file.path === path || file.path.startsWith(path + '/')))).toEqual([]);
+  }
+  expectCapturedFiles(paths: string[]): void { expect(this.driver.snapshot.files.map(file => file.path)).toEqual(expect.arrayContaining(paths)); }
+  expectSelectedJarEvidence(): void {
+    expect(this.driver.snapshot.nativeInputs).toEqual(expect.arrayContaining([expect.objectContaining({ uri: pathToFileURL(this.driver.catalogJar).href,
+      version: expect.stringMatching(/^[a-f0-9]{64}$/) })]));
+  }
+  expectIncompleteSource(path: string): void {
+    expect(this.driver.snapshot.complete).toBe(false);
+    expect(this.driver.snapshot.problems.some(problem => problem.code === 'excluded-source' && problem.at.kind === 'dependency'
+      && problem.at.path.includes(path)), JSON.stringify(this.driver.snapshot.problems)).toBe(true);
+  }
+  async expectRefusedPlanWithoutWrites(): Promise<void> {
+    expect(this.driver.plan.value).toBeUndefined(); expect(this.driver.plan.problems.length).toBeGreaterThan(0);
+    await this.driver.capture(); expect(this.driver.snapshot.files.map(({ path, bytes }) => ({ path, bytes: Uint8Array.from(bytes) }))).toEqual(this.filesBefore);
+  }
   mapOwner(file: string, type: string): void { this.driver.mapOwner(file, type); }
   mapStore(file: string, type: string, method: string, parameters: string[]): void { this.driver.mapStore(file, type, method, parameters); }
   async nativeCaller(source: string): Promise<void> { await this.driver.nativeSource('catalog/Caller.java', source); await this.driver.nativeProject(); }

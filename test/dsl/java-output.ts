@@ -31,6 +31,16 @@ export class JavaExamples {
     expect(this.retainedRead?.coverage.complete).toBe(true); expect(this.retainedRead?.problems).toEqual([]);
   }
   searchWhileCatalogChanges(id: string): Promise<void> { return this.driver.searchWhileCatalogChanges(id); }
+  interruptNativeQuery(id: string): Promise<void> { return this.driver.searchWhileCatalogChanges(id, true); }
+  async expectNativeFailureAndCleanup(): Promise<void> {
+    expect(this.driver.queryProcess).toMatchObject({ started: true, interrupted: true, closed: true });
+    expect(this.driver.searchResult.problems.some(problem => problem.code === 'native-analysis-failed'
+      && problem.at.kind === 'dependency' && problem.at.path.includes('expec.java.json'))).toBe(true);
+    expect(this.driver.searchResult.definitions).toEqual([]);
+    expect(this.driver.searchResult.incoming.uses).toEqual([]); expect(this.driver.searchResult.outgoing.uses).toEqual([]);
+    this.expectQueryIncomplete();
+    await expect(fs.lstat(this.driver.queryProcess.scratch)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
   async expectFinishedNativeQueryAndCleanup(): Promise<void> {
     expect(this.driver.queryProcess).toMatchObject({ started: true, answered: true, changed: true, closed: true, mutationError: '' });
     const answer = JSON.parse(this.driver.queryProcess.output);
@@ -77,6 +87,14 @@ export class JavaExamples {
   installNativeProfile(): Promise<void> { return this.driver.nativeProject(); }
   async installCatalogJar(source: string): Promise<void> { await this.driver.nativeCatalog(source); await this.driver.nativeProject(); }
   mapType(id: string, file: string, type: string): void { this.driver.mapType(id, file, type); }
+  mapAuthoredType(name: string, file: string, type: string): void { this.driver.mapAuthoredType(name, file, type); }
+  reconcileOutgoingWith(names: string[]): void { this.driver.reconcile(names); }
+  expectRelationships(matched: string[], unobserved: string[], observedOnly: string[]): void {
+    const ids = (names: string[]) => names.map(name => this.driver.current.baseline.elements.find(item => item.address.name === name)!.id);
+    expect(this.driver.compared.matched.map(item => item.id)).toEqual(ids(matched));
+    expect(this.driver.compared.unobserved).toEqual(ids(unobserved));
+    expect(this.driver.compared.observedOnly.map(use => use.target)).toEqual(ids(observedOnly).map(id => ({ kind: 'specified', id })));
+  }
   mapMethod(id: string, file: string, type: string, method: string, parameters: string[]): void { this.driver.mapMethod(id, file, type, method, parameters); }
   mapParameter(id: string, file: string, type: string, method: string, parameters: string[], parameter: number): void { this.driver.mapParameter(id, file, type, method, parameters, parameter); }
   mapConstructor(id: string, file: string, type: string, parameters: string[]): void { this.driver.mapConstructor(id, file, type, parameters); }
@@ -173,6 +191,10 @@ export class JavaExamples {
   expectLocatedGenerationProblem(code: string): void {
     expect(this.driver.written.problems.some(problem => problem.code === code && problem.at.kind === 'source'), JSON.stringify(this.driver.written.problems)).toBe(true);
     expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.written.artifacts).toBeUndefined();
+  }
+  expectNativeConflict(code: string, name: string): void {
+    this.expectLocatedGenerationProblem(code);
+    expect(this.driver.written.problems.some(problem => problem.code === code && problem.message.includes(name))).toBe(true);
   }
   source(text: string): void { this.driver.source(text); }
   createContracts(options: Record<string, unknown>): Promise<void> { return this.driver.create(options); }
