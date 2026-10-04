@@ -67,6 +67,8 @@ describe('a Kotlin consumer can use the specified contracts', () => {
     await project.installDependencies();
     project.expectInstalledPackage('maven:org.jetbrains.kotlin:kotlin-stdlib', '2.4.10');
     project.expectInstalledPackage('maven:org.junit.jupiter:junit-jupiter', '6.1.3');
+    project.expectInstalledPackage('maven:org.junit.platform:junit-platform-console', '6.1.3');
+    project.expectInstalledPackage('maven:org.junit.platform:junit-platform-reporting', '6.1.3');
     await project.readDependencies();
     project.expectInstalledPackage('maven:org.jetbrains.kotlin:kotlin-gradle-plugin', '2.4.10');
     project.source('class StoreGame { public save\ncapability save() returns Nothing }');
@@ -83,6 +85,8 @@ describe('a Kotlin consumer can use the specified contracts', () => {
       { name: 'maven:org.jetbrains.kotlin:kotlin-stdlib', version: '2.4.10', phases: ['runtime'] },
       { name: 'maven:org.junit.jupiter:junit-jupiter', version: '6.1.3', phases: ['test'] },
       { name: 'maven:org.junit.platform:junit-platform-launcher', version: '6.1.3', phases: ['test'] },
+      { name: 'maven:org.junit.platform:junit-platform-console', version: '6.1.3', phases: ['test'] },
+      { name: 'maven:org.junit.platform:junit-platform-reporting', version: '6.1.3', phases: ['test'] },
     ]);
     await project.expectEmptyDestination();
   });
