@@ -15,6 +15,8 @@ const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
+  cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
+    stderr: string; manifestBefore: string; manifestAfter: string; files: string[]; note: string };
   packageUrl: string;
   acceptance?: {
     written: OutputWrite; scenario: string; driverBefore: string; driverAfter: string; unchangedTests: boolean;
@@ -151,6 +153,10 @@ export class PackageDriver {
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
+  }
+  async checkFromInstalledCommand(): Promise<void> {
+    await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
+    this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
   }
   async generateShoppingAcceptance(): Promise<void> {
     await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);

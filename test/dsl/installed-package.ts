@@ -9,6 +9,14 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
+  expectInstalledCommandCheckedWithoutWriting(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.cli!;
+    expect(observed.result).toMatchObject({ format: 1, status: 'checked', exitCode: 0, version: '1.2.3', problems: [], syntax: [], stages: [] });
+    expect(observed.stderr).toBe(''); expect(observed.manifestAfter).toBe(observed.manifestBefore);
+    expect(observed.files).toEqual(['notes.txt']); expect(observed.note).toBe('Keep this handwritten note.');
+    expect(observed.executable.replaceAll('\\', '/')).toContain('/node_modules/executable-specification-language/dist/cli-entry.js');
+  }
   generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
   expectShoppingSteps(steps: string[]): void {
     this.expectConsumerRan(); const observed = this.driver.report.acceptance!;

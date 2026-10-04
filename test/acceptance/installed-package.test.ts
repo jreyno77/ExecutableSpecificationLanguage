@@ -5,6 +5,14 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('checks a real manifest through the installed expec command without writing project files', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.checkFromInstalledCommand();
+    consumer.expectInstalledCommandCheckedWithoutWriting();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
+  });
   it('generates readable shopping tests that reject a real basket which adds nothing', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();
