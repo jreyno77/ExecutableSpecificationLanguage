@@ -16,7 +16,9 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
@@ -98,13 +100,11 @@ fun main(args: Array<String>) {
                     if (node is KtParameter) put("hasDefault", node.hasDefaultValue())
                     if (node is KtProperty) {
                         put("mutable", node.isVar)
-                        put("storedProperty", node.initializer != null && !node.hasDelegate() && node.receiverTypeReference == null
-                            && node.getter?.bodyExpression == null && node.setter?.bodyExpression == null
-                            && !node.hasModifier(KtTokens.OPEN_KEYWORD) && !node.hasModifier(KtTokens.ABSTRACT_KEYWORD))
+                        put("storedProperty", analyze(node) { storedProperty(node) })
                     }
                     if (node is KtParameter && node.hasValOrVar()) {
                         put("mutable", node.isMutable)
-                        put("storedProperty", !node.hasModifier(KtTokens.OPEN_KEYWORD) && !node.hasModifier(KtTokens.ABSTRACT_KEYWORD))
+                        put("storedProperty", analyze(node) { storedProperty(node) })
                     }
                     if (node is KtClass) put("dataConstruction", !node.isInterface() && !node.isEnum() && !node.isAnnotation()
                         && !node.hasModifier(KtTokens.INNER_KEYWORD) && node.secondaryConstructors.isEmpty()
@@ -193,6 +193,18 @@ private fun kind(node: KtNamedDeclaration): String = when (node) {
     is KtParameter -> if (node.hasValOrVar()) "property" else "parameter"
     is KtTypeParameter -> "type-parameter"
     else -> "property"
+}
+/** A final native data slot cannot dispatch observation to an application accessor. */
+private fun KaSession.storedProperty(node: KtNamedDeclaration): Boolean {
+    val property: KaPropertySymbol = when (node) {
+        is KtProperty -> node.symbol as? KaPropertySymbol
+        is KtParameter -> (node.symbol as? KaValueParameterSymbol)?.generatedPrimaryConstructorProperty
+        else -> null
+    } ?: return false
+    val owner = parents(node).filterIsInstance<KtClass>().firstOrNull()
+    val final = property.modality.name == "FINAL" || owner?.symbol?.modality?.name == "FINAL"
+    return final && property.hasBackingField && !property.isDelegatedProperty && !property.isExtension
+        && property.getter?.isNotDefault != true && property.setter?.isNotDefault != true
 }
 private fun nativeName(node: KtNamedDeclaration, text: NativeText): String =
     if (node is KtConstructor<*>) "<init>" else node.name ?: "<anonymous@" + text.range(node).getValue("start") + ">"

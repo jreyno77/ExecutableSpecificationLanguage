@@ -67,3 +67,19 @@ data class Book(var title: String, var copies: Double) {
   await project.runTests(); project.expectTests(1, 0);
   project.expectRuntimeLines('APPLICATION_CONSTRUCTOR_EXECUTED', 1);
 }, 180_000);
+
+it('refuses an implicitly overridable property before a subclass getter can redefine data', async () => {
+  const project = await KotlinAcceptance.connect();
+  project.source('type Book { title: Text\ncopies: Number }\nfunction loadBook() returns Book\nexamples { example "one Dune": loadBook().copies => 1 }');
+  await project.buildContracts();
+  await project.nativeFile('src/main/kotlin/store/Book.kt', `package store
+interface Counts { var copies: Double }
+open class Book(var title: String, override var copies: Double): Counts
+class HiddenBook: Book("Dune", 2.0) {
+  override var copies: Double
+    get() { println("SUBCLASS_GETTER_EXECUTED"); return 1.0 }
+    set(value) {}
+}`);
+  await project.implement('loadBook', 'return HiddenBook()');
+  await project.expectAcceptanceRefused('unsupported-comparison-data');
+}, 180_000);

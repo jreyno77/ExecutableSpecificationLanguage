@@ -36,3 +36,10 @@ it('does not permit authored data construction through companion or secondary in
     ['Companion', false], ['Secondary', false],
   ]);
 }, 60_000);
+
+it('uses native finality for implicit overrides and final record classes', async () => {
+  const result = await declarations('interface Counts { val copies: Double }\nopen class OpenBook(override val copies: Double): Counts\nclass ClosedBook(override val copies: Double): Counts\nopen class FinalSlot(final override val copies: Double): Counts');
+  expect(result.filter(item => item.kind === 'property' && item.name === 'copies' && item.selector.length === 2).map(item => [item.selector[0]!.name, item.storedProperty])).toEqual([
+    ['Counts', false], ['OpenBook', false], ['ClosedBook', true], ['FinalSlot', true],
+  ]);
+}, 60_000);
