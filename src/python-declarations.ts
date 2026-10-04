@@ -114,7 +114,9 @@ export class PythonDeclarations {
       if (item.typeParameters.length) bases.push(this.required('Generic') + '[' + item.typeParameters.map(value => this.name(value)).join(', ') + ']');
       for (const wrapped of item.fields) {
         const field = unwrap(wrapped); if (field.kind !== 'field') continue;
-        const declared = this.known(this.catalog.typeOf(field.declaredType.id)), type = this.catalog.describe(declared);
+        const declared = this.known(this.catalog.typeOf(field.declaredType.id));
+        let type = this.catalog.describe(declared);
+        while (type.kind === 'alias' && type.target.status === 'known') type = this.catalog.describe(type.target.value);
         this.associate(field, [...path, { kind: 'field', name: this.name(field) }]);
         body.push(this.name(field) + ': ' + (type.kind === 'optional' ? this.required('NotRequired') + '[' + this.type(type.inner) + ']' : this.type(declared)));
       }

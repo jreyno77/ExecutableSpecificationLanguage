@@ -57,6 +57,17 @@ examples {
     await this.file('test/driver/shopping_driver.py', 'from store.contracts import Book\n\nclass ShoppingDriver:\n    def book(self) -> Book:\n        return ' + expression + '\n');
     await this.runGeneratedTests();
   }
+  async implementTakingOneCopy(): Promise<void> {
+    await this.file('test/driver/shopping_driver.py', 'from store.contracts import Book\n\nclass ShoppingDriver:\n    def take(self, book: Book) -> float:\n        book["copies"] += 1\n        return book["copies"]\n');
+  }
+  async observePosition(expression: string): Promise<void> {
+    await this.file('test/driver/shopping_driver.py', 'class ShoppingDriver:\n    def current(self) -> tuple[float, float]:\n        return ' + expression + '\n');
+    await this.runGeneratedTests();
+  }
+  async checkGeneratedTypes(): Promise<void> {
+    const sites = join(this.root, '.venv', ...(process.platform === 'win32' ? ['Lib', 'site-packages'] : ['lib', 'python3.12', 'site-packages']));
+    this.native = await this.python('import sys, os; sys.path.insert(0, sys.argv[1]); os.environ["MYPYPATH"] = os.pathsep.join(sys.argv[2:4]); from mypy import api; out, err, status = api.run(["--strict", "--no-incremental", "--follow-imports=normal", "-m", "dsl.shopping"]); print(out + err); sys.exit(status)', [sites, join(this.root, 'src'), join(this.root, 'test')]);
+  }
   async implementBasket(copies: number): Promise<void> {
     const source = await fs.readFile(new URL('../resources/python/basket.py', import.meta.url), 'utf8');
     await this.file('src/basket.py', source.replace('COPIES_ADDED = 1', 'COPIES_ADDED = ' + copies));

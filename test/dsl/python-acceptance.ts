@@ -11,6 +11,21 @@ export class PythonAcceptance {
   aShopperCanAddAnAvailableBook(title: string, quantity: number): void { this.driver.authorShopping(title, quantity); }
   aBookRetainsItsDeclaredData(): void { this.driver.authorBook(); }
   numbersRetainTheirDeclaredMeaning(): void { this.driver.authorNumberComparison(); }
+  source(text: string): void { this.driver.source(text); }
+  implementTakingOneCopy(): Promise<void> { return this.driver.implementTakingOneCopy(); }
+  observePosition(expression: string): Promise<void> { return this.driver.observePosition(expression); }
+  async expectNativeTypesAgree(): Promise<void> {
+    await this.driver.checkGeneratedTypes();
+    expect(this.driver.native.code, this.driver.native.text).toBe(0); expect(this.driver.native.text).not.toContain('error:');
+  }
+  expectComparisonFailed(): void {
+    expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);
+    expect(this.driver.runtime.text).toContain('AssertionError'); expect(this.driver.runtime.text).toContain('1 failed');
+  }
+  expectVerificationRequired(text: string): void {
+    expect(this.driver.written.obligations).toMatchObject([{ code: 'unimplemented-verification', message: expect.stringContaining(text) }]);
+    this.expectUnimplemented(text);
+  }
   observeTextAsNumbers(): Promise<void> { return this.driver.observeTextAsNumbers(); }
   expectInvalidNumber(): void {
     expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);

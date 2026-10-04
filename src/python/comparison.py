@@ -1,8 +1,8 @@
 """Comparison of finite, ordinary data without application equality hooks."""
 import math
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
-T = TypeVar("T")
+Shapes = list[list[Any]]
 
 
 def number(value: object) -> float:
@@ -55,11 +55,11 @@ def expect_data(actual: object, expected: object) -> None:
         raise AssertionError(f"Expected {wanted!r}, actual {observed!r}")
 
 
-def checked(value: T, shapes: list[list[Any]], index: int, active: set[int] | None = None) -> T:
+def checked(value: object, shapes: Shapes, index: int, active: set[int] | None = None) -> object:
     shape = shapes[int(index)]
     kind = shape[0]
     if kind == "Number":
-        return cast(T, number(value))
+        return number(value)
     if kind in ("Text", "Boolean", "Nothing"):
         expected = {"Text": str, "Boolean": bool, "Nothing": type(None)}[kind]
         if type(value) is not expected:
@@ -100,8 +100,12 @@ def checked(value: T, shapes: list[list[Any]], index: int, active: set[int] | No
             for key, field in fields.items():
                 if key in record:
                     checked(record[key], shapes, field, active)
-                elif shapes[int(field)][0] != "optional":
-                    raise AssertionError("Missing required field: " + key)
+                else:
+                    missing = shapes[int(field)]
+                    while missing[0] == "alias":
+                        missing = shapes[int(missing[1])]
+                    if missing[0] != "optional":
+                        raise AssertionError("Missing required field: " + key)
         elif kind == "List":
             for item in cast(list[object], value):
                 checked(item, shapes, shape[1], active)

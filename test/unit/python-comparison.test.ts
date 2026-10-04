@@ -85,4 +85,13 @@ except AssertionError as error:
     assert str(error) == "Cyclic comparison data"
 else:
     raise AssertionError("Cyclic declared data was accepted")`));
+  it('keeps aliased optional record data absent without accepting None', () => compare(`
+shapes = [["record", ["note", 1]], ["alias", 2], ["optional", 3], ["Text"]]
+assert checked({}, shapes, 0) == {}
+try:
+    checked({"note": None}, shapes, 0)
+except AssertionError as error:
+    assert str(error) == "Expected Text"
+else:
+    raise AssertionError("None was accepted as aliased absence")`));
 });

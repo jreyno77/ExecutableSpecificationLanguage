@@ -9,6 +9,9 @@ import { decimal } from './decimal.js';
 import { PythonData, pythonValue } from './python-data.js';
 import type { PythonFacts } from './python-inspection.js';
 import { canonical } from './identity-baseline.js';
+import type { NodeId } from './model.js';
+import type { TypeId } from './types.js';
+import { ExpressionChecker } from './expression-checker.js';
 
 type Operation = Item<'setup' | 'action' | 'observation' | 'check'>;
 type Options = Pick<PythonOptions, 'names' | 'imports'> & { domain: string; testRoot: string };
@@ -24,6 +27,8 @@ export class PythonExamples {
   private readonly modules: Set<string>;
   private readonly types;
   private readonly data;
+  private readonly expressions;
+  private readonly values = new Map<string, TypeId>();
   private readonly imports = new Map<string, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: Options, context?: OutputContext,
     private readonly native?: { facts: PythonFacts; roots: readonly string[] }) {
@@ -32,6 +37,7 @@ export class PythonExamples {
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.types = new PythonTypes(current.specification.types, item => this.imported(item), (code, item, message) => this.problem(code, item, message));
     this.data = new PythonData(current.specification.types);
+    this.expressions = new ExpressionChecker(current.specification.types);
   }
   private imported(item: Item): string {
     const candidates = this.current.baseline.artifacts.filter(artifact => artifact.specId === this.current.id(item.id)
@@ -57,12 +63,32 @@ export class PythonExamples {
     const fact = this.current.specification.types.typeOf(item.id);
     if (fact.status !== 'known') throw Error('Python acceptance requires checked type facts.'); return this.types.text(fact.value);
   }
+  private known(item: Item): TypeId {
+    const fact = this.current.specification.types.typeOf(item.id);
+    if (fact.status !== 'known') throw Error('Python acceptance requires a checked value type.'); return fact.value;
+  }
   private checked(value: string, type: Item): string {
     const fact = this.current.specification.types.typeOf(type.id);
     if (fact.status !== 'known') throw Error('Python acceptance requires a checked value type.');
-    return '_expec.checked(' + value + ', _expec_types, ' + this.data.shape(fact.value) + ')';
+    this.types.imports.add('cast as _expec_cast');
+    return '_expec_cast(' + JSON.stringify(this.type(type)) + ', _expec.checked(' + value + ', _expec_types, ' + this.data.shape(fact.value) + '))';
   }
-  private expression(item: Item, receiver: string): string {
+  private inferred(item: Item): TypeId | undefined {
+    return this.expressions.typeOf(item.id, reference => {
+      const binding = reference.resolution, target = binding.status === 'bound' ? this.inspection.read(binding.target) : undefined;
+      const value = target?.kind === 'fixture' || target?.kind === 'parameter' ? this.known(target.declaredType)
+        : reference.segments.length === 1 ? this.values.get(reference.segments[0]!) : undefined;
+      return value ? { value, problems: [], deferred: [] } : undefined;
+    }).value;
+  }
+  private comparison(left: Item, right: Item, receiver: string): string {
+    const expected = this.inferred(left) ?? this.inferred(right);
+    return this.expression(left, receiver, expected) + ', ' + this.expression(right, receiver, expected);
+  }
+  private expression(item: Item, receiver: string, expected?: TypeId): string {
+    const catalog = this.current.specification.types, shape = expected && catalog.describe(expected);
+    if (shape?.kind === 'alias' && shape.target.status === 'known') return this.expression(item, receiver, shape.target.value);
+    if (shape?.kind === 'optional') return this.expression(item, receiver, shape.inner);
     switch (item.kind) {
       case 'string-literal': return JSON.stringify(item.value);
       case 'boolean-literal': return item.value ? 'True' : 'False';
@@ -73,17 +99,30 @@ export class PythonExamples {
       }
       case 'name-expression': {
         const binding = item.reference.resolution;
-        return binding.status === 'bound' && this.inspection.read(binding.target).kind === 'parameter'
-          ? this.name(this.inspection.read(binding.target)) : item.reference.segments.join('.');
+        if (binding.status === 'bound') {
+          const target = this.inspection.read(binding.target);
+          if (target.kind === 'fixture') return receiver + '.' + this.name(target);
+          if (target.kind === 'parameter') return this.name(target);
+        }
+        return item.reference.segments.join('.');
       }
-      case 'grouped-expression': return '(' + this.expression(item.inner, receiver) + ')';
-      case 'list-expression': return '[' + item.elements.map(value => this.expression(value, receiver)).join(', ') + ']';
-      case 'record-expression': return '{' + item.entries.map(value => JSON.stringify(value.name) + ': ' + this.expression(value.value, receiver)).join(', ') + '}';
+      case 'grouped-expression': return '(' + this.expression(item.inner, receiver, expected) + ')';
+      case 'list-expression': {
+        const values = item.elements.map((value, index) => this.expression(value, receiver, shape?.kind === 'tuple' ? shape.elements[index] : shape?.kind === 'builtin' ? shape.arguments[0] : undefined));
+        return shape?.kind === 'tuple' ? '(' + values.join(', ') + (values.length === 1 ? ',' : '') + ')' : '[' + values.join(', ') + ']';
+      }
+      case 'record-expression': {
+        const fields = item.declaredType || expected ? catalog.fields(item.declaredType ? this.known(item.declaredType) : expected!) : undefined;
+        return '{' + item.entries.map(value => {
+          const field = fields?.status === 'known' && fields.value.kind === 'available' ? fields.value.fields.find(field => this.inspection.read(field.declaration, 'field').name === value.name) : undefined;
+          return JSON.stringify(value.name) + ': ' + this.expression(value.value, receiver, field?.type.status === 'known' ? field.type.value : undefined);
+        }).join(', ') + '}';
+      }
       case 'member-expression': return this.expression(item.receiver, receiver) + '[' + JSON.stringify(item.member.segments[0]) + ']';
       case 'unary-expression': return item.operator === 'not' ? '(not ' + this.expression(item.operand, receiver) + ')' : '_expec.number(' + item.operator + '_expec.number(' + this.expression(item.operand, receiver) + '))';
       case 'binary-expression': {
+        if (item.operator === '==' || item.operator === '!=') return (item.operator === '!=' ? 'not ' : '') + '_expec.equal(' + this.comparison(item.left, item.right, receiver) + ')';
         const left = this.expression(item.left, receiver), right = this.expression(item.right, receiver);
-        if (item.operator === '==' || item.operator === '!=') return (item.operator === '!=' ? 'not ' : '') + '_expec.equal(' + left + ', ' + right + ')';
         if (item.operator === 'and' || item.operator === 'or') return '(' + left + ' ' + item.operator + ' ' + right + ')';
         const value = '(_expec.number(' + left + ') ' + item.operator + ' _expec.number(' + right + '))';
         return ['<', '<=', '>', '>='].includes(item.operator) ? value : '_expec.number(' + value + ')';
@@ -92,20 +131,27 @@ export class PythonExamples {
         const selected = this.current.specification.call(item.id).value;
         const operation = this.operations.find(operation => operation.id === selected);
         if (!operation) return this.problem('missing-native-mapping', item, 'The application call requires its actual native association.');
-        return receiver + '.' + this.name(operation) + '(' + item.arguments.map(value => this.expression(value, receiver)).join(', ') + ')';
+        const values = [...item.arguments, ...operation.parameters.slice(item.arguments.length).flatMap(parameter => parameter.defaultValue ? [parameter.defaultValue] : [])];
+        return receiver + '.' + this.name(operation) + '(' + values.map((value, index) => this.expression(value, receiver, this.known(operation.parameters[index]!.declaredType))).join(', ') + ')';
       }
       default: return this.problem('unsupported-native-expression', item, 'Python generation does not yet support ' + item.kind + '.');
     }
   }
   private assertion(item: Item, receiver: string): string {
     return item.kind === 'binary-expression' && item.operator === '=='
-      ? '_expec.expect_data(' + this.expression(item.left, receiver) + ', ' + this.expression(item.right, receiver) + ')'
+      ? '_expec.expect_data(' + this.comparison(item.left, item.right, receiver) + ')'
       : 'assert (' + this.expression(item, receiver) + ') is True';
+  }
+  private verification(item: Item<'prose-expectation'>): string {
+    const message = 'Verification required: ' + item.text.value;
+    this.obligations.push({ code: 'unimplemented-verification', message, at: item.origin, related: [] });
+    return 'raise NotImplementedError(' + JSON.stringify(message) + ')';
   }
   private associate(item: Item, file: string, declaration: { kind: string; name: string }[]): void {
     this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'python-acceptance', format: 'python-symbol-1', value: { file, declaration } } });
   }
   private method(operation: Operation, driver: boolean, path: string, owner: string): string {
+    this.values.clear();
     const name = this.name(operation), parameters = operation.parameters.map(parameter => this.name(parameter) + ': ' + this.type(parameter.declaredType));
     const result = operation.kind === 'check' || !operation.returnType ? 'None' : this.type(operation.returnType);
     this.associate(operation, path, [{ kind: 'class', name: owner }, { kind: 'method', name }]);
@@ -115,12 +161,14 @@ export class PythonExamples {
       this.obligations.push({ code: 'implementation-required', message: 'Implement ' + this.options.domain + '.' + name + '.', at: operation.origin, related: [] });
     } else if (operation.body.kind === 'available') body = operation.body.content.members.map(statement => {
       if (statement.kind === 'let') {
-        if (!pythonName(statement.name) || ['self', '_expec', '_expec_types'].includes(statement.name)) this.problem('native-name-conflict', statement, 'Local conflicts with a generated native name: ' + statement.name);
-        return statement.name + ' = ' + this.expression(statement.value, 'self');
+        if (!pythonName(statement.name) || ['self', '_expec', '_expec_types', '_expec_cast'].includes(statement.name)) this.problem('native-name-conflict', statement, 'Local conflicts with a generated native name: ' + statement.name);
+        const value = this.inferred(statement.value), emitted = this.expression(statement.value, 'self', value);
+        if (value) this.values.set(statement.name, value);
+        return statement.name + ' = ' + emitted;
       }
       if (statement.kind === 'assert') return this.assertion(statement.expression, 'self');
       if (statement.kind === 'do') return this.expression(statement.expression, 'self');
-      if (statement.kind === 'return') return 'return ' + (operation.returnType ? this.checked(this.expression(statement.expression, 'self'), operation.returnType) : this.expression(statement.expression, 'self'));
+      if (statement.kind === 'return') return 'return ' + (operation.returnType ? this.checked(this.expression(statement.expression, 'self', this.known(operation.returnType)), operation.returnType) : this.expression(statement.expression, 'self'));
       return this.problem('unsupported-native-statement', statement, 'Python operation bodies do not yet support ' + statement.kind + '.');
     }).join('\n') || 'pass';
     else {
@@ -139,28 +187,52 @@ export class PythonExamples {
     for (const operation of this.operations) {
       const name = this.name(operation);
       if (used.has(name)) this.problem('native-name-conflict', operation, 'Distinct operations need distinct native names: ' + name); used.add(name);
-      const parameters = new Set(['self', '_expec', '_expec_types']);
+      const parameters = new Set(['self', '_expec', '_expec_types', '_expec_cast']);
       for (const parameter of operation.parameters) {
         const name = this.name(parameter);
         if (parameters.has(name)) this.problem('native-name-conflict', parameter, 'Parameter conflicts with another native name: ' + name); parameters.add(name);
       }
     }
+    const fixtures: { name: string; type: string; value: string }[] = [], visited = new Set<NodeId>();
+    const fixture = (item: Item<'fixture'>): void => {
+      if (visited.has(item.id)) return; visited.add(item.id);
+      const name = this.name(item);
+      if (used.has(name)) this.problem('native-name-conflict', item, 'Distinct data and operations need distinct native names: ' + name); used.add(name);
+      const dependencies = (node: Item): void => {
+        if (node.kind === 'reference' && node.resolution.status === 'bound') {
+          const target = this.inspection.read(node.resolution.target); if (target.kind === 'fixture') fixture(target);
+        }
+        for (const child of this.inspection.children(node.id)) dependencies(child);
+      };
+      dependencies(item.value);
+      fixtures.push({ name, type: this.type(item.declaredType), value: this.checked(this.expression(item.value, 'self', this.known(item.declaredType)), item.declaredType) });
+      this.associate(item, dslPath, [{ kind: 'class', name: owner }, { kind: 'field', name }]);
+    };
+    for (const item of this.inspection.query('fixture')) if (this.owned(item)) fixture(item);
     const driverMethods = this.operations.filter(operation => operation.kind !== 'check' && operation.body.kind !== 'available').map(operation => this.method(operation, true, driverPath, driverName));
     const methods = this.operations.map(operation => this.method(operation, false, dslPath, owner));
     const tests: string[] = [], names = new Set<string>();
     for (const group of this.inspection.query('examples')) if (this.owned(group)) for (const scenario of group.members) {
       if (scenario.kind !== 'scenario' && scenario.kind !== 'example') continue;
+      this.values.clear();
       const name = 'test_' + scenario.title.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_|_$/g, '');
       if (!pythonName(name) || names.has(name)) this.problem('native-name-conflict', scenario, 'Scenario titles need distinct Python test names.'); names.add(name);
       this.associate(scenario, testPath, [{ kind: 'function', name }]);
       let steps: string[];
       if (scenario.kind === 'example') steps = [scenario.expected.kind === 'prose-expectation'
-        ? 'raise NotImplementedError("Verification required")'
-        : '_expec.expect_data(' + this.expression(scenario.actual, domain) + ', ' + this.expression(scenario.expected, domain) + ')'];
+        ? this.expression(scenario.actual, domain) + '\n' + this.verification(scenario.expected)
+        : '_expec.expect_data(' + this.comparison(scenario.actual, scenario.expected, domain) + ')'];
       else steps = scenario.steps.map(step => {
         const facts = this.current.specification.step(step.id).value;
         if (!facts) throw Error('Python acceptance requires checked steps.');
-        if (facts.capture) return this.inspection.read(facts.capture.name, 'name').decoded + ' = ' + this.expression(step.content, domain);
+        this.values.clear();
+        for (const capture of facts.available) this.values.set(this.inspection.read(capture.name, 'name').decoded, capture.type);
+        if (step.content.kind === 'prose-expectation') return this.verification(step.content);
+        if (facts.capture) {
+          const name = this.inspection.read(facts.capture.name, 'name').decoded;
+          if (!pythonName(name) || [domain, '_expec'].includes(name)) this.problem('native-name-conflict', step, 'Capture conflicts with a generated native name: ' + name);
+          return name + ' = ' + this.expression(step.content, domain);
+        }
         const check = step.content.kind === 'call-expression' && this.inspection.read(this.current.specification.call(step.content.id).value!).kind === 'check';
         return step.kind === 'then' && !check ? this.assertion(step.content, domain) : this.expression(step.content, domain);
       });
@@ -170,7 +242,7 @@ export class PythonExamples {
       + [...this.imports].map(([name, module]) => 'from ' + module + ' import ' + name + '\n').join('');
     return [
       { path: driverPath, text: 'from __future__ import annotations\n' + typings + '\nclass ' + driverName + ':\n' + indent(driverMethods.join('\n\n') || 'pass') + '\n' },
-      { path: dslPath, text: 'from __future__ import annotations\n' + typings + 'from driver.' + domain + '_driver import ' + driverName + '\nfrom dsl import comparison as _expec\n\n_expec_types = ' + pythonValue(this.data.shapes) + '\n\nclass ' + owner + ':\n' + indent('def __init__(self, driver: ' + driverName + ') -> None:\n    self.driver = driver\n\n' + methods.join('\n\n')) + '\n' },
+      { path: dslPath, text: 'from __future__ import annotations\n' + typings + 'from driver.' + domain + '_driver import ' + driverName + '\nfrom dsl import comparison as _expec\n\n_expec_types: _expec.Shapes = ' + pythonValue(this.data.shapes) + '\n\nclass ' + owner + ':\n' + indent(fixtures.map(fixture => fixture.name + ': ' + fixture.type + '\n').join('') + 'def __init__(self, driver: ' + driverName + ') -> None:\n' + indent(['self.driver = driver', ...fixtures.map(fixture => 'self.' + fixture.name + ' = ' + fixture.value)].join('\n')) + '\n\n' + methods.join('\n\n')) + '\n' },
       { path: testRoot + '/dsl/' + domain + '_fixture.py', text: 'import pytest\nfrom driver.' + domain + '_driver import ' + driverName + '\nfrom dsl.' + domain + ' import ' + owner + '\n\n@pytest.fixture\ndef ' + domain + '() -> ' + owner + ':\n    return ' + owner + '(' + driverName + '())\n' },
       { path: testPath, text: 'from dsl.' + domain + ' import ' + owner + '\nfrom dsl.' + domain + '_fixture import ' + domain + '\nfrom dsl import comparison as _expec\n\n' + tests.join('\n\n') + '\n' },
     ];

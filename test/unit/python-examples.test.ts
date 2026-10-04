@@ -30,4 +30,16 @@ describe('readable Python operation names remain valid native declarations', () 
     const result = examples('examples { observation quantity() returns Number { let _expec = 1\nreturn _expec } }');
     expect(result.problems).toMatchObject([{ code: 'native-name-conflict', message: expect.stringContaining('_expec') }]);
   });
+  it('refuses a scenario capture that replaces its readable domain receiver', () => {
+    const result = examples('examples { action checkout() returns Number\nscenario "actual receipt" { when numbers = checkout()\nthen numbers == 7 } }');
+    expect(result.problems).toMatchObject([{ code: 'native-name-conflict', message: expect.stringContaining('numbers') }]);
+  });
+  it('refuses a parameter that shadows native type admission', () => {
+    const result = examples('examples { observation quantity(_expec_cast: Number) returns Number }');
+    expect(result.problems).toMatchObject([{ code: 'native-name-conflict', message: expect.stringContaining('_expec_cast') }]);
+  });
+  it('refuses an authored local that shadows native type admission', () => {
+    const result = examples('examples { observation quantity() returns Number { let _expec_cast = 1\nreturn _expec_cast } }');
+    expect(result.problems).toMatchObject([{ code: 'native-name-conflict', message: expect.stringContaining('_expec_cast') }]);
+  });
 });

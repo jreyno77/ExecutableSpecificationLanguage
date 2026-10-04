@@ -44,4 +44,57 @@ describe('readable Python acceptance tests that reach the application', { timeou
     await numbers.observeTextAsNumbers();
     numbers.expectInvalidNumber();
   });
+  it('starts each scenario with fresh explicit fixture data, including forward references', async () => {
+    const books = await PythonAcceptance.create();
+    books.source(`type Book { title: Text\ncopies: Number = 1 }
+examples {
+  fixture book: Book = { title: "Dune", copies: copies }
+  fixture copies: Number = 2
+  action take(book: Book) returns Number
+  scenario "first reader" {
+    when actual = take(book)
+    then actual == 3
+  }
+  scenario "second reader" {
+    when actual = take(book)
+    then actual == 3
+  }
+}`);
+    await books.generateBookContract();
+    await books.generateTests();
+    await books.implementTakingOneCopy();
+    await books.runTests();
+    books.expectPassed(2);
+    await books.expectNativeTypesAgree();
+  });
+  it('compares tuple fixture positions without silently emitting a list', async () => {
+    const positions = await PythonAcceptance.create();
+    positions.source(`examples {
+  fixture position: [Number, Number] = [1, 2]
+  observation current() returns [Number, Number]
+  example "current position": current() => position
+}`);
+    await positions.generateTests();
+    await positions.observePosition('(1.0, 2.0)');
+    positions.expectPassed(1);
+    await positions.expectNativeTypesAgree();
+    await positions.observePosition('(2.0, 1.0)');
+    positions.expectComparisonFailed();
+  });
+  it('retains the authored prose and a visible verification obligation', async () => {
+    const promise = await PythonAcceptance.create();
+    promise.source('examples { example "persistent save": 8 * 8 => satisfies "the snapshot is persisted" }');
+    await promise.generateTests();
+    await promise.runTests();
+    promise.expectVerificationRequired('the snapshot is persisted');
+  });
+  it('uses the observation type when comparing an inline tuple expectation', async () => {
+    const positions = await PythonAcceptance.create();
+    positions.source('examples { observation current() returns [Number, Number]\nexample "current position": current() => [1, 2] }');
+    await positions.generateTests();
+    await positions.observePosition('(1.0, 2.0)');
+    positions.expectPassed(1);
+    await positions.observePosition('(2.0, 1.0)');
+    positions.expectComparisonFailed();
+  });
 });

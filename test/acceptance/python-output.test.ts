@@ -36,6 +36,12 @@ class StoreGame { depends on Snapshot\npublic save\ncapability save(snapshot: Sn
     await p.checkConsumer('from store.contracts import Absent\nv: str | Absent = Absent.value\nw: str | Absent = "Dune"'); p.expectNativeTypecheckPassed();
     await p.checkConsumer('from store.contracts import Absent\nv: str | Absent = None'); p.expectNativeTypecheckFailedAt('None');
   });
+  it('keeps an optional alias absent as a record key and rejects explicit None', async () => {
+    const p = await PythonDelivery.create(); p.source('type Note = Text?\ntype Book { title: Text\nnote: Note }');
+    await p.buildContracts();
+    await p.checkConsumer('from store.contracts import Book\nb: Book = {"title": "Dune"}'); p.expectNativeTypecheckPassed();
+    await p.checkConsumer('from store.contracts import Book\nb: Book = {"title": "Dune", "note": None}'); p.expectNativeTypecheckFailedAt('None');
+  });
 
   it('keeps tuple positions and text literal restrictions in native contracts', async () => {
     const p = await PythonDelivery.create(); p.source('type Position = [Number, Number]\ntype OS = "windows" | "linux"'); await p.buildContracts();
