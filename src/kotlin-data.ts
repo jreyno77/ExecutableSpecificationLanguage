@@ -71,6 +71,7 @@ export class KotlinData {
   source(): string {
     return '/** Compare declared components, never application equals/toString. */\n' + [...this.comparisons.values()].map(item => item.body).join('\n\n')
       + '\n\ninternal fun finiteNumber(value: Double): Double { require(value.isFinite()) { "Expected finite Number data" }; return value }\n'
+      + '\n\ninternal fun dataEqual(actual: Any?, expected: Any?, compare: (Any?, Any?) -> Unit): Boolean {\n  return try { compare(actual, expected); true } catch (_: org.opentest4j.AssertionFailedError) { false }\n}\n'
       + '\n\nprivate fun ordinaryList(value: List<*>): Boolean = value.javaClass.name in setOf("java.util.ArrayList", "java.util.LinkedList", "java.util.Arrays\\$ArrayList", "java.util.Collections\\$EmptyList", "java.util.Collections\\$SingletonList", "kotlin.collections.EmptyList")\n';
   }
 }

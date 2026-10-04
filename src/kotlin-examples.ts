@@ -105,6 +105,18 @@ export class KotlinExamples {
       }
       case 'unary-expression': return item.operator === 'not' ? '(!' + this.expression(item.operand, receiver) + ')'
         : '(' + item.operator + this.options.package + '.dsl.finiteNumber(' + this.expression(item.operand, receiver) + '))';
+      case 'binary-expression': {
+        const prefix = this.options.package + '.dsl.', left = this.expression(item.left, receiver), right = this.expression(item.right, receiver);
+        if (item.operator === 'and' || item.operator === 'or') return '(' + left + (item.operator === 'and' ? ' && ' : ' || ') + right + ')';
+        if (item.operator === '==' || item.operator === '!=') {
+          const type = this.valueType(item.left);
+          if (!type) return this.problem('unsupported-native-data', item, 'Equality needs its checked operand type.');
+          return (item.operator === '!=' ? '!' : '') + prefix + 'dataEqual(' + left + ', ' + right + ') { actual, expected -> '
+            + prefix + this.data.assertion('actual', 'expected', type, item) + ' }';
+        }
+        const expression = '(' + prefix + 'finiteNumber(' + left + ') ' + item.operator + ' ' + prefix + 'finiteNumber(' + right + '))';
+        return ['<', '<=', '>', '>='].includes(item.operator) ? expression : prefix + 'finiteNumber(' + expression + ')';
+      }
       case 'member-expression': {
         const type = this.valueType(item.receiver);
         const field = type && this.data.fields(type, item).find(field => this.inspection.read(field.declaration, 'field').name === item.member.segments[0]);
