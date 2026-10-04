@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { ProjectContext, ProjectRoot, ProjectSnapshot } from './project-connection.js';
 import type { Diagnostic } from './checking.js';
 import { errorCode, hash, message, problem, sameIdentity } from './project-files.js';
+import { nativeInputs } from './native-inputs.js';
 import { kotlinConfiguration, kotlinConfigurationOptions, type KotlinConfiguration, type KotlinContextOptions } from './kotlin-configuration.js';
 
 export const kotlinResources = fileURLToPath(new URL('./kotlin', import.meta.url));
@@ -21,13 +22,20 @@ export class KotlinContext implements ProjectContext {
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = structuredClone(await this.project.readSnapshot()), configured = kotlinConfiguration(snapshot, this.configFile);
     const problems = [...snapshot.problems, ...configured.problems];
-    let inputs: NonNullable<ProjectSnapshot['nativeInputs']> = [];
+    const supplied = nativeInputs(snapshot);
+    if (!supplied) problems.push(problem(snapshot.root, 'native-inputs-unavailable', '', 'Upstream native evidence is malformed.'));
+    const inputs = supplied ? [...snapshot.nativeInputs ?? []] : [];
     if (configured.value && !problems.length) {
-      const native = await captureKotlinInputs(snapshot, configured.value, true); problems.push(...native.problems); inputs = native.inputs;
+      const native = await captureKotlinInputs(snapshot, configured.value, true); problems.push(...native.problems);
+      for (const input of native.inputs) {
+        const path = fileURLToPath(input.uri), previous = supplied!.get(process.platform === 'win32' ? path.toLowerCase() : path);
+        if (previous === undefined) inputs.push(input);
+        else if (previous !== input.version) problems.push(problem(snapshot.root, 'native-input-conflict', '', 'Upstream and Kotlin evidence disagree for ' + path));
+      }
       const fresh = await this.project.readSnapshot();
       if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(problem(snapshot.root, 'stale-project', '', 'Project inputs changed during Kotlin capture.'));
     }
-    return { ...snapshot, nativeInputs: inputs, problems, complete: snapshot.complete && problems.length === 0 };
+    return { ...snapshot, nativeInputs: inputs.sort((a, b) => a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0), problems, complete: snapshot.complete && problems.length === 0 };
   }
 }
 

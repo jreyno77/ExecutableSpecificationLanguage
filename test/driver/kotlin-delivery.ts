@@ -4,7 +4,7 @@ import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'no
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, KotlinDependencies, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, ProjectInitializer, SourceComposer, SpecificationIdentity,
-  type Check, type Configuration, type InitializationPlan, type InitializationResult, type IdentifiedSpecification, type Output, type OutputWrite, type PackageRead, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff } from '../../src/index.js';
+  type Check, type Configuration, type InitializationPlan, type InitializationResult, type IdentifiedSpecification, type ModuleModel, type Output, type OutputPlan, type OutputWrite, type PackageRead, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff, type Specification } from '../../src/index.js';
 
 /** Reaches the connected project and the actual pinned Kotlin compiler/JVM. */
 export class KotlinDeliveryDriver {
@@ -24,6 +24,10 @@ export class KotlinDeliveryDriver {
   diff!: SpecDiff;
   written!: OutputWrite;
   output!: Output;
+  planned!: Check<OutputPlan>;
+  options: Record<string, unknown> = {};
+  private readonly externalModules: ModuleModel[] = [];
+  private workspaceModules: string[] = ['main'];
   searchResult!: ProjectSearch;
   readResult!: ProjectRead;
   files = new Map<string, string>();
@@ -75,23 +79,46 @@ export class KotlinDeliveryDriver {
       classPath: { main: [library], test: [library] }, packages: [], inputs }));
     this.context = new KotlinContext(this.context);
   }
-  source(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
-    const read = new LangiumReader().read({ sourceId: 'main.expec', text });
+  private model(module: string, text: string): ModuleModel {
+    const read = new LangiumReader().read({ sourceId: module + '.expec', text });
     if (read.status !== 'accepted') throw new Error(JSON.stringify(read));
-    const result = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('main', read.document), { modules: [], packages: [] }) });
+    return new LangiumModel(module, read.document);
+  }
+  external(module: string, text: string): void { this.externalModules.push(this.model(module, text)); }
+  workspace(texts: Record<string, string>): void {
+    const models = Object.entries(texts).map(([module, text]) => this.model(module, text)); this.workspaceModules = models.map(model => model.locator);
+    const result = new Compiler().compile({ resolution: new SourceComposer().compose(models.map(entry => ({ entry,
+      dependencies: { modules: [...models.filter(model => model !== entry), ...this.externalModules], packages: [] } }))) });
+    if (!result.value) throw new Error(JSON.stringify(result)); this.identify(result.value);
+  }
+  source(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
+    const result = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: this.externalModules, packages: [] }) });
     if (!result.value) throw new Error(JSON.stringify(result));
+    this.identify(result.value, renames, retire);
+  }
+  private identify(specification: Specification, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
     const previous = this.current;
-    const proposed = this.identity.associate(result.value);
+    const proposed = this.identity.associate(specification);
     if (!proposed.value) throw new Error(JSON.stringify(proposed));
-    const identified = previous ? this.identity.associate(result.value, previous.baseline, [...Object.entries(renames).map(([before, after]) => ({
+    const identified = previous ? this.identity.associate(specification, previous.baseline, [...Object.entries(renames).map(([before, after]) => ({
       id: this.subject(previous, before), to: proposed.value!.node(this.subject(proposed.value!, after)),
     })), ...retire.map(name => ({ retire: this.subject(previous, name) }))]) : proposed;
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
     if (previous) { const compared = this.identity.compare(previous.baseline, this.current); if (!compared.value) throw new Error(JSON.stringify(compared)); this.diff = compared.value; }
   }
+  identifier(module: string, path: string[]): string {
+    const found = this.current.baseline.elements.find(item => item.address.module === module && this.subjectPath(this.current, item.id) === path.join('.'));
+    if (!found) throw new Error('Missing fixture identity ' + module + ':' + path.join('.')); return found.id;
+  }
+  private open() {
+    const opened = this.outputs.open('kotlin', { directory: 'src/main/kotlin', package: 'store', ...this.options }, this.context, new FileProjectWriter(this.context), { workspaceModules: this.workspaceModules });
+    if (opened.value) this.output = opened.value; return opened;
+  }
+  async plan(): Promise<void> {
+    const opened = this.open(); this.planned = opened.value ? await opened.value.plan({ operation: 'create', current: this.current }, await this.context.readSnapshot()) : { problems: opened.problems, deferred: [] };
+  }
   async build(): Promise<void> {
-    const opened = this.outputs.open('kotlin', { directory: 'src/main/kotlin', package: 'store' }, this.context, new FileProjectWriter(this.context));
-    if (opened.value) this.output = opened.value;
+    const opened = this.open();
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
@@ -101,16 +128,20 @@ export class KotlinDeliveryDriver {
     if (!text.includes(before)) throw new Error('Fixture replacement did not match: ' + before);
     await this.file(path, text.replace(before, after));
   }
+  async appendBuild(text: string): Promise<void> { await this.file('build.gradle.kts', await fs.readFile(join(this.root, 'build.gradle.kts'), 'utf8') + '\n' + text); }
   async capturedFiles(): Promise<Map<string, string>> { return new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')])); }
   async update(): Promise<void> {
-    this.written = await this.output.update(this.diff, this.current);
+    const opened = this.open(); this.written = opened.value ? await opened.value.update(this.diff, this.current) : { problems: opened.problems };
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }
-  private subject(current: IdentifiedSpecification, name: string): string {
-    const path = (id: string): string => { const record = current.baseline.elements.find(record => record.id === id)!; return (record.address.owner ? path(record.address.owner) + '.' : '') + record.address.name; };
-    const subject = current.baseline.elements.find(record => path(record.id) === name);
+  private subjectPath(current: IdentifiedSpecification, id: string): string {
+    const record = current.baseline.elements.find(record => record.id === id)!;
+    return (record.address.owner ? this.subjectPath(current, record.address.owner) + '.' : '') + record.address.name;
+  }
+  subject(current: IdentifiedSpecification, name: string): string {
+    const subject = current.baseline.elements.find(record => this.subjectPath(current, record.id) === name);
     if (!subject) throw new Error('Missing source subject ' + name); return subject.id;
   }
   private async native(): Promise<{ java: string; jars: string[]; stdlib: string }> {
@@ -126,13 +157,15 @@ export class KotlinDeliveryDriver {
     this.consumer = consumer;
     const input = join(this.directory, 'Consumer.kt'); await fs.writeFile(input, consumer);
     const native = await this.native();
+    const report = JSON.parse(await fs.readFile(join(this.root, '.expec/kotlin/classpath.json'), 'utf8'));
     this.compiled = await this.run(native.java, ['-cp', native.jars.join(delimiter), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-      '-no-stdlib', '-no-reflect', '-classpath', native.stdlib, '-jvm-target', '21', '-d', join(this.directory, 'classes'),
-      ...[...this.files.keys()].filter(path => path.endsWith('.kt')).map(path => join(this.root, path)), input]);
+      '-no-stdlib', '-no-reflect', '-classpath', report.classPath.main.join(delimiter), '-jvm-target', '21', '-d', join(this.directory, 'classes'),
+      ...[...this.files.keys()].filter(path => path.endsWith('.kt') && report.sourceRoots.main.some((root: string) => path.startsWith(root + '/'))).map(path => join(this.root, path)), input]);
   }
   async execute(consumer: string): Promise<void> {
     await this.compile(consumer); if (this.compiled.code !== 0) return;
-    const native = await this.native(); this.execution = await this.run(native.java, ['-cp', [join(this.directory, 'classes'), native.stdlib].join(delimiter), 'ConsumerKt']);
+    const native = await this.native(), report = JSON.parse(await fs.readFile(join(this.root, '.expec/kotlin/classpath.json'), 'utf8'));
+    this.execution = await this.run(native.java, ['-cp', [join(this.directory, 'classes'), ...report.runtimeClassPath?.main ?? [native.stdlib]].join(delimiter), 'ConsumerKt']);
   }
   private async run(command: string, args: string[]) {
     try { return { ...await promisify(execFile)(command, args, { timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true }), code: 0 }; }

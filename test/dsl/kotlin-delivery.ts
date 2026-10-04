@@ -21,6 +21,13 @@ export class KotlinDelivery {
   async installDependencies(): Promise<void> { await this.driver.acquire(true); expect(this.driver.packages.problems).toEqual([]); }
   async readDependencies(): Promise<void> { await this.driver.acquire(false); expect(this.driver.packages.problems).toEqual([]); }
   async attemptInstallDependencies(): Promise<void> { await this.driver.acquire(true); }
+  async attemptReadDependencies(): Promise<void> { await this.driver.acquire(false); }
+  appendBuildConfiguration(text: string): Promise<void> { return this.driver.appendBuild(text); }
+  expectDependencyFailure(code: string): void {
+    expect(this.driver.packages.value === undefined).toBe(true);
+    expect(this.driver.packages.problems.map(problem => problem.code)).toContain(code);
+    expect(this.driver.packages.packages.every(item => item.installed === undefined)).toBe(true);
+  }
   expectInstallationRefusedAt(path: string): void {
     expect(this.driver.packages.value === undefined).toBe(true);
     expect(this.driver.packages.problems).toContainEqual(expect.objectContaining({ code: 'unsupported-native-input',
@@ -39,6 +46,23 @@ export class KotlinDelivery {
   }
   static async dispose(): Promise<void> { for (const project of this.instances.splice(0)) await project.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
+  external(module: string, text: string): void { this.driver.external(module, text); }
+  workspace(sources: Record<string, string>): void { this.driver.workspace(sources); }
+  identifier(module: string, path: string[]): string { return this.driver.identifier(module, path); }
+  options(options: Record<string, unknown>): void { this.driver.options = structuredClone(options); }
+  planContracts(): Promise<void> { return this.driver.plan(); }
+  expectNoWritePlan(): void { expect(this.driver.planned.value === undefined).toBe(true); }
+  expectProblem(code: string): void { expect(this.driver.planned.problems.map(problem => problem.code)).toContain(code); }
+  expectNativeParameters(name: string, parameters: string[]): void {
+    const id = this.driver.subject(this.driver.current, name);
+    expect(this.driver.written.artifacts).toContainEqual(expect.objectContaining({ specId: id, locator: expect.objectContaining({
+      format: 'kotlin-symbol-1', value: expect.objectContaining({ declaration: expect.arrayContaining([expect.objectContaining({ kind: 'function', parameters })]) }),
+    }) }));
+  }
+  expectIncomingCaller(path: string): void {
+    expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
+    expect(this.driver.searchResult.incoming.uses).toContainEqual(expect.objectContaining({ at: expect.objectContaining({ value: expect.objectContaining({ file: path }) }) }));
+  }
   change(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void { this.driver.source(text, renames, retire); }
   implement(name: string, body: string): Promise<void> { return this.driver.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', 'throw NotImplementedError("Not implemented: ' + name + '")', body); }
   read(name: string): Promise<void> { return this.driver.read(name); }

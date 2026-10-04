@@ -8,7 +8,7 @@ import type { Check, Diagnostic } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
 import { captureKotlinInputs, kotlinResources } from './kotlin-context.js';
 import { kotlinConfiguration } from './kotlin-configuration.js';
-import { nativeInputs, sameNativeInputs } from './native-inputs.js';
+import { nativeInputs } from './native-inputs.js';
 import { literal, message, problem, sameIdentity } from './project-files.js';
 
 const range = z.strictObject({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative() }).refine(value => value.start <= value.end);
@@ -33,7 +33,8 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string)
   const config = configured.value;
   const verify = async () => {
     const actual = await captureKotlinInputs(snapshot, config);
-    if (actual.problems.length || !sameNativeInputs(snapshot, { ...snapshot, nativeInputs: actual.inputs })) { finding('native-input-changed', 'Captured Kotlin native inputs no longer identify the current bytes.'); return false; }
+    const required = nativeInputs({ ...snapshot, nativeInputs: actual.inputs }), supplied = nativeInputs(snapshot);
+    if (actual.problems.length || !required || !supplied || [...required].some(([path, version]) => supplied.get(path) !== version)) { finding('native-input-changed', 'Captured Kotlin native inputs no longer identify the current bytes.'); return false; }
     return true;
   };
   if (!await verify()) return { problems, deferred: [] };

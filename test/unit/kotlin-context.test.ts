@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
-import { KotlinContext, KotlinProject } from '../../src/index.js';
+import { FileProjectWriter, KotlinContext, KotlinProject } from '../../src/index.js';
 
 const instances: KotlinDeliveryDriver[] = [];
 afterEach(async () => { for (const driver of instances.splice(0)) await driver.dispose(); });
@@ -65,4 +65,58 @@ describe('captured Kotlin prerequisites', () => {
     expect(result.incoming.coverage.complete).toBe(true);
     expect(result.definitions[0]?.value).toEqual({ file: 'src/main/kotlin/store/Book.kt', start: 20, end: 24, role: 'definition' });
   }, 60_000);
+});
+
+
+describe('Kotlin capture composes upstream native evidence', () => {
+  it('keeps an independent real native input in the writer capture', async () => {
+    const { driver } = await captureFixture(), supplied = driver.context;
+    const artifact = join(driver.directory, 'independent.bin'); await fs.writeFile(artifact, 'first');
+    const context = new KotlinContext({ root: supplied.root, readSnapshot: async () => ({ ...await supplied.readSnapshot(), nativeInputs: [{
+      uri: pathToFileURL(artifact).href, version: createHash('sha256').update(await fs.readFile(artifact)).digest('hex'),
+    }] }) });
+    const captured = await context.readSnapshot();
+    expect(captured.problems).toEqual([]);
+    expect(captured.nativeInputs).toContainEqual({ uri: pathToFileURL(artifact).href, version: createHash('sha256').update('first').digest('hex') });
+    await fs.writeFile(artifact, 'second');
+    const receipt = await new FileProjectWriter(context).apply({ basedOn: captured, changes: [{ kind: 'write', path: 'result.txt', bytes: Buffer.from('written') }] });
+    expect(receipt.status).toBe('stopped');
+    expect(receipt.problems.map(problem => problem.code)).toContain('stale-project');
+    await expect(fs.readFile(join(driver.root, 'result.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+  }, 60_000);
+
+  it('queries Kotlin while retaining unrelated upstream inputs without treating them as Kotlin sources', async () => {
+    const { driver, context } = await captureFixture();
+    await driver.file('src/main/kotlin/store/Book.kt', 'package store\nclass Book');
+    const artifact = join(driver.directory, 'independent.bin'); await fs.writeFile(artifact, 'upstream native input');
+    const captured = await context.readSnapshot();
+    const result = await new KotlinProject({ outputId: 'kotlin' }, [{ specId: 'book', locator: { outputId: 'kotlin', format: 'kotlin-symbol-1',
+      value: { file: 'src/main/kotlin/store/Book.kt', declaration: [{ kind: 'class', name: 'Book' }] } } }]).search('book', { ...captured,
+        nativeInputs: [...captured.nativeInputs!, { uri: pathToFileURL(artifact).href, version: createHash('sha256').update(await fs.readFile(artifact)).digest('hex') }],
+      });
+    expect(result.problems).toEqual([]);
+    expect(result.incoming.coverage.complete).toBe(true);
+    expect(result.definitions[0]?.value).toEqual({ file: 'src/main/kotlin/store/Book.kt', start: 20, end: 24, role: 'definition' });
+    expect(result.incoming.coverage.scope.map(item => item.value)).toEqual([{ file: 'src/main/kotlin/store/Book.kt' }]);
+  }, 60_000);
+
+  it('refuses conflicting versions of one native prerequisite', async () => {
+    const { driver, library } = await captureFixture(), supplied = driver.context;
+    const context = new KotlinContext({ root: supplied.root, readSnapshot: async () => ({ ...await supplied.readSnapshot(),
+      nativeInputs: [{ uri: pathToFileURL(library).href, version: '0'.repeat(64) }],
+    }) });
+    const captured = await context.readSnapshot();
+    expect(captured.complete).toBe(false);
+    expect(captured.problems.map(problem => problem.code)).toContain('native-input-conflict');
+  }, 30_000);
+
+  it('does not replace malformed upstream evidence with an apparently complete Kotlin capture', async () => {
+    const { driver } = await captureFixture(), supplied = driver.context;
+    const context = new KotlinContext({ root: supplied.root, readSnapshot: async () => ({ ...await supplied.readSnapshot(),
+      nativeInputs: [{ uri: 'relative.jar', version: '0'.repeat(64) }],
+    }) });
+    const captured = await context.readSnapshot();
+    expect(captured.complete).toBe(false);
+    expect(captured.problems.map(problem => problem.code)).toContain('native-inputs-unavailable');
+  }, 30_000);
 });

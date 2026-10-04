@@ -3,6 +3,42 @@ import { KotlinDelivery } from '../dsl/kotlin-delivery.js';
 
 afterEach(() => KotlinDelivery.dispose());
 describe('a Kotlin consumer can use the specified contracts', () => {
+  it('keeps actual runtime-only dependencies unavailable to compilation', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.appendBuildConfiguration('dependencies { runtimeOnly("org.junit.jupiter:junit-jupiter-api:6.1.3") }');
+    await project.installDependencies();
+    await project.compileConsumer('import org.junit.jupiter.api.Test\nfun consume(value: Test) {}');
+    project.expectNativeCompilationFailedAt("unresolved reference 'Test'");
+    await project.runConsumer('fun main() { println(Class.forName("org.junit.jupiter.api.Test").name) }');
+    project.expectStdout('org.junit.jupiter.api.Test');
+  }, 240_000);
+
+  it('reads stale build inputs without evaluating their new configuration', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.installDependencies();
+    await project.appendBuildConfiguration('file("read-ran.txt").writeText("configuration executed")');
+    await project.attemptReadDependencies();
+    project.expectDependencyFailure('native-configuration-stale');
+    project.expectMissingFile('read-ran.txt');
+  }, 240_000);
+
+  it('does not retain an old successful report after a real native install fails', async () => {
+    const project = await KotlinDelivery.newProject();
+    await project.prepareKotlin();
+    await project.acceptStarter();
+    await project.installDependencies();
+    await project.appendBuildConfiguration('throw GradleException("example installation failure")');
+    await project.attemptInstallDependencies();
+    project.expectDependencyFailure('package-install-failed');
+    project.expectMissingFile('.expec/kotlin/classpath.json');
+    await project.attemptReadDependencies();
+    project.expectDependencyFailure('native-inputs-unavailable');
+  }, 240_000);
+
   it('reports an unsupported applied script after its actual configuration effects', async () => {
     const project = await KotlinDelivery.newProject();
     await project.prepareKotlin();
