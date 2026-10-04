@@ -43,7 +43,7 @@ export async function pythonStarter(configuration: Configuration, root: string, 
     changes: Object.entries(files).map(([path, text]) => ({ kind: 'write', path, bytes: new TextEncoder().encode(text) })) }, problems: [], deferred: [] };
 }
 
-async function pythonToolchain(python: string, uv: string): Promise<void> {
+export async function pythonToolchain(python: string, uv: string): Promise<void> {
   for (const path of [python, uv]) {
     if (!isAbsolute(path) || path.includes('\0')) throw Error('Provide absolute ordinary Python3.12 and uv0.12.23 executable paths.');
     const info = await fs.lstat(path), canonical = await fs.realpath(path), key = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;

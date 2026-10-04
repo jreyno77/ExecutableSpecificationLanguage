@@ -9,25 +9,30 @@ import { hash } from './project-files.js';
 import { outputProblem } from './output-documents.js';
 import { readJson } from './json-data.js';
 import { pythonReportPath, type PythonProfile } from './python-profile.js';
+import { ownedPythonRequirement } from './python-packages.js';
 
 const absolute = z.string().refine(value => isAbsolute(value) && !value.includes('\0')), digest = z.string().regex(/^[a-f0-9]{64}$/);
 async function each<T>(items: Iterable<T>, effect: (item: T) => Promise<void>): Promise<void> {
   const values = [...items];
   for (let index = 0; index < values.length; index += 4) await Promise.all(values.slice(index, index + 4).map(effect));
 }
-const reportSchema = z.strictObject({ format: z.literal(1), config: digest, pyproject: digest, lock: digest,
+export const pythonEnvironmentSchema = z.strictObject({ format: z.literal(1), config: digest, pyproject: digest, lock: digest,
   python: z.strictObject({ path: absolute, version: z.string().regex(/^3\.12\.\d+$/), stdlib: z.array(absolute).min(1), binaries: z.array(absolute) }),
   uv: z.strictObject({ path: absolute, version: z.literal('0.12.23') }), environment: z.strictObject({ path: absolute, sites: z.array(absolute).min(1) }),
   tools: z.strictObject({ libcst: z.literal('1.9.0'), jedi: z.literal('0.20.0'), mypy: z.literal('2.4.0'), pytest: z.literal('9.1.1') }),
   packages: z.array(z.strictObject({ alias: z.string().min(1), name: z.string().min(1), version: z.string().min(1), phases: z.array(z.enum(['build', 'runtime', 'test'])) })),
+  pending: z.boolean().optional(),
+  owned: z.array(ownedPythonRequirement).optional(),
 });
-export type PythonEnvironment = z.infer<typeof reportSchema>;
+export type PythonEnvironment = z.infer<typeof pythonEnvironmentSchema>;
 
 export function pythonEnvironment(snapshot: ProjectSnapshot, profile: PythonProfile, configFile = 'expec.python.json'): { value?: PythonEnvironment; problems: Diagnostic[] } {
   const problems: Diagnostic[] = [], file = snapshot.files.find(file => file.path === pythonReportPath);
   if (!file) return { problems: [outputProblem('python-install-required', pythonReportPath, 'Run an explicit Python install before using native project analysis.')] };
   try {
-    const parsed = reportSchema.safeParse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (code, message) => problems.push(outputProblem(code, pythonReportPath, message))));
+    const raw = readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (code, message) => problems.push(outputProblem(code, pythonReportPath, message)));
+    if (raw && typeof raw === 'object' && 'pending' in raw && raw.pending === true) return { problems: [outputProblem('python-install-required', pythonReportPath, 'The previous native installation did not finish. Run an explicit install.')] };
+    const parsed = pythonEnvironmentSchema.safeParse(raw);
     if (!parsed.success) return { problems: [...problems, outputProblem('invalid-python-environment', pythonReportPath, 'The installed Python profile report is invalid.')] };
     const data = parsed.data, key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path);
     if (key(data.python.path) !== key(profile.python) || key(data.uv.path) !== key(profile.uv) || key(data.environment.path) !== key(join(snapshot.root.path, profile.environment))
