@@ -715,6 +715,6 @@ This separate suite runs in Windows/Linux CI and may need registry access; insta
 scripts are disabled. Declaration checks use `strict`, `exactOptionalPropertyTypes`
 and `skipLibCheck: true`; compatibility with `skipLibCheck: false` is not established.
 
-`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. The connected-build CLI, additional language targets and npm publication remain subsequent work.
+`npm run build` builds; `npm run release` runs `npm pack`. GitHub Actions creates a verified package, release and deployment record for each merged task PR. Incidents use GitHub Issues. Additional language targets and npm publication remain subsequent work.
 
 Planning and detailed specifications live in [Notion](https://app.notion.com/p/3e603914566581b2a671cbe2927bab48).
