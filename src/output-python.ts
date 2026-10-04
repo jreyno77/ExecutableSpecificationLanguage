@@ -10,7 +10,7 @@ import { canonical, identifier, locatorSchema, success, failure } from './identi
 import { outputProblem } from './output-documents.js';
 import { validDiff } from './output-contract.js';
 import { hash } from './project-files.js';
-import { pythonPath } from './python-profile.js';
+import { pythonConfiguration, pythonPath } from './python-profile.js';
 import { readJson } from './json-data.js';
 import type { ArtifactAssociation } from './specification-identity.js';
 
@@ -171,6 +171,16 @@ class PythonOutput implements OutputAdapter {
       }
     }
     for (const change of changes) if (change.kind === 'write' && change.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
+    if (this.options.imports.length) {
+      const profile = pythonConfiguration(snapshot, this.options.configFile);
+      if (!profile.value) return { problems: profile.problems, deferred: [] };
+      if (![...profile.value.sourceRoots.main, ...profile.value.sourceRoots.test].some(root => file.path.startsWith(root + '/')))
+        return failure('invalid-native-mapping', 'Native imports require a projected contract inside the captured Python source roots.', [file.path]);
+      const bytes = Buffer.from(file.text), candidate = { ...snapshot, files: [...snapshot.files.filter(item => item.path !== file.path),
+        { path: file.path, bytes, version: hash(bytes) }] };
+      const inspected = await inspectPython(candidate, this.options.configFile, { contract: file.path, importChecks: declarations.importChecks() });
+      if (inspected.problems.length) return { problems: inspected.problems, deferred: [] };
+    }
     const bytes = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === statePath && file.version === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
     return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts, obligations: declarations.obligations });

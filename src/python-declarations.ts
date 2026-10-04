@@ -37,6 +37,7 @@ export class PythonDeclarations {
   private readonly names = new Map<NodeId, string>();
   private readonly imports = new Set<string>();
   private readonly used = new Map<string, NodeId>();
+  private readonly symbols = new Map<string, NodeId>();
   private readonly variables = new Map<NodeId, string>();
   private readonly library = new Map<NodeId, PythonOptions['imports'][number]>();
   private readonly hidden = new Set<NodeId>();
@@ -86,6 +87,11 @@ export class PythonDeclarations {
     const text = this.types.text(id); for (const name of this.types.imports) this.imports.add(name); return text;
   }
   private associate(item: Item, declaration: { kind: string; name: string }[]): void {
+    const key = JSON.stringify(declaration.map(part => part.name)), earlier = this.symbols.get(key);
+    if (earlier && earlier !== item.id) {
+      this.problem('native-name-conflict', item, 'Python name is already used in this scope: ' + declaration.map(part => part.name).join('.')); return;
+    }
+    this.symbols.set(key, item.id);
     this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'python', format: 'python-symbol-1', value: { file: this.path, declaration } } });
   }
   private parameters(items: readonly Item<'parameter'>[], owner: { kind: string; name: string }[]): string[] {
@@ -103,8 +109,12 @@ export class PythonDeclarations {
       message: 'Specify the result of ' + item.name + '; object is only a native placeholder.' });
     for (const failure of item.failures) this.obligations.push({ code: 'failure-verification-required', at: failure.origin, related: [],
       message: 'Verify declared failure ' + language(failure) + ' for ' + item.name + '.' });
+    const clauses = item.body.kind === 'available' ? item.body.content.members.filter(clause => ['requires', 'ensures', 'promises'].includes(clause.kind)) : [];
+    for (const clause of clauses) this.obligations.push({ code: 'verification-required', at: clause.origin, related: [],
+      message: 'Verify ' + item.name + ': ' + language(clause) });
+    const documentation = clauses.map(clause => language(clause).split('\n').map(line => '# Expec contract: ' + line + '\n').join('')).join('');
     const parameters = [...owner ? ['self'] : [], ...this.parameters(item.parameters, path)], type = result.kind === 'value' ? this.type(result.type) : result.kind === 'none' ? 'None' : 'object';
-    return 'def ' + name + '(' + parameters.join(', ') + ') -> ' + type + ':\n' + indent(signature ? '...' : 'raise NotImplementedError(' + JSON.stringify('Not implemented: ' + (owner ? this.name(owner) + '.' : '') + name) + ')');
+    return documentation + 'def ' + name + '(' + parameters.join(', ') + ') -> ' + type + ':\n' + indent(signature ? '...' : 'raise NotImplementedError(' + JSON.stringify('Not implemented: ' + (owner ? this.name(owner) + '.' : '') + name) + ')');
   }
   private declare(item: Item): string {
     const name = this.name(item);
@@ -142,6 +152,21 @@ export class PythonDeclarations {
     if (item.kind !== 'record-type-declaration' || !item.error) return declaration;
     const companion = name + 'Exception'; this.associate(item, [{ kind: 'class', name: companion }]);
     return declaration + '\n\nclass ' + companion + '(Exception):\n' + indent('def __init__(self, details: object) -> None:\n' + indent('self.details = details\nsuper().__init__(' + JSON.stringify(name) + ')'));
+  }
+  /** Native type applications check every mapped declaration, including otherwise unused generics. */
+  importChecks(): { native: string; text: string }[] {
+    return [...this.library].flatMap(([id, mapping]) => {
+      const item = this.inspection.read(id);
+      if (!roots.has(item.kind) || item.kind === 'function') return [];
+      const parameters = 'typeParameters' in item ? item.typeParameters.map((_, index) => '_ExpecT' + index) : [];
+      const type = '_ExpecNative' + (parameters.length ? '[' + parameters.join(', ') + ']' : '');
+      return [{ native: mapping.moduleName + '.' + mapping.name, text: [
+        'from typing import TypeVar as _ExpecTypeVar',
+        'from ' + mapping.moduleName + ' import ' + mapping.name + ' as _ExpecNative',
+        ...parameters.map(name => name + ' = _ExpecTypeVar(' + JSON.stringify(name) + ')'),
+        'def _expec_import(value: ' + type + ') -> None:\n    pass\n',
+      ].join('\n') }];
+    });
   }
   render(): { path: string; text: string; artifacts: readonly ArtifactAssociation[] } {
     const variables: string[] = [];

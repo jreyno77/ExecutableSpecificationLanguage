@@ -1,5 +1,6 @@
 import { expect } from 'vitest';
 import { PythonPreservationDriver } from '../driver/python-preservation.js';
+import { expectContractObligations, expectCallableDocumentation, type ContractObligation } from './python-output.js';
 
 export class PythonEvolution {
   private static readonly examples: PythonEvolution[] = [];
@@ -7,6 +8,8 @@ export class PythonEvolution {
   static async create(): Promise<PythonEvolution> { const p = new PythonEvolution(new PythonPreservationDriver()); this.examples.push(p); await p.driver.initialize(); await p.driver.installFixture(); return p; }
   static async dispose(): Promise<void> { for (const p of this.examples.splice(0)) await p.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
+  expectContractObligations(phase: 'write', expected: readonly ContractObligation[]): void { expectContractObligations(this.driver, phase, expected); }
+  expectCallableDocumentation(name: string, clauses: string[]): Promise<void> { return expectCallableDocumentation(this.driver, name, clauses); }
   async generate(): Promise<void> { await this.driver.generate(); this.expectApplied(); }
   async adoptStoreFile(file: string): Promise<void> { this.driver.associateStoreFile(file); await this.driver.generate({ adoptExisting: true }); this.expectApplied(); }
   change(text: string): void { this.driver.change(text); }

@@ -179,7 +179,7 @@ if 'fixture' in request:
     fixtures = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(fixtures)
     fixture = fixtures.read(request, result)
-if ("consumer" in request or request.get('fixture', {}).get('consumer')) and not result["problems"]:
+if ("consumer" in request or 'contract' in request or request.get('fixture', {}).get('consumer')) and not result["problems"]:
     import os, site
     site.PREFIXES = []
     site.ENABLE_USER_SITE = False
@@ -189,14 +189,20 @@ if ("consumer" in request or request.get('fixture', {}).get('consumer')) and not
     consumer, config = root.parent / "contract.py", root.parent / "mypy.ini"
     config.write_text("[mypy]\n", encoding="utf-8")
     os.environ["MYPYPATH"] = os.pathsep.join(request["mainPaths"] + request["testPaths"] + request["sourcePaths"])
-    def check(text, code, file):
-        consumer.write_text(text, encoding='utf-8')
+    def check(text, code, file, primary=consumer):
+        primary.write_text(text, encoding='utf-8')
         out, err, status = api.run(["--strict", "--disallow-any-expr", "--disallow-any-unimported", "--follow-imports=silent",
                                 "--python-executable", sys.executable, "--python-version", "3.12", "--config-file", str(config),
-                                "--cache-dir", str(root.parent / "mypy-cache"), "--no-incremental", str(consumer)])
+                                "--cache-dir", str(root.parent / "mypy-cache"), "--no-incremental", str(primary)])
         if status:
             result['problems'].append({'code': code, 'file': file, 'message': out + err})
         return status == 0
+    if 'contract' in request:
+        contract = root / request['contract']
+        check(contract.read_text(encoding='utf-8'), 'incompatible-native-import', request['contract'], contract)
+        for proof in request['importChecks']:
+            if not check(proof['text'], 'incompatible-native-import', request['contract']):
+                result['problems'][-1]['message'] = 'Native import ' + proof['native'] + ':\n' + result['problems'][-1]['message']
     if 'consumer' in request and check(request['consumer'], 'incompatible-native-operation', request['file']):
         probe = inspect_files({**request, "files": ["../contract.py"]})
         result["problems"].extend(probe["problems"])

@@ -83,6 +83,35 @@ def signature(current, wanted):
                                 returns=annotation(current.returns, wanted.returns))
 
 
+def leading_comments(module, node):
+    return module.header if module.body and module.body[0] is node else node.leading_lines
+
+
+def contract_comments(lines):
+    return [line for line in lines if line.comment and line.comment.value.startswith("# Expec contract: ")]
+
+
+def comment_region(module, node):
+    leading = (module, "header") if module.body[0] is node else (node, "leading_lines")
+    regions = [leading, (node, "lines_after_decorators"), *((decorator, "leading_lines") for decorator in node.decorators)]
+    present = [(owner, field) for owner, field in regions if contract_comments(getattr(owner, field))]
+    if len(present) > 1:
+        raise ValueError("Generated contract documentation is split or duplicated across decorator regions.")
+    return present[0] if present else leading
+
+
+def documentation(prior, current, wanted, adopted):
+    previous, actual, desired = (contract_comments(node) for node in (prior, current, wanted))
+    values = lambda lines: [line.comment.value for line in lines]
+    if values(previous) == values(desired):
+        return current
+    if values(actual) != values(previous) and not (adopted and not actual):
+        raise ValueError("Generated contract documentation is missing, edited or ambiguous.")
+    lines = list(current)
+    start = lines.index(actual[0]) if actual else len(lines)
+    return [*lines[:start], *desired, *(line for line in lines[start:] if line not in actual)]
+
+
 def parameters(signature):
     for field in ("posonly_params", "params", "kwonly_params", "star_arg", "star_kwarg"):
         value = getattr(signature, field)
@@ -150,6 +179,7 @@ def preserve(request, root, facts=None, traces=None):
     modules = {file: wrapper.module for file, wrapper in wrappers.items()}
     actual = {file: declarations(module) for file, module in modules.items()}
     replacements, additions, problems, names, removals = {}, {}, [], {}, set()
+    documentation_changes = {}
 
     def destination(artifact):
         file, move = artifact['locator']['value']['file'], request.get('move')
@@ -176,7 +206,8 @@ def preserve(request, root, facts=None, traces=None):
                 problem("python-definition-unavailable", file, "The mapped declaration must have one native definition."); continue
             if contract(current) != contract(prior):
                 problem("output-conflict", file, "A handwritten signature competes with the generated contract."); continue
-            if contract(prior) == contract(wanted):
+            docs_changed = isinstance(wanted, cst.FunctionDef) and [line.comment.value for line in contract_comments(leading_comments(old_module, prior))] != [line.comment.value for line in contract_comments(leading_comments(new_module, wanted))]
+            if contract(prior) == contract(wanted) and not docs_changed:
                 continue
             if key[-1][1] != selector(old)[-1][1]:
                 targets = [item for item in (facts or {}).get("declarations", []) if item["file"] == file
@@ -195,6 +226,12 @@ def preserve(request, root, facts=None, traces=None):
                     elif use["member"] and len(use["targets"]) != 1:
                         problem("incomplete-native-references", use["file"], "An uncertain native member cannot authorize this rename.")
             if isinstance(current, cst.FunctionDef) and isinstance(wanted, cst.FunctionDef):
+                try:
+                    comment_owner, field = comment_region(modules[file], current)
+                    documentation_changes[(comment_owner, field)] = documentation(leading_comments(old_module, prior),
+                        getattr(comment_owner, field), leading_comments(new_module, wanted), identity[0] in request.get("authored", []))
+                except ValueError as error:
+                    problem("output-conflict", file, str(error)); continue
                 retained = {parameter.name.value for parameter in parameters(wanted.params)}
                 if any(has_comment(parameter) for parameter in parameters(current.params) if parameter.name.value not in retained):
                     problem("output-conflict", file, "Removing this parameter would discard its handwritten comment."); continue
@@ -300,11 +337,19 @@ def preserve(request, root, facts=None, traces=None):
             self.names[original] = result
             return result
 
+        def documentation(self, original, updated):
+            changes = {field: lines for (owner, field), lines in documentation_changes.items() if owner is original}
+            return updated.with_changes(**changes) if changes else updated
+
+        def leave_Decorator(self, original, updated):
+            return self.documentation(original, updated)
+
         def leave_FunctionDef(self, original, updated):
             if original in removals:
                 return cst.RemoveFromParent()
             wanted = replacements.get(original)
             result = signature(updated, wanted) if wanted else updated
+            result = self.documentation(original, result)
             self.names[original.name] = result.name
             return result
 
@@ -326,6 +371,7 @@ def preserve(request, root, facts=None, traces=None):
             return cst.RemoveFromParent() if original in removals else replacements.get(original, updated)
 
         def leave_Module(self, original, updated):
+            updated = self.documentation(original, updated)
             extra = additions.get(original, [])
             imports = [node for node in extra if isinstance(node, cst.SimpleStatementLine) and isinstance(node.body[0], (cst.Import, cst.ImportFrom))]
             other = [node for node in extra if node not in imports]

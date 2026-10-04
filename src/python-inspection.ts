@@ -41,7 +41,8 @@ type AcceptanceFile = { file: string; text: string; driver: boolean };
 type PytestFixture = { file: string; name: string; consumer?: string };
 type InspectionRequest = (PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[];
   testIdentities?: { previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; restoreOnly?: boolean }; retireTests?: readonly string[] }
-  | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] } | { fixture: PytestFixture }) & { fixture?: PytestFixture };
+  | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] } | { fixture: PytestFixture }
+  | { contract: string; importChecks: readonly { native: string; text: string }[] }) & { fixture?: PytestFixture };
 export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: InspectionRequest): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
@@ -67,7 +68,7 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
     const request = { root, cache: join(temporary, 'cache'), files: files.map(file => file.path), sites: environment.value.environment.sites,
       main: profile.sourceRoots.main, paths: [...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib],
       stdlib: environment.value.python.stdlib, sourcePaths: profile.sourcePath,
-      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite || 'consumer' in rewrite || 'fixture' in rewrite ? rewrite : { rewrite } : {}) };
+      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite || 'consumer' in rewrite || 'fixture' in rewrite || 'contract' in rewrite ? rewrite : { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
     problems.push(...await inputs.verify());

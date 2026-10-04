@@ -13,6 +13,9 @@ export class PythonOutputDriver {
   context!: ProjectContext;
   current!: IdentifiedSpecification;
   written!: OutputWrite;
+  planned!: import('../../src/index.js').Check<import('../../src/index.js').OutputPlan>;
+  sourceText = '';
+  private nativeNames: { id: string; name: string }[] = [];
   readonly outputs = new Outputs();
   private next = 0;
   readonly identity = new SpecificationIdentity(() => 'python-example-' + ++this.next);
@@ -38,10 +41,28 @@ export class PythonOutputDriver {
     return checked.value;
   }
   source(text: string): void {
+    this.sourceText = text;
     const identified = this.identity.associate(this.compile(text)); if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
   }
+  mapNames(names: Record<string, string>): void {
+    this.nativeNames = Object.entries(names).map(([authored, name]) => {
+      const found = this.current.baseline.elements.filter(item => item.address.name === authored);
+      if (found.length !== 1) throw Error('Expected one authored declaration named ' + authored + '.');
+      return { id: found[0]!.id, name };
+    });
+  }
+  async captureProject() {
+    const snapshot = await this.context.readSnapshot();
+    if (!snapshot.complete) throw Error(JSON.stringify(snapshot.problems));
+    return snapshot;
+  }
+  async planContracts(options: Record<string, unknown> = {}): Promise<void> {
+    const opened = this.outputs.open('python', { module: 'store.contracts', names: this.nativeNames, ...options }, this.context, new FileProjectWriter(this.context));
+    if (!opened.value) throw Error(JSON.stringify(opened));
+    this.planned = await opened.value.plan({ operation: 'create', current: this.current }, await this.context.readSnapshot());
+  }
   async build(options: Record<string, unknown> = {}): Promise<void> {
-    const opened = this.outputs.open('python', { module: 'store.contracts', ...options }, this.context, new FileProjectWriter(this.context));
+    const opened = this.outputs.open('python', { module: 'store.contracts', names: this.nativeNames, ...options }, this.context, new FileProjectWriter(this.context));
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
   }
   async file(path: string, text: string): Promise<void> { const target = join(this.root, path); await fs.mkdir(dirname(target), { recursive: true }); await fs.writeFile(target, text); }

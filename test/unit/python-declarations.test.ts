@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity } from '../../src/index.js';
 import { PythonDeclarations, pythonOptions } from '../../src/python-declarations.js';
 
-function contracts(source: string) {
+function contracts(source: string, names: Record<string, string> = {}) {
     const read = new LangiumReader().read({ sourceId: 'game.expec', text: source });
     if (read.status !== 'accepted') throw Error(JSON.stringify(read));
     const compiled = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('game', read.document), { modules: [], packages: [] }) });
@@ -10,10 +10,26 @@ function contracts(source: string) {
     let next = 0;
     const identified = new SpecificationIdentity(() => 'construction-' + ++next).associate(compiled.value);
     if (!identified.value) throw Error(JSON.stringify(identified));
-    const declarations = new PythonDeclarations(identified.value, pythonOptions.parse({ module: 'store.contracts' }));
+    const mappings = Object.entries(names).map(([authored, name]) => {
+      const found = identified.value!.baseline.elements.filter(item => item.address.name === authored);
+      if (found.length !== 1) throw Error('Expected one authored declaration: ' + authored);
+      return { id: found[0]!.id, name };
+    });
+    const declarations = new PythonDeclarations(identified.value, pythonOptions.parse({ module: 'store.contracts', names: mappings }));
     return { current: identified.value, rendered: declarations.render(), problems: declarations.problems, obligations: declarations.obligations };
 }
 describe('Python declaration associations', () => {
+  it('refuses mapped record fields that replace one another', () => {
+    const source = 'type Book { title: Text\ncopies: Number }';
+    const result = contracts(source, { copies: 'title' });
+    expect(result.problems).toContainEqual(expect.objectContaining({ code: 'native-name-conflict',
+      at: expect.objectContaining({ kind: 'source', range: expect.objectContaining({ start: expect.objectContaining({ offset: source.indexOf('copies: Number') }) }) }) }));
+  });
+  it('keeps equal method names in different classes distinct', () => {
+    const result = contracts('class Store { public save\ncapability save() returns Nothing }\nclass Shelf { public save\ncapability save() returns Nothing }');
+    expect(result.problems).toEqual([]);
+    expect(result.rendered.artifacts.filter(item => (item.locator.value as { declaration: { name: string }[] }).declaration.at(-1)?.name === 'save')).toHaveLength(2);
+  });
   it('locates a construction parameter in the actual native initializer', () => {
     const result = contracts('class StoreGame { construction(title: Text) }'); expect(result.problems).toEqual([]);
     const parameter = [...result.current.specification.inspection.query('parameter')].find(item => item.name === 'title')!;

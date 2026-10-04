@@ -20,6 +20,7 @@ export class PythonPreservationDriver extends PythonProjectDriver {
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
   }
   change(text: string): void {
+    this.sourceText = text;
     const before = this.current.baseline, identified = this.identity.associate(this.compile(text), before);
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
     const diff = this.identity.compare(before, this.current); if (!diff.value) throw new Error(JSON.stringify(diff)); this.diff = diff.value;

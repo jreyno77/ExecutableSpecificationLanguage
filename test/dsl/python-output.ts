@@ -1,12 +1,51 @@
 import { expect } from 'vitest';
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
 import { PythonOutputDriver } from '../driver/python-output.js';
+import type { ProjectSnapshot } from '../../src/index.js';
+
+export type ContractObligation = readonly [code: string, subject: string, text: string, source: string];
+export function expectContractObligations(driver: PythonOutputDriver, phase: 'plan' | 'write', expected: readonly ContractObligation[]): void {
+  const report = phase === 'plan' ? driver.planned.value : driver.written;
+  expect(phase === 'plan' ? driver.planned.problems : driver.written.problems).toEqual([]);
+  expect(report).toBeDefined();
+  const obligations = report!.obligations ?? [];
+  expect.soft(obligations).toHaveLength(expected.length);
+  for (const [code, subject, text, source] of expected) {
+    const position = driver.sourceText.indexOf(source); expect(position).toBeGreaterThanOrEqual(0);
+    const offset = Array.from(driver.sourceText.slice(0, position)).length;
+    expect.soft(obligations.filter(item => item.code === code && item.message.includes(subject) && item.message.includes(text)
+      && item.at.kind === 'source' && item.at.range.sourceId === 'main.expec' && item.at.range.start.offset === offset)).toHaveLength(1);
+  }
+}
+export async function expectCallableDocumentation(driver: PythonOutputDriver, name: string, clauses: string[]): Promise<void> {
+  const source = await fs.readFile(join(driver.root, 'src/store/contracts.py'), 'utf8');
+  expect(source.split('def ' + name + '(')).toHaveLength(2);
+  for (const clause of clauses) expect.soft(source).toContain(clause);
+}
 
 export class PythonDelivery {
+  private before?: ProjectSnapshot;
   private static readonly examples: PythonDelivery[] = [];
   private constructor(readonly driver: PythonOutputDriver) {}
   static async create(): Promise<PythonDelivery> { const p = new PythonDelivery(new PythonOutputDriver()); this.examples.push(p); await p.driver.initialize(); return p; }
   static async dispose(): Promise<void> { for (const p of this.examples.splice(0)) await p.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
+  mapNames(names: Record<string, string>): void { this.driver.mapNames(names); }
+  async rememberProject(): Promise<void> { this.before = await this.driver.captureProject(); }
+  async expectProjectUnchanged(): Promise<void> {
+    expect(this.before).toBeDefined(); expect((await this.driver.captureProject()).files).toEqual(this.before!.files);
+  }
+  expectNameConflict(phase: 'plan' | 'write', source: string): void {
+    if (phase === 'plan') expect(this.driver.planned.value).toBeUndefined(); else this.expectNoWrites();
+    const position = this.driver.sourceText.indexOf(source); expect(position).toBeGreaterThanOrEqual(0);
+    const problems = phase === 'plan' ? this.driver.planned.problems : this.driver.written.problems;
+    expect(problems.some(problem => problem.code === 'native-name-conflict' && problem.at.kind === 'source'
+      && problem.at.range.sourceId === 'main.expec' && problem.at.range.start.offset === Array.from(this.driver.sourceText.slice(0, position)).length), JSON.stringify(problems)).toBe(true);
+  }
+  planContracts(): Promise<void> { return this.driver.planContracts(); }
+  expectContractObligations(phase: 'plan' | 'write', expected: readonly ContractObligation[]): void { expectContractObligations(this.driver, phase, expected); }
+  expectCallableDocumentation(name: string, clauses: string[]): Promise<void> { return expectCallableDocumentation(this.driver, name, clauses); }
   async buildContracts(options?: Record<string, unknown>): Promise<void> { await this.driver.build(options); }
   expectDefaultObligation(name: string, value: string): void { this.expectObligation('default-verification-required', name + ': ' + value); }
   expectFailureObligation(name: string, failure: string): void {
