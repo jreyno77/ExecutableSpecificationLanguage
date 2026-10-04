@@ -8,6 +8,13 @@ export class PythonDelivery {
   static async dispose(): Promise<void> { for (const p of this.examples.splice(0)) await p.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
   async buildContracts(options?: Record<string, unknown>): Promise<void> { await this.driver.build(options); }
+  expectDefaultObligation(name: string, value: string): void { this.expectObligation('default-verification-required', name + ': ' + value); }
+  expectResultObligation(name: string): void { this.expectObligation('unspecified-result', name); }
+  private expectObligation(code: string, name: string): void {
+    const obligations = this.driver.written.obligations ?? [];
+    expect(obligations.some(problem => problem.code === code && problem.message.includes(name)
+      && problem.at.kind === 'source' && problem.at.range.sourceId === 'main.expec'), JSON.stringify(obligations)).toBe(true);
+  }
   async checkConsumer(text: string): Promise<void> { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied'); await this.driver.checkConsumer(text); }
   expectNativeTypecheckPassed(): void { expect(this.driver.native.text).not.toContain('error:'); expect(this.driver.native.code, this.driver.native.text).toBe(0); }
   expectNativeTypecheckFailedAt(text: string): void { expect(this.driver.native.code).not.toBe(0); expect(this.driver.native.text).toContain(text); }

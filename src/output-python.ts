@@ -137,6 +137,6 @@ class PythonOutput implements OutputAdapter {
     for (const change of changes) if (change.kind === 'write' && change.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
     const bytes = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === statePath && file.version === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts });
+    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts, obligations: declarations.obligations });
   }
 }

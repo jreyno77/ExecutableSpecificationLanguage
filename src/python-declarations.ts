@@ -8,6 +8,7 @@ import type { TypeFact, TypeId } from './type-description.js';
 import { identifier as specId } from './identity-baseline.js';
 import { literal } from './project-files.js';
 import { PythonTypes } from './python-types.js';
+import { language } from './language-text.js';
 
 const keywords = new Set('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield'.split(' '));
 export const pythonName = (name: string): boolean => /^[A-Za-z_]\w*$/.test(name) && !keywords.has(name);
@@ -26,6 +27,7 @@ const indent = (text: string): string => text.split('\n').map(line => '    ' + l
 /** Checked type facts become ordinary Python declarations; native mechanics stay below this layer. */
 export class PythonDeclarations {
   readonly problems: Diagnostic[] = [];
+  readonly obligations: Diagnostic[] = [];
   readonly artifacts: ArtifactAssociation[] = [];
   readonly path: string;
   private readonly inspection;
@@ -88,12 +90,16 @@ export class PythonDeclarations {
   }
   private parameters(items: readonly Item<'parameter'>[], owner: { kind: string; name: string }[]): string[] {
     return items.map(item => { this.associate(item, [...owner, { kind: 'parameter', name: this.name(item) }]);
+      if (item.hasDefault) this.obligations.push({ code: 'default-verification-required', at: item.origin, related: [],
+        message: 'Verify the authored default for ' + item.name + (item.defaultValue ? ': ' + language(item.defaultValue) : '.') });
       return this.name(item) + ': ' + this.type(this.known(this.catalog.typeOf(item.declaredType.id))) + (item.hasDefault ? ' | Absent = Absent.value' : ''); });
   }
   private callable(item: Item<'capability' | 'function'>, owner?: Item, signature = false): string {
     const name = this.name(item), path = [...owner ? [{ kind: 'class', name: this.name(owner) }] : [], { kind: owner ? 'method' : 'function', name }];
     this.associate(item, path);
     const facts = this.catalog.callable(item.id), result = this.known(facts.result);
+    if (result.kind === 'unspecified') this.obligations.push({ code: 'unspecified-result', at: item.origin, related: [],
+      message: 'Specify the result of ' + item.name + '; object is only a native placeholder.' });
     const parameters = [...owner ? ['self'] : [], ...this.parameters(item.parameters, path)], type = result.kind === 'value' ? this.type(result.type) : result.kind === 'none' ? 'None' : 'object';
     return 'def ' + name + '(' + parameters.join(', ') + ') -> ' + type + ':\n' + indent(signature ? '...' : 'raise NotImplementedError(' + JSON.stringify('Not implemented: ' + (owner ? this.name(owner) + '.' : '') + name) + ')');
   }

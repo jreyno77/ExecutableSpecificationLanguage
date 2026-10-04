@@ -4,6 +4,18 @@ import { PythonDelivery } from '../dsl/python-output.js';
 afterEach(() => PythonDelivery.dispose());
 
 describe('Python contracts a real caller can use', { timeout: 30_000 }, () => {
+  it('retains legal integer spelling for integral literal types', async () => {
+    const p = await PythonDelivery.create(); p.source('type One = 1'); await p.buildContracts();
+    await p.checkConsumer('from store.contracts import One\nv: One = 1'); p.expectNativeTypecheckPassed();
+    await p.checkConsumer('from store.contracts import One\nv: One = 1.0'); p.expectNativeTypecheckFailedAt('float');
+  });
+
+  it('keeps defaults and an unspecified result as explicit obligations', async () => {
+    const p = await PythonDelivery.create(); p.source('function title(copies: Number = 1) returns Text\nfunction discover()');
+    await p.buildContracts(); p.expectDefaultObligation('copies', '1'); p.expectResultObligation('discover');
+    await p.run('from store.contracts import title\ntitle()'); p.expectRaised('NotImplementedError', 'title');
+  });
+
   it('generates StoreGame and reusable snapshot data', async () => {
     const p = await PythonDelivery.create();
     p.source(`type Pair<T> = [T, T]

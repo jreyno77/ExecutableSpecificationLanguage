@@ -28,4 +28,9 @@ export class PythonEvolution {
   async expectSaveImplementationKept(body: string): Promise<void> { expect(await this.driver.text('src/store/contracts.py')).toContain(body); }
   async expectSaveParameter(declaration: string): Promise<void> { expect(await this.driver.text('src/store/contracts.py')).toContain('def save(self, ' + declaration + ') -> None:'); }
   expectOutput(text: string): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text.trim().split(/\r?\n/)).toEqual(text.split('\n')); }
+  expectDefaultUnverified(name: string, value: string): void {
+    expect(this.driver.written.problems).toEqual([]);
+    expect(this.driver.written.obligations).toMatchObject([{ code: 'default-verification-required', message: expect.stringContaining(name + ': ' + value) }]);
+    expect(this.driver.written.obligations?.some(item => item.code === 'unimplemented-default')).toBe(false);
+  }
 }

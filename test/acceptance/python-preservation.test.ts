@@ -3,6 +3,16 @@ import { PythonEvolution } from '../dsl/python-preservation.js';
 
 afterEach(() => PythonEvolution.dispose());
 describe('Python contracts evolve around handwritten implementation', { timeout: 240_000 }, () => {
+  it('keeps an implemented default unverified without claiming it is missing', async () => {
+    const p = await PythonEvolution.create();
+    const source = 'class StoreGame { public save\ncapability save(title: Text = "Dune") returns Nothing }';
+    p.source(source); await p.generate();
+    await p.implementSave('self.saved = title'); await p.implementTitleDefault('Dune');
+    p.change(source); await p.update(); p.expectDefaultUnverified('title', '"Dune"');
+    await p.run('from store.contracts import StoreGame\ngame = StoreGame()\ngame.save()\nprint(game.saved)');
+    p.expectOutput('Dune');
+  });
+
   it('refuses a module-value move that would capture a local receiver', async () => {
     const p = await PythonEvolution.create();
     p.source('class StoreGame {}'); await p.generate();
