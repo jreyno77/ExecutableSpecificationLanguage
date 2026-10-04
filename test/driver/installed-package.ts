@@ -15,6 +15,7 @@ const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
+  javaCli?: { executable: string; commands: JavaCommand[]; first: JavaCommand; renamed: JavaCommand; wrong: JavaCommand; source: string; caller: string; readable: string };
   java?: { complete:boolean; problems:unknown[]; search:ProjectSearch; read:Omit<ProjectRead,'artifacts'>&{artifacts:{at:unknown;path:string;text:string}[]}; wrong:ProcessResult };
   customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
     checkoutDenied: string; privateImportDenied: string; catalog: string; note: string };
@@ -97,6 +98,8 @@ interface ConsumerReport {
     canaries: { failures: boolean[]; denied: string[] }; private: string };
 
 }
+interface JavaCommand { command: string; code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[];
+  stages: { name: string; status: string; tests?: { state: string; errors: string[] }[] }[] } }
 interface CountReport {
   write?: OutputWrite;
   counts?: { concepts: number; recordTypes: number; capabilities: number; subjects: { id: string; name: string }[] };
@@ -201,6 +204,13 @@ export class PackageDriver {
     await cp(join(checkout,'test/resources/java-project/build.gradle'),join(this.consumer,'java-capture.gradle'));
     await writeFile(join(this.consumer,'java-input.json'),JSON.stringify(input));
     this.result=await run(process.execPath,['java-consumer.mjs'],this.consumer); await this.readReport();
+  }
+  async javaCommands(input: { source: string; revised: string }): Promise<void> {
+    await cp(join(resources, 'java-cli-consumer.mjs'), join(this.consumer, 'java-cli-consumer.mjs'));
+    await cp(join(resources, 'java-cli-guard.mjs'), join(this.consumer, 'java-cli-guard.mjs'));
+    const checkoutFile = join(checkout, 'src/index.ts'); await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'java-cli-input.json'), JSON.stringify({ ...input, checkoutFile }));
+    this.result = await run(process.execPath, ['java-cli-consumer.mjs'], this.consumer, 300_000); await this.readReport();
   }
   async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
@@ -359,10 +369,10 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
-async function run(executable: string, args: string[], cwd: string): Promise<ProcessResult> {
+async function run(executable: string, args: string[], cwd: string, timeout = 120_000): Promise<ProcessResult> {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
   try {
-    const result = await execute(executable, args, { cwd, env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
+    const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
   } catch (error) {
     const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };

@@ -11,6 +11,28 @@ export class PackageExamples {
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
   checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
   buildPublicCatalog(source: string): Promise<void> { return this.driver.buildPublicCatalog(source); }
+  runJavaCommands(source: string, revised: string): Promise<void> { return this.driver.javaCommands({ source, revised }); }
+  expectInstalledJavaWorkflow(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.javaCli!;
+    expect(observed.commands.map(item => item.report.status)).toEqual(['initialized', 'installed', 'built', 'tested', 'built', 'tested', 'failed']);
+    for (const item of observed.commands.filter(item => item.command === 'build' || item.command === 'test'))
+      expect(item.stderr).toContain('JAVA-CLI-GUARDS:checkout-denied,network-denied,build-tool-denied');
+    expect(observed.executable.replaceAll('\\', '/')).toContain('/node_modules/executable-specification-language/dist/cli-entry.js');
+    for (const run of [observed.first, observed.renamed]) {
+      expect(run.code).toBe(0); expect(run.report.problems).toEqual([]);
+      expect(run.report.stages.find(stage => stage.name === 'execution')?.tests).toMatchObject([{ state: 'passed', errors: [] }]);
+      expect(run.stderr).toContain('ACTUAL-BASKET:Dune:1.0');
+    }
+    expect(observed.source).toContain('public void saveGame(String title)');
+    expect(observed.source).toContain('// Handwritten basket state must survive the contract rename.');
+    expect(observed.source).toContain('basket.merge(title,1.0,Double::sum)');
+    expect(observed.caller).toContain('game.saveGame(title)');
+    for (const action of ['shopping.available("Dune")', 'shopping.add("Dune")', 'shopping.expectBookQuantity("Dune", 1.0)']) expect(observed.readable).toContain(action);
+    expect(observed.wrong.code).toBe(1); expect(observed.wrong.stderr).toContain('ACTUAL-BASKET:Dune:2.0');
+    const tests = observed.wrong.report.stages.find(stage => stage.name === 'execution')?.tests;
+    expect(tests).toHaveLength(1); expect(tests![0]?.state).toBe('failed');
+    expect(tests![0]?.errors.join('\n')).toMatch(/expected.*1\.0.*(?:but was|actual).*2\.0/s);
+  }
   expectPublicCatalog(text: string): void {
     this.expectConsumerRan(); const observed = this.driver.report.customCli!;
     expect(observed.result).toMatchObject({ status: 'built', exitCode: 0, problems: [], stages: [

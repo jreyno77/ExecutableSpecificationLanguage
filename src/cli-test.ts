@@ -14,9 +14,11 @@ import type { Outputs } from './output.js';
 import type { ProjectContext, ProjectRoot } from './project-connection.js';
 import { FileProjectWriter } from './project-writer.js';
 import { testIdentities } from './acceptance-state.js';
+import { testJava } from './cli-java-test.js';
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {
+  if (checked.profile?.target === 'java') return testJava(checked, project, outputs, signal);
   const result: CommandResult = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [] };
   const fail = (code: string, message: string) => ({ ...result, problems: [cliProblem(code, message, checked.manifest)] });
   const profiles = checked.configuration!.outputs.filter(profile => profile.id === 'acceptance');

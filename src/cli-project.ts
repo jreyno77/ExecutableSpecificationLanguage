@@ -6,6 +6,8 @@ import { ConfigurationFile } from './cli-configuration.js';
 import { NpmDependencies } from './npm-dependencies.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { ProjectInitializer } from './project-initializer.js';
+import { installJava } from './java-acquisition.js';
+import { javaCliExclusions } from './cli-java.js';
 
 export interface CommandResult {
   status: string;
@@ -21,7 +23,7 @@ export async function answer(question: string, signal: AbortSignal): Promise<str
   finally { terminal.close(); }
 }
 export async function initialize(loaded: CheckedManifest, selected: string,
-  choice: { root: string; target: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
+  choice: { root: string; target: string; javaHome?: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
   const result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [] };
   const problem = (code: string, message: string) => { result.problems = [cliProblem(code, message, loaded.manifest)]; return result; };
   const connection = await new ProjectConnector(loaded.manifest).connect(loaded.configuration!);
@@ -54,12 +56,13 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     exitCode: write.status === 'applied' ? 0 : 1, problems: write.problems };
 }
 export async function install(loaded: CheckedManifest): Promise<CommandResult> {
-  const connection = await new ProjectConnector(loaded.manifest).connect(loaded.configuration!);
+  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'java' ? { excludeNames: javaCliExclusions } : undefined).connect(loaded.configuration!);
   if (connection.value?.status !== 'connected') return { status: 'invalid', exitCode: 1, stages: [], problems: connection.problems.length ? connection.problems
     : [cliProblem('project-required', 'Connect a project with expec init before installing declared packages.', loaded.manifest)] };
   const project = connection.value.context.root, requested = loaded.configuration!.packages;
-  if (!requested.length) return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
-  const packages = await new NpmDependencies(project.path).install(requested);
+  if (!requested.length && loaded.profile?.target !== 'java') return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
+  const packages = loaded.profile?.target === 'java' ? await installJava(loaded.configuration!, loaded.manifest, { configFile: loaded.profile.configFile! })
+    : await new NpmDependencies(project.path).install(requested);
   return { status: packages.value ? 'installed' : 'installation-failed', exitCode: packages.value ? 0 : 1, project,
     problems: packages.problems, stages: [{ name: 'installation', status: packages.value ? 'applied' : 'stopped', packages }] };
 }
