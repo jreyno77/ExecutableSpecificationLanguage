@@ -10,7 +10,7 @@ import { canonical, eligibleKinds, identifier } from './identity-baseline.js';
 import { hash } from './project-files.js';
 import { readJson } from './json-data.js';
 import type { ProjectRoot, ProjectSnapshot } from './project-connection.js';
-import { SpecificationIdentity, type IdentityBaseline, type IdentityDecision } from './specification-identity.js';
+import { SpecificationIdentity, type IdentifiedSpecification, type IdentityBaseline, type IdentityDecision } from './specification-identity.js';
 
 export const identityPath = '.expec/identity.json', pendingPath = '.expec/build-pending.json';
 export const identities = () => new SpecificationIdentity(randomUUID);
@@ -35,6 +35,20 @@ export function identityBytes(checked: CheckedManifest, root: ProjectRoot, basel
   const valid = identities().write(baseline);
   if (!valid.value) throw Error('Cannot persist invalid identity: ' + JSON.stringify(valid.problems));
   return Buffer.from(canonical({ format: 1, manifest: checked.manifest, project: root, baseline: JSON.parse(valid.value) }, 2) + '\n');
+}
+
+/** Native execution requires the current source to match the confirmed generated identity. */
+export function currentTestIdentity(checked: CheckedManifest, snapshot: ProjectSnapshot): Check<IdentifiedSpecification> {
+  const fail = (message: string): Check<IdentifiedSpecification> => ({ problems: [cliProblem('generation-required', message, checked.manifest)], deferred: [] });
+  if (snapshot.files.some(file => file.path === pendingPath)) return fail('Complete the pending build before executing tests.');
+  const saved = readIdentity(snapshot, checked);
+  if (!saved.value) return { problems: saved.problems, deferred: saved.deferred };
+  if (!saved.value.baseline) return fail('Build the current specification before executing its tests.');
+  const identity = identities(), associated = identity.associate(checked.specification!, saved.value.baseline);
+  if (!associated.value) return fail('Current source requires generation or explicit identity correspondence.');
+  const compared = identity.compare(saved.value.baseline, associated.value);
+  if (!compared.value || compared.value.contextChanged || compared.value.changes.length) return fail('Current source differs from its confirmed generated specification.');
+  return associated;
 }
 
 const decisionSchema = z.strictObject({ format: z.literal(1), matches: z.array(z.strictObject({ id: identifier, to: z.union([
