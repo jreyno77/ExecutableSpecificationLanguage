@@ -160,3 +160,40 @@ it('carries the enclosing record parameter into its anonymous union companion', 
   await project.runConsumer('fun main() { val shelf: store.Shelf<Double> = store.Shelf(store.ShelfItem.Box(store.Box(2.0))); println((shelf.item as store.ShelfItem.Box).value.value) }');
   project.expectStdout('2.0');
 }, 90_000);
+
+it('updates an unchanged native restriction instead of only its saved baseline', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type Title = "Dune"');
+  await project.buildContracts();
+  await project.file('src/main/kotlin/store/Books.kt', 'package store\nfun title(value: String) = Title(value).value\n');
+  project.change('type Title = "Children of Dune"');
+  await project.updateContracts();
+  await project.runConsumer('fun main() { println(store.title("Children of Dune")); try { store.title("Dune"); println("accepted old title") } catch (error: IllegalArgumentException) { println("rejected old title") } }');
+  project.expectStdout('Children of Dune\nrejected old title');
+}, 120_000);
+
+it('does not overwrite a handwritten check when its declared restriction changes', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type Title = "Dune"');
+  await project.buildContracts();
+  const text = 'package store\ndata class Title(val value: kotlin.String) { init { kotlin.require(value == "Dune"); println("audited") } }\n';
+  await project.file('src/main/kotlin/store/Title.kt', text);
+  project.change('type Title = "Children of Dune"');
+  await project.expectUpdateRefused('handwritten-contract-change');
+  project.expectFileText('src/main/kotlin/store/Title.kt', text);
+  await project.runConsumer('fun main() { println(store.Title("Dune").value); try { store.Title("Children of Dune") } catch (error: IllegalArgumentException) { println("new value still refused") } }');
+  project.expectStdout('audited\nDune\nnew value still refused');
+}, 120_000);
+
+it('does not claim the implementation of an explicitly adopted restriction', async () => {
+  const project = await KotlinDelivery.create();
+  project.options({ adoptExisting: true });
+  project.source('type Title = "Dune"');
+  const text = 'package store\ndata class Title(val value: kotlin.String) { init { kotlin.require(value == "Dune") } }\n';
+  await project.file('src/main/kotlin/store/Title.kt', text);
+  project.associateNative('Title', 'src/main/kotlin/store/Title.kt', ['Title']);
+  await project.buildContracts();
+  project.change('type Title = "Children of Dune"');
+  await project.expectUpdateRefused('handwritten-contract-change');
+  project.expectFileText('src/main/kotlin/store/Title.kt', text);
+}, 120_000);

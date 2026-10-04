@@ -10,12 +10,12 @@ import { compareKotlin } from './kotlin-comparison.js';
 
 type Declaration = KotlinQuery['declarations'][number];
 type Edit = { start: number; end: number; text: string; replacesBinding?: true };
-type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[] };
+type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[]; adopted?: boolean | undefined };
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 const key = (file: string, selector: Declaration['selector']) => canonical({ file, declaration: selector });
 
 /** Reconciles native declaration edits against the last generated text, keeping current implementation bytes. */
-export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[]): Promise<Check<readonly FileChange[]>> {
+export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[], constraints: ReadonlySet<string>): Promise<Check<readonly FileChange[]>> {
   const problems: Diagnostic[] = [], edits = new Map<string, Edit[]>();
   const refuse = (path: string, message: string) => problems.push(problem(snapshot.root, 'output-conflict', path, message));
   const current = await queryKotlin(snapshot, 'expec.kotlin.json');
@@ -48,10 +48,29 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (!changes.some(change => change.start === range.start && change.end === range.end && change.text === text)) changes.push({ ...range, text, ...(replacesBinding ? { replacesBinding: true as const } : {}) });
     edits.set(file, changes);
   };
+  const replacements = new Map<string, string>(), replaced: { before: Declaration; after: Declaration }[] = [];
+  const constrained = new Set(previous.flatMap(file => file.artifacts.filter(item => constraints.has(item.specId)).map(item => canonical(item.locator.value))));
+  for (const [id, address] of oldSymbols) {
+    if (!constrained.has(address)) continue;
+    const old = oldNodes.get(address), node = currentNodes.get(address), next = newNodes.get(newSymbols.get(id) ?? '');
+    if (!old || !node || !next || old.kind !== next.kind || old.name !== next.name || replaced.some(root => contains(root.before, node.file, node.range))) continue;
+    const beforeText = original.get(old.file)!.slice(old.range.start, old.range.end), afterText = wanted.get(next.file)!.slice(next.range.start, next.range.end);
+    if (beforeText === afterText) continue;
+    if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== beforeText || previous.some(file => file.adopted && file.artifacts.some(item => canonical(item.locator.value) === address))) {
+      problems.push(problem(snapshot.root, 'handwritten-contract-change', node.file, 'A changed restriction cannot replace a handwritten or adopted native implementation.')); continue;
+    }
+    edit(node.file, node.range, afterText, true); replaced.push({ before: node, after: next });
+    for (const member of current.value.declarations.filter(member => contains(node, member.file, member.range))) {
+      const before = key(member.file, member.selector), identity = [...oldSymbols].find(([, value]) => value === before)?.[0];
+      const after = identity ? newSymbols.get(identity) : key(next.file, member.selector);
+      if (after && newNodes.has(after)) replacements.set(before, after);
+    }
+  }
   for (const [id, address] of oldSymbols) {
     const old = oldNodes.get(address), node = currentNodes.get(address), next = newNodes.get(newSymbols.get(id) ?? '');
     if (!old || !node) { refuse(old?.file ?? '', 'A previously generated declaration is unavailable or changed identity.'); continue; }
     currentById.set(id, node);
+    if (replaced.some(root => contains(root.before, node.file, node.range))) continue;
     if (!next) {
       if (retired.some(parent => parent !== node && contains(parent, node.file, node.range))) continue;
       if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)) {
@@ -79,6 +98,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   for (const [id, address] of newSymbols) if (!oldSymbols.has(id)) {
     const next = newNodes.get(address);
     if (!next) { refuse('', 'New native declaration was not found in generated source.'); continue; }
+    if (replaced.some(root => contains(root.after, next.file, next.range))) continue;
     const ownerAddress = key(next.file, next.selector.slice(0, -1));
     const ownerId = [...newSymbols].find(([, address]) => address === ownerAddress)?.[0];
     if (!ownerId) continue; // A newly created top-level file is emitted below.
@@ -121,14 +141,14 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const verified = await queryKotlin({ ...snapshot, files: [...proposed.values()] }, 'expec.kotlin.json');
   if (verified.problems.length || !verified.value) return { problems: verified.problems, deferred: [] };
   const movedFiles = new Map(changes.flatMap(change => change.kind === 'move' ? [[change.from, change.to] as const] : []));
-  for (const reference of changedBindings(current.value, verified.value, edits, movedFiles)) {
+  for (const reference of changedBindings(current.value, verified.value, edits, movedFiles, replacements)) {
     problems.push(problem(snapshot.root, 'native-binding-changed', reference.file, 'A surviving native reference changes target at UTF-16 offset ' + reference.range.start + '.'));
   }
   return problems.length ? { problems, deferred: [] } : success(changes);
 }
 
 /** Declaration sites retain identity across edits even when their names or signatures change. */
-function changedBindings(before: KotlinQuery, after: KotlinQuery, edits: ReadonlyMap<string, readonly Edit[]>, moved: ReadonlyMap<string, string>): KotlinQuery['references'] {
+function changedBindings(before: KotlinQuery, after: KotlinQuery, edits: ReadonlyMap<string, readonly Edit[]>, moved: ReadonlyMap<string, string>, replacements: ReadonlyMap<string, string>): KotlinQuery['references'] {
   const position = (file: string, range: { start: number; end: number }) => {
     let offset = 0, length = range.end - range.start;
     for (const edit of edits.get(file) ?? []) {
@@ -149,6 +169,8 @@ function changedBindings(before: KotlinQuery, after: KotlinQuery, edits: Readonl
     const next = matches[0]!;
     if (reference.external) return reference.external !== next.external;
     const target = declaration(before, reference), actual = declaration(after, next);
+    const replacement = target && replacements.get(key(target.file, target.selector));
+    if (replacement) return !actual || key(actual.file, actual.selector) !== replacement;
     const expected = target && position(target.file, target.nameRange);
     return !target || !actual || !expected || target.kind !== actual.kind || actual.file !== expected.file || !same(actual.nameRange, expected.range);
   });

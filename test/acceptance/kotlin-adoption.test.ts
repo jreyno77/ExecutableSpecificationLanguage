@@ -130,3 +130,21 @@ it('retires an unchanged class and its members without overlapping their removal
   await project.runConsumer('fun main() { println(store.Kept()::class.simpleName) }');
   project.expectStdout('Kept');
 }, 120_000);
+
+it('preserves two explicitly adopted declarations in one shared native file', async () => {
+  const project = await KotlinDelivery.create();
+  project.options({ adoptExisting: true });
+  project.source('function title(book: Text) returns Text\nfunction copies() returns Number');
+  await project.file('src/main/kotlin/store/Books.kt', 'package store\n// handwritten shared file\nfun title(book: String): String = book\nfun copies(): Double = 2.0\nclass Notes { val text = "retained" }\n');
+  project.associateCallable('title', 'src/main/kotlin/store/Books.kt', [], 'title', ['kotlin.String']);
+  project.associateCallable('copies', 'src/main/kotlin/store/Books.kt', [], 'copies', []);
+  await project.buildContracts();
+  project.change('function bookTitle(book: Text) returns Text\nfunction copies() returns Number', { title: 'bookTitle' });
+  await project.updateContracts();
+  project.expectFileContains('src/main/kotlin/store/Books.kt', '// handwritten shared file');
+  project.expectFileContains('src/main/kotlin/store/Books.kt', 'fun bookTitle(book: String): String = book');
+  project.expectFileContains('src/main/kotlin/store/Books.kt', 'fun copies(): Double = 2.0');
+  project.expectFileContains('src/main/kotlin/store/Books.kt', 'class Notes { val text = "retained" }');
+  await project.runConsumer('fun main() { println(store.bookTitle("Dune") + ":" + store.copies()) }');
+  project.expectStdout('Dune:2.0');
+}, 120_000);

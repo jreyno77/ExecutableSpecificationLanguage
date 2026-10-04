@@ -13,6 +13,7 @@ import { preserveKotlin } from './kotlin-preservation.js';
 import { nativeInputs } from './native-inputs.js';
 import { validDiff } from './output-contract.js';
 import { kotlinConfiguration } from './kotlin-configuration.js';
+import { readJson } from './json-data.js';
 
 const statePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
 const state = z.strictObject({ format: z.literal(1), options: z.string(), subjects: z.array(identifier),
@@ -32,12 +33,18 @@ export const kotlinOutput: OutputRegistration = {
 class KotlinOutput implements OutputAdapter {
   readonly id = 'kotlin';
   constructor(private readonly options: KotlinOptions, private readonly context?: OutputContext) {}
-  private state(snapshot: ProjectSnapshot) {
+  private state(snapshot: ProjectSnapshot): Check<z.infer<typeof state>> {
     const source = snapshot.files.find(file => file.path === statePath);
-    if (!source) return undefined;
-    const stored = state.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes)));
-    if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash)) throw new Error('Invalid generated Kotlin baseline.');
-    return stored;
+    if (!source) return { problems: [], deferred: [] };
+    try {
+      const parse = (text: string) => readJson(text, (_code, message) => { throw new Error(message); });
+      const stored = state.parse(parse(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes)));
+      kotlinOptions.parse(parse(stored.options));
+      if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || Buffer.from(file.generated).toString('utf8') !== file.generated
+        || file.artifacts.some(item => item.locator.outputId !== this.id || (item.locator.value as { file: string }).file !== file.path))) throw new Error('Invalid generated Kotlin baseline.');
+      new KotlinProject({ outputId: this.id }, stored.files.flatMap(file => file.artifacts));
+      return success(stored);
+    } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin text, options or associations are invalid.')], deferred: [] }; }
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'A complete captured project is required.')], deferred: [] };
@@ -45,8 +52,11 @@ class KotlinOutput implements OutputAdapter {
     const configuration = kotlinConfiguration(snapshot, 'expec.kotlin.json');
     if (!configuration.value) return { problems: configuration.problems, deferred: [] };
     if (request.operation === 'delete') return { problems: [outputProblem('native-preservation-unavailable', '', 'Safe retirement is not available yet.')], deferred: [] };
-    let previous: z.infer<typeof state> | undefined;
-    try { previous = this.state(snapshot); } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin generation baseline is invalid.')], deferred: [] }; }
+    const stored = this.state(snapshot);
+    if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+    const previous = stored.value;
+    const missing = previous?.files.filter(file => !snapshot.files.some(current => current.path === file.path)) ?? [];
+    if (missing.length) return { problems: missing.map(file => outputProblem('output-conflict', file.path, 'The recorded generated Kotlin file is missing.')), deferred: [] };
     const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
     if (previous?.files.some(file => file.artifacts.some(item => !known.has(item.specId)))) return { problems: [outputProblem('unknown-output-identity', statePath, 'Current identity does not recognize earlier Kotlin output subjects.')], deferred: [] };
     if ('diff' in request && !validDiff(request.diff, request.current)) return { problems: [outputProblem('inconsistent-diff', '', 'The supplied transition disagrees with current identity facts.')], deferred: [] };
@@ -83,16 +93,27 @@ class KotlinOutput implements OutputAdapter {
     const next = { format: 1, options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ ...(file.adopted ? { adopted: true } : {}), id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     if (problems.length) return { problems, deferred: [] };
     const unchanged = previous && canonical(next) === canonical(previous);
-    const preserved = unchanged ? success([]) : request.operation === 'create' && !previous ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files);
+    const preserved = unchanged ? success([]) : request.operation === 'create' && !previous ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files, declarations.constraints);
     if (preserved?.problems.length) problems.push(...preserved.problems);
     const changes = [...(preserved?.value ?? files.filter(file => !file.adopted).map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
     return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts) });
   }
   async read(id: string, snapshot: ProjectSnapshot): Promise<ProjectRead> {
-    return new KotlinProject({ outputId: this.id }, this.state(snapshot)?.files.flatMap(file => file.artifacts) ?? []).read(id, snapshot);
+    const stored = this.state(snapshot);
+    if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: {
+      scope: [], complete: false, limitations: stored.problems.map(problem => problem.message),
+    } };
+    return new KotlinProject({ outputId: this.id }, stored.value?.files.flatMap(file => file.artifacts) ?? []).read(id, snapshot);
   }
   async search(id: string, snapshot: ProjectSnapshot): Promise<ProjectSearch> {
-    return new KotlinProject({ outputId: this.id }, this.state(snapshot)?.files.flatMap(file => file.artifacts) ?? []).search(id, snapshot);
+    const stored = this.state(snapshot);
+    if (stored.problems.length) {
+      const coverage = { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) };
+      return { definitions: [], problems: stored.problems,
+        incoming: { subject: id, direction: 'incoming', coverage, uses: [], unresolved: [] },
+        outgoing: { subject: id, direction: 'outgoing', coverage, uses: [], unresolved: [] } };
+    }
+    return new KotlinProject({ outputId: this.id }, stored.value?.files.flatMap(file => file.artifacts) ?? []).search(id, snapshot);
   }
 }

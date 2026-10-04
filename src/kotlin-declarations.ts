@@ -26,7 +26,7 @@ export const kotlinOptions = z.strictObject({
   imports: z.array(importRule).default([]),
 });
 export type KotlinOptions = z.infer<typeof kotlinOptions>;
-export interface KotlinFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly adopted?: boolean }
+export interface KotlinFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly adopted?: boolean | undefined }
 const typeKinds = new Set(['class', 'interface', 'concept', 'component', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration']);
 const roots = new Set([...typeKinds, 'function']);
 const namedKinds = new Set([...roots, 'capability', 'field', 'parameter', 'type-parameter']);
@@ -37,6 +37,7 @@ const doc = (lines: readonly string[]): string => lines.length ? '/**\n' + lines
 /** Projects the existing checked type catalog into Kotlin declarations. */
 export class KotlinDeclarations {
   readonly problems: Diagnostic[] = [];
+  readonly constraints = new Set<string>();
   private readonly inspection;
   private readonly types;
   private readonly selected: Item[];
@@ -152,6 +153,7 @@ export class KotlinDeclarations {
     if ((meaning.kind === 'literal' || meaning.kind === 'union') && owner.kind === 'field') {
       const parent = this.inspection.parent(owner.id);
       if (parent?.kind === 'record-type-declaration' && parent.error && owner.name === 'code') {
+        this.constraints.add(this.current.id(owner.id));
         const name = this.name(parent) + 'Code', names = new Set<string>();
         const cases = this.known(this.types.error(this.types.declaredType(parent.id))).codes.map(value => {
           const entry = value.slice(0, 1).toUpperCase() + value.slice(1);
@@ -205,6 +207,7 @@ export class KotlinDeclarations {
     return { type: 'kotlin.Double', value: String(value) + (Number.isInteger(value) && !String(value).includes('e') ? '.0' : '') };
   }
   private restriction(id: TypeId, name: string, owner: Item, parameters = ''): string {
+    this.constraints.add(this.current.id(owner.id));
     const shape = this.types.describe(id);
     if (shape.kind === 'literal') {
       const value = this.literal(this.inspection.read(shape.expression, 'literal-type'));
