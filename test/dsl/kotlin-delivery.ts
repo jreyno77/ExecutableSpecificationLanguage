@@ -18,6 +18,11 @@ export class KotlinDelivery {
   }
   async expectEmptyDestination(): Promise<void> { expect(await this.driver.capturedFiles()).toEqual(new Map()); }
   expectStarterFiles(paths: string[]): void { expect([...this.driver.files.keys()].sort()).toEqual([...paths].sort()); }
+  async installLocalLibrary(coordinate: string, version: string, source: string, packageName: string): Promise<void> {
+    await this.driver.installLocalLibrary(coordinate, version, source, packageName);
+    expect(this.driver.packages.problems).toEqual([]);
+    this.expectInstalledPackage('maven:' + coordinate, version);
+  }
   async installDependencies(): Promise<void> { await this.driver.acquire(true); expect(this.driver.packages.problems).toEqual([]); }
   async readDependencies(): Promise<void> { await this.driver.acquire(false); expect(this.driver.packages.problems).toEqual([]); }
   async attemptInstallDependencies(): Promise<void> { await this.driver.acquire(true); }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, KotlinDependencies, kotlinOutput, LangiumModel, LangiumReader, Outputs, ProjectConnector, ProjectInitializer, SourceComposer, SpecificationIdentity,
   type Check, type Configuration, type InitializationPlan, type InitializationResult, type IdentifiedSpecification, type ModuleModel, type Output, type OutputPlan, type OutputWrite, type PackageRead, type ProjectContext, type ProjectRead, type ProjectSearch, type SpecDiff, type Specification } from '../../src/index.js';
 
@@ -36,6 +37,24 @@ export class KotlinDeliveryDriver {
   compiled = { code: -1, stdout: '', stderr: '' };
   execution = { code: -1, stdout: '', stderr: '' };
   packages!: PackageRead;
+  async installLocalLibrary(coordinate: string, version: string, source: string, packageName: string): Promise<void> {
+    const [group, artifact] = coordinate.split(':');
+    if (!group || !artifact) throw Error('Supply the fixture Maven group and artifact.');
+    const repository = join(this.directory, 'repository'), directory = join(repository, ...group.split('.'), artifact, version);
+    await fs.mkdir(directory, { recursive: true });
+    const input = join(this.directory, 'Library.kt'); await fs.writeFile(input, 'package ' + packageName + '\n' + source);
+    const native = await this.native();
+    const compiled = await this.run(native.java, ['-cp', native.jars.join(delimiter), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+      '-no-stdlib', '-no-reflect', '-classpath', native.stdlib, '-jvm-target', '21', '-d', join(directory, artifact + '-' + version + '.jar'), input]);
+    if (compiled.code !== 0) throw Error(compiled.stderr);
+    await fs.writeFile(join(directory, artifact + '-' + version + '.pom'),
+      '<project><modelVersion>4.0.0</modelVersion><groupId>' + group + '</groupId><artifactId>' + artifact
+      + '</artifactId><version>' + version + '</version></project>');
+    await this.appendBuild('repositories { maven { url = uri(' + JSON.stringify(pathToFileURL(repository).href) + ') } }');
+    this.configuration = { ...this.configuration, packages: [...this.configuration.packages,
+      { alias: artifact, name: 'maven:' + coordinate, version, phases: ['runtime'] }] };
+    await this.acquire(true);
+  }
   async acquire(install: boolean): Promise<void> {
     const dependencies = new KotlinDependencies(this.root);
     this.packages = await (install ? dependencies.install(this.configuration.packages) : dependencies.read(this.configuration.packages));
