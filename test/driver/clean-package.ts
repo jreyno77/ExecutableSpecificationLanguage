@@ -36,11 +36,12 @@ export class CleanPackageDriver {
     const grammar = await realpath(join(this.packageRoot, 'dist/langium/generated/grammar.js'));
     return { entry, within: relative(await realpath(join(this.root, 'node_modules')), entry), version, grammar };
   }
-  async run(args: string[], cwd=this.directory): Promise<void> {
-    try { this.result = { code: 0, ...await promisify(execFile)(process.execPath,args,{cwd,windowsHide:true,timeout:180_000,maxBuffer:4*1024*1024,env:{...process.env,NODE_PATH:'',NODE_OPTIONS:''}}) }; }
+  get consumerDirectory(): string { return this.directory; }
+  async run(args: string[], cwd=this.directory, deadline=180_000): Promise<void> {
+    try { this.result = { code: 0, ...await promisify(execFile)(process.execPath,args,{cwd,windowsHide:true,timeout:deadline,maxBuffer:4*1024*1024,env:{...process.env,NODE_PATH:'',NODE_OPTIONS:''}}) }; }
     catch(error) { const failed=error as {code?:number|string;killed?:boolean;stdout?:string;stderr?:string}; if(typeof failed.code!=='number'||failed.killed)throw error; this.result={code:failed.code,stdout:failed.stdout??'',stderr:failed.stderr??''}; }
   }
-  async command(args: string[]): Promise<void> { await this.run([this.executable,...args]); }
+  async command(args: string[], deadline=180_000): Promise<void> { await this.run([this.executable,...args], this.directory, deadline); }
   async publicConsumer(): Promise<unknown> {
     const source = await readFile(new URL('../resources/clean-package/consumer.ts', import.meta.url),'utf8');
     await writeFile(join(this.directory,'consumer.ts'),source);

@@ -148,6 +148,205 @@ expects one Dune and observes zero. Restore the line and rerun. Handwritten
 implementation edits can be tested directly. After changing .expec, run build
 before test; test never silently regenerates your assertions.
 
+## Run the same example in Java, Kotlin or Python
+
+Start in a fresh directory, install the same release artifact as above, and copy the same **main.expec** shopping example. Save this **expec.json** instead of the TypeScript configuration:
+
+<!-- expec-example: native-shopping/expec.json -->
+```json
+{
+  "formatVersion": 1,
+  "version": "0.1.0",
+  "build": { "entries": ["main.expec"] },
+  "outputs": []
+}
+```
+
+Choose one native profile for this project. Java and Kotlin require an ordinary installed JDK 21 directory. Python requires ordinary CPython 3.12 and uv 0.12.23 executables. Substitute their actual absolute paths below, preserving quotes around paths with spaces. On Windows these may be `"C:\Tools\jdk-21"`, `"C:\Tools\Python312\python.exe"` and `"C:\Tools\uv\uv.exe"`; on Unix use the corresponding absolute native paths. Linked installation layouts may need an ordinary extracted toolchain directory. Initialization records the chosen tools; it does not install them.
+
+<details>
+<summary>Java</summary>
+
+```sh
+node node_modules/executable-specification-language/dist/cli-entry.js init --root ./game --target java --java-home "/absolute/path/to/jdk-21" --yes
+node node_modules/executable-specification-language/dist/cli-entry.js install
+node node_modules/executable-specification-language/dist/cli-entry.js check
+node node_modules/executable-specification-language/dist/cli-entry.js build
+```
+
+The starter selects Java contracts and `java-acceptance`. Explicit installation acquires locked Gradle 9.1.0 and JUnit 6.1.3 dependencies, including the ordinary Console/reporting modules. Add **game/src/main/java/generated/Basket.java**:
+
+<!-- expec-example: java-shopping/game/src/main/java/generated/Basket.java -->
+```java
+package generated;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+public class Basket {
+    private final Set<String> available = new HashSet<>();
+    private final Map<String, Double> contents = new HashMap<>();
+    public void offer(String title) { available.add(title); }
+    public void empty() { contents.clear(); }
+    public void add(String title) {
+        if (!available.contains(title)) throw new IllegalStateException("Book is unavailable");
+        contents.put(title, quantity(title) + 1.0);
+    }
+    public double quantity(String title) { return contents.getOrDefault(title, 0.0); }
+}
+```
+
+Implement the generated **game/src/test/java/generated/tests/driver/ShoppingDriver.java**, retaining its public signatures:
+
+<!-- expec-example: java-shopping/game/src/test/java/generated/tests/driver/ShoppingDriver.java -->
+```java
+package generated.tests.driver;
+
+import generated.Basket;
+
+public class ShoppingDriver {
+    private final Basket basket = new Basket();
+    public void bookIsAvailable(String title) { basket.offer(title); }
+    public void startWithEmptyBasket() { basket.empty(); }
+    public void addBook(String title) { basket.add(title); }
+    public double bookQuantity(String title) { return basket.quantity(title); }
+}
+```
+
+</details>
+
+<details>
+<summary>Kotlin</summary>
+
+```sh
+node node_modules/executable-specification-language/dist/cli-entry.js init --root ./game --target kotlin --java-home "/absolute/path/to/jdk-21" --yes
+```
+
+Kotlin initialization selects its contract output. Append the following object to the existing `outputs` array in **expec.json**, retaining the starter's other fields and Kotlin entry:
+
+<!-- expec-example: kotlin-shopping/acceptance-output.json -->
+```json
+{ "id": "kotlin-acceptance", "options": { "package": "generated.tests", "domain": "shopping" } }
+```
+
+```sh
+node node_modules/executable-specification-language/dist/cli-entry.js install
+node node_modules/executable-specification-language/dist/cli-entry.js check
+node node_modules/executable-specification-language/dist/cli-entry.js build
+```
+
+Explicit installation acquires Gradle 9.1.0, Kotlin 2.4.10 and JUnit 6.1.3. Add **game/src/main/kotlin/generated/Basket.kt**:
+
+<!-- expec-example: kotlin-shopping/game/src/main/kotlin/generated/Basket.kt -->
+```kotlin
+package generated
+
+class Basket {
+    private val available = mutableSetOf<String>()
+    private val contents = mutableMapOf<String, Double>()
+    fun offer(title: String) { available.add(title) }
+    fun empty() { contents.clear() }
+    fun add(title: String) {
+        check(title in available) { "Book is unavailable" }
+        contents[title] = quantity(title) + 1.0
+    }
+    fun quantity(title: String): Double = contents[title] ?: 0.0
+}
+```
+
+Implement **game/src/test/kotlin/generated/tests/driver/ShoppingDriver.kt**. Keep the generated open class/methods and zero-argument construction:
+
+<!-- expec-example: kotlin-shopping/game/src/test/kotlin/generated/tests/driver/ShoppingDriver.kt -->
+```kotlin
+package generated.tests.driver
+
+import generated.Basket
+
+open class ShoppingDriver {
+    private val basket = Basket()
+    open fun bookIsAvailable(title: String): Unit { basket.offer(title) }
+    open fun startWithEmptyBasket(): Unit { basket.empty() }
+    open fun addBook(title: String): Unit { basket.add(title) }
+    open fun bookQuantity(title: String): Double = basket.quantity(title)
+}
+```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```sh
+node node_modules/executable-specification-language/dist/cli-entry.js init --root ./game --target python --python "/absolute/path/to/python3.12" --uv "/absolute/path/to/uv" --yes
+node node_modules/executable-specification-language/dist/cli-entry.js install
+node node_modules/executable-specification-language/dist/cli-entry.js check
+node node_modules/executable-specification-language/dist/cli-entry.js build
+```
+
+The starter selects Python contracts and acceptance tests. Explicit installation creates the project environment with LibCST 1.9.0, Jedi 0.20.0, mypy 2.4.0 and pytest 9.1.1. Add **game/src/basket.py**:
+
+<!-- expec-example: python-shopping/game/src/basket.py -->
+```python
+class Basket:
+    def __init__(self) -> None:
+        self.available: set[str] = set()
+        self.contents: dict[str, float] = {}
+
+    def offer(self, title: str) -> None:
+        self.available.add(title)
+
+    def empty(self) -> None:
+        self.contents.clear()
+
+    def add(self, title: str) -> None:
+        if title not in self.available:
+            raise ValueError("Book is unavailable")
+        self.contents[title] = self.quantity(title) + 1.0
+
+    def quantity(self, title: str) -> float:
+        return self.contents.get(title, 0.0)
+```
+
+Implement **game/test/driver/shopping_driver.py**:
+
+<!-- expec-example: python-shopping/game/test/driver/shopping_driver.py -->
+```python
+from basket import Basket
+
+class ShoppingDriver:
+    def __init__(self) -> None:
+        self.basket = Basket()
+
+    def bookIsAvailable(self, title: str) -> None:
+        self.basket.offer(title)
+
+    def startWithEmptyBasket(self) -> None:
+        self.basket.empty()
+
+    def addBook(self, title: str) -> None:
+        self.basket.add(title)
+
+    def bookQuantity(self, title: str) -> float:
+        return self.basket.quantity(title)
+```
+
+
+</details>
+
+### Observe the same behavior
+
+For the selected profile, run:
+
+```sh
+node node_modules/executable-specification-language/dist/cli-entry.js test
+```
+
+The generated scenario must pass with one Dune in the basket. Remove only the quantity assignment in Basket.add (`contents.put`, `contents[title] =`, or `self.contents[title] =` above), keeping its availability check. The same test must fail with expected 1 and actual 0. Restore that line and test again. No build occurs between these runs: the generated assertions and DSL stay unchanged. The driver obtains quantity from the actual application state.
+
+Generated stubs remain unfinished until implemented. Native build/read/test never installs missing dependencies implicitly. This starter uses one executable target per connected project; documentation outputs can coexist. The Python command follows its controlled pytest profile, not every arbitrary plugin/configuration. A directly invoked new Unix Gradle wrapper uses `sh gradlew`, because file creation alone does not promise an executable mode; the documented CLI commands handle native invocation.
+
 ## Revise or connect an existing project
 
 Paths in expec.json resolve from that file. `--config path/to/expec.json` selects
