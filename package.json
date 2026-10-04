@@ -29,10 +29,13 @@
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
     "test:acceptance": "vitest run test/acceptance --maxWorkers=2",
+    "test:core": "vitest run --config vitest.core.config.ts",
+    "test:kotlin": "vitest run --config vitest.kotlin.config.ts",
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
     "check": "npm run grammar:generate && npm run typecheck && npm run kotlin:build && npm run test:unit && npm run test:acceptance && tsc -p tsconfig.build.json",
+    "check:core": "npm run grammar:generate && npm run typecheck && npm run kotlin:build && npm run test:core && tsc -p tsconfig.build.json",
     "release": "npm pack"
   },
   "dependencies": {
