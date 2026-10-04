@@ -142,8 +142,9 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (!oldSymbols.has(ownerId)) continue; // Its new parent already contains this declaration.
     const owner = currentById.get(ownerId);
     if (!owner?.bodyRange) { refuse(next.file, 'The containing native declaration has no editable body.'); continue; }
-    const text = wanted.get(next.file)!.slice(next.range.start, next.range.end);
-    edit(owner.file, { start: owner.bodyRange.end - 1, end: owner.bodyRange.end - 1 }, '\n    ' + text.replaceAll('\n', '\n    ') + '\n');
+    const source = wanted.get(next.file)!, text = source.slice(next.range.start, next.range.end);
+    const indentation = source.slice(source.lastIndexOf('\n', next.range.start - 1) + 1, next.range.start);
+    edit(owner.file, { start: owner.bodyRange.end - 1, end: owner.bodyRange.end - 1 }, '\n' + indentation + text + '\n');
   }
   const changes: FileChange[] = [], moved = new Set<string>();
   for (const [file, items] of edits) {

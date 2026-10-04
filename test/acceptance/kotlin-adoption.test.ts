@@ -125,7 +125,7 @@ it('retires an unchanged class and its members without overlapping their removal
   await project.buildContracts();
   project.change('class Kept {}', {}, ['OldGame', 'OldGame.save', 'OldGame.save.title']);
   await project.updateContracts();
-  project.expectFileMissingText('src/main/kotlin/store/OldGame.kt', 'class OldGame');
+  project.expectMissingFile('src/main/kotlin/store/OldGame.kt');
   project.expectFileContains('src/main/kotlin/store/Kept.kt', 'class Kept');
   await project.runConsumer('fun main() { println(store.Kept()::class.simpleName) }');
   project.expectStdout('Kept');
