@@ -9,7 +9,7 @@ export class KotlinAcceptance {
   replaceNativeText(path: string, before: string, after: string): Promise<void> { return this.driver.replace(path, before, after); }
   nativeFile(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   testRoot(path: string): void { this.driver.acceptanceOptions.testRoot = path; }
-  source(text: string): void { this.driver.source(text); }
+  source(text: string, renames: Readonly<Record<string, string>> = {}, retired: readonly string[] = []): void { this.driver.source(text, renames, retired); }
   implementDriver(text: string): Promise<void> { return this.driver.driver(text); }
   buildContracts(): Promise<void> { return this.driver.contracts(); }
   implement(name: string, body: string): Promise<void> { return this.driver.implement(name, body); }
@@ -41,6 +41,8 @@ export class KotlinAcceptance {
     expect(this.driver.readResult.problems).toEqual([]); expect(this.driver.readResult.coverage.complete).toBe(true);
     expect(this.driver.readResult.artifacts.map(item => new TextDecoder().decode(item.file.bytes)).join('\n')).toContain(text);
   }
+  expectReadExcludes(text: string): void { expect(this.driver.readResult.artifacts.map(item => new TextDecoder().decode(item.file.bytes)).join('\n')).not.toContain(text); }
+  async expectNativeFile(path: string, expected: string): Promise<void> { expect((await this.driver.capturedFiles()).get(path)).toBe(expected); }
   expectReadFiles(files: string[]): void {
     expect(this.driver.readResult.problems).toEqual([]); expect(this.driver.readResult.coverage.complete).toBe(true);
     expect([...new Set(this.driver.readResult.artifacts.map(item => item.file.path.split('/').at(-1)))].sort()).toEqual([...files].sort());

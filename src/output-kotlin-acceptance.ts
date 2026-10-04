@@ -8,6 +8,8 @@ import { hash, literal } from './project-files.js';
 import { readJson } from './json-data.js';
 import { outputProblem } from './output-documents.js';
 import { validDiff } from './output-contract.js';
+import type { FileChange } from './project-writer.js';
+import { preserveKotlin } from './kotlin-preservation.js';
 import { checkKotlinDriver, kotlinDriver, kotlinDriverBindings } from './kotlin-test-driver.js';
 import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
@@ -83,14 +85,14 @@ class KotlinAcceptance implements OutputAdapter {
     const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
     if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId))) || [stored.value?.fixture, stored.value?.driver, ...stored.value?.bindings ?? []].some(item => item && !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
     if (stored.value?.files.some(before => !files.some(file => file.path === before.path))) return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
-    const changes: { kind: 'write'; path: string; bytes: Uint8Array }[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
+    const changes: FileChange[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
     for (const file of files) {
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('excluded-kotlin-input', 'The output path intersects an excluded capture path.', file.path);
       const actual = snapshot.files.find(item => item.path === file.path), previous = stored.value?.files.find(item => item.path === file.path);
       if (actual && !previous) return failure('output-conflict', 'Current native acceptance text needs declaration-level ownership.', file.path);
       if (previous && !actual) return failure('output-conflict', 'Previously owned native acceptance text is missing.', file.path);
       let bytes = actual?.bytes ?? Buffer.from(file.text);
-      if (previous && previous.generated !== file.text) {
+      if (previous && previous.generated !== file.text && migrating) {
         if (!migrating || !fixture || file.path !== testFile) return failure('native-preservation-unavailable', 'Changed acceptance contracts require native ownership reconciliation.', file.path);
         const text = migrateKotlinFixture(snapshot, native.value, file.path, this.settings.package + '.dsl.' + className + 'Fixture', fixture);
         if (text === undefined) return failure('output-conflict', 'The test no longer extends its recorded default fixture.', file.path);
@@ -99,6 +101,22 @@ class KotlinAcceptance implements OutputAdapter {
       const version = hash(bytes);
       proposed.set(file.path, { path: file.path, bytes, version });
       if (actual?.version !== version) changes.push({ kind: 'write', path: file.path, bytes });
+    }
+    if (stored.value && !migrating) {
+      const helpers = prefix + '/dsl/ExpecChecks.kt';
+      if (stored.value.files.some(before => before.path === helpers && files.find(file => file.path === helpers)?.text !== before.generated)) return failure('native-preservation-unavailable', 'Changed data comparisons require native runtime ownership reconciliation.', helpers);
+      const ownedBodies = new Set([...request.current.specification.inspection.query('example'), ...request.current.specification.inspection.query('scenario'),
+        ...request.current.specification.inspection.query('fixture'), ...request.current.specification.inspection.query('setup'), ...request.current.specification.inspection.query('action'),
+        ...request.current.specification.inspection.query('observation'), ...request.current.specification.inspection.query('check')].filter(item => !('body' in item) || item.body.kind === 'available').map(item => request.current.id(item.id)));
+      const preserved = await preserveKotlin(snapshot, stored.value.files.filter(file => file.path !== helpers), files.filter(file => file.path !== helpers), ownedBodies);
+      if (!preserved.value) return { problems: preserved.problems, deferred: preserved.deferred };
+      changes.length = 0; changes.push(...preserved.value.changes);
+      proposed.clear(); for (const file of snapshot.files) proposed.set(file.path, file);
+      for (const change of changes) {
+        if (change.kind === 'remove') proposed.delete(change.path);
+        else { if (change.kind === 'move') proposed.delete(change.from); const path = change.kind === 'move' ? change.to : change.path;
+          proposed.set(path, { path, bytes: change.bytes!, version: hash(change.bytes!) }); }
+      }
     }
     const generated = await queryKotlin({ ...snapshot, files: [...proposed.values()] }, 'expec.kotlin.json');
     if (!generated.value) return { problems: generated.problems, deferred: generated.deferred };
@@ -115,7 +133,7 @@ class KotlinAcceptance implements OutputAdapter {
     }
     const next = { format: 1, options: canonical(this.settings), ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
-      { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
+      { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
       artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : [], ...next.driver ? [next.driver] : [], ...next.bindings ?? []], obligations: rendered.obligations });
   }
   async read(id: string, snapshot: ProjectSnapshot) {

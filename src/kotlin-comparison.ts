@@ -11,7 +11,7 @@ export async function compareKotlin(snapshot: ProjectSnapshot, current: KotlinQu
   const captured = new Map(snapshot.files.map(file => [file.path, file]));
   const text = (path: string) => new TextDecoder('utf-8', { fatal: true }).decode(snapshot.files.find(file => file.path === path)!.bytes);
   const roots = current.declarations.filter(node => node.selector.length === 1);
-  const selected = roots.filter(node => owned.some(item => item.locator.outputId === 'kotlin' && item.locator.format === 'kotlin-symbol-1'
+  const selected = roots.filter(node => owned.some(item => item.locator.format === 'kotlin-symbol-1'
     && canonical(item.locator.value) === canonical({ file: node.file, declaration: node.selector })));
   // The first native pass supplies syntax spans only. Missing provider types here are not accepted semantic facts.
   const inputs = files.map((file, index) => ({ ...file, temporary: file.path.slice(0, file.path.lastIndexOf('/') + 1) + '__expec_comparison_' + index + '.kt' }));
