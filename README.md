@@ -678,6 +678,15 @@ a pass. Source `.expec` fixtures remain data-only.
 
 Use Node 24.19.0 and npm 11.20.0.
 
+The Java target is in progress. Native builds require JDK 21 through `JAVA_HOME`;
+the checked-in Gradle wrapper acquires the locked JDT bridge. Java tests also
+require `EXPEC_TEST_JUNIT_CONSOLE` pointing to JUnit Console Standalone 6.1.3
+(SHA-256 `e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec`).
+`npm run test:java` runs the Java unit and acceptance suites;
+`npm run test:java-package` checks the installed public Java consumer.
+CI runs these suites on Windows and Linux separately from `check:core`.
+The ordinary `check` command retains all local unit and acceptance tests.
+
 ```sh
 npm ci
 npm run check

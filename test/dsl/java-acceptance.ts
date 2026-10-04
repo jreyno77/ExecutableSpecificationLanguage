@@ -5,7 +5,22 @@ export class JavaAcceptance {
   private remembered: {path:string;bytes:Uint8Array}[]=[];
   private constructor(private readonly driver: JavaAcceptanceDriver) { onTestFinished(() => driver.dispose()); }
   static async connect(): Promise<JavaAcceptance> { const driver = new JavaAcceptanceDriver(); const example = new JavaAcceptance(driver); await driver.prepare(); return example; }
-  nameGroup(index:number|string,name:string,scenarioName:string):void { this.driver.nameGroup(index,name,scenarioName); }
+  nameGroup(index:number|string,name:string,scenarioName?:string):void { this.driver.nameGroup(index,name,scenarioName); }
+  nameScenario(title:string,name:string):void { this.driver.nameScenario(title,name); }
+  deleteScenario(title:string):Promise<void> { return this.driver.deleteScenario(title); }
+  deleteGroup(index:number):Promise<void> { return this.driver.deleteGroup(index); }
+  expectScenarioNames(titles:string[]):void { expect(this.driver.scenarioSelectors().map(item=>item.title)).toEqual(titles); }
+  expectFileAbsent(path:string):void { expect(this.driver.snapshot.files.some(file=>file.path===path)).toBe(false); }
+  expectSourceAbsent(path:string,text:string):void { expect(Buffer.from(this.driver.snapshot.files.find(file=>file.path===path)!.bytes).toString('utf8')).not.toContain(text); }
+  expectRememberedFilesExcept(paths:string[]):void {
+    expect(this.driver.snapshot.files.filter(file=>!paths.includes(file.path)).map(file=>({path:file.path,bytes:Uint8Array.from(file.bytes)})))
+      .toEqual(this.remembered.filter(file=>!paths.includes(file.path)));
+  }
+  expectRefusedAt(code:string,path:string,token:string):void {
+    this.expectRefused(code); const text=Buffer.from(this.driver.snapshot.files.find(file=>file.path===path)!.bytes).toString('utf8');
+    expect(this.driver.written.problems.some(problem=>problem.code===code&&problem.at.kind==='dependency'&&problem.at.path[1]===path
+      &&typeof problem.at.path[2]==='number'&&typeof problem.at.path[3]==='number'&&text.slice(problem.at.path[2],problem.at.path[2]+problem.at.path[3])===token)).toBe(true);
+  }
   expectSelectors(expected:{file:string;type:string;method:string;title:string}[]):void {
     expect(this.driver.scenarioSelectors()).toEqual(expected);
     for(const selector of expected) {
@@ -16,6 +31,7 @@ export class JavaAcceptance {
   }
   file(path: string, text: string): Promise<void> { return this.driver.file(path,text); }
   update(source: string): Promise<void> { return this.driver.update(source); }
+  retireScenario(title:string,source:string):Promise<void> { return this.driver.update(source,[title]); }
   replaceText(path: string,before: string,after: string): Promise<void> { return this.driver.replaceText(path,before,after); }
   async rememberFiles(): Promise<void> { await this.driver.capture(); this.remembered=this.driver.snapshot.files.map(file=>({path:file.path,bytes:Uint8Array.from(file.bytes)})); }
   async expectFilesUnchanged(): Promise<void> { await this.driver.capture(); expect(this.driver.snapshot.files.map(file=>({path:file.path,bytes:Uint8Array.from(file.bytes)}))).toEqual(this.remembered); }
@@ -25,6 +41,15 @@ export class JavaAcceptance {
   expectUnchanged(): void { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('unchanged'); expect(this.driver.written.artifacts?.length).toBeGreaterThan(0); }
   expectApplied(): void { expect(this.driver.written.problems,JSON.stringify(this.driver.written.problems)).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied'); }
   readScenario(title: string): Promise<void> { return this.driver.readScenario(title); }
+  searchScenario(title:string):Promise<void> { return this.driver.searchScenario(title); }
+  expectIncompleteRead(code:string,path:string):void {
+    const result=this.driver.readResult; expect(result.problems.map(item=>item.code)).toContain(code); expect(result.coverage.complete).toBe(false);
+    expect(result.artifacts[0]!.file).toEqual(this.driver.snapshot.files.find(file=>file.path===path));
+  }
+  expectIncompleteSearch(code:string):void {
+    const result=this.driver.searchResult; expect(result.problems.map(item=>item.code)).toContain(code);
+    expect(result.incoming.coverage.complete).toBe(false); expect(result.outgoing.coverage.complete).toBe(false);
+  }
   searchOperation(name: string): Promise<void> { return this.driver.searchOperation(name); }
   corruptState(): Promise<void> { return this.driver.corruptState(); }
   expectScenarioFile(path: string,title: string): void {

@@ -28,10 +28,11 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
     const result=new SpecificationIdentity(randomUUID).withArtifacts(this.current,[...this.current.baseline.artifacts.filter(item=>item.locator.outputId!=='java-acceptance'),...this.written.artifacts]);
     if(!result.value) throw new Error(JSON.stringify(result)); this.current=result.value;
   }
-  async update(source: string): Promise<void> {
-    const before=this.current,identity=new SpecificationIdentity(randomUUID); super.source(source);
-    const after=identity.associate(this.current.specification,before.baseline); if(!after.value) throw new Error(JSON.stringify(after));
+  async update(source: string,retired:string[]=[]): Promise<void> {
+    const before=this.current,identity=new SpecificationIdentity(randomUUID),ids=retired.map(title=>before.id(this.scenario(title).id)); super.source(source);
+    const after=identity.associate(this.current.specification,before.baseline,ids.map(retire=>({retire}))); if(!after.value) throw new Error(JSON.stringify(after));
     const diff=identity.compare(before.baseline,after.value); if(!diff.value) throw new Error(JSON.stringify(diff));
+    for(let index=this.names.length-1;index>=0;index--) if(ids.includes(this.names[index]!.id)) this.names.splice(index,1);
     this.current=after.value; this.written=await this.acceptance().update(diff.value,this.current); this.confirm(); await this.capture();
   }
   async replaceText(path: string,before: string,after: string): Promise<void> {
@@ -43,20 +44,31 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
     const opened=outputs.open('java-acceptance',{package:'store.tests',domain:'shopping',...this.names.length?{names:this.names}:{},...this.selectedDriver?{driver:this.selectedDriver,adoptExisting:true}:{},...this.fixture?{fixture:this.fixture}:{}},this.context,new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
     if(!opened.value) throw new Error(JSON.stringify(opened)); return opened.value;
   }
-  nameGroup(index:number|string,name:string,scenarioName:string):void {
+  private scenario(title: string) {
+    const inspection=this.current.specification.inspection;
+    const item=[...inspection.query('scenario'),...inspection.query('example')].find(item=>item.title.value===title);
+    if(!item) throw Error('Missing authored case '+title); return item;
+  }
+  nameScenario(title:string,name:string):void { this.names.push({id:this.current.id(this.scenario(title).id),name}); }
+  async deleteScenario(title:string):Promise<void> { this.written=await this.acceptance().delete(this.current.id(this.scenario(title).id)); this.confirm(); await this.capture(); }
+  async deleteGroup(index:number):Promise<void> {
+    const group=[...this.current.specification.inspection.query('examples')][index]; if(!group) throw Error('Missing authored group');
+    this.written=await this.acceptance().delete(this.current.id(group.id)); this.confirm(); await this.capture();
+  }
+  nameGroup(index:number|string,name:string,scenarioName?:string):void {
     const groups=[...this.current.specification.inspection.query('examples')];
     const group=typeof index==='number'?groups[index]:groups.find(item=>item.origin.kind==='source'&&item.origin.module===index); if(!group) throw new Error('Missing examples group');
     this.names.push({id:this.current.id(group.id),name});
-    for(const item of group.members) if(item.kind==='scenario') this.names.push({id:this.current.id(item.id),name:scenarioName});
+    for(const item of group.members) if(scenarioName&&item.kind==='scenario') this.names.push({id:this.current.id(item.id),name:scenarioName});
   }
   scenarioSelectors():{file:string;type:string;method:string;title:string}[] {
-    return [...this.current.specification.inspection.query('scenario')].flatMap(scenario=>(this.written.artifacts??[]).filter(artifact=>artifact.specId===this.current.id(scenario.id))
+    return [...this.current.specification.inspection.query('scenario'),...this.current.specification.inspection.query('example')].flatMap(scenario=>(this.written.artifacts??[]).filter(artifact=>artifact.specId===this.current.id(scenario.id))
       .map(artifact=>{const at=artifact.locator.value as {file:string;type:string;member:{name:string}};return {file:at.file,type:at.type,method:at.member.name,title:scenario.title.value};}));
   }
   async readScenario(title: string): Promise<void> {
-    const scenario=[...this.current.specification.inspection.query('scenario')].find(item=>item.title.value===title);
-    if(!scenario) throw new Error('Missing authored scenario'); await this.capture(); this.readResult=await this.acceptance().read(this.current.id(scenario.id));
+    await this.capture(); this.readResult=await this.acceptance().read(this.current.id(this.scenario(title).id));
   }
+  async searchScenario(title:string):Promise<void> { await this.capture(); this.searchResult=await this.acceptance().search(this.current.id(this.scenario(title).id)); }
   async searchOperation(name: string): Promise<void> {
     const operation=this.current.baseline.elements.find(item=>item.address.name===name);
     if(!operation) throw new Error('Missing authored operation'); await this.capture(); this.searchResult=await this.acceptance().search(operation.id);
