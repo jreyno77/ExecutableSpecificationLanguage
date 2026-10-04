@@ -26,12 +26,20 @@ export class KotlinAcceptance {
   rememberFile(path: string): Promise<void> { return this.driver.rememberFile(path); }
   async expectFileUnchanged(path: string): Promise<void> { expect(await this.driver.unchangedFile(path)).toBe(true); }
   async updateAcceptance(): Promise<void> {
-    await this.driver.generate(true); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
+    await this.driver.generate('update'); expect(this.driver.written.problems, this.driver.failureContext).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
   }
   expectNoRuntimeOutput(text: string): void { expect(this.driver.execution.stdout + this.driver.execution.stderr).not.toContain(text); }
   async expectAcceptanceRefused(code: string): Promise<void> {
-    await this.driver.generate(true); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
+    await this.driver.generate('update'); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
   }
+  async expectCreateRefused(code: string): Promise<void> {
+    await this.driver.generate(); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
+  }
+  async expectInsertRefused(code: string): Promise<void> {
+    await this.driver.generate('insert'); expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined();
+  }
+  removeNativeFile(path: string): Promise<void> { return this.driver.removeFile(path); }
+  readExample(title: string): Promise<void> { return this.driver.readExample(title); }
   expectRuntimeOutput(text: string): void { expect(this.driver.execution.stdout + this.driver.execution.stderr).toContain(text); }
   expectVisibleSteps(steps: string[]): void {
     const text = [...this.driver.files].filter(([path]) => path.includes('/acceptance/')).map(([, text]) => text).join('\n');

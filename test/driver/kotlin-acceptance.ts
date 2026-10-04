@@ -65,18 +65,24 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   }
   async rememberFile(path: string): Promise<void> { this.remembered.set(path, await fs.readFile(join(this.root, path), 'utf8')); }
   async unchangedFile(path: string): Promise<boolean> { return this.remembered.has(path) && this.remembered.get(path) === await fs.readFile(join(this.root, path), 'utf8'); }
-  async generate(update = false): Promise<void> {
+  async generate(operation: 'create' | 'update' | 'insert' = 'create'): Promise<void> {
     const output = this.outputs.open('kotlin-acceptance', { package: 'store.tests', domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
     if (output.value) this.output = output.value;
     const compared = this.identity.compare(this.current.baseline, this.current);
     if (!compared.value) throw new Error(JSON.stringify(compared));
-    this.written = output.value ? await (update ? output.value.update(this.diff ?? compared.value, this.current) : output.value.create(this.current)) : { problems: output.problems }; this.files = await this.capturedFiles();
+    this.written = output.value ? await (operation === 'create' ? output.value.create(this.current) : output.value[operation](this.diff ?? compared.value, this.current)) : { problems: output.problems }; this.files = await this.capturedFiles();
     if (this.written.problems.length) this.failureContext = JSON.stringify({ result: this.written, capture: (await this.context.readSnapshot()).problems });
   }
   async readOperation(name: string): Promise<void> {
     const operation = [...this.current.specification.inspection.query('setup'), ...this.current.specification.inspection.query('action'), ...this.current.specification.inspection.query('observation'), ...this.current.specification.inspection.query('check')].find(item => item.name === name);
     if (!operation) throw new Error('Missing authored operation ' + name);
     this.readResult = await this.output.read(this.current.id(operation.id));
+  }
+  async removeFile(path: string): Promise<void> { await fs.unlink(join(this.root, path)); }
+  async readExample(title: string): Promise<void> {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.readResult = await this.output.read(this.current.id(matches[0]!.id));
   }
   async deleteExample(title: string): Promise<void> {
     const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);

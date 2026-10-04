@@ -25,7 +25,7 @@ const options = kotlinOptions.omit({ directory: true, concepts: true }).extend({
 });
 const statePath = '.expec/outputs/' + Buffer.from('kotlin-acceptance').toString('hex') + '.json';
 const association = z.strictObject({ specId: z.string(), locator: locatorSchema });
-const state = z.strictObject({ format: z.literal(1), options: z.string(), deleted: z.array(z.string()).default([]), subjects: z.array(z.string()).default([]), names: z.array(z.strictObject({ id: z.string(), name: z.string() })).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
+const state = z.strictObject({ format: z.literal(1), options: z.string(), context: z.string(), contracts: z.array(z.strictObject({ id: z.string(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })), deleted: z.array(z.string()).default([]), subjects: z.array(z.string()).default([]), names: z.array(z.strictObject({ id: z.string(), name: z.string() })).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
   id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association),
 })) });
 export const kotlinAcceptanceOutput: OutputRegistration = {
@@ -46,6 +46,9 @@ class KotlinAcceptance implements OutputAdapter {
     if (!source) return { problems: [], deferred: [] };
     try {
       const stored = state.parse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes), (_code, message) => { throw Error(message); }));
+      const owned = new Set([...stored.files.flatMap(file => file.artifacts.map(item => item.specId)), ...stored.deleted]);
+      if (new Set(stored.contracts.map(item => item.id)).size !== stored.contracts.length || stored.contracts.length !== owned.size
+        || stored.contracts.some(item => !owned.has(item.id) || !stored.subjects.includes(item.id))) throw Error('Invalid recorded source subjects.');
       if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || file.artifacts.some(item => item.locator.outputId !== this.id))) throw Error('Invalid generated baseline.');
       if (canonical(options.parse(JSON.parse(stored.options))) !== stored.options) throw Error('Invalid recorded options.');
       new KotlinProject({ outputId: this.id }, [...stored.files.flatMap(file => file.artifacts), ...stored.fixture ? [stored.fixture] : [], ...stored.driver ? [stored.driver] : [], ...stored.bindings ?? []]);
@@ -65,6 +68,14 @@ class KotlinAcceptance implements OutputAdapter {
     const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
     if (request.operation === 'delete') return this.delete(request.id, snapshot, stored.value);
     if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Supply the actual identity transition.');
+    if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts'))))
+      return failure('not-addition-only', 'Use update when existing Kotlin examples change.');
+    const fingerprints = new Map(request.current.baseline.elements.map(record => [record.id, hash(Buffer.from(canonical([record.address, record.structure, record.references])))]));
+    const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
+    if (stored.value?.contracts.some(item => !known.has(item.id))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
+    if (stored.value && request.operation !== 'update' && (stored.value.context !== request.current.baseline.context
+      || stored.value.contracts.some(item => fingerprints.get(item.id) !== item.fingerprint)))
+      return failure(request.operation === 'insert' ? 'not-addition-only' : 'use-update', 'Recorded source declarations changed; use update before reconciling existing tests.');
     const beforeOptions = stored.value && options.parse(JSON.parse(stored.value.options));
     const fixed = ({ fixture: _fixture, names: _names, ...settings }: z.infer<typeof options>) => canonical(settings);
     const migrating = request.operation === 'update' && beforeOptions && !beforeOptions.fixture && this.settings.fixture && fixed(beforeOptions) === fixed(this.settings);
@@ -104,7 +115,6 @@ class KotlinAcceptance implements OutputAdapter {
         && !('diff' in request && request.diff.changes.some(change => change.id === id && change.kinds.some(kind => kind === 'rename' || kind === 'move')))))
         return failure('output-options-changed', 'A retained native name requires its own actual identity transition.');
     }
-    const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
     if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId))) || [stored.value?.fixture, stored.value?.driver, ...stored.value?.bindings ?? []].some(item => item && !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
     if (stored.value?.files.some(before => !files.some(file => file.path === before.path))) return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
     const changes: FileChange[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
@@ -153,7 +163,9 @@ class KotlinAcceptance implements OutputAdapter {
       this.settings.package + '.dsl.' + className))) {
       return failure('invalid-native-fixture', 'The selected native base needs accessible zero-argument construction and its protected/public readable DSL property.', fixture.file);
     }
-    const next = { format: 1, options: canonical(this.settings), subjects: request.current.baseline.elements.map(item => item.id), names, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+    const owned = new Set(files.flatMap(file => file.artifacts.map(item => item.specId)));
+    const next = { format: 1, options: canonical(this.settings), context: request.current.baseline.context,
+      contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
       artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : [], ...next.driver ? [next.driver] : [], ...next.bindings ?? []], obligations: rendered.obligations });

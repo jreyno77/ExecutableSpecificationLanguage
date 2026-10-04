@@ -55,11 +55,11 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const original = before.value.sources, wanted = after.value.sources;
   const declarations = (query: KotlinQuery) => new Map(query.declarations.map(node => [key(node.file, node.selector), node]));
   const oldNodes = declarations(before.value.native), newNodes = declarations(after.value.native), currentNodes = declarations(current.value);
-  const symbols = (files: readonly { artifacts: readonly ArtifactAssociation[] }[]) => {
+  const symbols = (files: readonly { id: string; artifacts: readonly ArtifactAssociation[] }[]) => {
     const result = new Map<string, string>(), counts = new Map<string, number>();
-    for (const item of files.flatMap(file => file.artifacts).filter(item => item.locator.format === 'kotlin-symbol-1')) {
+    for (const file of files) for (const item of file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1')) {
       const selector = (item.locator.value as { declaration: Declaration['selector'] }).declaration;
-      const role = item.specId + ':' + selector.at(-1)!.kind, index = counts.get(role) ?? 0;
+      const role = canonical([file.id, item.specId, selector.at(-1)!.kind]), index = counts.get(role) ?? 0;
       counts.set(role, index + 1); result.set(role + ':' + index, canonical(item.locator.value));
     }
     return result;
