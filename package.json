@@ -32,6 +32,7 @@
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:java": "vitest run --config vitest.java.config.ts",
     "test:java-package": "npm run build && vitest run --config vitest.java-package.config.ts",
+    "test:pilot": "npm run build && vitest run --config vitest.pilot.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
     "check": "npm run grammar:generate && npm run java:build && npm run typecheck && npm run test:unit && npm run test:acceptance && tsc -p tsconfig.build.json",
