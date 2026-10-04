@@ -10,6 +10,17 @@ export class PackageExamples {
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
   checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
+  buildPublicCatalog(source: string): Promise<void> { return this.driver.buildPublicCatalog(source); }
+  expectPublicCatalog(text: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.customCli!;
+    expect(observed.result).toMatchObject({ status: 'built', exitCode: 0, problems: [], stages: [
+      expect.objectContaining({ name: 'contracts', status: 'applied' }), { name: 'tests', status: 'not-run' },
+    ] });
+    expect(observed.catalog).toBe(text); expect(observed.note).toBe('Keep this handwritten note.');
+  }
+  expectCheckoutAndPrivateImportsBlocked(): void {
+    expect(this.driver.report.customCli).toMatchObject({ checkoutDenied: 'ERR_ACCESS_DENIED', privateImportDenied: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+  }
   expectInstalledCommandCheckedWithoutWriting(): void {
     this.expectConsumerRan(); const observed = this.driver.report.cli!;
     expect(observed.result).toMatchObject({ format: 1, status: 'checked', exitCode: 0, version: '1.2.3', problems: [], syntax: [], stages: [] });

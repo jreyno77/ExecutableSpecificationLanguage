@@ -15,6 +15,8 @@ const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
+  customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
+    checkoutDenied: string; privateImportDenied: string; catalog: string; note: string };
   cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
     stderr: string; manifestBefore: string; manifestAfter: string; files: string[]; note: string };
   packageUrl: string;
@@ -162,6 +164,18 @@ export class PackageDriver {
   async checkFromInstalledCommand(): Promise<void> {
     await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
     this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
+  }
+  async buildPublicCatalog(source: string): Promise<void> {
+    await cp(join(resources, 'cli-catalog-consumer.mjs'), join(this.consumer, 'cli-catalog-consumer.mjs'));
+    const checkoutFile = join(checkout, 'src/index.ts');
+    await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'catalog-input.json'), JSON.stringify({ source, checkoutFile }));
+    this.result = await run(process.execPath, ['--permission', '--allow-fs-read=' + this.consumer,
+      '--allow-fs-write=' + this.consumer, 'cli-catalog-consumer.mjs'], this.consumer);
+    if (this.result.code !== 0) throw Error('Installed catalog failed. ' + output(this.result));
+    const { packageUrl, ...observed } = JSON.parse(await readFile(join(this.consumer, 'catalog-observed.json'), 'utf8'));
+    this.report = { packageUrl, customCli: { ...observed, result: JSON.parse(this.result.stdout) } };
+    this.location = await packageLocation(this.consumer, fileURLToPath(packageUrl));
   }
   async generateShoppingAcceptance(): Promise<void> {
     await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
