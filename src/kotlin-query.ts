@@ -18,7 +18,7 @@ export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'i
 const result = z.strictObject({
   files: z.array(z.string().refine(literal)),
   imports: z.array(z.strictObject({ file: z.string().refine(literal), range })),
-  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional(), typePosition: z.number().int().nonnegative().optional(),
+  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), synthetic: z.literal(true).optional(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional(), typePosition: z.number().int().nonnegative().optional(),
     packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
     parameterNames: z.array(z.string()).optional(), hasDefault: z.boolean().optional(), typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional() })),
   references: z.array(z.strictObject({ file: z.string().refine(literal), range, name: z.string(), owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),

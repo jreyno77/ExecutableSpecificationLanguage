@@ -77,11 +77,11 @@ fun main(args: Array<String>) {
             val text = originals.getValue(file)
             for (directive in file.importDirectives) imports.add(buildJsonObject { put("file", text.file); put("range", text.range(directive)) })
             for (node in file.collectDescendantsOfType<KtNamedDeclaration>()) {
-                if (node.name == null) continue
-                val selector = selector(node)
+                if (node.name == null && node !is KtObjectDeclaration && node !is KtNamedFunction) continue
+                val selector = selector(node, text)
                 if (selector.isEmpty()) continue
                 declarations.add(buildJsonObject {
-                    put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", if (node is KtConstructor<*>) "<init>" else node.name)
+                    put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", nativeName(node, text)); if (node.name == null) put("synthetic", true)
                     put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: (node.parent as? KtClassOrObject)?.nameIdentifier ?: node else node.nameIdentifier ?: node))
                     put("packageName", file.packageFqName.asString())
                     put("visibility", when {
@@ -136,9 +136,9 @@ fun main(args: Array<String>) {
                         val owner = parents(element).filterIsInstance<KtNamedDeclaration>().firstOrNull()
                         references.add(buildJsonObject {
                             put("file", text.file); put("range", text.range((element as? KtSimpleNameExpression)?.getReferencedNameElement()?.textRange ?: reference.absoluteRange)); put("name", (element as? KtSimpleNameExpression)?.getReferencedName() ?: reference.canonicalText)
-                            put("owner", owner?.let { JsonArray(selector(it)) } ?: JsonNull)
+                            put("owner", owner?.let { JsonArray(selector(it, text)) } ?: JsonNull)
                             if (target != null && targetFile in originals) {
-                                val selected = selector(target) + if (symbol is KaConstructorSymbol && target is KtClass) listOf(buildJsonObject {
+                                val selected = selector(target, originals.getValue(targetFile!!)) + if (symbol is KaConstructorSymbol && target is KtClass) listOf(buildJsonObject {
                                     put("kind", "constructor"); put("name", "<init>")
                                     put("parameters", JsonArray(symbol.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
                                 }) else emptyList()
@@ -178,9 +178,11 @@ private fun kind(node: KtNamedDeclaration): String = when (node) {
     is KtTypeParameter -> "type-parameter"
     else -> "property"
 }
-private fun selector(node: KtNamedDeclaration): List<JsonElement> =
+private fun nativeName(node: KtNamedDeclaration, text: NativeText): String =
+    if (node is KtConstructor<*>) "<init>" else node.name ?: "<anonymous@" + text.range(node).getValue("start") + ">"
+private fun selector(node: KtNamedDeclaration, text: NativeText): List<JsonElement> =
     (parents(node).filterIsInstance<KtNamedDeclaration>().filterNot { node is KtParameter && node.hasValOrVar() && it is KtPrimaryConstructor }.toList().asReversed() + node).map { declaration -> buildJsonObject {
-        put("kind", kind(declaration)); put("name", if (declaration is KtConstructor<*>) "<init>" else declaration.name ?: "")
+        put("kind", kind(declaration)); put("name", nativeName(declaration, text))
         if (declaration is KtNamedFunction || declaration is KtConstructor<*>) analyze(declaration) {
             declaration as KtFunction
             put("parameters", JsonArray(declaration.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))

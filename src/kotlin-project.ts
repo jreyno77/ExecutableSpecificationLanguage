@@ -7,7 +7,7 @@ import { literal, problem } from './project-files.js';
 import { kotlinConfigurationOptions } from './kotlin-configuration.js';
 import { kotlinSelector, queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
-const symbol = z.strictObject({ file: z.string().refine(literal), declaration: kotlinSelector });
+const symbol = z.strictObject({ file: z.string().refine(literal), declaration: kotlinSelector.refine(path => path.every(item => !item.name.startsWith('<anonymous@'))) });
 const file = z.strictObject({ file: z.string().refine(literal) });
 type Declaration = KotlinQuery['declarations'][number];
 

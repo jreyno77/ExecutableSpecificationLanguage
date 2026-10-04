@@ -67,7 +67,7 @@ export class KotlinDeliveryDriver {
     if (this.initialized.value) { this.context = this.initialized.value.context; this.configuration = this.initialized.value.configuration; }
     this.files = await this.capturedFiles();
   }
-  async configureNative(): Promise<void> {
+  async configureNative(testLibraries: readonly string[] = []): Promise<void> {
     const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;
     if (!javaHome) throw new Error('Supply an actual JDK21 for native acceptance.');
     const sourceRoots = { main: ['src/main/kotlin'], test: ['src/test/kotlin'] };
@@ -77,7 +77,7 @@ export class KotlinDeliveryDriver {
     const library = resolve('src/kotlin/lib/kotlin-stdlib-2.4.10.jar');
     const inputs = (await this.context.readSnapshot()).files.map(file => ({ path: file.path, version: file.version }));
     await this.file('.expec/kotlin/classpath.json', JSON.stringify({ format: 1, kotlin: '2.4.10', gradle: '9.1.0', jvmTarget: '21', javaHome, sourceRoots,
-      classPath: { main: [library], test: [library] }, packages: [], inputs }));
+      classPath: { main: [library], test: [library, ...testLibraries] }, runtimeClassPath: { main: [library], test: [library, ...testLibraries] }, packages: [], inputs }));
     this.context = new KotlinContext(this.context);
   }
   private model(module: string, text: string): ModuleModel {
@@ -160,7 +160,7 @@ export class KotlinDeliveryDriver {
     const subject = current.baseline.elements.find(record => this.subjectPath(current, record.id) === name);
     if (!subject) throw new Error('Missing source subject ' + name); return subject.id;
   }
-  private async native(): Promise<{ java: string; jars: string[]; stdlib: string }> {
+  protected async native(): Promise<{ java: string; jars: string[]; stdlib: string }> {
     const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;
     if (!javaHome || !isAbsolute(javaHome)) throw new Error('Kotlin acceptance requires explicit EXPEC_TEST_JAVA_HOME or JAVA_HOME (JDK21).');
     const libraries = process.env.EXPEC_TEST_KOTLIN_LIB ?? resolve('src/kotlin/lib');
@@ -183,7 +183,7 @@ export class KotlinDeliveryDriver {
     const native = await this.native(), report = JSON.parse(await fs.readFile(join(this.root, '.expec/kotlin/classpath.json'), 'utf8'));
     this.execution = await this.run(native.java, ['-cp', [join(this.directory, 'classes'), ...report.runtimeClassPath?.main ?? [native.stdlib]].join(delimiter), 'ConsumerKt']);
   }
-  private async run(command: string, args: string[]) {
+  protected async run(command: string, args: string[]) {
     try { return { ...await promisify(execFile)(command, args, { timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true }), code: 0 }; }
     catch (error) { const result = error as { code?: number; stdout?: string; stderr?: string }; return { code: typeof result.code === 'number' ? result.code : -1, stdout: result.stdout ?? '', stderr: result.stderr ?? String(error) }; }
   }
