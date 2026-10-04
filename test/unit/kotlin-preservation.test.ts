@@ -13,6 +13,18 @@ async function project() {
 }
 
 describe('Kotlin preservation edits only established native ownership', () => {
+  it('renames actual construction callers while retaining their local import alias', async () => {
+    const fixture = await project();
+    await fixture.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = StoreGame()\n');
+    await fixture.file('src/main/kotlin/store/Alias.kt', 'package callers\nimport store.StoreGame as Game\nfun launch() = Game()\n');
+    fixture.source('class SavedGame { public save\ncapability save() returns Text }', { StoreGame: 'SavedGame' });
+    await fixture.update();
+    expect(fixture.written.problems).toEqual([]);
+    expect(fixture.written.receipt?.status).toBe('applied');
+    expect(fixture.files.get('src/main/kotlin/store/Launcher.kt')).toBe('package store\nfun launch() = SavedGame()\n');
+    expect(fixture.files.get('src/main/kotlin/store/Alias.kt')).toBe('package callers\nimport store.SavedGame as Game\nfun launch() = Game()\n');
+  }, 120_000);
+
   it('leaves captured non-source binary bytes untouched during a capability addition', async () => {
     const fixture = await project(), binary = join(fixture.root, 'ordinary.bin');
     await fs.writeFile(binary, new Uint8Array([0, 255, 192, 128]));

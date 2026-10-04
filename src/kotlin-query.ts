@@ -12,14 +12,15 @@ import { nativeInputs } from './native-inputs.js';
 import { literal, message, problem, sameIdentity } from './project-files.js';
 
 const range = z.strictObject({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative() }).refine(value => value.start <= value.end);
-export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'interface', 'object', 'function', 'property', 'parameter', 'type-parameter', 'typealias']),
-  name: z.string().min(1), parameters: z.array(z.string()).optional(), receiver: z.string().optional() })).min(1);
+export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'interface', 'object', 'constructor', 'function', 'property', 'parameter', 'type-parameter', 'typealias']),
+  name: z.string().min(1), parameters: z.array(z.string()).optional(), receiver: z.string().optional() })
+  .refine(value => value.kind !== 'constructor' || value.name === '<init>' && value.parameters !== undefined && value.receiver === undefined)).min(1);
 const result = z.strictObject({
   files: z.array(z.string().refine(literal)),
   declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional(),
     packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
     typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional() })),
-  references: z.array(z.strictObject({ file: z.string().refine(literal), range, owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
+  references: z.array(z.strictObject({ file: z.string().refine(literal), range, name: z.string(), owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
   problems: z.array(z.strictObject({ file: z.string().refine(literal), range, message: z.string(), code: z.string() })),
 });
 export type KotlinQuery = z.infer<typeof result>;

@@ -52,7 +52,8 @@ export class KotlinProject {
       const target = declarations.find(node => node.file === reference.targetFile && canonical(node.selector) === canonical(reference.target));
       const owner = declarations.find(node => node.file === reference.file && canonical(node.selector) === canonical(reference.owner));
       const at = this.at({ file: reference.file, ...reference.range, role: reference.role });
-      if (target && selected.includes(target)) incoming.push({ target: owner ? this.identity(owner) : { kind: 'project', id: reference.file }, at });
+      if (target && (selected.includes(target) || target.kind === 'constructor' && selected.some(node => node.file === target.file
+        && canonical(node.selector) === canonical(target.selector.slice(0, -1))))) incoming.push({ target: owner ? this.identity(owner) : { kind: 'project', id: reference.file }, at });
       if (selected.some(node => node.file === reference.file && node.range.start <= reference.range.start && node.range.end >= reference.range.end)) {
         if (target) outgoing.push({ target: this.identity(target), at });
         else if (reference.external) outgoing.push({ target: { kind: 'project', id: 'kotlin:' + reference.external }, at });

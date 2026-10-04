@@ -11,11 +11,14 @@ import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSo
 import org.jetbrains.kotlin.analysis.api.standalone.buildStandaloneAnalysisAPISession
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
@@ -73,8 +76,8 @@ fun main(args: Array<String>) {
                 val selector = selector(node)
                 if (selector.isEmpty()) continue
                 declarations.add(buildJsonObject {
-                    put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", node.name)
-                    put("range", text.range(node)); put("nameRange", text.range(node.nameIdentifier ?: node))
+                    put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", if (node is KtConstructor<*>) "<init>" else node.name)
+                    put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: node.valueParameterList ?: node else node.nameIdentifier ?: node))
                     put("packageName", file.packageFqName.asString())
                     put("visibility", when {
                         node.hasModifier(KtTokens.PRIVATE_KEYWORD) -> "private"
@@ -95,6 +98,17 @@ fun main(args: Array<String>) {
                     if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
                 })
+                if (node is KtClass && node.primaryConstructor == null && node.secondaryConstructors.isEmpty() && !node.isInterface()) analyze(node) {
+                    for (constructor in (node.symbol as KaNamedClassSymbol).declaredMemberScope.constructors.filter { it.psi == node }) declarations.add(buildJsonObject {
+                        put("file", text.file); put("kind", "constructor"); put("name", "<init>")
+                        put("selector", JsonArray(selector + buildJsonObject {
+                            put("kind", "constructor"); put("name", "<init>")
+                            put("parameters", JsonArray(constructor.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
+                        }))
+                        put("range", text.range(node.nameIdentifier ?: node)); put("nameRange", text.range(node.nameIdentifier ?: node))
+                        put("packageName", file.packageFqName.asString()); put("visibility", "public")
+                    })
+                }
             }
             analyze(file) {
                 for (diagnostic in file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)) {
@@ -105,17 +119,24 @@ fun main(args: Array<String>) {
                 }
                 for (reference in file.collectDescendantsOfType<KtNameReferenceExpression>()) {
                     if (parents(reference).any { it is KtPackageDirective }) continue
-                    val symbol = reference.resolveSymbol() ?: continue
+                    val call = reference.parent as? KtCallExpression
+                    val symbol = call?.takeIf { it.calleeExpression == reference }?.resolveSymbol()
+                        ?: reference.mainReference.resolveToSymbol()
+                        ?: reference.resolveSymbol() ?: continue
                     val target = sourceDeclaration(symbol.psi)
                     val targetFile = target?.containingFile as? KtFile
                     val owner = parents(reference).filterIsInstance<KtNamedDeclaration>().firstOrNull()
                     references.add(buildJsonObject {
-                        put("file", text.file); put("range", text.range(reference.getReferencedNameElement()))
+                        put("file", text.file); put("range", text.range(reference.getReferencedNameElement())); put("name", reference.getReferencedName())
                         put("owner", owner?.let { JsonArray(selector(it)) } ?: JsonNull)
                         if (target != null && targetFile in originals) {
-                            put("targetFile", originals.getValue(targetFile!!).file); put("target", JsonArray(selector(target)))
+                            val selected = selector(target) + if (symbol is KaConstructorSymbol && target is KtClass) listOf(buildJsonObject {
+                                put("kind", "constructor"); put("name", "<init>")
+                                put("parameters", JsonArray(symbol.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
+                            }) else emptyList()
+                            put("targetFile", originals.getValue(targetFile!!).file); put("target", JsonArray(selected))
                         } else put("external", external(symbol))
-                        put("role", if (reference.parent is KtCallExpression) "call" else if (parents(reference).any { it is KtTypeReference }) "type" else "reference")
+                        put("role", if (symbol is KaConstructorSymbol) "construction" else if (reference.parent is KtCallExpression) "call" else if (parents(reference).any { it is KtTypeReference }) "type" else "reference")
                     })
                 }
             }
@@ -135,12 +156,9 @@ fun main(args: Array<String>) {
 private fun accessible(node: KtModifierListOwner): Boolean =
     !node.hasModifier(KtTokens.PRIVATE_KEYWORD) && !node.hasModifier(KtTokens.PROTECTED_KEYWORD) && !node.hasModifier(KtTokens.INTERNAL_KEYWORD)
 private fun parents(element: PsiElement): Sequence<PsiElement> = generateSequence(element.parent) { it.parent }
-private fun sourceDeclaration(psi: PsiElement?): KtNamedDeclaration? = when (psi) {
-    is KtPrimaryConstructor -> psi.getContainingClassOrObject()
-    is KtNamedDeclaration -> psi
-    else -> null
-}
+private fun sourceDeclaration(psi: PsiElement?): KtNamedDeclaration? = psi as? KtNamedDeclaration
 private fun kind(node: KtNamedDeclaration): String = when (node) {
+    is KtConstructor<*> -> "constructor"
     is KtClass -> if (node.isInterface()) "interface" else "class"
     is KtObjectDeclaration -> "object"
     is KtNamedFunction -> "function"
@@ -150,9 +168,10 @@ private fun kind(node: KtNamedDeclaration): String = when (node) {
     else -> "property"
 }
 private fun selector(node: KtNamedDeclaration): List<JsonElement> =
-    (parents(node).filterIsInstance<KtNamedDeclaration>().toList().asReversed() + node).map { declaration -> buildJsonObject {
-        put("kind", kind(declaration)); put("name", declaration.name ?: "")
-        if (declaration is KtNamedFunction) analyze(declaration) {
+    (parents(node).filterIsInstance<KtNamedDeclaration>().filterNot { node is KtParameter && node.hasValOrVar() && it is KtPrimaryConstructor }.toList().asReversed() + node).map { declaration -> buildJsonObject {
+        put("kind", kind(declaration)); put("name", if (declaration is KtConstructor<*>) "<init>" else declaration.name ?: "")
+        if (declaration is KtNamedFunction || declaration is KtConstructor<*>) analyze(declaration) {
+            declaration as KtFunction
             put("parameters", JsonArray(declaration.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
             declaration.receiverTypeReference?.let { put("receiver", it.type.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }
         }

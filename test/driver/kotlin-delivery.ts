@@ -150,7 +150,7 @@ export class KotlinDeliveryDriver {
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }
   private subjectPath(current: IdentifiedSpecification, id: string): string {
     const record = current.baseline.elements.find(record => record.id === id)!;
-    return (record.address.owner ? this.subjectPath(current, record.address.owner) + '.' : '') + record.address.name;
+    return (record.address.owner ? this.subjectPath(current, record.address.owner) + '.' : '') + (record.address.name ?? record.address.kind);
   }
   subject(current: IdentifiedSpecification, name: string): string {
     const subject = current.baseline.elements.find(record => this.subjectPath(current, record.id) === name);

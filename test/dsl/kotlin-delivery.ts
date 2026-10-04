@@ -74,6 +74,12 @@ export class KotlinDelivery {
       format: 'kotlin-symbol-1', value: expect.objectContaining({ declaration: expect.arrayContaining([expect.objectContaining({ kind: 'function', parameters })]) }),
     }) }));
   }
+  expectConstructionParameters(name: string, parameters: string[]): void {
+    const id = this.driver.subject(this.driver.current, name);
+    expect(this.driver.written.artifacts).toContainEqual(expect.objectContaining({ specId: id, locator: expect.objectContaining({
+      format: 'kotlin-symbol-1', value: expect.objectContaining({ declaration: expect.arrayContaining([{ kind: 'constructor', name: '<init>', parameters }]) }),
+    }) }));
+  }
   expectIncomingCaller(path: string): void {
     expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
     expect(this.driver.searchResult.incoming.uses).toContainEqual(expect.objectContaining({ at: expect.objectContaining({ value: expect.objectContaining({ file: path }) }) }));

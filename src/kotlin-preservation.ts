@@ -31,6 +31,8 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const symbols = (files: readonly { artifacts: readonly ArtifactAssociation[] }[]) => new Map(files.flatMap(file => file.artifacts
     .filter(item => item.locator.format === 'kotlin-symbol-1').map(item => [item.specId, canonical(item.locator.value)] as const)));
   const oldSymbols = symbols(previous), newSymbols = symbols(desired), currentById = new Map<string, Declaration>();
+  const references = (node: Declaration) => current.value!.references.filter(reference => reference.targetFile === node.file
+    && (same(reference.target, node.selector) || reference.role === 'construction' && same(reference.target?.slice(0, -1), node.selector)));
   const edit = (file: string, range: { start: number; end: number }, text: string) => {
     if (sources.get(file)?.slice(range.start, range.end) === text) return;
     const changes = edits.get(file) ?? [];
@@ -45,8 +47,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)) {
         problems.push(problem(snapshot.root, 'handwritten-removal', node.file, 'The retired declaration contains handwritten changes.')); continue;
       }
-      if (current.value.references.some(reference => reference.targetFile === node.file && same(reference.target, node.selector)
-        && !(reference.file === node.file && reference.range.start >= node.range.start && reference.range.end <= node.range.end))) {
+      if (references(node).some(reference => !(reference.file === node.file && reference.range.start >= node.range.start && reference.range.end <= node.range.end))) {
         refuse(node.file, 'A current native caller still uses the retired declaration.'); continue;
       }
       edit(node.file, node.range, ''); continue;
@@ -54,7 +55,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (old.kind !== next.kind) { refuse(node.file, 'Native declaration category cannot change over an implementation.'); continue; }
     if (old.name !== next.name) {
       edit(node.file, node.nameRange, next.name);
-      for (const reference of current.value.references) if (reference.targetFile === node.file && same(reference.target, node.selector)) edit(reference.file, reference.range, next.name);
+      for (const reference of references(node)) if (reference.name === node.name) edit(reference.file, reference.range, next.name);
     }
     if (old.typeRange && next.typeRange && node.typeRange) {
       const oldType = original.get(old.file)!.slice(old.typeRange.start, old.typeRange.end), nextType = wanted.get(next.file)!.slice(next.typeRange.start, next.typeRange.end);

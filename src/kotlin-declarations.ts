@@ -92,9 +92,13 @@ export class KotlinDeclarations {
     const name = this.names.get(item.id) ?? ('name' in item ? item.name : item.kind);
     if (!identifier(name)) this.problem('invalid-native-name', item, 'Provide a Kotlin name for ' + name + '.'); return name;
   }
+  private nativeName(item: Item): string {
+    const owner = this.current.baseline.elements.find(record => record.id === this.current.id(item.id))?.address.owner;
+    return (owner ? this.nativeName(this.inspection.read(this.current.node(owner))) + '.' : '') + this.name(item);
+  }
   private authored(item: Item): string {
     const record = this.current.baseline.elements.find(record => record.id === this.current.id(item.id))!;
-    return (record.address.owner ? this.authored(this.inspection.read(this.current.node(record.address.owner))) + '.' : '') + record.address.name;
+    return (record.address.owner ? this.authored(this.inspection.read(this.current.node(record.address.owner))) + '.' : '') + (record.address.name ?? record.address.kind);
   }
   private associate(item: Item, declaration: JsonValue[]): void {
     this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file: this.file, declaration } } });
@@ -127,7 +131,7 @@ export class KotlinDeclarations {
         this.imports.set(local, imported); name = qualified ? mapping.name : local;
       } else if (!this.generated.has(declaration.id) || declaration.kind === 'opaque-type-declaration') {
         this.problem('missing-native-mapping', owner, 'Provide a native type mapping for ' + this.authored(declaration) + '.'); name = '__unmapped';
-      } else name = (qualified ? this.options.package + '.' : '') + this.name(declaration);
+      } else name = (qualified ? this.options.package + '.' : '') + this.nativeName(declaration);
       this.checkScope(mapping?.as ?? mapping?.name.split('.').at(-1) ?? this.name(declaration), owner);
       return name + (args.length ? '<' + args.join(', ') + '>' : '');
     }
@@ -160,9 +164,9 @@ export class KotlinDeclarations {
     return doc(lines) + (private_ ? 'private ' : '') + 'fun ' + name + '(' + this.parameters(item.parameters) + '): ' + returns
       + (signature ? '' : ' {\n    throw NotImplementedError(' + quote('Not implemented: ' + this.authored(item)) + ')\n}');
   }
-  private declare(item: Item): string {
+  private declare(item: Item, owners: JsonValue[] = []): string {
     const name = this.name(item), parameters = 'typeParameters' in item && item.typeParameters.length ? '<' + item.typeParameters.map(item => this.name(item)).join(', ') + '>' : '';
-    if (item.kind === 'function') return this.callable(item);
+    if (item.kind === 'function') return this.callable(item, owners);
     if (item.kind === 'alias-type-declaration') {
       const target = this.known(this.types.typeOf(item.targetType.id)), shape = this.types.describe(target);
       if (shape.kind === 'union' && shape.alternatives.every(type => this.types.describe(type).kind === 'literal')) {
@@ -176,21 +180,21 @@ export class KotlinDeclarations {
           if (!identifier(native) || names.has(native)) this.problem('unsupported-literal-name', literal, 'Literal has no distinct Kotlin case name: ' + text);
           names.add(native); return native + '(' + quote(text) + ')';
         });
-        this.associate(item, [{ kind: 'class', name }]); return 'enum class ' + name + '(val text: String) { ' + cases.join(', ') + ' }';
+        this.associate(item, [...owners, { kind: 'class', name }]); return 'enum class ' + name + '(val text: String) { ' + cases.join(', ') + ' }';
       }
-      this.associate(item, [{ kind: 'typealias', name }]); return 'typealias ' + name + parameters + ' = ' + this.type(target, item);
+      this.associate(item, [...owners, { kind: 'typealias', name }]); return 'typealias ' + name + parameters + ' = ' + this.type(target, item);
     }
     if (item.kind === 'record-type-declaration') {
-      this.associate(item, [{ kind: 'class', name }]);
+      this.associate(item, [...owners, { kind: 'class', name }]);
       const fields = item.fields.map(unwrap).filter((item): item is Item<'field'> => item.kind === 'field');
       const content = fields.map(field => {
         const type = this.type(this.known(this.types.typeOf(field.declaredType.id)), field);
-        this.associate(field, [{ kind: 'class', name }, { kind: 'property', name: this.name(field) }]);
+        this.associate(field, [...owners, { kind: 'class', name }, { kind: 'property', name: this.name(field) }]);
         return 'var ' + this.name(field) + ': ' + type + (type.endsWith('?') ? ' = null' : '');
       });
       let text = (fields.length ? 'data ' : '') + 'class ' + name + parameters + '(' + content.join(', ') + ')';
       if (item.error) {
-        const companion = name + 'Exception'; this.associate(item, [{ kind: 'class', name: companion }]);
+        const companion = name + 'Exception'; this.associate(item, [...owners, { kind: 'class', name: companion }]);
         text += '\n\n' + doc(['Declared domain failure. Generic payload arguments remain data; JVM exception types are nongeneric.'])
           + 'class ' + companion + '(val details: ' + name + (item.typeParameters.length ? '<' + item.typeParameters.map(() => '*').join(', ') + '>' : '') + ') : RuntimeException(details.code.value)';
       }
@@ -198,11 +202,28 @@ export class KotlinDeclarations {
     }
     if (item.kind === 'class' || item.kind === 'interface' || item.kind === 'concept' || item.kind === 'component') {
       const kind = item.kind === 'class' || item.kind === 'interface' ? item.kind : this.options.concepts;
-      this.associate(item, [{ kind, name }]);
+      this.associate(item, [...owners, { kind, name }]);
       const publicIds = new Set(item.members.flatMap(member => member.kind === 'public' ? member.references.flatMap(reference => reference.resolution.status === 'bound' ? [reference.resolution.target] : []) : []));
-      const members = item.members.map(unwrap).flatMap(member => member.kind === 'capability' || member.kind === 'function'
-        ? [this.callable(member, [{ kind, name }], kind === 'interface', !publicIds.has(member.id))] : []);
-      return kind + ' ' + name + parameters + ' {\n' + members.map(text => text.split('\n').map(line => '    ' + line).join('\n')).join('\n\n') + '\n}';
+      const owner = [...owners, { kind, name }];
+      const construction = item.members.map(unwrap).find(member => member.kind === 'construction');
+      if (construction && kind === 'interface') this.problem('unsupported-native-construction', construction, 'A Kotlin interface cannot declare construction.');
+      if (construction && kind === 'class') {
+        const selector = [...owner, { kind: 'constructor', name: '<init>', parameters: construction.parameters.map(parameter => this.type(this.known(this.types.typeOf(parameter.declaredType.id)), parameter, true)) }];
+        this.associate(construction, selector);
+        for (const parameter of construction.parameters) this.associate(parameter, [...selector, { kind: 'parameter', name: this.name(parameter) }]);
+      }
+      const members = item.members.map(unwrap).flatMap(member => {
+        if (member.kind === 'capability' || member.kind === 'function') return [this.callable(member, owner, kind === 'interface', !publicIds.has(member.id))];
+        if (member.kind === 'opaque-type-declaration') {
+          if (!this.mappings.has(member.id)) this.problem('missing-native-mapping', member, 'Provide a native type mapping for ' + this.authored(member) + '.');
+          return [];
+        }
+        return roots.has(member.kind) ? ['private ' + this.declare(member, owner)] : [];
+      });
+      if (construction && kind === 'class') members.unshift(doc(['Unverified implementation obligation: ' + this.authored(construction) + '.'])
+        + 'init { throw NotImplementedError(' + quote('Not implemented: ' + this.authored(construction)) + ') }');
+      return kind + ' ' + name + parameters + (construction && kind === 'class' ? '(' + this.parameters(construction.parameters) + ')' : '')
+        + ' {\n' + members.map(text => text.split('\n').map(line => '    ' + line).join('\n')).join('\n\n') + '\n}';
     }
     this.problem('unsupported-native-declaration', item, 'No native declaration mapping for ' + item.kind); return '';
   }
