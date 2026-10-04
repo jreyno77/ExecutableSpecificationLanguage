@@ -103,4 +103,28 @@ describe('each connected output stage keeps its actual boundaries', () => {
     project.expectProblem('output-path-conflict');
     await project.expectDestinationText('project/same.txt', 'contract');
   }, 50_000);
+  it('retains completed contracts and obligations when a later adapter returns a malformed plan', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame { capability save() returns Nothing }');
+    await project.registerOutputs([{ id: 'broken-tests', stage: 'tests', malformedPlan: true }]);
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }, { id: 'broken-tests', options: {} }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('host-failure');
+    project.expectStage('contracts', 'applied'); project.expectStage('tests', 'stopped');
+    project.expectFileOutcome('src/StoreGame.ts', 'applied'); project.expectObligation('implementation-required', 'save');
+    await project.expectNativeClass('StoreGame'); await project.expectNoPendingBuild();
+  }, 60_000);
+  it('retains completed contracts when their later read throws before test planning', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame {}');
+    await project.registerOutputs([{ id: 'contract', stage: 'contracts', file: 'contract.txt', text: 'StoreGame contract', readFailure: 'Native read failed after application' },
+      { id: 'tests', stage: 'tests', file: 'test.txt', text: 'Never written' }]);
+    await project.outputs([{ id: 'contract', options: {} }, { id: 'tests', options: {} }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('host-failure');
+    project.expectStage('contracts', 'applied'); project.expectStage('tests', 'stopped'); project.expectFileOutcome('contract.txt', 'applied');
+    await project.expectDestinationText('project/contract.txt', 'StoreGame contract');
+    await project.expectNoDestinationFile('project/test.txt'); await project.expectNoPendingBuild();
+  }, 40_000);
+
 });

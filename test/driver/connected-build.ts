@@ -112,7 +112,7 @@ export class ConnectedBuildDriver {
     }
     this.report = args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
   }
-  async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
+  async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; malformedPlan?: boolean; readFailure?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
     this.launcher = this.path('launcher/connected-output.mjs');
     await this.write(this.launcher, await readFile(join(checkout, 'test/resources/connected-output.mjs'), 'utf8'));
     await this.write('launcher/outputs.json', JSON.stringify({ library: join(checkout, 'dist/index.js'), outputs: outputs.map(item => ({ ...item,

@@ -51,7 +51,7 @@ export class ConnectedBuild {
       }
     }
   }
-  registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> { return this.driver.registerOutputs(outputs); }
+  registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; malformedPlan?: boolean; readFailure?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> { return this.driver.registerOutputs(outputs); }
   async rememberDirectory(path: string): Promise<void> { this.directories.set(path, await this.driver.filesUnder('project/' + path)); }
   async expectRememberedDirectoryUnchanged(path: string): Promise<void> { expect(await this.driver.filesUnder('project/' + path)).toEqual(this.directories.get(path)); }
   async outputs(outputs: { id: string; options: object }[]): Promise<void> { this.driver.manifest.outputs = outputs; await this.driver.saveManifest(); }

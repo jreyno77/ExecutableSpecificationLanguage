@@ -49,4 +49,15 @@ describe('connected application and acceptance stages', () => {
     await project.expectRememberedDirectoryUnchanged('test'); await project.expectIdentitiesUnchanged();
     await project.expectNoPendingBuild(); project.expectNoNativeExecution();
   }, 180_000);
+  it('reports that a built specification has no executable examples without launching a runner', async () => {
+    project = await ConnectedBuild.create(); await project.nativeAcceptance();
+    await project.source('main.expec', 'concept StoreGame {}');
+    await project.outputs([{ id: 'acceptance', options: { domain: 'store', configFile: 'tsconfig.json' } }]);
+    await project.runNative(['build', '--config', 'spec/expec.json', '--json']); project.expectExit(0);
+    await project.rememberAllBytes();
+    await project.runNative(['test', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('no-executable-examples'); project.expectNoNativeExecution();
+    await project.expectAllBytesUnchanged();
+  }, 150_000);
+
 });

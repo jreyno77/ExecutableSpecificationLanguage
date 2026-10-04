@@ -37,35 +37,42 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   if (!difference.value) return { ...result, problems: difference.problems };
   const protectedPaths = new Set<string>();
   for (const name of ['contracts', 'tests'] as const) {
-    const profiles = selected.filter(output => testIds.has(output.id) === (name === 'tests'));
-    if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
-    const context = new BuildContext(project, checked, profiles, decisions.value.inputs), basedOn = await context.readSnapshot();
-    if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-    const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
-    for (const profile of profiles) {
-      const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [] });
-      if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      opened.push({ id: profile.id, output: output.value });
-      const plan = await output.value.plan(read.value.baseline ? { operation: 'update', current, diff: difference.value } : { operation: 'create', current }, basedOn);
-      if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      plans.push(plan.value);
-    }
-    const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
-    if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
-    const confirmed = identity.withArtifacts(current, [...current.baseline.artifacts.filter(item => !profiles.some(profile => profile.id === item.locator.outputId)), ...plans.flatMap(plan => [...plan.artifacts])]);
-    if (!confirmed.value) return { ...result, problems: confirmed.problems };
-    const applied = await new BuildJournal(checked, context, signal).apply(name, basedOn, plans, confirmed.value.baseline);
-    result.stages.push(...applied.stages);
-    retain(plans.flatMap(plan => [...plan.obligations ?? []]));
-    if (applied.exitCode) return { ...result, problems: applied.problems };
-    current = confirmed.value;
-    if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {
-      changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
-      for (const { id: outputId, output } of opened) for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
-        const read = await output.read(id);
-        if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-        read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+    let failureStage: string = name;
+    try {
+      const profiles = selected.filter(output => testIds.has(output.id) === (name === 'tests'));
+      if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
+      const context = new BuildContext(project, checked, profiles, decisions.value.inputs), basedOn = await context.readSnapshot();
+      if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
+      const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
+      for (const profile of profiles) {
+        const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [] });
+        if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
+        opened.push({ id: profile.id, output: output.value });
+        const plan = await output.value.plan(read.value.baseline ? { operation: 'update', current, diff: difference.value } : { operation: 'create', current }, basedOn);
+        if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
+        plans.push(plan.value);
       }
+      const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
+      if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
+      const confirmed = identity.withArtifacts(current, [...current.baseline.artifacts.filter(item => !profiles.some(profile => profile.id === item.locator.outputId)), ...plans.flatMap(plan => [...plan.artifacts])]);
+      if (!confirmed.value) return { ...result, problems: confirmed.problems };
+      const applied = await new BuildJournal(checked, context, signal).apply(name, basedOn, plans, confirmed.value.baseline);
+      result.stages.push(...applied.stages);
+      retain(plans.flatMap(plan => [...plan.obligations ?? []]));
+      if (applied.exitCode) return { ...result, problems: applied.problems };
+      current = confirmed.value;
+      if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {
+        failureStage = 'tests';
+        changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
+        for (const { id: outputId, output } of opened) for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
+          const read = await output.read(id);
+          if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+          read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+        }
+      }
+    } catch (error) {
+      return { ...result, status: 'failed', exitCode: 1, problems: [cliProblem('host-failure', String(error), checked.manifest)],
+        stages: [...result.stages, { name: failureStage, status: 'stopped' }] };
     }
   }
   return { ...result, status: 'built', exitCode: 0 };

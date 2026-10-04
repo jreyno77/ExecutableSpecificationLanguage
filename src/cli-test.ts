@@ -58,7 +58,7 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
     const position = source.getLineAndCharacterOfPosition(call.getStart());
     selections.push({ id: association.specId, file: path, title: call.arguments[0].text, line: position.line + 1, column: position.character + 1, version: file.version });
   }
-  if (!selections.length) return fail('generated-tests-not-executed', 'No generated cases were selected.');
+  if (!selections.length) return fail('no-executable-examples', 'No generated cases were selected.');
   if (!isDeepStrictEqual(snapshot, await context.readSnapshot())) return fail('stale-project', 'Project changed during native test selection.');
   if (signal.aborted) return { ...result, status: 'cancelled', exitCode: 130 };
   return runSelectedTests(project.root, checked.manifest, runner, selections, signal);
