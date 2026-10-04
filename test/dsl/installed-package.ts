@@ -112,6 +112,17 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  preserveJava(input:{source:string;revised:string;implementation:string;caller:string}):Promise<void> { return this.driver.preserveJava(input); }
+  expectJavaNativeConsumer():void {
+    const report=this.driver.report.java!,preserved=this.driver.report.preservation!;
+    expect(report.complete).toBe(true); expect(report.problems).toEqual([]);
+    expect(report.read.problems).toEqual([]); expect(report.read.coverage.complete).toBe(true);
+    expect(report.read.artifacts).toHaveLength(1); expect(report.read.artifacts[0]!.text).toBe(preserved.source);
+    expect(report.search.problems).toEqual([]); expect(report.search.incoming.coverage.complete).toBe(true);
+    const site=preserved.caller!.indexOf('saveGame');
+    expect(report.search.incoming.uses.some(use=>{const at=use.at.value as {file:string;start:number;length:number;role:string};return at.role==='value'&&use.target.kind==='project'&&at.file==='src/main/java/Caller.java'&&at.start===site&&at.length===8;}),JSON.stringify(report.search)).toBe(true);
+    expect(report.wrong.code).not.toBe(0); expect(report.wrong.stderr).toContain('Wrong.java'); expect(report.wrong.stderr).toContain('int cannot be converted to String');
+  }
   preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     return this.driver.preserveTypeScript(input);
   }

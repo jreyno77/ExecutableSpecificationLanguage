@@ -93,7 +93,7 @@ it('changes a parameter type without erasing its comment or repairing the author
   await p.file(file, 'package store; public class Store { public void save(/* rationale */ String title) { System.out.print(title.toUpperCase()); } }');
   p.mapStore(file, 'store.Store', 'save', ['java.lang.String']); await p.adopt(); p.expectWritten();
   await p.update('class Store { public save\ncapability save(title: Number) returns Nothing }');
-  p.expectWritten(); p.expectText(file, '/* rationale */'); p.expectText(file, 'double title'); p.expectText(file, 'title.toUpperCase()');
+  p.expectWritten(); p.expectText(file, '/* rationale */'); p.expectText(file, 'double title'); p.expectText(file, 'title.toUpperCase()'); p.expectImplementationProblem(file,'title.toUpperCase()','double');
   await p.runJava('new store.Store().save(1);'); p.expectNativeProblem('double cannot be dereferenced');
 });
 
@@ -276,4 +276,32 @@ it('does not capture an untouched overload call while renaming another method', 
   await p.runJava('System.out.print(new store.Launcher().read(new store.Store()));'); p.expectStdout('Other'); await p.rememberWrites();
   await p.update('class Store { public bar\ncapability bar(title: Text) returns Text }',['save','bar']);
   p.expectProblemCode('native-binding-conflict'); p.expectConflictAt(caller,'bar'); await p.expectNoWrites();
+});
+
+
+describe('Java mappings extend without retargeting existing ownership', { timeout: 150_000 }, () => {
+  it('adds a mapping for a new declaration while retaining existing native bytes', async () => {
+    const p=await JavaPreservation.connect(); p.source('class Store {}'); await p.generate(); p.expectWritten();
+    await p.rememberFile('src/main/java/store/Store.java'); p.configureOutput({names:[{declaration:['Shelf'],name:'BookShelf'}]});
+    await p.update('class Store {}\nclass Shelf {}'); p.expectWritten(); p.expectFileUnchanged('src/main/java/store/Store.java');
+    p.expectText('src/main/java/store/BookShelf.java','public class BookShelf');
+    await p.runJava('System.out.print(new store.BookShelf().getClass().getSimpleName());'); p.expectStdout('BookShelf');
+  });
+  it('accepts a redundant exact mapping without changing the owned declaration', async () => {
+    const p=await JavaPreservation.connect(); p.source('class Store {}'); await p.generate(); p.expectWritten();
+    await p.rememberFile('src/main/java/store/Store.java'); p.configureOutput({names:[{declaration:['Store'],name:'Store'}]});
+    await p.update('class Store {}'); p.expectWritten(); p.expectFileUnchanged('src/main/java/store/Store.java');
+  });
+  it('refuses a new mapping that would retarget an already-owned declaration', async () => {
+    const p=await JavaPreservation.connect(); p.source('class Store {}'); await p.generate(); p.expectWritten(); await p.rememberWrites();
+    p.configureOutput({names:[{declaration:['Store'],name:'OtherStore'}]}); await p.update('class Store {}');
+    p.expectProblemCode('output-options-changed'); await p.expectNoWrites();
+  });
+  it('follows an authored rename selector only while retaining its exact native mapping', async () => {
+    const p=await JavaPreservation.connect(); p.source('class Store {}'); await p.generate({names:[{declaration:['Store'],name:'NativeStore'}]}); p.expectWritten();
+    await p.rememberFile('src/main/java/store/NativeStore.java'); p.configureOutput({names:[{declaration:['Shop'],name:'NativeStore'}]});
+    await p.update('class Shop {}',['Store','Shop']); p.expectWritten(); p.expectFileUnchanged('src/main/java/store/NativeStore.java');
+    await p.rememberWrites(); p.configureOutput({names:[{declaration:['Shop'],name:'OtherStore'}]}); await p.update('class Shop {}');
+    p.expectProblemCode('output-options-changed'); await p.expectNoWrites();
+  });
 });

@@ -11,7 +11,7 @@ async function compare(body: string): Promise<string> {
   const parent = await fs.realpath(tmpdir()), path = await fs.mkdtemp(join(parent,'expec-java-comparison-')); roots.push({ parent, path });
   const junit = process.env.EXPEC_TEST_JUNIT_CONSOLE;
   if (!process.env.JAVA_HOME || !junit) throw Error('Supply the actual JDK21 and JUnit6.1.3 for this native runtime test.');
-  await fs.writeFile(join(path,'ExpecChecks.java'),javaComparison([{type:'Consumer.Book',fields:[{name:'copies',accessor:'copies'}]}]));
+  await fs.writeFile(join(path,'ExpecChecks.java'),javaComparison([{type:'Consumer.Book',fields:[{name:'copies',expression:'item.copies()'}]}]));
   await fs.writeFile(join(path,'Consumer.java'),`public class Consumer {
     record Book(java.util.Optional<Double> copies) { public boolean equals(Object other) { throw new AssertionError("equals hook ran"); } public String toString() { throw new AssertionError("toString hook ran"); } }
     public static void main(String[] arguments) {

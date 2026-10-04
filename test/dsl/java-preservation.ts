@@ -12,6 +12,7 @@ export class JavaPreservation {
     await example.driver.initialize(); await example.driver.nativeProject(); return example;
   }
   static async dispose(): Promise<void> { for (const example of this.active.splice(0)) await example.driver.dispose(); }
+  configureOutput(options:Record<string,unknown>):void { this.driver.contractOptions={package:'store',...options}; }
   source(text: string): void { this.driver.source(text); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   mapOwner(file: string, type: string): void { this.driver.mapOwner(file, type); }
@@ -31,6 +32,12 @@ export class JavaPreservation {
     const source = this.text(file), documentation = '/**\n * Unverified implementation obligation.\n * ' + promise + '\n */\n';
     expect(source).toContain(documentation);
     await this.file(file, source.replace('public class Store {', 'public class Store {\n// ' + comment).replace(documentation, documentation + documentation));
+  }
+  expectImplementationProblem(file: string, expression: string, message: string): void {
+    const source=this.text(file),start=source.indexOf(expression); expect(start).toBeGreaterThanOrEqual(0);
+    expect(this.driver.written.obligations?.some(problem=>problem.code.startsWith('java-')&&problem.message.includes(message)&&problem.at.kind==='dependency'
+      &&problem.at.path[1]===file&&typeof problem.at.path[2]==='number'&&typeof problem.at.path[3]==='number'
+      &&problem.at.path[2]>=start&&problem.at.path[2]<start+expression.length&&problem.at.path[3]>0),JSON.stringify(this.driver.written.obligations)).toBe(true);
   }
   expectProblemCode(code: string): void { expect(this.driver.written.problems.map(problem => problem.code)).toContain(code); }
   async remove(name: string): Promise<void> { await this.driver.remove(name); }

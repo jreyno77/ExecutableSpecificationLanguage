@@ -19,6 +19,8 @@ describe('preparing a Java starter for the guarded initializer', () => {
     expect(prepared.value?.configuration.packages).toEqual([
       { alias: 'junit', name: 'maven:org.junit.jupiter:junit-jupiter', version: '6.1.3', phases: ['test'] },
       { alias: 'junit-launcher', name: 'maven:org.junit.platform:junit-platform-launcher', version: '6.1.3', phases: ['test'] },
+      { alias: 'junit-console', name: 'maven:org.junit.platform:junit-platform-console', version: '6.1.3', phases: ['test'] },
+      { alias: 'junit-reporting', name: 'maven:org.junit.platform:junit-platform-reporting', version: '6.1.3', phases: ['test'] },
     ]);
     expect(prepared.value?.changes.map(change => change.kind === 'write' ? change.path : undefined)).toEqual(expect.arrayContaining([
       'build.gradle', 'settings.gradle', 'gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar',
@@ -41,4 +43,15 @@ describe('preparing a Java starter for the guarded initializer', () => {
     expect(prepared.value).toBeUndefined();
     expect(prepared.problems.map(item => item.code)).toContain('unsupported-initialization-toolchain');
   });
+  it('refuses an incompatible native reporting version before effects', async () => {
+    const prepared = await javaStarter(configuration([{alias:'reports',name:'maven:org.junit.platform:junit-platform-reporting',version:'6.0.0',phases:['test']}]),'.',javaHome);
+    expect(prepared.value).toBeUndefined();
+    expect(prepared.problems.map(item=>item.code)).toContain('unsupported-initialization-toolchain');
+  });
+  it('preserves an unrelated occupied console alias before effects', async () => {
+    const prepared = await javaStarter(configuration([{alias:'junit-console',name:'maven:example.books:console',version:'1.0.0',phases:['test']}]),'.',javaHome);
+    expect(prepared.value).toBeUndefined();
+    expect(prepared.problems.map(item=>item.code)).toContain('unsupported-initialization-toolchain');
+  });
+
 });

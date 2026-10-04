@@ -10,6 +10,7 @@ import { JavaOutputDriver } from './java-output.js';
 export class JavaAcceptanceDriver extends JavaOutputDriver {
   private readonly junit = process.env.EXPEC_TEST_JUNIT_CONSOLE!;
   private fixture: object | undefined;
+  private readonly names: {id:string;name:string}[]=[];
   private selectedDriver: object | undefined;
   readonly outcomes: { title: string; status: string; failure: string }[] = [];
   async prepare(): Promise<void> {
@@ -19,7 +20,7 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
   }
   async generate(options: Record<string, unknown> = {}): Promise<void> {
     const outputs = new Outputs(); outputs.register(javaAcceptanceOutput);
-    const result = outputs.open('java-acceptance', { package: 'store.tests', domain: 'shopping', ...this.selectedDriver ? { driver: this.selectedDriver, adoptExisting: true } : {}, ...this.fixture ? { fixture: this.fixture } : {}, ...options }, this.context, new FileProjectWriter(this.context));
+    const result = outputs.open('java-acceptance', { package: 'store.tests', domain: 'shopping', ...this.names.length?{names:this.names}:{}, ...this.selectedDriver ? { driver: this.selectedDriver, adoptExisting: true } : {}, ...this.fixture ? { fixture: this.fixture } : {}, ...options }, this.context, new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
     this.written = result.value ? await result.value.create(this.current) : { problems: result.problems }; this.confirm(); await this.capture();
   }
   private confirm(): void {
@@ -39,8 +40,18 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
   }
   private acceptance() {
     const outputs=new Outputs(); outputs.register(javaAcceptanceOutput);
-    const opened=outputs.open('java-acceptance',{package:'store.tests',domain:'shopping',...this.selectedDriver?{driver:this.selectedDriver,adoptExisting:true}:{},...this.fixture?{fixture:this.fixture}:{}},this.context,new FileProjectWriter(this.context));
+    const opened=outputs.open('java-acceptance',{package:'store.tests',domain:'shopping',...this.names.length?{names:this.names}:{},...this.selectedDriver?{driver:this.selectedDriver,adoptExisting:true}:{},...this.fixture?{fixture:this.fixture}:{}},this.context,new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
     if(!opened.value) throw new Error(JSON.stringify(opened)); return opened.value;
+  }
+  nameGroup(index:number|string,name:string,scenarioName:string):void {
+    const groups=[...this.current.specification.inspection.query('examples')];
+    const group=typeof index==='number'?groups[index]:groups.find(item=>item.origin.kind==='source'&&item.origin.module===index); if(!group) throw new Error('Missing examples group');
+    this.names.push({id:this.current.id(group.id),name});
+    for(const item of group.members) if(item.kind==='scenario') this.names.push({id:this.current.id(item.id),name:scenarioName});
+  }
+  scenarioSelectors():{file:string;type:string;method:string;title:string}[] {
+    return [...this.current.specification.inspection.query('scenario')].flatMap(scenario=>(this.written.artifacts??[]).filter(artifact=>artifact.specId===this.current.id(scenario.id))
+      .map(artifact=>{const at=artifact.locator.value as {file:string;type:string;member:{name:string}};return {file:at.file,type:at.type,method:at.member.name,title:scenario.title.value};}));
   }
   async readScenario(title: string): Promise<void> {
     const scenario=[...this.current.specification.inspection.query('scenario')].find(item=>item.title.value===title);
@@ -119,7 +130,8 @@ public class ShoppingDriver {
   public double quantity(String title) { double actual = basket.getOrDefault(title, 0.0); System.out.println("BASKET:" + title + ":" + actual); return actual; }
 }`);
   }
-  async run(): Promise<void> {
+  async barrierBasket(): Promise<void> { await this.file('src/test/java/store/tests/driver/ShoppingDriver.java',await fs.readFile(new URL('../resources/java-project/BarrierBasketDriver.java',import.meta.url),'utf8')); }
+  async run(parallel=false,selectedClasses=['store.tests.acceptance.Examples']): Promise<void> {
     await this.capture(); const classes = join(this.directory, 'junit-classes'), reports = join(this.directory, 'junit-reports');
     await fs.mkdir(classes, { recursive: true }); await fs.mkdir(reports, { recursive: true });
     const execute = async (name: string, args: string[]) => {
@@ -130,8 +142,9 @@ public class ShoppingDriver {
     this.native = await execute('javac', ['-proc:none','--release','21','-encoding','UTF-8','-cp',this.junit,'-d',classes,
       ...this.snapshot.files.filter(file => file.path.endsWith('.java')).map(file => join(this.root,file.path))]);
     if (this.native.code) return;
-    this.native = await execute('java', ['-jar',this.junit,'execute','--class-path',classes,'--select-class','store.tests.acceptance.Examples',
-      '--reports-dir',reports,'--disable-banner','--disable-ansi-colors']);
+    this.native = await execute('java', ['-jar',this.junit,'execute','--class-path',classes,...selectedClasses.flatMap(type=>['--select-class',type]),
+      '--reports-dir',reports,'--disable-banner','--disable-ansi-colors',...parallel ? ['--config','junit.jupiter.execution.parallel.enabled=true','--config','junit.jupiter.execution.parallel.mode.default=concurrent',
+        '--config','junit.jupiter.execution.parallel.config.strategy=fixed','--config','junit.jupiter.execution.parallel.config.fixed.parallelism=2','--config','junit.jupiter.execution.parallel.config.fixed.max-pool-size=2'] : []]);
     this.outcomes.length = 0;
     for (const name of await fs.readdir(reports)) if (name.endsWith('.xml')) {
       const document = new DOMParser().parseFromString(await fs.readFile(join(reports,name),'utf8'),'text/xml');

@@ -160,10 +160,10 @@ public final class ExpecJava {
         value.put("parameters", parameters);
         var scanner = ToolFactory.createScanner(false, false, false, JavaCore.VERSION_21);
         scanner.setSource(source.toCharArray()); scanner.resetTo(method.getName().getStartPosition() + method.getName().getLength(), method.getStartPosition() + method.getLength() - 1);
-        int depth = 0, close = -1;
+        int depth = 0, close = method.isCompactConstructor() ? method.getBody().getStartPosition() : -1;
         try {
             int token;
-            while ((token = scanner.getNextToken()) != ITerminalSymbols.TokenNameEOF) {
+            while (close < 0 && (token = scanner.getNextToken()) != ITerminalSymbols.TokenNameEOF) {
                 if (token == ITerminalSymbols.TokenNameLPAREN) depth++;
                 if (token == ITerminalSymbols.TokenNameRPAREN && --depth == 0) { close = scanner.getCurrentTokenStartPosition(); break; }
             }
@@ -190,10 +190,22 @@ public final class ExpecJava {
         value.put("docs", docs); value.put("comments", comments); return value;
     }
     private static Map<String, Object> contract(IBinding binding, ASTNode node) {
-        if (binding instanceof ITypeBinding item) return Map.of("kind", item.isRecord() ? "record" : item.isInterface() ? "interface" : "class");
+        if (binding instanceof ITypeBinding item) {
+            if (node instanceof RecordDeclaration record) {
+                boolean initialization = !record.superInterfaceTypes().isEmpty();
+                for (Object member : record.bodyDeclarations()) {
+                    if (member instanceof Initializer) initialization = true;
+                    if (member instanceof FieldDeclaration field) for (Object fragment : field.fragments())
+                        if (((VariableDeclarationFragment) fragment).getInitializer() != null) initialization = true;
+                }
+                return Map.of("kind", "record", "initialization", initialization);
+            }
+            return Map.of("kind", item.isRecord() ? "record" : item.isInterface() ? "interface" : "class");
+        }
         if (binding instanceof IMethodBinding item) {
             var shape = new LinkedHashMap<String, Object>();
             shape.put("kind", item.isConstructor() ? "constructor" : "method");
+            if (item.isConstructor()) shape.put("canonical", item.isCanonicalConstructor());
             shape.put("public", Modifier.isPublic(item.getModifiers())); shape.put("static", Modifier.isStatic(item.getModifiers()));
             shape.put("parameters", Arrays.stream(item.getParameterTypes()).map(ITypeBinding::getQualifiedName).toList());
             shape.put("result", item.isConstructor() ? "void" : item.getReturnType().getQualifiedName());

@@ -5,11 +5,24 @@ export class JavaAcceptance {
   private remembered: {path:string;bytes:Uint8Array}[]=[];
   private constructor(private readonly driver: JavaAcceptanceDriver) { onTestFinished(() => driver.dispose()); }
   static async connect(): Promise<JavaAcceptance> { const driver = new JavaAcceptanceDriver(); const example = new JavaAcceptance(driver); await driver.prepare(); return example; }
+  nameGroup(index:number|string,name:string,scenarioName:string):void { this.driver.nameGroup(index,name,scenarioName); }
+  expectSelectors(expected:{file:string;type:string;method:string;title:string}[]):void {
+    expect(this.driver.scenarioSelectors()).toEqual(expected);
+    for(const selector of expected) {
+      const source=Buffer.from(this.driver.snapshot.files.find(file=>file.path===selector.file)!.bytes).toString('utf8');
+      expect(source).toContain('@org.junit.jupiter.api.DisplayName('+JSON.stringify(selector.title)+')');
+      expect(source).toContain('public void '+selector.method+'()');
+    }
+  }
   file(path: string, text: string): Promise<void> { return this.driver.file(path,text); }
   update(source: string): Promise<void> { return this.driver.update(source); }
   replaceText(path: string,before: string,after: string): Promise<void> { return this.driver.replaceText(path,before,after); }
   async rememberFiles(): Promise<void> { await this.driver.capture(); this.remembered=this.driver.snapshot.files.map(file=>({path:file.path,bytes:Uint8Array.from(file.bytes)})); }
   async expectFilesUnchanged(): Promise<void> { await this.driver.capture(); expect(this.driver.snapshot.files.map(file=>({path:file.path,bytes:Uint8Array.from(file.bytes)}))).toEqual(this.remembered); }
+  expectObligation(code:string,message:string):void {
+    expect(this.driver.written.obligations?.some(item=>item.code===code&&item.message.includes(message)&&item.at.kind==='source'),JSON.stringify(this.driver.written.obligations)).toBe(true);
+  }
+  expectUnchanged(): void { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('unchanged'); expect(this.driver.written.artifacts?.length).toBeGreaterThan(0); }
   expectApplied(): void { expect(this.driver.written.problems,JSON.stringify(this.driver.written.problems)).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied'); }
   readScenario(title: string): Promise<void> { return this.driver.readScenario(title); }
   searchOperation(name: string): Promise<void> { return this.driver.searchOperation(name); }
@@ -38,12 +51,20 @@ export class JavaAcceptance {
   expectRefused(code: string): void { expect(this.driver.written.problems.map(problem=>problem.code),JSON.stringify(this.driver.written.problems)).toContain(code); expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.written.artifacts).toBeUndefined(); }
   expectNoGeneratedFiles(): void { expect(this.driver.snapshot.files.filter(file=>file.path.includes('/acceptance/') || file.path.startsWith('.expec/outputs/'))).toEqual([]); }
   expectBodyDidNotRun(): void { expect(this.driver.native.stdout).not.toContain('TEST-BODY-RAN'); }
+  library(module:string,source:string):void { this.driver.library(module,source); }
+  workspaceModules(modules:string[]):void { this.driver.workspaceModules=modules; }
   source(source: string): void { this.driver.source(source); }
   generateContracts(): Promise<void> { return this.driver.contracts(); }
   generate(): Promise<void> { return this.driver.generate(); }
   driverMethods(source: string): Promise<void> { return this.driver.methods(source); }
   installBasket(copiesPerAdd = 1): Promise<void> { return this.driver.basket(copiesPerAdd); }
-  runTests(): Promise<void> { return this.driver.run(); }
+  installBarrierBasket(): Promise<void> { return this.driver.barrierBasket(); }
+  runTests(options: {parallel?:boolean;classes?:string[]}={}): Promise<void> { return this.driver.run(options.parallel,options.classes); }
+  expectIndependentBaskets(): void {
+    const lines=this.driver.native.stdout.split(/\r?\n/).filter(line=>/^DRIVER:\d+:BASKET:Dune:/.test(line));
+    expect(lines).toHaveLength(2); expect(lines.map(line=>line.split(':')[1]).sort()).toEqual(['1','2']);
+    expect(lines.every(line=>line.endsWith(':BASKET:Dune:1.0'))).toBe(true);
+  }
   expectGeneratedSteps(steps: string[]): void {
     expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
     expect(this.driver.written.receipt?.status).toBe('applied');

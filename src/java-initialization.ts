@@ -26,7 +26,8 @@ export async function javaStarter(configuration: Configuration, root: string, ja
   readonly configuration: Configuration; readonly changes: readonly FileChange[];
 }>> {
   const problems: Check<never>['problems'][number][] = [], packages = configuration.packages.map(item => structuredClone(item));
-  for (const [alias, name] of [['junit', 'maven:org.junit.jupiter:junit-jupiter'], ['junit-launcher', 'maven:org.junit.platform:junit-platform-launcher']] as const) {
+  for (const [alias, name] of [['junit', 'maven:org.junit.jupiter:junit-jupiter'], ['junit-launcher', 'maven:org.junit.platform:junit-platform-launcher'],
+    ['junit-console', 'maven:org.junit.platform:junit-platform-console'], ['junit-reporting', 'maven:org.junit.platform:junit-platform-reporting']] as const) {
     const existing = packages.filter(item => item.name === name);
     if (existing.length ? existing.some(item => item.version !== '6.1.3') || !existing.some(item => item.phases.includes('test'))
       : packages.some(item => item.alias === alias)) problems.push(javaProblem('unsupported-initialization-toolchain',

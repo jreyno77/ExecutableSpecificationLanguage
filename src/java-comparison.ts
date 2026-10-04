@@ -1,14 +1,19 @@
 import { javaListClass } from './java-types.js';
 
 /** Emitted JUnit data comparison: only known native data projections enter the oracle. */
-export function javaComparison(records: readonly { type: string; fields: readonly { name: string; accessor: string }[] }[]): string {
+export function javaComparison(records: readonly { type: string; fields: readonly { name: string; expression: string }[] }[], tuples: readonly {type:string;arity:number}[]=[],checks=''): string {
   const cases = records.map(record => `        if (value.getClass() == ${record.type}.class) {
             var item = (${record.type})value;
             return new Value("record", ${JSON.stringify(record.type)}, java.util.List.of(${record.fields.map(field => JSON.stringify(field.name)).join(', ')}),
-                java.util.List.of(${record.fields.map(field => 'data(item.' + field.accessor + '(), path + ' + JSON.stringify('.' + field.name) + ', active)').join(', ')}));
+                java.util.List.of(${record.fields.map(field => 'data(' + field.expression + ', path + ' + JSON.stringify('.' + field.name) + ', active)').join(', ')}));
+        }`).join('\n');
+  const tupleCases=tuples.map(tuple=>`        if(value.getClass() == ${tuple.type}.class) {
+            var item=(${tuple.type})value;
+            return new Value("tuple", ${tuple.arity}, java.util.List.of(), java.util.List.of(${Array.from({length:tuple.arity},(_,index)=>'data(item.item'+(index+1)+'(),path+"['+index+']",active)').join(', ')}));
         }`).join('\n');
   return `public final class ExpecChecks {
     private ExpecChecks() {}
+${checks}
     private record Value(String kind, Object scalar, java.util.List<String> names, java.util.List<Value> items) {}
     public static double number(double value) { if (!Double.isFinite(value)) throw new IllegalArgumentException("finite Number required"); return value == 0 ? 0.0 : value; }
     private static Value leaf(String kind, Object value) { return new Value(kind,value,java.util.List.of(),java.util.List.of()); }
@@ -29,6 +34,7 @@ export function javaComparison(records: readonly { type: string; fields: readonl
                 return new Value("list",list.size(),java.util.List.of(),items);
             }
 ${cases}
+${tupleCases}
             throw new IllegalArgumentException(path + ": unsupported comparison data: " + value.getClass().getName());
         } finally { active.remove(value); }
     }

@@ -11,6 +11,7 @@ import { analyzeJava } from './java-analysis.js';
 import { readJavaOutputState } from './java-output-state.js';
 import { JavaPreservation, type JavaBaseline } from './java-preservation.js';
 import { validDiff } from './output-contract.js';
+import type { JavaMappingState } from './java-mappings.js';
 import type { Diagnostic } from './checking.js';
 import type { FileChange } from './project-writer.js';
 
@@ -46,19 +47,20 @@ class JavaOutput implements OutputAdapter {
     if (request.operation === 'delete') {
       const preservation = new JavaPreservation(snapshot, this.options.configFile ?? 'expec.java.json');
       const changed = await preservation.remove(stored.value?.files ?? [], request.id);
-      return preservation.problems.length ? { problems: preservation.problems, deferred: [] } : this.changed(snapshot, changed.files, changed.changes);
+      return preservation.problems.length ? { problems: preservation.problems, deferred: [] } : this.changed(snapshot, changed.files, changed.changes, preservation.obligations, stored.value?.mappings);
     }
     if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'The transition disagrees with current checked identity.');
     if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts'))))
       return failure('not-addition-only', 'Use update for existing contract changes.');
     const projection = new JavaDeclarations(request.current, this.options, this.context), files = projection.files();
+    projection.mappings.check(stored.value?.mappings);
     const problems = [...projection.problems];
     if (problems.length) return { problems, deferred: [] };
     if (stored.value) {
       const preservation = new JavaPreservation(snapshot, this.options.configFile ?? 'expec.java.json');
       const changed = await preservation.update(stored.value.files, files);
       if (preservation.problems.length) return { problems: preservation.problems, deferred: [] };
-      return this.changed(snapshot, changed.files, changed.changes);
+      return this.changed(snapshot, changed.files, changed.changes, preservation.obligations, projection.mappings.capture());
     }
     for (const file of files) if (!this.options.adoptExisting && snapshot.files.some(existing => existing.path === file.path))
       problems.push(javaProblem('output-conflict', 'Existing Java file needs explicit ownership/adoption.', file.path));
@@ -72,12 +74,12 @@ class JavaOutput implements OutputAdapter {
     const additions = baselines.filter(file => !file.adopted?.length).map(file => ({ path: file.path, bytes: Buffer.from(file.generated), version: hash(Buffer.from(file.generated)) }));
     const analyzed = await analyzeJava({ ...snapshot, files: [...snapshot.files, ...additions] }, this.options.configFile ?? 'expec.java.json');
     if (analyzed.problems.length) return { problems: analyzed.problems, deferred: [] };
-    return this.changed(snapshot, baselines, additions.map(file => ({ kind: 'write', path: file.path, bytes: file.bytes })));
+    return this.changed(snapshot, baselines, additions.map(file => ({ kind: 'write', path: file.path, bytes: file.bytes })), [], projection.mappings.capture());
   }
-  private changed(snapshot: ProjectSnapshot, files: readonly JavaBaseline[], changes: readonly FileChange[]): Check<OutputPlan> {
-    const state = Buffer.from(canonical({ format: 1, options: this.options, files }, 2) + '\n');
+  private changed(snapshot: ProjectSnapshot, files: readonly JavaBaseline[], changes: readonly FileChange[], obligations: readonly Diagnostic[] = [], mappings?:JavaMappingState): Check<OutputPlan> {
+    const state = Buffer.from(canonical({ format: 1, options: this.options, files, ...mappings?{mappings}:{} }, 2) + '\n');
     const proposed: FileChange[] = [...changes, { kind: 'write', path: statePath, bytes: state }];
-    return success({ outputId: this.id, basedOn: snapshot, artifacts: files.flatMap(file => file.artifacts), changes: proposed.filter(change => {
+    return success({ outputId: this.id, basedOn: snapshot, ...obligations.length ? { obligations } : {}, artifacts: files.flatMap(file => file.artifacts), changes: proposed.filter(change => {
       if (change.kind !== 'write') return true;
       const previous = snapshot.files.find(file => file.path === change.path);
       return !previous || !Buffer.from(previous.bytes).equals(Buffer.from(change.bytes));

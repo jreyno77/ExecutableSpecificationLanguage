@@ -24,6 +24,7 @@ const replaceFiles = (snapshot: ProjectSnapshot, values: ReadonlyMap<string, str
 /** Native contract correspondence; handwritten source is never used as the generated baseline. */
 export class JavaPreservation {
   readonly problems: Diagnostic[] = [];
+  readonly obligations: Diagnostic[] = [];
   constructor(private readonly snapshot: ProjectSnapshot, private readonly configFile: string) {}
   async adopt(desired: readonly JavaFile[], mappings: readonly ArtifactAssociation[]): Promise<JavaBaseline[]> {
     const actual = await analyzeJava(this.snapshot, this.configFile);
@@ -58,7 +59,7 @@ export class JavaPreservation {
     }
     return result;
   }
-  async remove(previous: readonly JavaBaseline[], id: string): Promise<{ files: JavaBaseline[]; changes: FileChange[] }> {
+  async remove(previous: readonly JavaBaseline[], id: string): Promise<{ files: JavaBaseline[]; changes: Extract<FileChange, { kind: 'write' | 'remove' }>[] }> {
     const found = previous.filter(file => file.artifacts.some(item => item.specId === id));
     if (found.length !== 1) { this.problems.push(javaProblem('mapping-not-found', 'Select one owned generated Java artifact.', '<associations>')); return { files: [], changes: [] }; }
     const file = found[0]!, root = file.artifacts.find(item => item.specId === id && item.locator.format === 'java-symbol-1' && !address(item).member);
@@ -85,7 +86,7 @@ export class JavaPreservation {
     return this.problems.length ? { files: [], changes: [] }
       : { files: previous.filter(item => item !== file), changes: [{ kind: 'remove', path: file.path }] };
   }
-  async update(previous: readonly JavaBaseline[], desired: readonly JavaFile[]): Promise<{ files: JavaBaseline[]; changes: FileChange[] }> {
+  async update(previous: readonly JavaBaseline[], desired: readonly JavaFile[]): Promise<{ files: JavaBaseline[]; changes: Extract<FileChange, { kind: 'write' | 'remove' }>[] }> {
     const actual = await analyzeJava(this.snapshot, this.configFile), mappings = previous.flatMap(file => file.artifacts);
     this.problems.push(...actual.problems);
     const empty = { files: [], changes: [] };
@@ -182,16 +183,14 @@ export class JavaPreservation {
     for (const file of files) if (!this.snapshot.files.some(current => current.path === file.path)) values.set(file.path, file.generated);
     for (const [from, to] of moves) { values.set(to, values.get(from) ?? text(this.snapshot, from)); values.delete(from); }
     const final = await analyzeJava(replaceFiles({ ...this.snapshot, files: this.snapshot.files.filter(file => !moves.has(file.path)) }, values), this.configFile);
-    const obligations = signatureChanges.flatMap(item => selected(final.facts, item));
-    this.problems.push(...final.problems.filter(problem => !problem.code.startsWith('java-') || problem.code.startsWith('java-syntax-')
-      || !obligations.some(node => problem.at.kind === 'dependency' && problem.at.path[1] === node.file && typeof problem.at.path[2] === 'number'
-        && node.syntax?.body && problem.at.path[2] >= node.syntax.body.start && problem.at.path[2] < node.syntax.body.start + node.syntax.body.length)));
+    const bodies = signatureChanges.flatMap(item => selected(final.facts,item)).flatMap(node => node.syntax?.body ? [{file:node.file,...node.syntax.body}] : []);
+    const contains = (problem: Diagnostic,body: typeof bodies[number]) => problem.at.kind==='dependency'&&problem.at.path[1]===body.file
+      &&typeof problem.at.path[2]==='number'&&problem.at.path[2]>=body.start&&problem.at.path[2]<body.start+body.length;
+    this.obligations.push(...final.problems.filter(problem=>problem.code.startsWith('java-')&&!problem.code.startsWith('java-syntax-')&&bodies.some(body=>contains(problem,body))));
+    this.problems.push(...final.problems.filter(problem=>!this.obligations.includes(problem)));
     for (const item of desiredMappings.filter(item => item.locator.format === 'java-symbol-1')) if (selected(final.facts, item).length !== 1)
       this.problems.push(javaProblem('native-contract-conflict', 'The planned source does not retain exactly one promised declaration.', address(item).file));
-    const invalidBodies = obligations.flatMap(node => node.syntax?.body && final.facts.problems.some(problem => problem.file === node.file
-      && problem.code.startsWith('java-') && !problem.code.startsWith('java-syntax-')
-      && problem.start >= node.syntax!.body!.start && problem.start < node.syntax!.body!.start + node.syntax!.body!.length)
-      ? [{ file: node.file, ...node.syntax.body }] : []);
+    const invalidBodies=bodies.filter(body=>this.obligations.some(problem=>contains(problem,body)));
     this.problems.push(...survivingJavaBindings(actual.facts, final.facts, patches, moves, invalidBodies));
     for (const change of renamed) {
       const expected = selected(final.facts, change.next);

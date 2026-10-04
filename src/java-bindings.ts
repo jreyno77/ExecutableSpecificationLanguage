@@ -25,12 +25,12 @@ export function survivingJavaBindings(before: JavaFacts, after: JavaFacts, edits
     const source = before.declarations.some(node => node.key === use.key), expected = targets(use.key);
     let retained = source ? expected.length > 0 && found.some(next => expected.some(node => node.key === next.key))
       : found.some(next => next.key === use.key && next.external === use.external);
-    if (!source && !use.external && use.member?.kind === 'constructor') {
-      // An implicit constructor has no declaration token; its native owning type supplies correspondence.
+    if (!retained && !source && !use.external && use.member) {
+      // Synthetic record/enum methods and implicit constructors have no declaration token.
+      // Their JDT keys may include the temporary source directory; use the actual owning declaration.
       const owner = before.declarations.find(node => node.type === use.type && !node.member);
-      const types = owner ? targets(owner.key) : [], parameters = JSON.stringify(use.member.parameters);
-      retained = found.some(next => !next.external && next.member?.kind === 'constructor' && types.some(type => type.type === next.type)
-        && JSON.stringify(next.member.parameters) === parameters);
+      const types = owner ? targets(owner.key) : [], member = JSON.stringify(use.member);
+      retained = found.some(next => !next.external && types.some(type => type.type === next.type) && JSON.stringify(next.member) === member);
     }
     if (!retained) problems.push(javaProblem('native-binding-conflict', 'The edit would change or lose the native target of this surviving reference.', use.file, use.start, use.length));
   }

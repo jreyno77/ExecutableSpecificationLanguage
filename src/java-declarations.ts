@@ -4,9 +4,9 @@ import type { Item } from './inspection-item.js';
 import type { ArtifactAssociation, IdentifiedSpecification } from './specification-identity.js';
 import type { OutputContext } from './output.js';
 import { javaName, javaOptions } from './java-settings.js';
-import { JavaTypes } from './java-types.js';
+import { JavaTypes, javaRecordBody } from './java-types.js';
 import { language } from './language-text.js';
-import { canonical } from './identity-baseline.js';
+import { JavaMappings } from './java-mappings.js';
 
 type Options = z.infer<typeof javaOptions>;
 export interface JavaFile { path: string; generated: string; artifacts: ArtifactAssociation[] }
@@ -15,13 +15,13 @@ type Associate = (node: Item, member?: object, parameter?: number) => void;
 /** Translate already checked declarations; JDT separately validates the emitted native contract. */
 export class JavaDeclarations {
   readonly problems: Diagnostic[] = [];
-  private readonly names = new Map<string, string>();
-  private readonly mappings = new Map<string, string>();
+  readonly mappings: JavaMappings;
   private readonly workspace: ReadonlySet<string>;
   private readonly types: JavaTypes;
   private generics: readonly Item[] = [];
   private signatures = new Map<string, Item>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: Options, context?: OutputContext) {
+    this.mappings=new JavaMappings(current,options,this.problems);
     this.workspace = new Set([current.baseline.entry, ...context?.workspaceModules ?? []]);
     const structural = new Set(['class', 'concept', 'component', 'interface', 'record-type-declaration', 'alias-type-declaration',
       'opaque-type-declaration', 'capability', 'function', 'construction', 'field', 'parameter', 'type-parameter']);
@@ -34,29 +34,9 @@ export class JavaDeclarations {
     for (const root of current.specification.inspection.roots()) if (structural.has(root.kind))
       ownership(root, root.origin.kind === 'source' && this.workspace.has(root.origin.module));
     this.types = new JavaTypes(current.specification.types, options.package, node => this.reference(node), this.problem.bind(this));
-    for (const mapping of options.names ?? []) {
-      const matches = current.baseline.elements.filter(record => 'id' in mapping ? record.id === mapping.id
-        : (!mapping.module || record.address.module === mapping.module) && canonical(this.path(record.id)) === canonical(mapping.declaration));
-      if (matches.length !== 1 || this.names.has(matches[0]!.id)) this.mappingProblem('Name mapping must select one distinct checked declaration.');
-      else this.names.set(matches[0]!.id, mapping.name);
-    }
-    for (const mapping of options.imports ?? []) {
-      const matches = current.baseline.elements.filter(record => record.address.module === mapping.module && canonical(this.path(record.id)) === canonical(mapping.declaration));
-      if (matches.length !== 1 || this.mappings.has(matches[0]!.id)) this.mappingProblem('Import must select one distinct checked declaration.');
-      else this.mappings.set(matches[0]!.id, mapping.name);
-    }
   }
-  private path(id: string): string[] {
-    const record = this.current.baseline.elements.find(item => item.id === id)!;
-    return [...record.address.owner ? this.path(record.address.owner) : [], record.address.name ?? ''];
-  }
-  private name(node: Item): string {
-    const value = this.names.get(this.current.id(node.id)) ?? ('name' in node ? node.name : node.kind);
-    if (!javaName(value)) this.problem('invalid-native-name', 'Map the authored name to an explicit Java identifier: ' + value, node);
-    return value;
-  }
+  private name(node: Item): string { return this.mappings.name(node); }
   private problem(code: string, message: string, node: Item): void { this.problems.push({ code, message, at: node.origin, related: [] }); }
-  private mappingProblem(message: string): void { this.problems.push({ code: 'invalid-native-mapping', message, at: { kind: 'dependency', path: ['outputs', 'java', 'options'] }, related: [] }); }
   private distinct(nodes: readonly Item[]): void {
     const names = new Set<string>();
     for (const node of nodes) {
@@ -68,7 +48,7 @@ export class JavaDeclarations {
   private reference(node: Item): string {
     if (node.kind === 'type-parameter') return this.name(node);
     if (this.generics.some(parameter => this.name(parameter) === this.name(node))) this.problem('native-name-conflict', 'Generic name hides a referenced contract: ' + this.name(node), node);
-    const mapped = this.mappings.get(this.current.id(node.id));
+    const mapped = this.mappings.imports.get(this.current.id(node.id));
     if (mapped) return mapped;
     if (node.kind === 'opaque-type-declaration' || node.origin.kind !== 'source' || !this.workspace.has(node.origin.module))
       this.problem('missing-native-mapping', 'Provide an actual native type mapping for ' + this.name(node) + '.', node);
@@ -149,8 +129,7 @@ export class JavaDeclarations {
         }
         const generic = root.typeParameters.length ? '<' + root.typeParameters.map(parameter => this.name(parameter)).join(', ') + '>' : '';
         const validation = fields.map(field => this.name(field) + ' = ' + this.types.value(this.types.known(this.current.specification.types.typeOf(field.declaredType.id)), this.name(field), JSON.stringify(field.name)) + ';');
-        text = 'public record ' + name + generic + '(' + parameters.join(', ') + ') {\n    public ' + name + ' {\n'
-          + validation.map(line => '        ' + line).join('\n') + '\n    }\n}';
+        text = 'public record ' + name + generic + '(' + parameters.join(', ') + ') {\n    public ' + name + ' ' + javaRecordBody(validation) + '\n}';
         if (root.error) {
           const data = name + (root.typeParameters.length ? '<' + root.typeParameters.map(() => '?').join(', ') + '>' : '');
           const companion = name + 'Exception';

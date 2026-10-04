@@ -15,6 +15,7 @@ const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
+  java?: { complete:boolean; problems:unknown[]; search:ProjectSearch; read:Omit<ProjectRead,'artifacts'>&{artifacts:{at:unknown;path:string;text:string}[]}; wrong:ProcessResult };
   packageUrl: string;
   lifecycle?: {
     written: OutputWrite; scenario: string; unchangedTests: boolean;
@@ -173,6 +174,12 @@ export class PackageDriver {
     await writeFile(join(this.consumer, 'native-input.json'), JSON.stringify(input));
     this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
     await this.readReport();
+  }
+  async preserveJava(input: { source:string; revised:string; implementation:string; caller:string }): Promise<void> {
+    await cp(join(resources,'java-consumer.mjs'),join(this.consumer,'java-consumer.mjs'));
+    await cp(join(checkout,'test/resources/java-project/build.gradle'),join(this.consumer,'java-capture.gradle'));
+    await writeFile(join(this.consumer,'java-input.json'),JSON.stringify(input));
+    this.result=await run(process.execPath,['java-consumer.mjs'],this.consumer); await this.readReport();
   }
   async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
