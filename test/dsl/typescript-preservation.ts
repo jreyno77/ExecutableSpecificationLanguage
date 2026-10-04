@@ -102,7 +102,10 @@ export class PreservationExamples {
   expectSourceContains(text: string) { expect([...this.driver.files].filter(([file]) => file.endsWith('.ts')).some(([, source]) => source.includes(text))).toBe(true); }
   expectSourceIn(file: string, texts: string[]) { for (const text of texts) expect(this.driver.files.get(file), file).toContain(text); }
   expectNoInventedSupabaseCall() { expect(this.body('StoreGame.save')).toBe('{ localStorage.setItem("save", snapshot); }'); }
-  expectNoRuntimeConformanceClaim() { expect(Object.keys(this.driver.written!).sort()).toEqual(['artifacts', 'problems', 'receipt']); }
+  expectNoRuntimeConformanceClaim() {
+    expect(Object.keys(this.driver.written!).sort()).toEqual(['artifacts', 'obligations', 'problems', 'receipt']);
+    expect(this.driver.written!.obligations).toEqual([]);
+  }
   expectOwnedDocumentation(name: string, text: string) { expect(this.driver.documentation(name).some(comment => comment.includes(text))).toBe(true); }
   expectObligationMarkedUnverified(name: string) { expect(this.driver.documentation(name).join('\n')).toMatch(/unverified|not (executed|verified)|implementation obligation/i); }
   async addUserDocumentation(name: string, text: string) { await this.driver.document(name, text); this.userDocumentation.set(name, text); }
