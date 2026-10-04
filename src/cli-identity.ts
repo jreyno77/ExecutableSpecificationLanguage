@@ -17,7 +17,10 @@ export const identities = () => new SpecificationIdentity(randomUUID);
 export function readIdentity(snapshot: ProjectSnapshot, checked: CheckedManifest): Check<{ baseline?: IdentityBaseline }> {
   const file = snapshot.files.find(file => file.path === identityPath), problems: Diagnostic[] = [];
   if (!file) return { value: {}, problems: [], deferred: [] };
-  const data = readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (code, message) => problems.push(cliProblem(code, message, checked.manifest)));
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(file.bytes); }
+  catch { return { problems: [cliProblem('identity-baseline', 'The confirmed identity file is not valid UTF-8.', checked.manifest)], deferred: [] }; }
+  const data = readJson(text, (code, message) => problems.push(cliProblem(code, message, checked.manifest)));
   if (problems.length) return { problems, deferred: [] };
   if (data && typeof data === 'object' && 'format' in data && data.format !== 1) return { problems: [cliProblem('identity-format', 'Unsupported confirmed identity format.', checked.manifest)], deferred: [] };
   if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).sort().join(',') !== 'baseline,format,manifest,project'

@@ -6,7 +6,7 @@ import { Compiler, type Specification } from './compiler.js';
 import { DependencyPlanner } from './dependency-planner.js';
 import type { SyntaxDiagnostic } from './grammar/source.js';
 import { LibraryLoader } from './library-loader.js';
-import { NpmDependencies } from './npm-dependencies.js';
+import { readPackages } from './cli-packages.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { SourceComposer } from './source-composer.js';
 import { SourceLoader, type SourceCapture } from './source-loader.js';
@@ -19,6 +19,7 @@ export interface CheckedManifest {
   specification?: Specification;
   captures: readonly SourceCapture[];
   workspaceModules?: readonly string[];
+  packageInputs?: readonly { uri: string; version: string }[];
   problems: readonly Diagnostic[];
   syntax: readonly SyntaxDiagnostic[];
   deferred: readonly Requirement[];
@@ -47,7 +48,8 @@ export async function checkManifest(filename: string, profiles: readonly OutputP
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
-      const observed = await new NpmDependencies(result.project.path).read(configuration.packages);
+      const observed = await readPackages(result.project, configuration.packages);
+      result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];
     } else if (connection.value) result.problems = [...result.problems, cliProblem('project-required',
       'Requested packages need a connected project. Initialize it explicitly, then install the declared packages.', result.manifest)];

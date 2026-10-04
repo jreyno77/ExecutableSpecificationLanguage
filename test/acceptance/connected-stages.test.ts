@@ -32,6 +32,49 @@ describe('each connected output stage keeps its actual boundaries', () => {
     await project.expectNoPendingBuild();
   }, 50_000);
 
+  it('refuses a handwritten edit after planning without discarding the new work', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame { capability save() returns Nothing }');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']); project.expectExit(0);
+    await project.source('main.expec', 'concept StoreGame { capability save() returns Nothing\ncapability reset() returns Nothing }');
+    await project.afterPlanningEditMethod('StoreGame', 'save', 'console.log("new work");');
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('stale-project');
+    await project.expectMethodBody('StoreGame', 'save', 'console.log("new work");');
+    await project.expectNoNativeMethod('StoreGame', 'reset');
+    await project.expectNoPendingBuild();
+  }, 60_000);
+
+  it('keeps the observed installed package facts stable even for an unused declared package', async () => {
+    project = await ConnectedBuild.create();
+    await project.file('package.json', '{"name":"store-game","private":true,"version":"1.0.0"}');
+    await project.source('main.expec', 'concept StoreGame {}');
+    await project.requirePackage('storage', 'npm:example-storage', '1.2.0', ['runtime']);
+    await project.serveRealPackage('example-storage', '1.2.0');
+    await project.run(['install', '--config', 'spec/expec.json', '--json']); project.expectExit(0);
+    await project.afterPlanningChangePackageVersion('example-storage', '1.2.1');
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('stale-build-input');
+    await project.expectNoDestinationFile('project/package-note.txt');
+    await project.expectInstalledMetadataVersion('example-storage', '1.2.1');
+    await project.expectNoPendingBuild();
+  }, 80_000);
+
+  it('asks each contract output only about the identities it actually owns', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept First {}\nconcept Second {}');
+    await project.registerOutputs([{ id: 'first', stage: 'contracts', subject: 'First', file: 'first.txt', text: 'First contract' },
+      { id: 'second', stage: 'contracts', subject: 'Second', file: 'second.txt', text: 'Second contract' },
+      { id: 'tests', stage: 'tests', file: 'selected-tests.txt', text: 'Test mapping' }]);
+    await project.outputs([{ id: 'first', options: {} }, { id: 'second', options: {} }, { id: 'tests', options: {} }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(0); project.expectStage('contracts', 'applied'); project.expectStage('tests', 'applied');
+    await project.expectDestinationText('project/first.txt', 'First contract');
+    await project.expectDestinationText('project/second.txt', 'Second contract');
+    await project.expectDestinationText('project/selected-tests.txt', 'Test mapping');
+  }, 40_000);
+
   it('protects an unchanged contract artifact from a newly selected test output', async () => {
     project = await ConnectedBuild.create();
     await project.source('main.expec', 'concept StoreGame {}\n');

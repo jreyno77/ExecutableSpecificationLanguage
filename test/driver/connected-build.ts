@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import ts from 'typescript';
 import { pathToFileURL } from 'node:url';
 import { NativePackageDriver } from './native-packages.js';
+import { copyInstalledPackages } from './typescript-context.js';
 
 const execute = promisify(execFile);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -49,11 +50,12 @@ export class ConnectedBuildDriver {
     if (isAbsolute(within) || within.startsWith('..')) throw Error('Fixture path escapes its root.');
     return target;
   }
-  async capture(): Promise<Record<string, string>> {
+  async capture(excluded: readonly string[] = []): Promise<Record<string, string>> {
     const found: Record<string, string> = {};
     const walk = async (directory: string): Promise<void> => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
+        if (excluded.includes(entry.name)) continue;
         if (entry.isDirectory()) await walk(path);
         else if (entry.isFile()) found[relative(this.directory, path).replaceAll('\\', '/')] = (await readFile(path)).toString('base64');
         else throw Error('Unexpected linked fixture entry.');
@@ -61,7 +63,7 @@ export class ConnectedBuildDriver {
     };
     await walk(this.directory); return found;
   }
-  async run(args: string[], cwd = '', answers?: string[]): Promise<void> {
+  async run(args: string[], cwd = '', answers?: string[], deadline = 30_000): Promise<void> {
     const prelude = [];
     if (answers) prelude.push('Object.defineProperty(process.stdin, "isTTY", { value: true }); Object.defineProperty(process.stderr, "isTTY", { value: true });');
     if (this.manifestChange) prelude.push(      'import { promises as fs } from "node:fs"; const open = fs.open; let changed = false; fs.open = async (...args) => {' +
@@ -97,7 +99,7 @@ export class ConnectedBuildDriver {
     }
     try {
       const result = await execute(process.execPath, command,
-        { cwd: this.path(cwd), timeout: 30_000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, NODE_PATH: '' } });
+        { cwd: this.path(cwd), timeout: deadline, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, NODE_PATH: '' } });
       this.result = { ...result, code: 0 };
     } catch (error) {
       const result = error as { code: number; stdout: string; stderr: string };
@@ -106,7 +108,7 @@ export class ConnectedBuildDriver {
     }
     this.report = args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
   }
-  async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
+  async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
     this.launcher = this.path('launcher/connected-output.mjs');
     await this.write(this.launcher, await readFile(join(checkout, 'test/resources/connected-output.mjs'), 'utf8'));
     await this.write('launcher/outputs.json', JSON.stringify({ library: join(checkout, 'dist/index.js'), outputs: outputs.map(item => ({ ...item,
@@ -135,6 +137,12 @@ export class ConnectedBuildDriver {
     await this.write('native-consumer/function.mjs', native.outputText);
     const result = await execute(process.execPath, ['--input-type=module', '-e', 'const module = await import(' + JSON.stringify(pathToFileURL(this.path('native-consumer/function.mjs')).href) + '); try { module[' + JSON.stringify(name) + '](); process.exitCode = 1; } catch (error) { console.log(error.message); }'], { cwd: this.directory, timeout: 10_000 });
     return result.stdout.trim();
+  }
+  async nativeAcceptance(): Promise<void> {
+    await copyInstalledPackages(this.path('project'), { vitest: '5.0.2', '@types/node': '24.13.6' });
+    await this.write('project/package.json', '{"type":"module","private":true}');
+    await this.write('project/tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, types: ['node'], skipLibCheck: true }, include: ['**/*.ts'] }));
+    await this.write('project/vitest.config.ts', 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { include: ["test/acceptance/*.test.ts"], retry: 0 } });');
   }
   async serveCompiler(destination: string): Promise<void> {
     this.registry = new NativePackageDriver(); await this.registry.initialize();

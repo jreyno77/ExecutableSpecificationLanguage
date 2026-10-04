@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { Compiler } from '../../src/compiler.js';
-import { readDecisions } from '../../src/cli-identity.js';
+import { readDecisions, readIdentity } from '../../src/cli-identity.js';
 import type { CheckedManifest } from '../../src/cli-check.js';
 
 const roots: { path: string; parent: string }[] = [];
@@ -26,6 +26,13 @@ async function author(text: string) {
 }
 
 describe('explicit CLI identity correspondence', () => {
+  it('reports corrupt UTF8 identity bytes without substituting new history or throwing', async () => {
+    const authored = await author('concept Book {}');
+    const snapshot = { root: { path: '/project', identity: 'captured-root' }, complete: true, problems: [], excluded: [], excludeNames: [],
+      files: [{ path: '.expec/identity.json', bytes: new Uint8Array([0xff]), version: 'a'.repeat(64) }] };
+    const read = readIdentity(snapshot, authored.checked);
+    expect(read.value).toBeUndefined(); expect(read.problems.map(problem => problem.code)).toEqual(['identity-baseline']);
+  });
   it('selects an actual declaration after an astral character using scalar columns', async () => {
     const authored = await author('type `📚` { name: Text }');
     const read = await authored.decide({ format: 1, matches: [{ id: 'original-title', to: { source: 'main.expec', line: 1, column: 12 } }], retire: [] });

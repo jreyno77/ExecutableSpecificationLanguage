@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import type { WriteResult } from './project-writer.js';
 import type { Diagnostic } from './checking.js';
 import { checkManifest, readManifest, cliProblem } from './cli-check.js';
 import { build } from './cli-build.js';
+import { testProject } from './cli-test.js';
 import { initialize, install } from './cli-project.js';
 import { ProjectConnector } from './project-connection.js';
 import { Outputs, contractListOutput, structureListOutput, type OutputRegistration } from './output.js';
@@ -21,7 +23,7 @@ const help = 'expec check|build|test|install [--config expec.json] [--json]\n'
   + 'expec build [--decisions changes.json]\nexpec init --root directory --target typescript [--yes] [--config expec.json] [--json]\n'
   + 'expec --help\nexpec --version\n';
 type Report = { format: 1; command: string; status: string; exitCode: number; manifest: string;
-  project?: unknown; version?: string; problems: readonly Diagnostic[]; syntax: readonly unknown[];
+  project?: { path: string; identity: string }; version?: string; problems: readonly Diagnostic[]; syntax: readonly unknown[];
   deferred: readonly unknown[]; obligations: readonly Diagnostic[]; stages: readonly unknown[] };
 
 export async function runCli(input: readonly string[], additional: CliOutputs = {}): Promise<number> {
@@ -38,7 +40,15 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     else {
       const stream = exitCode ? process.stderr : process.stdout;
       stream.write(status + ': ' + manifest + (result.version ? ' (specification ' + result.version + ')' : '') + '\n');
-      for (const stage of result.stages as { name: string; status: string }[]) stream.write(stage.name + ': ' + stage.status + '\n');
+      if (result.project) stream.write('Project: ' + result.project.path + '\n');
+      for (const stage of result.stages as { name: string; status: string; outputs?: string[]; receipt?: WriteResult; write?: WriteResult; initialization?: { write?: WriteResult }; tests?: { title: string; state: string; errors: unknown[] }[]; errors?: unknown[] }[]) {
+        stream.write(stage.name + ': ' + stage.status + (stage.outputs?.length ? ' (' + stage.outputs.join(', ') + ')' : '') + '\n');
+        for (const outcome of (stage.receipt ?? stage.write ?? stage.initialization?.write)?.outcomes ?? [])
+          stream.write('  ' + outcome.state + ': ' + (outcome.change.kind === 'move' ? outcome.change.from + ' → ' + outcome.change.to : outcome.change.path) + '\n');
+        for (const test of stage.tests ?? []) { stream.write('  ' + test.state + ': ' + test.title + '\n'); for (const error of test.errors) process.stderr.write(JSON.stringify(error) + '\n'); }
+        for (const error of stage.errors ?? []) process.stderr.write(JSON.stringify(error) + '\n');
+      }
+      for (const obligation of result.obligations) stream.write(obligation.code + ': ' + obligation.message + ' ' + JSON.stringify(obligation.at) + '\n');
       for (const problem of result.problems) stream.write(problem.code + ': ' + problem.message + ' ' + JSON.stringify(problem.at) + '\n');
       for (const finding of [...result.syntax, ...result.deferred]) stream.write(JSON.stringify(finding) + '\n');
     }
@@ -97,6 +107,12 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
       return report('invalid', 1, details);
     }
     if (command === 'check') return report('checked', 0, details);
+    if (command === 'test') {
+      const connection = await new ProjectConnector(manifest).connect(checked.configuration!);
+      if (connection.value?.status !== 'connected') return report('invalid', 1, { ...details, problems: [...connection.problems, cliProblem('project-required', 'Connect a generated project before executing tests.', manifest)] });
+      const result = await testProject(checked, connection.value.context, outputs, controller.signal);
+      return report(result.status, result.exitCode, { ...details, ...result });
+    }
     if (command === 'build') {
       if (!checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
       let connection = await new ProjectConnector(manifest).connect(checked.configuration!);
@@ -105,7 +121,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
         const initialized = await initialize(checked, selected, undefined, false, interactive, controller.signal);
         if (initialized.exitCode) return report(initialized.status, initialized.exitCode, { ...details, ...initialized });
         checked = await checkManifest(manifest, outputs.profiles);
-        if (!checked.specification) return report('invalid', 1, { ...(checked.configuration ? { version: checked.configuration.version } : {}), project: initialized.project,
+        if (!checked.specification) return report('invalid', 1, { ...(checked.configuration ? { version: checked.configuration.version } : {}), ...(initialized.project ? { project: initialized.project } : {}),
           stages: [...initialized.stages, { name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }], syntax: checked.syntax,
           deferred: checked.deferred, problems: [...checked.problems, cliProblem('installation-required', 'Run expec install explicitly before continuing this build.', manifest)] });
         connection = await new ProjectConnector(manifest).connect(checked.configuration!);

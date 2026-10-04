@@ -23,7 +23,7 @@ export class BuildContext implements ProjectContext {
     const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) } : project;
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
     this.inputs = [{ uri: pathToFileURL(checked.manifest).href, version: hash(Buffer.from(checked.text!)) },
-      ...checked.captures.map(capture => ({ uri: capture.source.sourceId, version: capture.version.replace(/^sha256:/, '') })), ...inputs];
+      ...checked.captures.map(capture => ({ uri: capture.source.sourceId, version: capture.version.replace(/^sha256:/, '') })), ...checked.packageInputs ?? [], ...inputs];
   }
   get root() { return this.project.root; }
   during(original: ProjectSnapshot): BuildContext {

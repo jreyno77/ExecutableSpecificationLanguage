@@ -49,6 +49,27 @@ export class TypeScriptPreservation {
   readonly changes: FileChange[] = [];
   private readonly edits = new NativeEdits();
   constructor(private readonly snapshot: ProjectSnapshot, private readonly options: TypeScriptOptions, private readonly diff?: SpecDiff, private readonly outputId = 'typescript') {}
+  unfinished(): string[] {
+    const actual = new Map(this.snapshot.files.map(file => [file.path, file.bytes]));
+    for (const change of this.changes) {
+      if (change.kind === 'move') { actual.set(change.to, change.bytes ?? actual.get(change.from)!); actual.delete(change.from); }
+      else if (change.kind === 'remove') actual.delete(change.path); else actual.set(change.path, change.bytes);
+    }
+    return this.files.flatMap(file => {
+      const bytes = actual.get(file.path); if (!bytes) return [];
+      const source = ts.createSourceFile(file.path, new TextDecoder().decode(bytes), ts.ScriptTarget.Latest, true);
+      return file.artifacts.flatMap(artifact => {
+        if (file.adopted?.includes(artifact.specId)) return [];
+        const node = nativeSelection(source, address(artifact).declaration)[0];
+        const body = node && (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)) ? node.body : undefined;
+        const statement = body?.statements.length === 1 ? body.statements[0] : undefined;
+        const value = statement && ts.isThrowStatement(statement) ? statement.expression : undefined;
+        return value && ts.isNewExpression(value) && ts.isIdentifier(value.expression) && value.expression.text === 'Error'
+          && value.arguments?.length === 1 && ts.isStringLiteral(value.arguments[0]!) && value.arguments[0].text.startsWith('Not implemented: ')
+          ? [artifact.specId] : [];
+      });
+    });
+  }
   reconcile(previous: readonly NativeBaseline[], desired: readonly NativeFile[], mappings: readonly ArtifactAssociation[], adoption: boolean): void {
     if (!previous.length && !mappings.some(item => item.locator.outputId === this.outputId) && !desired.some(file => file.container && this.snapshot.files.some(item => item.path === file.path))) {
       for (const file of desired) {

@@ -27,7 +27,7 @@ export class NpmDependencies {
   read(packages: Configuration['packages']): Promise<PackageRead> { return this.perform(packages, false); }
   install(packages: Configuration['packages']): Promise<PackageRead> { return this.perform(packages, true); }
   private async perform(input: Configuration['packages'], install: boolean): Promise<PackageRead> {
-    const problems: Diagnostic[] = [], requests = requirements(input, problems);
+    const problems: Diagnostic[] = [], requests = npmRequirements(input, problems);
     const observations: PackageObservation[] = requests.map(({ name, requested }) => ({ name, requested }));
     const result = (): PackageRead => ({ packages: observations, problems, deferred: [], ...(!problems.length ? {
       value: observations.map(item => ({ name: item.name, version: item.installed! })),
@@ -119,7 +119,7 @@ export class NpmDependencies {
 function record(error: unknown, problems: Diagnostic[], fallback: () => void): void {
   if (object(error) && object(error.diagnostic)) problems.push(error.diagnostic as unknown as Diagnostic); else fallback();
 }
-function requirements(input: Configuration['packages'], problems: Diagnostic[]): Request[] {
+export function npmRequirements(input: Configuration['packages'], problems: Diagnostic[]): Request[] {
   if (!Array.isArray(input) || input.some(item => !object(item) || typeof item.alias !== 'string' || !item.alias.trim()
     || typeof item.name !== 'string' || typeof item.version !== 'string' || !Array.isArray(item.phases) || !item.phases.length
     || item.phases.some((phase: unknown) => !['build', 'runtime', 'test'].includes(phase as string)))) throw new TypeError('Provide package requirements with alias, name, version and phases.');

@@ -25,8 +25,29 @@ describe('building selected contracts', () => {
     await project.run(['build', '--config', 'spec/expec.json', '--json']);
     project.expectExit(0);
     project.expectStatus('built');
+    project.expectObligation('implementation-required', 'save');
     await project.expectNativeInvocationThrows('save', 'Not implemented');
     project.expectNoNativeExecution();
+  }, 60_000);
+
+  it('reports actual retained implementations without an unfinished-body claim', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame { capability save() returns Nothing }');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']); project.expectExit(0);
+    project.expectObligation('implementation-required', 'save');
+    await project.implementMethod('StoreGame', 'save', 'console.log("saved");');
+    await project.run(['build', '--config', 'spec/expec.json', '--json']); project.expectExit(0);
+    project.expectNoObligations(); await project.expectMethodBody('StoreGame', 'save', 'console.log("saved");');
+  }, 60_000);
+
+  it('prints the connected destination, actual written path and unfinished work for a human', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'function save() returns Nothing');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    await project.run(['build', '--config', 'spec/expec.json']); project.expectExit(0);
+    project.expectReportedProjectRoot(); project.expectMessageContains('src/save.ts');
+    project.expectMessageContains('implementation-required'); project.expectMessageContains('save');
   }, 60_000);
 
   it('does not allocate identities or rewrite files for an unchanged build', async () => {

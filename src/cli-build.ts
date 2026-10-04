@@ -38,11 +38,11 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
     const context = new BuildContext(project, checked, profiles, decisions.value.inputs), basedOn = await context.readSnapshot();
     if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-    const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: Output[] = [];
+    const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
     for (const profile of profiles) {
       const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [] });
       if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      opened.push(output.value);
+      opened.push({ id: profile.id, output: output.value });
       const plan = await output.value.plan(read.value.baseline ? { operation: 'update', current, diff: difference.value } : { operation: 'create', current }, basedOn);
       if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
       plans.push(plan.value);
@@ -58,9 +58,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     current = confirmed.value;
     if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {
       changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
-      for (const output of opened) for (const id of new Set(current.baseline.artifacts.filter(item => profiles.some(profile => profile.id === item.locator.outputId)).map(item => item.specId))) {
+      for (const { id: outputId, output } of opened) for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
         const read = await output.read(id);
-        if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)] };
+        if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
         read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
       }
     }
