@@ -1,0 +1,16 @@
+type Pair<T> = [T, T];
+
+export type SystemConfig = {
+  os: "windows";
+  gameroot: URL;
+  brightness: number;
+};
+
+type ShoppingCart = {
+  items: unknown[];
+};
+
+export type PlayerStateSnapshot = {
+  characterPosition: Pair<number>;
+  shoppingCart: ShoppingCart;
+};

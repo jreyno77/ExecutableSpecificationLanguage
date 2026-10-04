@@ -1,0 +1,6 @@
+import { storeGame as game } from "./src/game.js";
+import type { PlayerStateSnapshot as Snapshot } from "./src/models.js";
+
+export function launch(snapshot: Snapshot): void {
+  game.save(snapshot);
+}
