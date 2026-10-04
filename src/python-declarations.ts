@@ -7,7 +7,7 @@ import type { ArtifactAssociation, IdentifiedSpecification } from './specificati
 import type { TypeFact, TypeId } from './type-description.js';
 import { identifier as specId } from './identity-baseline.js';
 import { literal } from './project-files.js';
-import { decimal } from './decimal.js';
+import { PythonTypes } from './python-types.js';
 
 const keywords = new Set('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield'.split(' '));
 export const pythonName = (name: string): boolean => /^[A-Za-z_]\w*$/.test(name) && !keywords.has(name);
@@ -30,6 +30,7 @@ export class PythonDeclarations {
   readonly path: string;
   private readonly inspection;
   private readonly catalog;
+  private readonly types;
   private readonly declarations: Item[];
   private readonly names = new Map<NodeId, string>();
   private readonly imports = new Set<string>();
@@ -39,6 +40,8 @@ export class PythonDeclarations {
   private readonly hidden = new Set<NodeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: PythonOptions, context?: OutputContext) {
     this.inspection = current.specification.inspection; this.catalog = current.specification.types;
+    this.types = new PythonTypes(this.catalog, item => item.kind === 'type-parameter' ? this.name(item) : this.reference(item.id),
+      (code, item, message) => this.problem(code, item, message));
     this.path = options.directory + '/' + options.module.replaceAll('.', '/') + '.py';
     const modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.declarations = [...this.inspection.roots()].filter(item => roots.has(item.kind) && item.origin.kind === 'source' && modules.has(item.origin.module));
@@ -78,27 +81,7 @@ export class PythonDeclarations {
     return this.name(item);
   }
   private type(id: TypeId): string {
-    const type = this.catalog.describe(id);
-    if (type.kind === 'parameter') return this.name(this.inspection.read(type.declaration));
-    if (type.kind === 'builtin') {
-      const name = this.inspection.read(type.declaration, 'builtin-type').name;
-      return name === 'List' ? 'list[' + type.arguments.map(value => this.type(value)).join(', ') + ']'
-        : ({ Text: 'str', Number: 'float', Boolean: 'bool', Nothing: 'None' } as Record<string, string>)[name]!;
-    }
-    if (type.kind === 'alias' || type.kind === 'declared') return this.reference(type.declaration) + (type.arguments.length ? '[' + type.arguments.map(value => this.type(value)).join(', ') + ']' : '');
-    if (type.kind === 'tuple') return 'tuple[' + (type.elements.map(value => this.type(value)).join(', ') || '()') + ']';
-    if (type.kind === 'union') return type.alternatives.map(value => this.type(value)).join(' | ');
-    if (type.kind === 'optional') return this.type(type.inner) + ' | Absent';
-    if (type.kind !== 'literal') throw new TypeError('Unknown checked Python type.');
-    const literal = this.inspection.read(type.expression, 'literal-type'), value = literal.value;
-    let token = value.kind === 'string-literal' ? JSON.stringify(value.value) : value.kind === 'boolean-literal' ? value.value ? 'True' : 'False' : (literal.negative ? '-' : '') + value.token;
-    if (value.kind === 'number-literal') {
-      const number = Number(token);
-      if (!Number.isFinite(number) || decimal(token) !== decimal(String(number))) this.problem('unsupported-native-number', literal, 'Python Number cannot retain ' + token + ' as binary64.');
-      else if (!Number.isInteger(number)) this.problem('unsupported-native-type', literal, 'Python Literal cannot represent ' + token + '.');
-      else token = BigInt(number).toString();
-    }
-    return this.required('Literal') + '[' + token + ']';
+    const text = this.types.text(id); for (const name of this.types.imports) this.imports.add(name); return text;
   }
   private associate(item: Item, declaration: { kind: string; name: string }[]): void {
     this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'python', format: 'python-symbol-1', value: { file: this.path, declaration } } });
