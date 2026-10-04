@@ -42,7 +42,9 @@ export class KotlinAcceptance {
     expect(this.driver.readResult.problems).toEqual([]); expect(this.driver.readResult.coverage.complete).toBe(true);
     expect([...new Set(this.driver.readResult.artifacts.map(item => item.file.path.split('/').at(-1)))].sort()).toEqual([...files].sort());
   }
-  runTests(): Promise<void> { return this.driver.runTests(); }
+  runTests(concurrent = false): Promise<void> { return this.driver.runTests(concurrent); }
+  expectRuntimeLines(text: string, count: number): void { expect(this.driver.execution.stdout.split(/\r?\n/).filter(line => line === text)).toHaveLength(count); }
+  expectDistinctResources(count: number): void { expect(new Set([...this.driver.execution.stdout.matchAll(/RESOURCE_PORT=(\d+)/g)].map(match => match[1])).size).toBe(count); }
   expectTests(passed: number, failed: number): void {
     expect(this.driver.compiled.code, this.driver.compiled.stderr).toBe(0);
     expect(this.driver.outcomes.filter(item => item.status === 'passed').length, JSON.stringify(this.driver.execution)).toBe(passed);

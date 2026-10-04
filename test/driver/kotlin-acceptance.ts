@@ -65,7 +65,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
     this.readResult = await this.output.read(this.current.id(group[0]!.id));
   }
-  async runTests(): Promise<void> {
+  async runTests(concurrent = false): Promise<void> {
     this.files = await this.capturedFiles(); this.outcomes.length = 0;
     const native = await this.native(), report = JSON.parse(this.files.get('.expec/kotlin/classpath.json')!);
     const directory = await fs.mkdtemp(join(this.directory, 'native-tests-')), main = join(directory, 'main'), test = join(directory, 'test'), reports = join(directory, 'reports');
@@ -76,7 +76,8 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     this.compiled = await compile('main', main, report.classPath.main); if (this.compiled.code) return;
     this.compiled = await compile('test', test, [main, ...report.classPath.test]); if (this.compiled.code) return;
     this.execution = await this.run(native.java, ['-jar', this.junit!, 'execute', '--class-path', [main, test, ...report.runtimeClassPath.test].join(delimiter),
-      '--select-class', 'store.tests.acceptance.ShoppingAcceptance', '--reports-dir', reports, '--disable-banner', '--disable-ansi-colors']);
+      '--select-class', 'store.tests.acceptance.ShoppingAcceptance', '--reports-dir', reports, '--disable-banner', '--disable-ansi-colors',
+      ...concurrent ? ['--config=junit.jupiter.execution.parallel.enabled=true', '--config=junit.jupiter.execution.parallel.config.strategy=fixed', '--config=junit.jupiter.execution.parallel.config.fixed.parallelism=2', '--config=junit.jupiter.execution.parallel.mode.default=concurrent'] : []]);
     for (const path of await fs.readdir(reports)) if (path.endsWith('.xml')) {
       const document = new DOMParser().parseFromString(await fs.readFile(join(reports, path), 'utf8'), 'text/xml');
       for (const item of Array.from(document.getElementsByTagName('testcase'))) {

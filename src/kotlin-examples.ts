@@ -182,7 +182,7 @@ export class KotlinExamples {
         } else body = this.compare(example.actual, example.expected, this.options.domain);
         return '  @org.junit.jupiter.api.Test\n  @org.junit.jupiter.api.DisplayName(' + quote(example.title.value) + ')\n  fun ' + method + '() {\n    ' + body + '\n  }';
       });
-      add(this.current.id(group.id), 'acceptance', name, 'class ' + name + ' : ' + (this.fixture ? this.fixture.packageName + '.' + this.fixture.selector.map(item => item.name).join('.') : this.options.package + '.dsl.' + this.className + 'Fixture') + '() {\n' + bodies.join('\n\n') + '\n}', artifacts);
+      add(this.current.id(group.id), 'acceptance', name, '@org.junit.jupiter.api.TestInstance(org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD)\nclass ' + name + ' : ' + (this.fixture ? this.fixture.packageName + '.' + this.fixture.selector.map(item => item.name).join('.') : this.options.package + '.dsl.' + this.className + 'Fixture') + '() {\n' + bodies.join('\n\n') + '\n}', artifacts);
     }
     if (!groups.length) return files;
     const group = groups[0]!, driver: string[] = [], methods: string[] = [], driverArtifacts: ArtifactAssociation[] = [], dslArtifacts: ArtifactAssociation[] = [];
