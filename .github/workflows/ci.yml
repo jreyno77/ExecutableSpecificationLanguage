@@ -64,7 +64,7 @@ jobs:
   java:
     name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
