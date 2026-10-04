@@ -42,13 +42,22 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   if (!compared.value || compared.value.contextChanged || compared.value.changes.length) return fail('generation-required', 'Current source differs from its confirmed generated specification.');
   const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, context, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
   if (!opened.value) return { ...result, problems: opened.problems };
+  const current = associated.value, inspection = current.specification.inspection,
+    modules = new Set([current.specification.entry, ...checked.workspaceModules ?? []]);
+  const cases = [...inspection.query('examples')].filter(group => group.origin.kind === 'source' && modules.has(group.origin.module))
+    .flatMap(group => group.members.filter(item => item.kind === 'example' || item.kind === 'scenario'));
   const selections: SelectedTest[] = [];
-  for (const association of associated.value.baseline.artifacts.filter(item => item.locator.outputId === 'acceptance' && item.locator.format === 'vitest-test-1')) {
+  for (const item of cases) {
+    const confirmed = current.baseline.artifacts.filter(association => association.specId === current.id(item.id)
+      && association.locator.outputId === 'acceptance' && association.locator.format === 'vitest-test-1');
+    if (confirmed.length !== 1) return fail('generated-tests-not-executed', 'Each current authored case needs one confirmed native test association.');
+    const association = confirmed[0]!;
     const read = await opened.value.read(association.specId), search = await opened.value.search(association.specId);
     if (read.problems.length || search.problems.length || !read.coverage.complete || !search.incoming.coverage.complete || !search.outgoing.coverage.complete)
       return { ...result, problems: [...read.problems, ...search.problems, cliProblem('incomplete-generated-tests', 'Current native generated meaning is not completely established.', checked.manifest)] };
     const definitions = search.definitions.filter(at => at.format === 'vitest-test-1' && (at.value as { id?: string }).id === association.specId);
-    if (definitions.length !== 1) return fail('generated-tests-not-executed', 'Each generated identity needs one current native definition.');
+    if (definitions.length !== 1 || !isDeepStrictEqual(definitions[0], association.locator))
+      return fail('generated-tests-not-executed', 'Each generated identity needs one current native definition matching its confirmed association.');
     const path = (definitions[0]!.value as { file: string }).file, file = read.artifacts.find(item => item.file.path === path)?.file;
     if (!file) return fail('generated-tests-not-executed', 'The actual generated file is unavailable.');
     const source = ts.createSourceFile(path, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), ts.ScriptTarget.Latest, true),

@@ -53,3 +53,54 @@ jobs:
         run: npm ci
       - name: Verify installed package consumers
         run: npm run test:package
+      - name: Stage the artifact and bounded public consumer
+        if: matrix.os == 'ubuntu-latest'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
+          node node_modules/typescript/bin/tsc -p tsconfig.consumer.json --outDir $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer compilation failed.' }
+          $resources = Join-Path $stage 'test/resources/clean-package'
+          New-Item -ItemType Directory -Path $resources -Force | Out-Null
+          Copy-Item -LiteralPath test/resources/clean-package/consumer.ts -Destination $resources
+          $packed = npm pack --ignore-scripts --pack-destination $stage --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or @($packed).Count -ne 1) { throw 'Expected one built package.' }
+          $digest = (Get-FileHash -LiteralPath (Join-Path $stage $packed.filename) -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{ artifact=$packed.filename; version=$packed.version; sha256=$digest; commit=(git rev-parse HEAD) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'delivery.json')
+          '{"private":true,"type":"module"}' | Set-Content -LiteralPath (Join-Path $stage 'package.json')
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: public-consumer
+          path: ${{ runner.temp }}/expec-consumer/
+          if-no-files-found: error
+  clean-consumer:
+    name: No checkout consumer / ${{ matrix.os }}
+    needs: installed-package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: public-consumer
+          path: ${{ github.workspace }}
+      - name: Install only delivered product and explicit consumer tools
+        shell: pwsh
+        run: |
+          if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git)) { throw 'A development checkout is present.' }
+          $delivery = Get-Content -LiteralPath delivery.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -LiteralPath $delivery.artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $delivery.sha256) { throw 'Delivered package digest differs.' }
+          npm install --global npm@11.20.0 --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Package manager installation failed.' }
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./$($delivery.artifact)" vitest@5.0.2 '@types/node@24.13.6'
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
+      - name: Exercise delivered commands and public declarations
+        run: node node_modules/vitest/vitest.mjs run --config vitest.clean.config.js

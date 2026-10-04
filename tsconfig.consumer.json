@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "outDir": ".local-docs/clean-consumer", "noEmit": false, "declaration": false, "sourceMap": false },
+  "include": ["test/acceptance/clean-package.test.ts", "test/dsl/clean-package.ts", "test/driver/clean-package.ts", "vitest.clean.config.ts"]
+}

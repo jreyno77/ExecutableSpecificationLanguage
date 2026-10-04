@@ -107,6 +107,7 @@ interface CountReport {
 
 /** Native packing, isolated installation, and observations from separate consumer processes. */
 export class PackageDriver {
+  get root(): string { return this.consumer; }
   private static directory: string;
   private static artifact: string;
   private directory?: string;

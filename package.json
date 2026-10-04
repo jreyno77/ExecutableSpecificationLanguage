@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "test/resources/package-consumer/signatures-output.ts"
   ],
   "description": "A compiler for readable executable software specifications.",
   "engines": {
