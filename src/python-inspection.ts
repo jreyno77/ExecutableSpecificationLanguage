@@ -58,7 +58,7 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
       mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
-    await inputs.verify(); problems.push(...inputs.problems);
+    problems.push(...await inputs.verify());
     if (run.code !== 0 || run.error) problems.push(outputProblem('python-inspection-failed', '', run.error ?? 'Native Python inspection failed.'));
     if (problems.length) return { problems };
     let parsed: ReturnType<typeof result.safeParse>;

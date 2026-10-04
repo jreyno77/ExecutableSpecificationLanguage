@@ -58,7 +58,7 @@ export class PythonInputs {
     for (const directory of [...environment.environment.sites, ...profile.sourcePath]) await this.walk(directory);
     for (const path of [profile.python, profile.uv, ...environment.python.binaries]) await this.file(path);
     await this.walk(fileURLToPath(new URL('./python/', import.meta.url)));
-    await this.verify();
+    this.problems.push(...await this.verify());
   }
   private fingerprint(info: BigIntStats): string { return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.mode].join(':'); }
   private identity(info: BigIntStats): string { return [info.dev, info.ino, info.mode].join(':'); }
@@ -105,19 +105,20 @@ export class PythonInputs {
       this.inputs.set(uri, hash(bytes)); this.fingerprints.set(path, this.fingerprint(after));
     } catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
   }
-  async verify(): Promise<void> {
+  async verify(): Promise<Diagnostic[]> {
+    const problems: Diagnostic[] = [];
     await each(this.parents, async ([path, identity]) => { try {
       if (this.identity(await this.ordinary(path, true)) !== identity) throw new Error('Native input parent changed.');
-    } catch (error) { this.problems.push(outputProblem('native-input-changed', path, String(error))); } });
+    } catch (error) { problems.push(outputProblem('native-input-changed', path, String(error))); } });
     await each(this.directories, async ([path, directory]) => { try {
       if (this.fingerprint(await this.ordinary(path, true)) !== directory.stamp || JSON.stringify((await fs.readdir(path)).sort()) !== JSON.stringify(directory.names)) throw new Error('Native directory changed.');
       if (directory.cache) for (const name of directory.names) await this.ordinary(join(path, name), false);
-    } catch (error) { this.problems.push(outputProblem('native-input-changed', path, String(error))); } });
+    } catch (error) { problems.push(outputProblem('native-input-changed', path, String(error))); } });
     await each(this.fingerprints, async ([path, stamp]) => { try {
       const before = await this.ordinary(path, false), bytes = await fs.readFile(path), after = await this.ordinary(path, false);
       if (this.fingerprint(before) !== stamp || this.fingerprint(after) !== stamp || hash(bytes) !== this.inputs.get(pathToFileURL(resolve(path)).href)) throw new Error('Native bytes changed after capture.');
-    } catch (error) { this.problems.push(outputProblem('native-input-changed', path, String(error))); } });
-    this.problems.sort((a, b) => { const left = JSON.stringify(a), right = JSON.stringify(b); return left < right ? -1 : left > right ? 1 : 0; });
+    } catch (error) { problems.push(outputProblem('native-input-changed', path, String(error))); } });
+    return problems.sort((a, b) => { const left = JSON.stringify(a), right = JSON.stringify(b); return left < right ? -1 : left > right ? 1 : 0; });
   }
   evidence(): { uri: string; version: string }[] { return [...this.inputs].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([uri, version]) => ({ uri, version })); }
 }

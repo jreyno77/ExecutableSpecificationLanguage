@@ -7,9 +7,11 @@ import { PythonInputs, pythonEnvironment } from './python-inputs.js';
 import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { nativeInputs } from './native-inputs.js';
+import { canonical } from './identity-baseline.js';
 
 /** Adds Python's captured native inputs to the caller's live project boundary. */
 export class PythonContext implements ProjectContext {
+  private captured: { key: string; inputs: PythonInputs } | undefined;
   private readonly options: { configFile?: string };
   constructor(private readonly project: ProjectContext, options: { configFile?: string } = {}) {
     if (!project?.root || typeof project.root.path !== 'string' || typeof project.root.identity !== 'string' || typeof project.readSnapshot !== 'function'
@@ -36,7 +38,11 @@ export class PythonContext implements ProjectContext {
       }
       const environment = pythonEnvironment(snapshot, checked.value, this.options.configFile); problems.push(...environment.problems);
       if (!problems.length && environment.value) {
-        const inputs = new PythonInputs(); await inputs.capture(environment.value, checked.value); problems.push(...inputs.problems);
+        const key = canonical([snapshot.root, checked.value, environment.value, this.options]);
+        let inputs = this.captured?.key === key ? this.captured.inputs : undefined;
+        if (inputs && (await inputs.verify()).length) { this.captured = undefined; inputs = undefined; }
+        if (!inputs) { inputs = new PythonInputs(); await inputs.capture(environment.value, checked.value); }
+        problems.push(...inputs.problems);
         for (const input of inputs.evidence()) {
           const path = fileURLToPath(input.uri), previous = supplied!.get(process.platform === 'win32' ? path.toLowerCase() : path);
           if (previous === undefined) combined.push(input);
@@ -44,6 +50,7 @@ export class PythonContext implements ProjectContext {
         }
         const fresh = await this.project.readSnapshot();
         if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(outputProblem('stale-project', '', 'Project inputs changed during Python capture.'));
+        if (snapshot.complete && !problems.length) this.captured = { key, inputs };
         return { ...snapshot, nativeInputs: combined.sort((a, b) => a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0), complete: snapshot.complete && problems.length === 0, problems };
       }
     }

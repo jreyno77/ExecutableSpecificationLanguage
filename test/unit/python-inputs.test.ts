@@ -23,7 +23,7 @@ describe('selected Python input capture', () => {
   it('notices replacement of an empty selected directory', async () => {
     const p = await nativeFiles(); await p.inputs.capture(p.environment, p.profile); expect(p.inputs.problems).toEqual([]);
     await fs.rename(join(p.root, 'readonly'), join(p.root, 'previous')); await fs.mkdir(join(p.root, 'readonly'));
-    await p.inputs.verify(); expect(p.inputs.problems.map(problem => problem.code)).toContain('native-input-changed');
+    expect((await p.inputs.verify()).map(problem => problem.code)).toContain('native-input-changed');
   });
   it('does not hide Python source under a bytecode-cache name', async () => {
     const p = await nativeFiles(); await fs.mkdir(join(p.root, 'sites', '__pycache__'));
