@@ -1,5 +1,5 @@
 import {
-  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  runCli, type CliOutputs, Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
   type OutputRegistration, type OutputWrite,
   ProjectInitializer, type InitializationPlan, type InitializationResult,
   LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
@@ -127,3 +127,5 @@ export function openTypeScriptOutput(project: ProjectContext, context: import('e
 export function compileWorkspace(sources: LoadedSources): Compilation {
   return new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(sources.entries) });
 }
+
+export function checkCommand(args: readonly string[], outputs: CliOutputs): Promise<number> { return runCli(args, outputs); }
