@@ -14,6 +14,15 @@ function examples(source: string, options: (current: IdentifiedSpecification) =>
 }
 
 describe('Java test projection keeps explicit names bound to their declarations', () => {
+  it('reports a domain that collides with required generated data support', () => {
+    const result = examples('examples { observation copies() returns Number { return 1 } }', () => ({ domain: 'expecData' }));
+    expect(result.problems).toContainEqual(expect.objectContaining({ code: 'native-name-conflict', at: { kind: 'dependency', path: ['java', '<options>', 'domain'] } }));
+  });
+  it('does not reserve a support name when that support file is not emitted', () => {
+    const result = examples('examples { action begin() {} }', () => ({ domain: 'expecData' }));
+    expect(result.problems).toEqual([]);
+    expect(result.files.filter(file => file.path.endsWith('/dsl/ExpecData.java'))).toHaveLength(1);
+  });
   it('reports an unknown mapping without throwing away the checked report', () => {
     const result=examples('examples { action begin() {} }',()=>({names:[{id:'missing',name:'renamed'}]}));
     expect(result.problems.map(problem=>problem.code)).toContain('invalid-native-mapping');

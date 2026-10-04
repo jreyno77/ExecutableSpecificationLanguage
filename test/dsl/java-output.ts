@@ -212,6 +212,19 @@ export class JavaExamples {
   }
   source(text: string): void { this.driver.source(text); }
   createContracts(options: Record<string, unknown>): Promise<void> { return this.driver.create(options); }
+  planContracts(options: Record<string, unknown>): Promise<void> { return this.driver.planContracts(options); }
+  expectPlannedObligations(expected: readonly (readonly [string, string, string, string])[]): void {
+    expect(this.driver.planned.problems).toEqual([]); expect(this.driver.planned.value).toBeDefined();
+    const obligations = this.driver.planned.value!.obligations ?? [];
+    expect(obligations).toHaveLength(expected.length);
+    for (const [code, subject, text, source] of expected) {
+      const start = this.driver.sourceText.indexOf(source); expect(start).toBeGreaterThanOrEqual(0);
+      expect(obligations.filter(item => item.code === code && item.message.includes(subject) && item.message.includes(text)
+        && item.at.kind === 'source' && item.at.range.sourceId === 'main.expec' && item.at.range.start.offset === start)).toHaveLength(1);
+    }
+  }
+  expectWrittenObligationsMatchPlan(): void { expect(this.driver.written.obligations).toEqual(this.driver.planned.value!.obligations); }
+  expectContractsUnchanged(): void { expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('unchanged'); }
   javac(text: string): Promise<void> { return this.driver.javac(text); }
   runJava(text: string): Promise<void> { return this.driver.runJava(text); }
   expectRecordComponentFacets(name: string, type: string, parameters: string[], index: number): void {
@@ -244,9 +257,13 @@ export class JavaExamples {
     this.expectStdout(result);
   }
   private generated(): string { return this.driver.snapshot.files.filter(file => file.path.endsWith('.java')).map(file => Buffer.from(file.bytes).toString('utf8')).join('\n'); }
-  expectUnverifiedDefault(parameter: string, value: string): void { expect(this.generated()).toContain('@default ' + parameter + ' = ' + value); expect(this.generated()).toContain('Unverified implementation obligation'); }
-  expectUnverifiedResult(name: string): void { expect(this.generated()).toContain('Result unspecified for ' + name); }
-  expectFailureObligation(name: string, type: string): void { expect(this.generated()).toContain(name + ' may fail with ' + type); expect(this.generated()).toContain('implementation obligation'); }
+  private expectObligation(code: string, subject: string, text = ''): void {
+    expect(this.driver.written.obligations?.some(item => item.code === code && item.message.includes(subject) && item.message.includes(text)
+      && item.at.kind === 'source' && item.at.range.sourceId === 'main.expec'), JSON.stringify(this.driver.written.obligations)).toBe(true);
+  }
+  expectUnverifiedDefault(parameter: string, value: string): void { expect(this.generated()).toContain('@default ' + parameter + ' = ' + value); this.expectObligation('default-verification-required', parameter, value); }
+  expectUnverifiedResult(name: string): void { expect(this.generated()).toContain('Result unspecified for ' + name); this.expectObligation('unspecified-result', name); }
+  expectFailureObligation(name: string, type: string): void { expect(this.generated()).toContain(name + ' may fail with ' + type); this.expectObligation('failure-verification-required', name, type); }
   expectAliasDocumentation(name: string, type: string): void {
     const artifact = this.driver.readResult.artifacts.find(item => item.at.format === 'java-alias-1');
     expect(artifact, JSON.stringify(this.driver.readResult)).toBeDefined();

@@ -80,7 +80,18 @@ export class JavaAcceptance {
   workspaceModules(modules:string[]):void { this.driver.workspaceModules=modules; }
   source(source: string): void { this.driver.source(source); }
   generateContracts(): Promise<void> { return this.driver.contracts(); }
-  generate(): Promise<void> { return this.driver.generate(); }
+  generate(options: Record<string, unknown> = {}): Promise<void> { return this.driver.generate(options); }
+  planGeneration(options: Record<string, unknown>): Promise<void> { return this.driver.planGeneration(options); }
+  expectNoPlanAt(code: string, option: string): void {
+    expect(this.driver.planned.value).toBeUndefined();
+    expect(this.driver.planned.problems.some(item => item.code === code && item.at.kind === 'dependency'
+      && item.at.path.join('/') === 'java/<options>/' + option), JSON.stringify(this.driver.planned.problems)).toBe(true);
+  }
+  expectRefusedOption(code: string, option: string): void {
+    this.expectRefused(code);
+    expect(this.driver.written.problems.some(item => item.code === code && item.at.kind === 'dependency'
+      && item.at.path.join('/') === 'java/<options>/' + option), JSON.stringify(this.driver.written.problems)).toBe(true);
+  }
   driverMethods(source: string): Promise<void> { return this.driver.methods(source); }
   installBasket(copiesPerAdd = 1): Promise<void> { return this.driver.basket(copiesPerAdd); }
   installBarrierBasket(): Promise<void> { return this.driver.barrierBasket(); }

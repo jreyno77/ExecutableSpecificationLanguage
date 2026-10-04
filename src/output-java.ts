@@ -60,7 +60,7 @@ class JavaOutput implements OutputAdapter {
       const preservation = new JavaPreservation(snapshot, this.options.configFile ?? 'expec.java.json');
       const changed = await preservation.update(stored.value.files, files);
       if (preservation.problems.length) return { problems: preservation.problems, deferred: [] };
-      return this.changed(snapshot, changed.files, changed.changes, preservation.obligations, projection.mappings.capture());
+      return this.changed(snapshot, changed.files, changed.changes, [...projection.obligations, ...preservation.obligations], projection.mappings.capture());
     }
     for (const file of files) if (!this.options.adoptExisting && snapshot.files.some(existing => existing.path === file.path))
       problems.push(javaProblem('output-conflict', 'Existing Java file needs explicit ownership/adoption.', file.path));
@@ -74,7 +74,7 @@ class JavaOutput implements OutputAdapter {
     const additions = baselines.filter(file => !file.adopted?.length).map(file => ({ path: file.path, bytes: Buffer.from(file.generated), version: hash(Buffer.from(file.generated)) }));
     const analyzed = await analyzeJava({ ...snapshot, files: [...snapshot.files, ...additions] }, this.options.configFile ?? 'expec.java.json');
     if (analyzed.problems.length) return { problems: analyzed.problems, deferred: [] };
-    return this.changed(snapshot, baselines, additions.map(file => ({ kind: 'write', path: file.path, bytes: file.bytes })), [], projection.mappings.capture());
+    return this.changed(snapshot, baselines, additions.map(file => ({ kind: 'write', path: file.path, bytes: file.bytes })), projection.obligations, projection.mappings.capture());
   }
   private changed(snapshot: ProjectSnapshot, files: readonly JavaBaseline[], changes: readonly FileChange[], obligations: readonly Diagnostic[] = [], mappings?:JavaMappingState): Check<OutputPlan> {
     const state = Buffer.from(canonical({ format: 1, options: this.options, files, ...mappings?{mappings}:{} }, 2) + '\n');

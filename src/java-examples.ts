@@ -235,6 +235,15 @@ export class JavaExamples {
       files.push(file('acceptance',name,'import '+this.options.package+'.dsl.ExpecChecks;\n\n@org.junit.jupiter.api.TestInstance(org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD)\npublic class '+name
         +(this.fixture?' extends '+this.fixture.type:'')+' {\n    '+setup+'\n    '+methods.join('\n    ')+'\n}',associated));
     }
-    files.push(file('dsl','ExpecChecks',this.comparison(),[]), ...this.types.support().map(item => file('dsl',item.name,item.text,[]))); this.problems.push(...this.driver.problems); return files;
+    files.push(file('dsl','ExpecChecks',this.comparison(),[]), ...this.types.support().map(item => file('dsl',item.name,item.text,[])));
+    const paths = new Set<string>(), domainPath = file('dsl', this.domain, '', []).path;
+    for (const generated of files) {
+      const path = process.platform === 'win32' ? generated.path.toLowerCase() : generated.path;
+      if (paths.has(path)) this.problems.push(javaProblem('native-name-conflict',
+        'Native filename collides with another declaration or required support type: ' + generated.path,
+        generated.path === domainPath ? '<options>' : generated.path, ...generated.path === domainPath ? ['domain'] : []));
+      paths.add(path);
+    }
+    this.problems.push(...this.driver.problems); return files;
   }
 }

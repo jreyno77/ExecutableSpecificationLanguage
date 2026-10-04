@@ -117,8 +117,10 @@ it('updates promises while preserving the implemented body and handwritten docum
   const file = 'src/main/java/store/Store.java';
   await p.file(file, 'package store; public class Store { /** Keep the local retry policy. */ public void save(String title) { System.out.print("local:"+title); } }');
   p.mapStore(file, 'store.Store', 'save', ['java.lang.String']); await p.adopt(); p.expectWritten();
+  p.expectAuthoredObligation('verification-required', 'save', 'Save to disk.');
   await p.update('class Store { public save\ncapability save(title: Text) returns Nothing { promises "Persist the snapshot using Supabase." } }');
   p.expectWritten(); p.expectText(file, 'Keep the local retry policy.'); p.expectText(file, 'Persist the snapshot using Supabase.');
+  p.expectAuthoredObligation('verification-required', 'save', 'Persist the snapshot using Supabase.');
   p.expectText(file, 'Unverified implementation obligation.');
   await p.runJava('new store.Store().save("Dune");'); p.expectStdout('local:Dune');
 });

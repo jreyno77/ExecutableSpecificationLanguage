@@ -10,9 +10,35 @@ function project(text: string, options: Record<string, unknown> = {}) {
   const current = new SpecificationIdentity(() => 'declaration-' + ++next).associate(checked.value);
   if (!current.value) throw new Error(JSON.stringify(current));
   const projection = new JavaDeclarations(current.value, javaOptions.parse({ package: 'store', ...options }));
-  return { files: projection.files(), problems: projection.problems };
+  return { files: projection.files(), problems: projection.problems, obligations: projection.obligations };
 }
 describe('Java declaration mapping', () => {
+  it('reports literal refinements inside aliases and composed callable type arguments', () => {
+    const result = project('type Title = "Dune" | "Foundation"\ntype Box<T> { value: T }\nfunction save(title: Title?, position: [Title, Number], box: Box<Title>) returns Nothing');
+    expect(result.problems).toEqual([]);
+    expect(result.obligations.map(item => item.code)).toEqual(['verification-required', 'verification-required', 'verification-required']);
+    expect(result.obligations.map(item => item.message)).toEqual(expect.arrayContaining([
+      expect.stringContaining('save.title: Title?'), expect.stringContaining('save.position: [Title, Number]'), expect.stringContaining('save.box: Box<Title>'),
+    ]));
+  });
+  it('does not duplicate a record field restriction as a callable obligation', () => {
+    const result = project('type Book { title: "Dune" }\nfunction save(book: Book) returns Nothing');
+    expect(result.problems).toEqual([]); expect(result.obligations).toEqual([]);
+  });
+  it('reports each authored default once despite native overload expansion', () => {
+    const result = project('type Book { copies: Number = 1 }\nclass Store { construction(title: Text = "Dune", copies: Number = 2) }');
+    expect(result.problems).toEqual([]);
+    expect(result.obligations).toHaveLength(3);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'default-verification-required', message: expect.stringContaining('copies: 1') }),
+      expect.objectContaining({ code: 'default-verification-required', message: expect.stringContaining('title: "Dune"') }),
+      expect.objectContaining({ code: 'default-verification-required', message: expect.stringContaining('copies: 2') }),
+    ]));
+  });
+  it('does not invent an obligation for an ordinary explicit Nothing result', () => {
+    const result = project('function save() returns Nothing');
+    expect(result.problems).toEqual([]); expect(result.obligations).toEqual([]);
+  });
   it('keeps the conservative keyword profile even when a name could be legal in some positions', () => {
     expect(project('function open() returns Nothing').problems.map(problem => problem.code)).toContain('invalid-native-name');
   });

@@ -16,6 +16,10 @@ export class JavaPreservation {
   static async dispose(): Promise<void> { for (const example of this.active.splice(0)) await example.driver.dispose(); }
   configureOutput(options:Record<string,unknown>):void { this.driver.contractOptions={package:'store',...options}; }
   source(text: string): void { this.driver.source(text); }
+  expectAuthoredObligation(code: string, subject: string, text: string): void {
+    expect(this.driver.written.obligations?.some(item => item.code === code && item.message.includes(subject) && item.message.includes(text)
+      && item.at.kind === 'source' && item.at.range.sourceId === 'main.expec'), JSON.stringify(this.driver.written.obligations)).toBe(true);
+  }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   capture(): Promise<void> { return this.driver.capture(); }
   selectCatalogJarAt(path: string, source: string): Promise<void> { return this.driver.catalogAt(path, source); }

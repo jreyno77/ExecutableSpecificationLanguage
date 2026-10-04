@@ -29,6 +29,7 @@ export class JavaOutputDriver {
   workspaceModules: string[] | undefined;
   readonly libraries: LangiumModel[] = [];
   written!: OutputWrite;
+  planned!: import('../../src/index.js').Check<import('../../src/index.js').OutputPlan>;
   native = { code: 0, stdout: '', stderr: '' };
   protected nativeOptions: Record<string, unknown> = {};
   catalogJar!: string;
@@ -201,6 +202,12 @@ export class JavaOutputDriver {
     let next = 0;
     const current = new SpecificationIdentity(() => 'java-example-' + ++next).associate(compiled.value);
     if (!current.value) throw new Error(JSON.stringify(current)); this.current = current.value;
+  }
+  async planContracts(options: Record<string, unknown>): Promise<void> {
+    const outputs = new Outputs(); outputs.register(javaOutput);
+    const opened = outputs.open('java', options, this.context, new FileProjectWriter(this.context));
+    if (!opened.value) throw new Error(JSON.stringify(opened));
+    await this.capture(); this.planned = await opened.value.plan({ operation: 'create', current: this.current }, this.snapshot);
   }
   async create(options: Record<string, unknown>): Promise<void> {
     this.contractOptions = options;

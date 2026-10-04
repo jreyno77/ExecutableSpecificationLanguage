@@ -7,6 +7,7 @@ import { javaName, javaOptions } from './java-settings.js';
 import { JavaTypes, javaRecordBody } from './java-types.js';
 import { language } from './language-text.js';
 import { JavaMappings } from './java-mappings.js';
+import type { TypeId } from './types.js';
 
 type Options = z.infer<typeof javaOptions>;
 export interface JavaFile { path: string; generated: string; artifacts: ArtifactAssociation[] }
@@ -15,6 +16,7 @@ type Associate = (node: Item, member?: object, parameter?: number) => void;
 /** Translate already checked declarations; JDT separately validates the emitted native contract. */
 export class JavaDeclarations {
   readonly problems: Diagnostic[] = [];
+  readonly obligations: Diagnostic[] = [];
   readonly mappings: JavaMappings;
   private readonly workspace: ReadonlySet<string>;
   private readonly types: JavaTypes;
@@ -58,8 +60,31 @@ export class JavaDeclarations {
     return this.types.of(node, boxed);
   }
   private docs(lines: string[]): string { return lines.length ? '/**\n * Unverified implementation obligation.\n' + lines.map(line => ' * ' + line.replaceAll('*/', '* /')).join('\n') + '\n */\n' : ''; }
+  private defaultObligation(item: Item<'field' | 'parameter'>): void {
+    if (item.defaultValue) this.obligations.push({ code: 'default-verification-required',
+      message: 'Verify the authored default for ' + item.name + ': ' + language(item.defaultValue), at: item.origin, related: [] });
+  }
+  private refinementObligation(item: Item, subject: string): void {
+    const catalog = this.current.specification.types, seen = new Set<TypeId>();
+    const refined = (id: TypeId): boolean => {
+      if (seen.has(id)) return false; seen.add(id);
+      const type = catalog.describe(id);
+      if (type.kind === 'literal') return true;
+      if (type.kind === 'alias') return refined(this.types.known(type.target));
+      if (type.kind === 'optional') return refined(type.inner);
+      if (type.kind === 'tuple') return type.elements.some(refined);
+      if (type.kind === 'union') return type.alternatives.some(refined);
+      return 'arguments' in type && type.arguments.some(refined);
+    };
+    if (refined(this.types.known(catalog.typeOf(item.id)))) this.obligations.push({ code: 'verification-required',
+      message: 'Verify the authored type constraint for ' + subject + ': ' + language(item), at: item.origin, related: [] });
+  }
   private parameterLists(member: Item<'capability' | 'function' | 'construction'>) {
     this.distinct(member.parameters);
+    for (const parameter of member.parameters) {
+      this.defaultObligation(parameter);
+      this.refinementObligation(parameter.declaredType, (member.kind === 'construction' ? 'construction' : member.name) + '.' + parameter.name);
+    }
     let required = member.parameters.length;
     while (required && member.parameters[required - 1]!.hasDefault) required--;
     return Array.from({ length: member.parameters.length - required + 1 }, (_, index) => {
@@ -79,6 +104,14 @@ export class JavaDeclarations {
     if (!member.returnType) docs.push('Result unspecified for ' + member.name + '; java.lang.Object is an implementation obligation.');
     for (const failure of member.failures) docs.push(member.name + ' may fail with ' + language(failure) + '; implementation obligation.');
     if (member.body.kind === 'available') docs.push(...member.body.content.members.map(item => item.kind === 'promises' ? item.text : language(item)));
+    if (!member.returnType) this.obligations.push({ code: 'unspecified-result',
+      message: 'Result unspecified for ' + member.name + '; verify its implementation result.', at: member.origin, related: [] });
+    else this.refinementObligation(member.returnType, member.name + ' result');
+    for (const failure of member.failures) this.obligations.push({ code: 'failure-verification-required',
+      message: 'Verify the declared failure ' + language(failure) + ' for ' + member.name + '.', at: failure.origin, related: [] });
+    if (member.body.kind === 'available') for (const item of member.body.content.members)
+      if (item.kind === 'requires' || item.kind === 'ensures' || item.kind === 'promises') this.obligations.push({ code: 'verification-required',
+        message: 'Verify ' + member.name + ': ' + language(item), at: item.origin, related: [] });
     return this.parameterLists(member).map(parameters => {
       const selector = { kind: 'method', name, parameters: parameters.erased, static: static_ };
       this.signature(name, parameters.erased, member); associate(member, selector);
@@ -121,6 +154,7 @@ export class JavaDeclarations {
       if (root.kind === 'record-type-declaration') {
         const fields = root.fields.map(field => field.kind === 'local' ? field.declaration : field).filter((field): field is Item<'field'> => field.kind === 'field');
         this.distinct(fields);
+        fields.forEach(field => this.defaultObligation(field));
         const parameters = fields.map(field => this.type(field.declaredType) + ' ' + this.name(field));
         for (const [index, field] of fields.entries()) {
           associate(field, { kind: 'field', name: this.name(field) });

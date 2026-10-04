@@ -39,9 +39,12 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
     const source=await fs.readFile(join(this.root,path),'utf8'); if(!source.includes(before)) throw new Error('Expected authored fragment '+before);
     await this.file(path,source.replace(before,after));
   }
-  private acceptance() {
+  async planGeneration(options: Record<string, unknown>): Promise<void> {
+    await this.capture(); this.planned = await this.acceptance(options).plan({ operation: 'create', current: this.current }, this.snapshot);
+  }
+  private acceptance(options: Record<string, unknown> = {}) {
     const outputs=new Outputs(); outputs.register(javaAcceptanceOutput);
-    const opened=outputs.open('java-acceptance',{package:'store.tests',domain:'shopping',...this.names.length?{names:this.names}:{},...this.selectedDriver?{driver:this.selectedDriver,adoptExisting:true}:{},...this.fixture?{fixture:this.fixture}:{}},this.context,new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
+    const opened=outputs.open('java-acceptance',{package:'store.tests',domain:'shopping',...this.names.length?{names:this.names}:{},...this.selectedDriver?{driver:this.selectedDriver,adoptExisting:true}:{},...this.fixture?{fixture:this.fixture}:{},...options},this.context,new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
     if(!opened.value) throw new Error(JSON.stringify(opened)); return opened.value;
   }
   private scenario(title: string) {
