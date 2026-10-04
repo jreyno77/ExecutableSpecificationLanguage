@@ -59,7 +59,7 @@ class KotlinAcceptance implements OutputAdapter {
     if (!stored) return { problems: [], deferred: [] };
     const settings = options.parse(JSON.parse(stored.options)), name = settings.domain[0]!.toUpperCase() + settings.domain.slice(1);
     const driver = settings.testRoot + '/' + settings.package.replaceAll('.', '/') + '/driver/' + name + 'Driver.kt';
-    if (stored.files.every(file => file.path === driver || snapshot.files.some(actual => actual.path === file.path && actual.version === hash(Buffer.from(file.generated))))) return { problems: [], deferred: [] };
+    if (stored.files.every(file => file.path === driver || snapshot.files.some(actual => actual.path === file.path && Buffer.from(actual.bytes).equals(Buffer.from(file.generated))))) return { problems: [], deferred: [] };
     const native = await queryKotlin(snapshot, 'expec.kotlin.json');
     return native.value && !native.problems.length ? checkKotlinTests(snapshot, native.value, stored.files, driver) : { problems: native.problems, deferred: native.deferred };
   }
@@ -173,13 +173,13 @@ class KotlinAcceptance implements OutputAdapter {
   }
   private async delete(id: string, snapshot: ProjectSnapshot, stored?: z.infer<typeof state>): Promise<Check<OutputPlan>> {
     const failure = (code: string, message: string): Check<OutputPlan> => ({ problems: [outputProblem(code, statePath, message)], deferred: [] });
-    if (!stored) return failure('output-not-found', 'No owned generated Kotlin test exists.');
+    if (!stored) return failure('not-found', 'No owned generated Kotlin test exists.');
     if (stored.options !== canonical(this.settings)) return failure('output-options-changed', 'Reopen the recorded options before deleting a generated test.');
     const intact = await this.integrity(snapshot, stored); if (intact.problems.length) return intact;
     if (stored.deleted.includes(id)) return success({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.artifacts(stored) });
     const prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/') + '/acceptance/';
     const selected = stored.files.filter(file => file.path.startsWith(prefix) && file.artifacts.some(item => item.specId === id && item.locator.format === 'kotlin-symbol-1'));
-    if (selected.length !== 1) return failure('output-not-found', 'Select exactly one owned generated example or examples group.');
+    if (selected.length !== 1) return failure('not-found', 'Select exactly one owned generated example or examples group.');
     const retired = await retireKotlin(snapshot, selected, id);
     if (!retired.value) return { problems: retired.problems, deferred: retired.deferred };
     const preserved = await preserveKotlin(snapshot, selected, retired.value.files, new Set());

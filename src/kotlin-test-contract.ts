@@ -9,7 +9,7 @@ type Baseline = { path: string; generated: string; artifacts: readonly ArtifactA
 
 /** Owned expectations stay intact while unowned neighboring methods and driver implementations remain editable. */
 export async function checkKotlinTests(snapshot: ProjectSnapshot, current: KotlinQuery, files: readonly Baseline[], driver: string): Promise<Check> {
-  const changed = files.filter(file => file.path !== driver && snapshot.files.some(actual => actual.path === file.path && actual.version !== hash(Buffer.from(file.generated))));
+  const changed = files.filter(file => file.path !== driver && snapshot.files.some(actual => actual.path === file.path && !Buffer.from(actual.bytes).equals(Buffer.from(file.generated))));
   if (!changed.length) return { problems: [], deferred: [] };
   // Only PSI syntax ranges from this baseline view are used. Current code is checked again before a write.
   const baseline = await queryKotlin({ ...snapshot, files: [...snapshot.files.filter(file => !files.some(before => before.path === file.path)),
