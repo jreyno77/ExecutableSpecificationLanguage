@@ -99,7 +99,7 @@ def has_comment(node):
     return visitor.found
 
 
-def preserve(request, root, facts=None):
+def preserve(request, root, facts=None, traces=None):
     before = declarations(cst.parse_module(request["before"]))
     after = declarations(cst.parse_module(request["after"]))
     previous = associations(request["previous"])
@@ -196,23 +196,36 @@ def preserve(request, root, facts=None):
 
         def __init__(self, file, module):
             self.file, self.lines, self.bom = file, module.code.splitlines(keepends=True), module.encoding == "utf-8-sig"
+            self.names = {}
 
         def leave_Name(self, original, updated):
             at = self.get_metadata(PositionProvider, original).start
             prefix = "".join(self.lines[:at.line - 1]) + self.lines[at.line - 1][:at.column]
             name = names.get((self.file, len(prefix.encode("utf-16-le")) // 2 + self.bom))
-            return updated.with_changes(value=name) if name else updated
+            result = updated.with_changes(value=name) if name else updated
+            self.names[original] = result
+            return result
 
         def leave_FunctionDef(self, original, updated):
             if original in removals:
                 return cst.RemoveFromParent()
             wanted = replacements.get(original)
-            return signature(updated, wanted) if wanted else updated
+            result = signature(updated, wanted) if wanted else updated
+            self.names[original.name] = result.name
+            return result
 
         def leave_AnnAssign(self, original, updated):
-            return replacements.get(original, updated)
+            wanted = replacements.get(original)
+            return updated.with_changes(annotation=wanted.annotation) if wanted else updated
 
         def leave_ClassDef(self, original, updated):
             return updated.with_changes(body=updated.body.with_changes(body=[*updated.body.body, *additions[original]])) if original in additions else updated
 
-    return [{"file": file, "text": wrapper.visit(Rewrite(file, wrapper.module)).bytes.decode("utf-8")} for file, wrapper in wrappers.items()], []
+    rewritten = []
+    for file, wrapper in wrappers.items():
+        editor = Rewrite(file, wrapper.module)
+        module = wrapper.visit(editor)
+        if traces is not None:
+            traces[file] = {"before": wrapper.module, "after": module, "names": editor.names, "file": file}
+        rewritten.append({"file": file, "text": module.bytes.decode("utf-8")})
+    return rewritten, []

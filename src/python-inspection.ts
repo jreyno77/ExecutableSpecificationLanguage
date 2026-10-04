@@ -14,7 +14,7 @@ import type { ArtifactAssociation } from './specification-identity.js';
 import { nativeInputs } from './native-inputs.js';
 
 export const pythonSelector = z.array(z.strictObject({ kind: z.enum(['class', 'function', 'method', 'field', 'parameter', 'type']), name: z.string().min(1) })).min(1);
-const target = z.strictObject({ file: z.string(), line: z.number().int().positive(), column: z.number().int().nonnegative(), name: z.string(), builtin: z.boolean() });
+const target = z.strictObject({ file: z.string(), line: z.number().int().positive(), column: z.number().int().nonnegative(), name: z.string(), kind: z.string(), builtin: z.boolean() });
 const result = z.strictObject({
   files: z.array(z.string()),
   declarations: z.array(z.strictObject({ file: z.string(), declaration: pythonSelector, start: z.number().int().nonnegative(), end: z.number().int().nonnegative(),

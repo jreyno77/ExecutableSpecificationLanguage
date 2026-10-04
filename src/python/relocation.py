@@ -4,9 +4,14 @@ from libcst.helpers import get_full_name_for_node, get_absolute_module_from_pack
 from libcst.metadata import MetadataWrapper, QualifiedNameProvider, QualifiedNameSource
 
 
-def relocate(module, old, new, package):
+def relocate(module, old, new, package, names=None):
     class Imports(cst.CSTTransformer):
         METADATA_DEPENDENCIES = (QualifiedNameProvider,)
+
+        def leave_Name(self, original, updated):
+            if names is not None:
+                names[original] = updated
+            return updated
 
         def leave_Import(self, original, updated):
             return updated.with_changes(names=[alias.with_changes(name=cst.parse_expression(new))
@@ -44,12 +49,15 @@ def relocate(module, old, new, package):
             roots = self.get_metadata(QualifiedNameProvider, root, set())
             if not any(name.source == QualifiedNameSource.IMPORT for name in roots):
                 return updated
-            names = self.get_metadata(QualifiedNameProvider, original, set())
-            selected = [name for name in names if name.name == old and name.source == QualifiedNameSource.IMPORT]
+            references = self.get_metadata(QualifiedNameProvider, original, set())
+            selected = [name for name in references if name.name == old and name.source == QualifiedNameSource.IMPORT]
             if not selected:
                 return updated
-            if len(names) != 1 or any(name.source != QualifiedNameSource.IMPORT for name in roots):
+            if len(references) != 1 or any(name.source != QualifiedNameSource.IMPORT for name in roots):
                 raise ValueError("An ambiguous native module reference cannot authorize relocation.")
-            return cst.parse_expression(new)
+            replacement = cst.parse_expression(new)
+            if names is not None:
+                names[original.attr] = replacement.attr if isinstance(replacement, cst.Attribute) else replacement
+            return replacement
 
-    return MetadataWrapper(module).visit(Imports())
+    return MetadataWrapper(module, unsafe_skip_copy=True).visit(Imports())

@@ -16,6 +16,7 @@ export class PythonEvolution {
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   async expectFileText(path: string, text: string): Promise<void> { expect(await this.driver.text(path)).toBe(text); }
   async expectFileAbsent(path: string): Promise<void> { await expect(this.driver.text(path)).rejects.toMatchObject({ code: 'ENOENT' }); }
+  async expectFilePresent(path: string): Promise<void> { expect(await this.driver.text(path)).toBeTypeOf('string'); }
   async checkConsumer(text: string): Promise<void> { await this.driver.checkConsumer(text); expect(this.driver.native.code, this.driver.native.text).toBe(0); }
   expectDefinitionFiles(files: string[]): void { expect([...new Set(this.driver.written.artifacts?.map(item => (item.locator.value as { file: string }).file))].sort()).toEqual(files); }
   update(): Promise<void> { return this.driver.update(); }

@@ -3,6 +3,20 @@ import { PythonEvolution } from '../dsl/python-preservation.js';
 
 afterEach(() => PythonEvolution.dispose());
 describe('Python contracts evolve around handwritten implementation', { timeout: 240_000 }, () => {
+  it('refuses a module-value move that would capture a local receiver', async () => {
+    const p = await PythonEvolution.create();
+    p.source('class StoreGame {}'); await p.generate();
+    await p.file('src/launcher.py', 'import store.contracts\nclass Decoy:\n    class api:\n        pass\ndef module_value(destination: Decoy):\n    return store.contracts\n');
+    p.relocate('destination.api'); await p.update(); p.expectRefused('native-binding-conflict');
+    await p.expectFileAbsent('src/destination/api.py'); await p.expectFilePresent('src/store/contracts.py');
+  });
+  it('refuses a module move that would capture a local receiver', async () => {
+    const p = await PythonEvolution.create();
+    p.source('class StoreGame {}'); await p.generate();
+    await p.file('src/launcher.py', 'import store.contracts\nclass Decoy:\n    class api:\n        class StoreGame:\n            pass\ndef start(destination: Decoy):\n    return store.contracts.StoreGame()\n');
+    p.relocate('destination.api'); await p.update(); p.expectRefused('native-binding-conflict');
+    await p.expectFileAbsent('src/destination/api.py'); await p.expectFilePresent('src/store/contracts.py');
+  });
   it('moves a purely generated module and updates its actual native consumer', async () => {
     const p = await PythonEvolution.create();
     p.source('class StoreGame { public save\ncapability save(title: Text) returns Nothing }'); await p.generate();
