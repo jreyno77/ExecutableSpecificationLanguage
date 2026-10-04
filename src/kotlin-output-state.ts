@@ -15,7 +15,7 @@ import { outputProblem } from './output-documents.js';
 export const kotlinStatePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
 const state = z.strictObject({ format: z.literal(1), options: z.string(), deleted: z.array(identifier).default([]), subjects: z.array(identifier),
   mappings: z.array(z.strictObject({ id: identifier, kind: z.enum(['name', 'import']), name: z.string(), as: z.string().optional() })), files: z.array(z.strictObject({
-  adopted: z.boolean().optional(), id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
+  adopted: z.boolean().optional(), documentation: z.array(identifier).optional(), id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
   artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })),
 })) });
 
@@ -56,6 +56,7 @@ export function kotlinState(snapshot: ProjectSnapshot): Check<KotlinOutputState>
     const stored = state.parse(parse(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes)));
     kotlinOptions.parse(parse(stored.options));
     if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || Buffer.from(file.generated).toString('utf8') !== file.generated
+      || file.documentation && (!file.adopted || new Set(file.documentation).size !== file.documentation.length || file.documentation.some(id => !file.artifacts.some(item => item.specId === id)))
       || file.artifacts.some(item => item.locator.outputId !== 'kotlin' || (item.locator.value as { file: string }).file !== file.path))) throw new Error('Invalid generated Kotlin baseline.');
     new KotlinProject({ outputId: 'kotlin' }, stored.files.flatMap(file => file.artifacts));
     return success(stored);

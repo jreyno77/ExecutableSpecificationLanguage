@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -168,6 +169,19 @@ export class KotlinDeliveryDriver {
   async delete(name: string): Promise<void> {
     const opened = this.open(); this.written = opened.value ? await opened.value.delete(this.subject(this.current, name)) : { problems: opened.problems };
     this.files = await this.capturedFiles();
+  }
+  async duplicateContributionEvidence(): Promise<void> {
+    const path = '.expec/kotlin/dependencies.gradle.kts', reportPath = '.expec/kotlin/classpath.json';
+    const report = JSON.parse(await fs.readFile(join(this.root, reportPath), 'utf8')) as { inputs: { path: string; version: string }[] };
+    report.inputs.unshift({ path, version: createHash('sha256').update(await fs.readFile(join(this.root, path))).digest('hex') });
+    await this.file(reportPath, JSON.stringify(report));
+  }
+  async appendContribution(text: string): Promise<void> {
+    const path = '.expec/kotlin/dependencies.gradle.kts';
+    await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\n' + text + '\n');
+  }
+  async projectBytes(): Promise<Map<string, Uint8Array>> {
+    return new Map((await this.context.readSnapshot()).files.map(file => [file.path, Uint8Array.from(file.bytes)]));
   }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }

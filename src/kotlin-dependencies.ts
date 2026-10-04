@@ -14,6 +14,7 @@ import { configurationSchema } from './configuration-schema.js';
 import { canonical } from './identity-baseline.js';
 import { captureKotlinInputs, kotlinResources } from './kotlin-context.js';
 import { readJson } from './json-data.js';
+import { kotlinStarterContribution } from './kotlin-initialization.js';
 import { fail, hash, literal, message, problem, ProjectFiles, type ObservedFile } from './project-files.js';
 
 const contribution = '.expec/kotlin/dependencies.gradle.kts';
@@ -129,6 +130,13 @@ export class KotlinDependencies {
     const dependencies = requests.flatMap(item => item.phases.filter(phase => phase !== 'build').map(phase =>
       '    add(' + JSON.stringify(phase === 'runtime' ? 'implementation' : 'testImplementation') + ', ' + JSON.stringify(item.name.slice(6) + ':' + item.version) + ')'));
     const bytes = new TextEncoder().encode('// Generated dependency contribution; updated by explicit expec install.\ndependencies {\n' + dependencies.join('\n') + '\n}\n');
+    const report = inputs.get(kotlinReportPath)!.value;
+    const prior = report.state === 'file' ? kotlinReport.parse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(report.bytes), (_code, text) => { throw new Error(text); })) : undefined;
+    const current = inputs.get(contribution)!.value;
+    if (prior && new Set(prior.inputs.map(item => item.path)).size !== prior.inputs.length || current.state !== 'file'
+      || !Buffer.from(current.bytes).equals(bytes) && !Buffer.from(current.bytes).equals(Buffer.from(kotlinStarterContribution))
+        && hash(current.bytes) !== prior?.inputs.find(item => item.path === contribution)?.version)
+      fail(context.root, 'native-contribution-conflict', contribution, 'The dependency contribution has handwritten changes; retain or explicitly reconcile them before installation.');
     await files.write(contribution, bytes, inputs.get(contribution)!);
     inputs.set(contribution, await files.read(contribution));
     const old = inputs.get(kotlinReportPath)!;

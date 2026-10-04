@@ -2,7 +2,7 @@ import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, Outp
 import type { Check } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
 import type { ProjectRead, ProjectSearch } from './project-inspection.js';
-import { KotlinDeclarations, kotlinOptions, type KotlinOptions } from './kotlin-declarations.js';
+import { KotlinDeclarations, kotlinOptions, type KotlinFile, type KotlinOptions } from './kotlin-declarations.js';
 import { outputProblem } from './output-documents.js';
 import { canonical, success } from './identity-baseline.js';
 import { hash } from './project-files.js';
@@ -12,6 +12,7 @@ import { preserveKotlin, retireKotlin } from './kotlin-preservation.js';
 import { nativeInputs } from './native-inputs.js';
 import { validDiff } from './output-contract.js';
 import { kotlinConfiguration } from './kotlin-configuration.js';
+import { checkKotlinImports } from './kotlin-imports.js';
 import { kotlinState, kotlinStatePath as statePath, type KotlinOutputState } from './kotlin-output-state.js';
 
 export const kotlinOutput: OutputRegistration = {
@@ -21,6 +22,13 @@ export const kotlinOutput: OutputRegistration = {
   },
   open: (options, context) => new KotlinOutput(kotlinOptions.parse(options), context),
 };
+
+function documentation(file: KotlinFile, previous?: KotlinOutputState['files'][number]): { documentation: string[] } | Record<string, never> {
+  if (!file.adopted) return {};
+  const owned = new Set(previous?.documentation ?? []), prior = new Set(previous?.artifacts.map(item => item.specId));
+  if (previous) for (const artifact of file.artifacts) if (!prior.has(artifact.specId)) owned.add(artifact.specId);
+  return { documentation: [...owned].filter(id => file.artifacts.some(item => item.specId === id)).sort() };
+}
 
 class KotlinOutput implements OutputAdapter {
   readonly id = 'kotlin';
@@ -69,8 +77,10 @@ class KotlinOutput implements OutputAdapter {
       if (request.operation === 'create' && existing && !before && !file.adopted) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs explicit ownership before changing it.'));
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
     }
-    const next = { format: 1, deleted: previous?.deleted.filter(id => !files.some(file => file.artifacts.some(item => item.specId === id))) ?? [], options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ ...(file.adopted ? { adopted: true } : {}), id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+    const next = { format: 1, deleted: previous?.deleted.filter(id => !files.some(file => file.artifacts.some(item => item.specId === id))) ?? [], options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ ...(file.adopted ? { adopted: true } : {}), ...documentation(file, previous?.files.find(old => old.id === file.id)), id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     if (problems.length) return { problems, deferred: [] };
+    const imported = await checkKotlinImports(request.current, snapshot, this.options.directory, mappings.filter(item => item.kind === 'import'));
+    if (imported.problems.length || imported.deferred.length) return imported;
     const preserved = request.operation === 'create' && !previous ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files, declarations.constraints);
     if (preserved?.problems.length) problems.push(...preserved.problems);
     const changes = [...(preserved?.value?.changes ?? files.filter(file => !file.adopted).map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
@@ -89,7 +99,7 @@ class KotlinOutput implements OutputAdapter {
     const preserved = await preserveKotlin(snapshot, previous.files, retired.value.files, new Set());
     if (!preserved.value) return { problems: preserved.problems, deferred: preserved.deferred };
     const next = { ...previous, deleted: [...new Set([...previous.deleted, ...retired.value.removed])].sort(), files: retired.value.files.map(file => ({
-      id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts, ...file.adopted ? { adopted: true } : {},
+      id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts, ...file.adopted ? { adopted: true } : {}, ...documentation(file, previous.files.find(old => old.id === file.id)),
     })) };
     return success({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
       { kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }],

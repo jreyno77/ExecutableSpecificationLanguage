@@ -49,6 +49,7 @@ export class KotlinDeclarations {
   private readonly selected: Item[];
   private readonly tuples = new Map<number, Item>();
   private readonly names = new Map<NodeId, string>();
+  private readonly symbols = new Map<string, string>();
   private readonly mappings = new Map<NodeId, KotlinOptions['imports'][number]>();
   private readonly generated = new Set<NodeId>();
   private imports = new Map<string, string>();
@@ -112,6 +113,9 @@ export class KotlinDeclarations {
   }
   private associate(item: Item, declaration: JsonValue[], companion = false): ArtifactAssociation {
     const artifact = { specId: this.current.id(item.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file: this.file, declaration } } };
+    const key = JSON.stringify([this.file, declaration]), prior = this.symbols.get(key);
+    if (prior !== undefined && prior !== artifact.specId) this.problem('native-name-conflict', item, 'Two source declarations select the same native Kotlin declaration.');
+    else this.symbols.set(key, artifact.specId);
     this.artifacts.push(artifact); if (companion) this.companions.push(artifact); return artifact;
   }
   private checkScope(name: string, owner: Item): void {

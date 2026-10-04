@@ -18,7 +18,7 @@ export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'i
 const result = z.strictObject({
   files: z.array(z.string().refine(literal)),
   imports: z.array(z.strictObject({ file: z.string().refine(literal), range })),
-  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), synthetic: z.literal(true).optional(), range, nameRange: range, bodyRange: range.optional(), superTypeRanges: z.array(range).optional(), typeRange: range.optional(), typePosition: z.number().int().nonnegative().optional(),
+  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), synthetic: z.literal(true).optional(), range, nameRange: range, docRange: range.optional(), bodyRange: range.optional(), superTypeRanges: z.array(range).optional(), typeRange: range.optional(), typePosition: z.number().int().nonnegative().optional(),
     packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
     parameterNames: z.array(z.string()).optional(), hasDefault: z.boolean().optional(), typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), storedProperty: z.boolean().optional(), dataConstruction: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional(),
     readableProperties: z.array(z.strictObject({ name: z.string(), type: z.string() })).optional() })),
@@ -73,6 +73,7 @@ export async function queryKotlin(snapshot: ProjectSnapshot, configFile: string,
         const file = snapshot.files.find(file => file.path === observation.file);
         if (!file || Math.max(observation.range.end, 'typePosition' in observation && typeof observation.typePosition === 'number' ? observation.typePosition : 0) > new TextDecoder('utf-8', { fatal: true }).decode(file.bytes).length) throw new Error('Native query returned an invalid source range.');
       }
+      if (value.declarations.some(node => node.docRange && (node.docRange.start < node.range.start || node.docRange.end > node.range.end))) throw new Error('Native documentation lies outside its declaration.');
     }
     if (!await verify()) value = undefined;
   } catch (error) { finding('native-query-failed', message(error)); value = undefined; }

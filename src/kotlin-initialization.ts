@@ -16,6 +16,7 @@ const prerequisites = [
   { alias: 'junit-reporting', name: 'maven:org.junit.platform:junit-platform-reporting', version: '6.1.3', phases: ['test'] },
 ] satisfies Configuration['packages'];
 const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
+export const kotlinStarterContribution = '// Generated dependency contribution; updated by explicit expec install.\ndependencies {\n    add("implementation", "org.jetbrains.kotlin:kotlin-stdlib:2.4.10")\n    add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-launcher:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-console:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-reporting:6.1.3")\n}\n';
 
 /** Prepares ordinary starter bytes and declared prerequisites; never runs Gradle or installs a JDK. */
 export async function kotlinStarter(configuration: Configuration, root: string, javaHome?: string): Promise<{ configuration: Configuration; changes: readonly FileChange[] }> {
@@ -41,7 +42,7 @@ export async function kotlinStarter(configuration: Configuration, root: string, 
     'build.gradle.kts': 'plugins { kotlin("jvm") version "2.4.10" }\nrepositories { mavenCentral() }\nkotlin {\n    jvmToolchain(21)\n    sourceSets.named("main") { kotlin.setSrcDirs(listOf("src/main/kotlin")) }\n    sourceSets.named("test") { kotlin.setSrcDirs(listOf("src/test/kotlin")) }\n}\ndependencyLocking { lockAllConfigurations() }\napply(from = ".expec/kotlin/dependencies.gradle.kts")\ntasks.test { useJUnitPlatform() }\n',
     'expec.kotlin.json': json({ javaHome, sourceRoots: { main: ['src/main/kotlin'], test: ['src/test/kotlin'] } }),
     '.gitignore': '.gradle/\n.kotlin/\nbuild/\n', 'src/main/kotlin/Empty.kt': '// Application contracts are generated here.\n',
-    '.expec/kotlin/dependencies.gradle.kts': '// Generated dependency contribution; updated by explicit expec install.\ndependencies {\n    add("implementation", "org.jetbrains.kotlin:kotlin-stdlib:2.4.10")\n    add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-launcher:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-console:6.1.3")\n    add("testImplementation", "org.junit.platform:junit-platform-reporting:6.1.3")\n}\n',
+    '.expec/kotlin/dependencies.gradle.kts': kotlinStarterContribution,
   }).map(([path, text]) => ({ kind: 'write', path, bytes: new TextEncoder().encode(text) }));
   for (const file of ['gradlew', 'gradlew.bat', 'gradle-wrapper.jar', 'gradle-wrapper.properties']) changes.push({ kind: 'write',
     path: file.startsWith('gradle-wrapper') ? 'gradle/wrapper/' + file : file, bytes: new Uint8Array(await fs.readFile(join(kotlinResources, 'wrapper', file))) });

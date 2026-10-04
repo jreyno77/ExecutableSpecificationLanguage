@@ -3,6 +3,7 @@ import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
 
 export class KotlinDelivery {
   private static readonly instances: KotlinDelivery[] = [];
+  private rememberedFiles: Map<string, Uint8Array> | undefined;
   private constructor(readonly driver: KotlinDeliveryDriver) {}
   static async create(): Promise<KotlinDelivery> {
     const project = new KotlinDelivery(new KotlinDeliveryDriver()); this.instances.push(project); await project.driver.initialize(); await project.driver.configureNative(); return project;
@@ -28,6 +29,13 @@ export class KotlinDelivery {
   async attemptInstallDependencies(): Promise<void> { await this.driver.acquire(true); }
   async attemptReadDependencies(): Promise<void> { await this.driver.acquire(false); }
   appendBuildConfiguration(text: string): Promise<void> { return this.driver.appendBuild(text); }
+  appendDependencyContribution(text: string): Promise<void> { return this.driver.appendContribution(text); }
+  duplicateContributionEvidence(): Promise<void> { return this.driver.duplicateContributionEvidence(); }
+  replaceBuildConfiguration(before: string, after: string): Promise<void> { return this.driver.replace('build.gradle.kts', before, after); }
+  async rememberProjectFiles(): Promise<void> { this.rememberedFiles = await this.driver.projectBytes(); }
+  async expectProjectFilesUnchanged(): Promise<void> {
+    expect(this.rememberedFiles).toBeDefined(); expect(await this.driver.projectBytes()).toEqual(this.rememberedFiles);
+  }
   expectDependencyFailure(code: string): void {
     expect(this.driver.packages.value === undefined).toBe(true);
     expect(this.driver.packages.problems.map(problem => problem.code)).toContain(code);
@@ -99,6 +107,7 @@ export class KotlinDelivery {
   }
   change(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void { this.driver.source(text, renames, retire); }
   implement(name: string, body: string): Promise<void> { return this.driver.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', 'throw NotImplementedError("Not implemented: ' + name + '")', body); }
+  replaceContractText(name: string, before: string, after: string): Promise<void> { return this.driver.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', before, after); }
   read(name: string): Promise<void> { return this.driver.read(name); }
   expectReadText(text: string): void {
     expect(this.driver.readResult.coverage.complete, JSON.stringify(this.driver.readResult.problems)).toBe(true);
@@ -140,6 +149,16 @@ export class KotlinDelivery {
   expectMissingFile(path: string): void { expect(this.driver.files.has(path)).toBe(false); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   search(name: string): Promise<void> { return this.driver.search(name); }
+  async expectDocumentationReference(name: string, file: string, token: string): Promise<void> {
+    const search = this.driver.searchResult;
+    expect(search.outgoing.coverage.complete, JSON.stringify(search.problems)).toBe(true);
+    const uses = search.outgoing.uses.filter(use => use.target.kind === 'specified' && use.target.id === this.driver.subject(this.driver.current, name)
+      && use.at.format === 'kotlin-site-1' && (use.at.value as { file: string; role: string }).file === file && (use.at.value as { role: string }).role === 'reference');
+    expect(uses).toHaveLength(1);
+    const at = uses[0]!.at.value as { start: number; end: number };
+    const actual = await this.driver.capturedFiles();
+    expect(actual.get(file)!.slice(at.start, at.end)).toBe(token);
+  }
   expectIncomingCall(path: string, start: number, end: number): void {
     expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
     expect(this.driver.searchResult.incoming.uses).toEqual(expect.arrayContaining([expect.objectContaining({

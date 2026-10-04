@@ -7,10 +7,11 @@ import { canonical, success } from './identity-baseline.js';
 import { hash, problem } from './project-files.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 import { compareKotlin } from './kotlin-comparison.js';
+import { kotlinDocumentation } from './kotlin-documentation.js';
 
 type Declaration = KotlinQuery['declarations'][number];
 type Edit = { start: number; end: number; text: string; replacesBinding?: true };
-type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[]; adopted?: boolean | undefined; support?: true | undefined };
+type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[]; adopted?: boolean | undefined; documentation?: readonly string[] | undefined; support?: true | undefined };
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 const key = (file: string, selector: Declaration['selector']) => canonical({ file, declaration: selector });
 
@@ -128,6 +129,19 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       edit(node.file, node.range, '', true); continue;
     }
     if (old.kind !== next.kind) { refuse(node.file, 'Native declaration category cannot change over an implementation.'); continue; }
+    const owner = previous.find(file => file.artifacts.some(item => canonical(item.locator.value) === address));
+    const documented = !owner?.adopted || owner.artifacts.some(item => canonical(item.locator.value) === address && owner.documentation?.includes(item.specId));
+    const doc = (declaration: Declaration, texts: ReadonlyMap<string, string>) => declaration.docRange ? texts.get(declaration.file)!.slice(declaration.docRange.start, declaration.docRange.end) : '';
+    const priorDoc = doc(old, original), nextDoc = doc(next, wanted);
+    if (documented && priorDoc !== nextDoc) {
+      const change = kotlinDocumentation(priorDoc, doc(node, sources), nextDoc);
+      if (!change) refuse(node.file, 'The generated documentation is missing, altered or ambiguous.');
+      else {
+        const start = node.docRange?.start ?? node.range.start;
+        const indentation = sources.get(node.file)!.slice(sources.get(node.file)!.lastIndexOf('\n', start - 1) + 1, start);
+        edit(node.file, { start: start + change.start, end: start + change.end }, change.text + (!node.docRange && change.text ? '\n' + indentation : ''), true);
+      }
+    }
     if (old.name !== next.name) {
       edit(node.file, node.nameRange, next.name);
       for (const reference of references(node)) {

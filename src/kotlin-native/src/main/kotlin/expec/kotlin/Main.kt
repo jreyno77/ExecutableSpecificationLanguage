@@ -106,6 +106,7 @@ fun main(args: Array<String>) {
                 declarations.add(buildJsonObject {
                     put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", nativeName(node, text)); if (node.name == null) put("synthetic", true)
                     put("range", text.range(node)); put("nameRange", text.range(if (node is KtConstructor<*>) node.getConstructorKeyword() ?: (node.parent as? KtClassOrObject)?.nameIdentifier ?: node else node.nameIdentifier ?: node))
+                    node.docComment?.let { put("docRange", text.range(it)) }
                     put("packageName", file.packageFqName.asString())
                     put("visibility", when {
                         node.hasModifier(KtTokens.PRIVATE_KEYWORD) -> "private"
