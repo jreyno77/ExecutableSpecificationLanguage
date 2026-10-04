@@ -214,8 +214,8 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
     await this.readReport();
   }
-  async provideDependencies(): Promise<void> {
-    this.native = new NativePackageDriver(); await this.native.initialize();
+  async provideDependencies(parent = ''): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize('project', parent);
     await this.native.publish('example-storage', '2.1.0');
     await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
     await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
