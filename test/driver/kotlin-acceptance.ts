@@ -72,6 +72,10 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
     this.readResult = await this.output.read(this.current.id(group[0]!.id));
   }
+  async searchGroup(): Promise<void> {
+    const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
+    this.searchResult = await this.output.search(this.current.id(group[0]!.id));
+  }
   async runTests(concurrent = false): Promise<void> {
     this.files = await this.capturedFiles(); this.outcomes.length = 0;
     const native = await this.native(), report = JSON.parse(this.files.get('.expec/kotlin/classpath.json')!);

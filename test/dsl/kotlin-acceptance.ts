@@ -37,6 +37,18 @@ export class KotlinAcceptance {
   }
   readOperation(name: string): Promise<void> { return this.driver.readOperation(name); }
   readGroup(): Promise<void> { return this.driver.readGroup(); }
+  searchGroup(): Promise<void> { return this.driver.searchGroup(); }
+  expectReadProblem(code: string): void {
+    expect(this.driver.readResult.problems.map(item => item.code)).toContain(code); expect(this.driver.readResult.coverage.complete).toBe(false);
+  }
+  expectSearchProblem(code: string): void {
+    expect(this.driver.searchResult.problems.map(item => item.code)).toContain(code);
+    expect(this.driver.searchResult.incoming.coverage.complete).toBe(false); expect(this.driver.searchResult.outgoing.coverage.complete).toBe(false);
+  }
+  expectCompleteSearch(): void {
+    expect(this.driver.searchResult.problems).toEqual([]);
+    expect(this.driver.searchResult.incoming.coverage.complete).toBe(true); expect(this.driver.searchResult.outgoing.coverage.complete).toBe(true);
+  }
   expectReadContains(text: string): void {
     expect(this.driver.readResult.problems).toEqual([]); expect(this.driver.readResult.coverage.complete).toBe(true);
     expect(this.driver.readResult.artifacts.map(item => new TextDecoder().decode(item.file.bytes)).join('\n')).toContain(text);

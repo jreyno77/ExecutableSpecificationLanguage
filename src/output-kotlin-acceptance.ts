@@ -47,6 +47,14 @@ class KotlinAcceptance implements OutputAdapter {
       return success(stored);
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin acceptance ownership is invalid.')], deferred: [] }; }
   }
+  private async integrity(snapshot: ProjectSnapshot, stored?: z.infer<typeof state>): Promise<Check> {
+    if (!stored) return { problems: [], deferred: [] };
+    const settings = options.parse(JSON.parse(stored.options)), name = settings.domain[0]!.toUpperCase() + settings.domain.slice(1);
+    const driver = settings.testRoot + '/' + settings.package.replaceAll('.', '/') + '/driver/' + name + 'Driver.kt';
+    if (stored.files.every(file => file.path === driver || snapshot.files.some(actual => actual.path === file.path && actual.version === hash(Buffer.from(file.generated))))) return { problems: [], deferred: [] };
+    const native = await queryKotlin(snapshot, 'expec.kotlin.json');
+    return native.value && !native.problems.length ? checkKotlinTests(snapshot, native.value, stored.files, driver) : { problems: native.problems, deferred: native.deferred };
+  }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     const failure = (code: string, message: string, path = ''): Check<OutputPlan> => ({ problems: [outputProblem(code, path, message)], deferred: [] });
     const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
@@ -139,7 +147,10 @@ class KotlinAcceptance implements OutputAdapter {
   async read(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) } };
-    return new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).read(id, snapshot);
+    const result = await new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).read(id, snapshot);
+    const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
+    return { ...result, problems, coverage: { ...result.coverage, complete: result.coverage.complete && !problems.length,
+      limitations: [...result.coverage.limitations, ...problems.map(item => item.message)] } };
   }
   async search(id: string, snapshot: ProjectSnapshot) {
     const stored = this.state(snapshot);
@@ -147,6 +158,10 @@ class KotlinAcceptance implements OutputAdapter {
       const coverage = { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) };
       return { definitions: [], problems: stored.problems, incoming: { subject: id, direction: 'incoming' as const, coverage, uses: [], unresolved: [] }, outgoing: { subject: id, direction: 'outgoing' as const, coverage, uses: [], unresolved: [] } };
     }
-    return new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).search(id, snapshot);
+    const result = await new KotlinProject({ outputId: this.id }, [...stored.value?.files.flatMap(file => file.artifacts) ?? [], ...stored.value?.fixture ? [stored.value.fixture] : [], ...stored.value?.driver ? [stored.value.driver] : [], ...stored.value?.bindings ?? []]).search(id, snapshot);
+    const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
+    const direction = (key: 'incoming' | 'outgoing') => ({ ...result[key], coverage: { ...result[key].coverage,
+      complete: result[key].coverage.complete && !problems.length, limitations: [...result[key].coverage.limitations, ...problems.map(item => item.message)] } });
+    return { ...result, problems, incoming: direction('incoming'), outgoing: direction('outgoing') };
   }
 }
