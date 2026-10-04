@@ -78,6 +78,8 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
+        env:
+          EXPEC_CLEANUP_TIMINGS: '1'
         run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
