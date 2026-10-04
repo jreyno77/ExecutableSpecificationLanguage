@@ -43,7 +43,8 @@ export class ExecutionExamples {
   expectFailed(title: string, values: { expected: number; actual: number }): void {
     expect(this.driver.nativeExit).toBe(1); expect(this.driver.nativeResult!.success).toBe(false);
     const assertion = this.assertions().find(item => item.title === title)!; expect(assertion.status).toBe('failed');
-    expect(assertion.failureMessages.join('\n')).toContain('expected ' + values.actual + ' to strictly equal ' + values.expected);
+    const difference = /expected ([+-]?\d+(?:\.\d+)?) to strictly equal ([+-]?\d+(?:\.\d+)?)/.exec(assertion.failureMessages.join('\n'));
+    expect(difference?.slice(1).map(Number)).toEqual([values.actual, values.expected]);
   }
   expectActualBasketQuantity(title: string, quantity: number): void {
     expect(this.driver.events.filter(item => item.event === 'observed' && item.title === title).map(item => item.actual)).toEqual([quantity]);
