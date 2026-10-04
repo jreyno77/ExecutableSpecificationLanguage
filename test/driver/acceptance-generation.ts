@@ -4,9 +4,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import ts from 'typescript';
+import { vi } from 'vitest';
 import { NativeContextDriver } from './typescript-context.js';
-import { Compiler, Outputs, SpecificationIdentity, FileProjectWriter, TypeScriptContext, acceptanceOutput,
-  type IdentifiedSpecification, type Output, type OutputWrite, type SpecDiff, type ProjectRead, type ProjectSearch } from '../../src/index.js';
+import { Compiler, Outputs, SpecificationIdentity, FileProjectWriter, TypeScriptContext, LangiumReader, LangiumModel, acceptanceOutput,
+  type IdentifiedSpecification, type Output, type OutputWrite, type OutputPlan, type SpecDiff, type ProjectSearch } from '../../src/index.js';
 
 /** Owns actual project arrangement and public generation; native syntax supplies observations. */
 export class AcceptanceGenerationDriver extends NativeContextDriver {
@@ -20,10 +21,15 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
   sourceText = '';
   private rememberedFiles: { path: string; version: string }[] = [];
   private bodyBefore = '';
+  private rememberedFile = { path: '', text: '' };
   settings: Record<string, unknown> = {};
+  private openedOptions: Record<string, unknown> = {};
   nativeResult: { success: boolean; testResults: { assertionResults: { title: string; status: string; failureMessages: string[] }[] }[] } | undefined;
   private installed = false;
   private observer: string | undefined;
+  private releases: (() => void)[] = [];
+  prepared!: OutputPlan;
+  rememberedIdentity = '';
   constructor() { super(); this.outputs.register(acceptanceOutput); }
   source(text: string): void {
     this.sourceText = text;
@@ -32,11 +38,24 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
     const identified = this.identities.associate(compilation.value);
     if (!identified.value) throw Error(JSON.stringify(identified)); this.current = identified.value;
   }
+  provider(): void {
+    const read = new LangiumReader().read({ sourceId: 'library.expec', text: 'function availableCopies() returns Number\nexamples { example "provider self check": availableCopies() => 1 }' });
+    if (read.status !== 'accepted') throw Error(JSON.stringify(read));
+    const compilation = new Compiler().compile({ source: { sourceId: 'shopping.expec', text: 'use availableCopies from "library"\nexamples { example "imported actual result": availableCopies() => 1 }' },
+      locator: 'shopping', dependencies: { modules: [new LangiumModel('library', read.document)], packages: [] } });
+    if (!compilation.value) throw Error(JSON.stringify(compilation)); const identified = this.identities.associate(compilation.value);
+    if (!identified.value) throw Error(JSON.stringify(identified)); this.current = identified.value;
+  }
   async generate(options: Record<string, unknown>): Promise<void> {
-    const opened = this.outputs.open('acceptance', { ...this.installed ? { configFile: 'tsconfig.json' } : {}, ...this.settings, ...options }, this.context, new FileProjectWriter(this.context), { workspaceModules: ['shopping'] });
+    this.openedOptions = { ...this.installed ? { configFile: 'tsconfig.json' } : {}, ...this.settings, ...options };
+    const opened = this.outputs.open('acceptance', this.openedOptions, this.context, new FileProjectWriter(this.context), { workspaceModules: ['shopping'] });
     if (!opened.value) { this.written = { problems: opened.problems }; return; }
     this.output = opened.value; this.written = await this.output.create(this.current);
     this.confirm();
+  }
+  reopen(options: Record<string, unknown>): void {
+    const opened = this.outputs.open('acceptance', { ...this.openedOptions, ...options }, this.context, new FileProjectWriter(this.context), { workspaceModules: ['shopping'] });
+    if (!opened.value) throw Error(JSON.stringify(opened.problems)); this.output = opened.value;
   }
   private confirm(): void {
     if (this.written.artifacts) {
@@ -49,7 +68,7 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
     if (!compilation.value) throw Error(JSON.stringify(compilation));
     const correspondence = decisions.map(decision => {
       const id = before.baseline.elements.find(item => item.address.name === decision.from)!.id;
-      const target = decision.to && [...compilation.value!.inspection.query('action'), ...compilation.value!.inspection.query('scenario')].find(item => ('name' in item ? item.name : item.title.value) === decision.to);
+      const target = decision.to && [...compilation.value!.inspection.query('action'), ...compilation.value!.inspection.query('check'), ...compilation.value!.inspection.query('scenario')].find(item => ('name' in item ? item.name : item.title.value) === decision.to);
       return target ? { id, to: target.id } : { retire: id };
     });
     const identified = this.identities.associate(compilation.value, before.baseline, correspondence);
@@ -59,9 +78,55 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
     this.sourceText = text; this.current = identified.value; this.diff = compared.value;
   }
   async update(): Promise<void> { this.written = await this.output.update(this.diff, this.current); this.confirm(); }
+  async insert(): Promise<void> { this.written = await this.output.insert(this.diff, this.current); this.confirm(); }
+  async mapDifferentDriverName(from: string, to: string): Promise<void> {
+    const path = 'test/driver/basket.ts'; await this.file(path, (await this.text(path)).replace(from + '(', to + '('));
+    const mapped = this.identities.withArtifacts(this.current, this.current.baseline.artifacts.map(item => item.specId === this.subject(from)
+      ? { ...item, locator: { ...item.locator, value: { file: path, declaration: [{ kind: 'class', name: 'BasketDriver' }, { kind: 'method', name: to, static: false }] } } } : item));
+    if (!mapped.value) throw Error(JSON.stringify(mapped.problems)); this.current = mapped.value;
+  }
+  async deleteSubject(name: string): Promise<void> { this.written = await this.output.delete(this.subject(name)); this.confirm(); }
+  async deleteGroup(): Promise<void> {
+    const groups = this.current.baseline.elements.filter(item => item.address.kind === 'examples'); if (groups.length !== 1) throw Error('Arrange one group.');
+    this.written = await this.output.delete(groups[0]!.id); this.confirm();
+  }
+  async scenarioComment(title: string, comment: string): Promise<void> {
+    const { path, source, call } = await this.callback(title), callback = call.arguments[1] as ts.ArrowFunction;
+    await this.file(path, source.text.slice(0, callback.body.getStart() + 1) + '\n// ' + comment + '\n' + source.text.slice(callback.body.getStart() + 1));
+  }
   subject(name: string): string { const record = this.current.baseline.elements.find(item => item.address.name === name); if (!record) throw Error('Unknown fixture subject: ' + name); return record.id; }
   async readSubject(name: string): Promise<void> { this.read = await this.output.read(this.subject(name)); }
+  async readGroup(): Promise<void> {
+    const groups = this.current.baseline.elements.filter(item => item.address.kind === 'examples');
+    if (groups.length !== 1) throw Error('Arrange one group.'); this.read = await this.output.read(groups[0]!.id);
+  }
   async searchSubject(name: string): Promise<void> { this.searched = await this.output.search(this.subject(name)); }
+  async prepareUpdate(): Promise<void> {
+    const report = await this.output.plan({ operation: 'update', diff: this.diff, current: this.current }, await this.context.readSnapshot());
+    if (!report.value) throw Error(JSON.stringify(report.problems)); this.prepared = report.value;
+  }
+  async applyPrepared(): Promise<void> { const receipt = await new FileProjectWriter(this.context).apply(this.prepared); this.written = { receipt, problems: receipt.problems }; }
+  async callback(title: string): Promise<{ path: string; source: ts.SourceFile; statement: ts.ExpressionStatement; call: ts.CallExpression }> {
+    const artifact = this.current.baseline.artifacts.find(item => item.specId === this.subject(title) && item.locator.format === 'vitest-test-1')!;
+    const path = (artifact.locator.value as { file: string }).file, source = ts.createSourceFile(path, await this.text(path), ts.ScriptTarget.Latest, true);
+    const statement = source.statements.find(node => ts.isExpressionStatement(node) && ts.isCallExpression(node.expression)
+      && ts.isStringLiteralLike(node.expression.arguments[0]!) && node.expression.arguments[0]!.text === title);
+    if (!statement || !ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) throw Error('Actual callback is absent.');
+    return { path, source, statement, call: statement.expression };
+  }
+  async changeCallback(title: string, from: string, to: string): Promise<void> {
+    const { path, source, call } = await this.callback(title), edits: ts.Identifier[] = [];
+    const scan = (node: ts.Node): void => { if (ts.isPropertyAccessExpression(node) && node.name.text === from && ts.isIdentifier(node.name)) edits.push(node.name); node.forEachChild(scan); };
+    scan(call.arguments[1]!); if (edits.length !== 1) throw Error('Arrange exactly one native call.');
+    const name = edits[0]!; await this.file(path, source.text.slice(0, name.getStart()) + to + source.text.slice(name.end));
+  }
+  async duplicateCallback(title: string): Promise<void> { const { path, source, statement } = await this.callback(title); await this.file(path, source.text + '\n' + statement.getFullText()); }
+  async removeNativeVitestDeclaration(): Promise<void> { await fs.unlink(this.path('node_modules/vitest/dist/index.d.ts')); }
+  async emptyCheck(name: string): Promise<void> {
+    const path = 'test/dsl/shopping.ts', source = ts.createSourceFile(path, await this.text(path), ts.ScriptTarget.Latest, true);
+    const method = source.statements.filter(ts.isClassDeclaration).flatMap(node => node.members).find(node => ts.isMethodDeclaration(node) && node.name.getText() === name) as ts.MethodDeclaration;
+    await this.file(path, source.text.slice(0, method.body!.getStart()) + '{}' + source.text.slice(method.body!.end));
+  }
   async changeExpected(value: number): Promise<void> { const path = 'test/acceptance/shopping.test.ts'; await this.file(path, (await this.text(path)).replace('expectBookQuantity("Dune", 1)', 'expectBookQuantity("Dune", ' + value + ')')); }
   async emptyCallback(): Promise<void> {
     const path = 'test/acceptance/shopping.test.ts', source = ts.createSourceFile(path, await this.text(path), ts.ScriptTarget.Latest, true);
@@ -72,8 +137,71 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
   async aliasFixture(): Promise<void> {
     const path = 'test/acceptance/shopping.test.ts'; await this.file(path, (await this.text(path)).replace('import { test }', 'import { test as scenario }').replace('\ntest(', '\nscenario(').replaceAll('\n', '\r\n').replace('  await', '\t// Keep this explanation of the shopper action.\r\n\tawait'));
   }
+  async redirectFixture(): Promise<void> {
+    await this.file('test/dsl/other-test.ts', `import { test as base } from 'vitest';
+      import { Shopping } from './shopping.js'; import { BasketDriver } from '../driver/basket.js';
+      export const test = base.extend('shopping', () => new Shopping(new BasketDriver()));`);
+    const path = 'test/acceptance/shopping.test.ts';
+    await this.file(path, (await this.text(path)).replace('../dsl/shopping-test.js', '../dsl/other-test.js'));
+  }
+  denyWrite(path: string): void {
+    const open = fs.open.bind(fs);
+    this.releases.push(vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (String(args[0]) === this.path(path) && args[1] !== 'r') throw Object.assign(Error('Test denied this native file write'), { code: 'EACCES' });
+      return open(...args);
+    }).mockRestore);
+  }
+  async partialFilesAgree(): Promise<boolean> {
+    const snapshot = await this.context.readSnapshot();
+    for (const outcome of this.written.receipt!.outcomes) for (const observed of outcome.after) {
+      const actual = snapshot.files.find(file => file.path === observed.path);
+      if (observed.state === 'file' && (!actual || actual.version !== observed.version || !Buffer.from(actual.bytes).equals(observed.bytes))) return false;
+      if (observed.state === 'absent' && actual) return false;
+    }
+    return this.written.receipt!.outcomes.some(item => item.state === 'applied') && this.written.receipt!.outcomes.some(item => item.state === 'not-applied');
+  }
+  async implementBasketExcept(except: string): Promise<void> {
+    const path = 'test/driver/shopping.ts';
+    await this.file(path, (await this.text(path)).replace('export class ShoppingDriver {', `export class ShoppingDriver {
+      private readonly available = new Set<string>();
+      private readonly quantities = new Map<string, number>();`));
+    const bodies: Record<string, string> = { bookIsAvailable: 'this.available.add(title);', startWithEmptyBasket: 'this.quantities.clear();',
+      addBook: 'if (!this.available.has(title)) throw Error("Unknown book"); this.quantities.set(title, (this.quantities.get(title) ?? 0) + 1);', bookQuantity: 'return this.quantities.get(title) ?? 0;' };
+    for (const [name, body] of Object.entries(bodies)) if (name !== except) await this.replaceStub(name, body);
+  }
+  override async dispose(): Promise<void> { for (const release of this.releases.reverse()) release(); await super.dispose(); }
   async remember(): Promise<void> { this.rememberedFiles = (await this.context.readSnapshot()).files.map(({ path, version }) => ({ path, version })); }
   async unchanged(): Promise<boolean> { return JSON.stringify((await this.context.readSnapshot()).files.map(({ path, version }) => ({ path, version }))) === JSON.stringify(this.rememberedFiles); }
+  async rememberFile(path: string): Promise<void> { this.rememberedFile = { path, text: await this.text(path) }; }
+  async sameFile(): Promise<boolean> { return this.rememberedFile.text === await this.text(this.rememberedFile.path); }
+  async existingFixture(): Promise<void> {
+    await this.basket();
+    await this.file('test/dsl/shopping.ts', `import { expect } from 'vitest';
+import { BasketDriver } from '../driver/basket.js';
+export class Shopping {
+  constructor(private readonly driver: BasketDriver) {}
+  async bookIsAvailable(title: string): Promise<void> { this.driver.bookIsAvailable(title); }
+  async startWithEmptyBasket(): Promise<void> { this.driver.startWithEmptyBasket(); }
+  async addBook(title: string): Promise<void> { this.driver.addBook(title); }
+  async bookQuantity(title: string): Promise<number> { return this.driver.bookQuantity(title); }
+  async expectBookQuantity(title: string, expected: number): Promise<void> {
+    // Keep this independently authored expectation.
+    expect(await this.bookQuantity(title)).toStrictEqual(expected);
+  }
+}`);
+    await this.file('test/dsl/existing-test.ts', `import { test as base } from 'vitest';
+import { Shopping } from './shopping.js';
+import { BasketDriver } from '../driver/basket.js';
+// Keep this explanation of the fixture.
+export const test = base.extend('shopping', () => new Shopping(new BasketDriver()));`);
+    const artifacts = this.current.baseline.elements.filter(item => ['setup', 'action', 'observation', 'check'].includes(item.address.kind)).map(item => ({
+      specId: item.id, locator: { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file: 'test/dsl/shopping.ts', declaration: [
+        { kind: 'class', name: 'Shopping' }, { kind: 'method', name: item.address.name!, static: false },
+      ] } },
+    }));
+    const mapped = this.identities.withArtifacts(this.current, [...this.current.baseline.artifacts, ...artifacts]);
+    if (!mapped.value) throw Error(JSON.stringify(mapped.problems)); this.current = mapped.value;
+  }
   async driverMethod(name: string): Promise<ts.MethodDeclaration> {
     const locator = this.current.baseline.artifacts.find(item => item.locator.format === 'typescript-symbol-1'
       && (item.locator.value as { file: string }).file.includes('/driver/') && (item.locator.value as { declaration: { name: string }[] }).declaration.at(-1)?.name === name)?.locator;
@@ -85,6 +213,7 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
   async rememberBody(name: string): Promise<void> { this.bodyBefore = (await this.driverMethod(name)).body!.getText(); }
   async sameBody(name: string): Promise<boolean> { return (await this.driverMethod(name)).body!.getText() === this.bodyBefore; }
   rename(from: string, to: string): void { this.revise(this.sourceText.replaceAll(from, to), [{ from, to }]); }
+  renameCheck(from: string, to: string, comparison: string): void { this.revise(this.sourceText.replaceAll(from, to).replace('actual == expected', comparison), [{ from, to }]); }
   retireScenario(title: string): void {
     const node = [...this.current.specification.inspection.query('scenario')].find(item => item.title.value === title)!;
     if (node.origin.kind !== 'source') throw Error('Fixture scenario must be source-backed.');
@@ -176,7 +305,10 @@ export class BasketDriver {
   }
   async operations(text: string, types: readonly string[] = []): Promise<void> {
     await this.nativeDependencies(); await this.file('test/driver/manual.ts', text);
-    const artifacts = this.current.baseline.elements.filter(item => ['setup', 'action', 'observation'].includes(item.address.kind)).map(item => ({
+    const artifacts = this.current.baseline.elements.filter(item => {
+      const node = this.current.specification.inspection.read(this.current.node(item.id));
+      return ['setup', 'action', 'observation'].includes(node.kind) && 'body' in node && node.body.kind === 'absent';
+    }).map(item => ({
       specId: item.id, locator: { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file: 'test/driver/manual.ts', declaration: [
         { kind: 'class', name: 'ManualDriver' }, { kind: 'method', name: item.address.name!, static: false },
       ] } },

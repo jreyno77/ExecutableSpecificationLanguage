@@ -18,9 +18,10 @@ export class AcceptancePreservation {
   readonly problems: Diagnostic[] = [];
   readonly changes: FileChange[] = [];
   readonly state: AcceptanceState;
+  private readonly captured: ProjectSnapshot;
   constructor(snapshot: ProjectSnapshot, options: AcceptanceOptions, previous: AcceptanceState | undefined, rendered: readonly AcceptanceFile[],
     associations: readonly ArtifactAssociation[], mappings: readonly ArtifactAssociation[], driver: { file: string; name: string } | undefined, diff?: SpecDiff) {
-    this.state = { format: 1, options: acceptancePlacement(options), authored: previous?.authored ?? [], files: [] };
+    this.state = { format: 1, options: acceptancePlacement(options), mappings: previous?.mappings ?? [], deleted: previous?.deleted ?? [], authored: previous?.authored ?? [], files: [] };
     let captured = snapshot;
     const className = options.domain[0]!.toUpperCase() + options.domain.slice(1), nativeOptions = typescriptOptions.parse({ directory: options.testRoot, configFile: options.configFile });
     for (const file of rendered) {
@@ -31,7 +32,7 @@ export class AcceptancePreservation {
       if (role) {
         const mapped = mappings.filter(item => item.locator.outputId === 'acceptance' && item.locator.format === 'typescript-symbol-1'
           && (item.locator.value as { file: string }).file === file.path);
-        if (original && !before && !(role === 'driver' && driver && options.adoptExisting)) { this.problems.push(diagnostic('unowned-project-artifact', 'Existing code needs explicit native adoption.', file.path)); continue; }
+        if (original && !before && !(options.adoptExisting && (role === 'driver' && driver || role === 'dsl' && options.fixture))) { this.problems.push(diagnostic('unowned-project-artifact', 'Existing code needs explicit native adoption.', file.path)); continue; }
         if (!before && driver && role === 'driver' && artifacts.some(item => !mapped.some(mapping => mapping.specId === item.specId))) {
           this.problems.push(diagnostic('adoption-contract-mismatch', 'Every current driver operation needs an explicit existing member.', file.path)); continue;
         }
@@ -49,7 +50,7 @@ export class AcceptancePreservation {
         }
         if (role === 'dsl' && before) {
           const current = captured.files.find(item => item.path === file.path)!;
-          const bodies = authoredBodies(file, before, new TextDecoder().decode(current.bytes));
+          const bodies = authoredBodies(file, before, preservation.files[0], new TextDecoder().decode(current.bytes));
           this.problems.push(...bodies.problems);
           if (bodies.text !== new TextDecoder().decode(current.bytes)) {
             const bytes = Buffer.from(bodies.text); captured = { ...captured, files: captured.files.map(item => item.path === file.path ? { path: file.path, bytes, version: hash(bytes) } : item) };
@@ -78,18 +79,37 @@ export class AcceptancePreservation {
       if (file && before?.version !== file.version) this.changes.push({ kind: 'write', path, bytes: file.bytes });
     }
     for (const file of snapshot.files) if (!captured.files.some(item => item.path === file.path)) this.changes.push({ kind: 'remove', path: file.path });
+    this.captured = captured;
+  }
+  unfinished(implementations: ReadonlyMap<string, Diagnostic>): Diagnostic[] {
+    return [...implementations].flatMap(([id, problem]) => {
+      const file = this.state.files.find(file => file.container?.role === 'driver' && file.artifacts.some(item => item.specId === id))
+        ?? this.state.files.find(file => file.container?.role === 'dsl' && file.artifacts.some(item => item.specId === id));
+      if (!file || file.adopted?.includes(id)) return [];
+      const actual = this.captured.files.find(item => item.path === file.path), artifact = file.artifacts.find(item => item.specId === id)!;
+      const selectors = (artifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration;
+      const baseline = nativeSelection(ts.createSourceFile(file.path, file.generated, ts.ScriptTarget.Latest, true), selectors)[0],
+        current = actual && nativeSelection(ts.createSourceFile(file.path, new TextDecoder().decode(actual.bytes), ts.ScriptTarget.Latest, true), selectors)[0];
+      return baseline && current && ts.isMethodDeclaration(baseline) && ts.isMethodDeclaration(current)
+        && baseline.body && current.body && tokens(baseline.body.getText()) !== tokens(current.body.getText()) ? [] : [problem];
+    });
   }
 }
 
-function authoredBodies(desired: AcceptanceFile, before: NativeBaseline, text: string): { text: string; problems: Diagnostic[] } {
+function authoredBodies(desired: AcceptanceFile, before: NativeBaseline, after: NativeBaseline | undefined, text: string): { text: string; problems: Diagnostic[] } {
   const prior = ts.createSourceFile(desired.path, before.generated, ts.ScriptTarget.Latest, true),
     wanted = ts.createSourceFile(desired.path, desired.text, ts.ScriptTarget.Latest, true), current = ts.createSourceFile(desired.path, text, ts.ScriptTarget.Latest, true),
     edits = new NativeEdits(), problems: Diagnostic[] = [];
   for (const artifact of before.renderedArtifacts ?? before.artifacts) {
     const selectors = (artifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration;
     if (!selectors) continue;
-    const previous = nativeSelection(prior, selectors)[0], next = nativeSelection(wanted, selectors)[0], actual = nativeSelection(current, selectors)[0];
-    if (!previous || !next || !actual || !ts.isMethodDeclaration(previous) || !ts.isMethodDeclaration(next) || !ts.isMethodDeclaration(actual)
+    const desiredArtifact = (after?.renderedArtifacts ?? after?.artifacts)?.find(item => item.specId === artifact.specId),
+      actualArtifact = after?.artifacts.find(item => item.specId === artifact.specId);
+    if (!desiredArtifact || !actualArtifact) continue;
+    const previous = nativeSelection(prior, selectors)[0],
+      next = nativeSelection(wanted, (desiredArtifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration)[0],
+      actual = nativeSelection(current, (actualArtifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration)[0];
+    if (before.adopted?.includes(artifact.specId) || !previous || !next || !actual || !ts.isMethodDeclaration(previous) || !ts.isMethodDeclaration(next) || !ts.isMethodDeclaration(actual)
       || !previous.body || !next.body || !actual.body || tokens(previous.body.getText()) === tokens(next.body.getText()) || tokens(actual.body.getText()) === tokens(next.body.getText())) continue;
     if (tokens(actual.body.getText()) !== tokens(previous.body.getText())) problems.push(diagnostic('handwritten-check-conflict', 'Handwritten check or composition logic competes with the authored change.', desired.path, actual.body.getStart(), actual.body.end - actual.body.getStart()));
     else edits.replaceSyntax(desired.path, text, actual.body.getStart(), actual.body.end, next.body.getText());

@@ -8,9 +8,9 @@ import type { TypeId } from './types.js';
 import { acceptanceRuntime } from './acceptance-runtime.js';
 import type { AcceptanceBindings } from './acceptance-bindings.js';
 
-type Operation = Item<'setup' | 'action' | 'observation' | 'check'>;
+type Operation = Item<'setup' | 'action' | 'observation' | 'check' | 'function' | 'capability'>;
 export interface AcceptanceFile { path: string; text: string }
-export interface AcceptanceTarget { file: string; name: string }
+export interface AcceptanceTarget { file?: string | undefined; from?: string | undefined; name: string; as?: string | undefined; member?: string; instance?: boolean }
 const quote = JSON.stringify;
 
 /** Emits readable domain calls from the compiler's already checked operations. */
@@ -18,21 +18,51 @@ export class AcceptanceProjection {
   readonly problems: Diagnostic[] = [];
   readonly artifacts: ArtifactAssociation[] = [];
   readonly obligations: Diagnostic[] = [];
+  readonly implementations = new Map<string, Diagnostic>();
+  readonly runtimeTargets = new Set<string>();
   private imports = new Map<string, AcceptanceTarget>();
   private readonly inspection;
   private readonly operations: Operation[];
+  private readonly bridges = new Set<NodeId>();
   constructor(private readonly current: IdentifiedSpecification, private readonly domain: string, private readonly root: string,
-    private readonly driver?: { file: string; name: string }, private readonly targets = new Map<string, AcceptanceTarget>(), private readonly bindings?: AcceptanceBindings) {
+    private readonly driver?: { file: string; name: string }, private readonly targets = new Map<string, AcceptanceTarget>(), private readonly bindings?: AcceptanceBindings,
+    private readonly modules = new Set([current.specification.entry]), private readonly fixture?: AcceptanceTarget, private readonly driverNames = new Map<string, string>()) {
     this.inspection = current.specification.inspection;
-    this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')];
+    this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
+    const inspect = (node: Item): void => {
+      if (node.kind === 'call-expression') {
+        const selected = current.specification.call(node.id).value!;
+        const operation = this.inspection.read(selected), target = targets.get(current.id(selected));
+        if (['function', 'capability'].includes(operation.kind) && this.owned(operation) && (!target || target.instance && !this.receiver(node))) {
+          if (!this.bridges.has(selected)) this.operations.push(operation as Operation); this.bridges.add(selected);
+        }
+      }
+      for (const child of this.inspection.children(node.id)) inspect(child);
+    };
+    for (const group of this.inspection.query('examples')) if (this.owned(group)) inspect(group);
   }
+  private owned(item: Item): boolean { return item.origin.kind === 'source' && this.modules.has(item.origin.module); }
   private name(item: Item): string { return this.bindings?.name(item) ?? ('name' in item ? item.name : item.kind); }
+  private driverName(item: Item): string { return this.driverNames.get(this.current.id(item.id)) ?? this.name(item); }
+  private needsDriver(operation: Operation): boolean { return this.bridges.has(operation.id) || operation.body.kind === 'absent' && operation.kind !== 'check'; }
+  private receiver(call: Item<'call-expression'>): Item | undefined {
+    const callee = this.inspection.read(call.callee.id);
+    if (callee.kind !== 'member-expression') return undefined;
+    const receiver = callee.receiver, reference = receiver.kind === 'name-expression' && receiver.reference.resolution;
+    return reference && reference.status === 'bound' && ['concept', 'component', 'class', 'interface'].includes(this.inspection.read(reference.target).kind) ? undefined : receiver;
+  }
   private problem(code: string, at: Item, message: string): string {
     this.problems.push({ code, message, at: at.origin, related: [] }); return 'undefined';
   }
   private imported(target: AcceptanceTarget): string {
-    const name = [this.domain, 'expect', 'test', 'expectData', 'comparisonData', 'comparisonEqual', 'finiteNumber'].includes(target.name) ? target.name + 'Implementation' : target.name;
-    this.imports.set(name, target); return name;
+    const name = target.as ?? ([this.domain, 'expect', 'test', 'expectData', 'comparisonData', 'comparisonEqual', 'finiteNumber'].includes(target.name) ? target.name + 'Implementation' : target.name);
+    const before = this.imports.get(name);
+    if (before && (before.file !== target.file || before.from !== target.from || before.name !== target.name)) this.problems.push({
+      code: 'native-name-conflict', message: 'Different native targets require distinct import names: ' + name,
+      at: { kind: 'dependency', path: ['outputs', 'acceptance', 'imports', name] }, related: [],
+    });
+    else this.imports.set(name, target);
+    return name;
   }
   private expression(node: Item, receiver: string): string {
     switch (node.kind) {
@@ -44,13 +74,17 @@ export class AcceptanceProjection {
         const binding = node.reference.resolution;
         if (binding.status === 'bound') {
           const target = this.inspection.read(binding.target);
-          if (target.kind === 'fixture') return receiver + '.' + target.name;
+          if (target.kind === 'fixture') return receiver + '.' + this.name(target);
+          if (target.kind === 'parameter') return this.name(target);
         }
         return node.reference.segments.join('.');
       }
       case 'grouped-expression': return '(' + this.expression(node.inner, receiver) + ')';
       case 'list-expression': return '[' + node.elements.map(item => this.expression(item, receiver)).join(', ') + ']';
       case 'record-expression': return '{ ' + node.entries.map(item => '[' + quote(item.name) + ']: ' + this.expression(item.value, receiver)).join(', ') + ' }';
+      case 'member-expression': return '(' + this.expression(node.receiver, receiver) + ')[' + quote(node.member.segments[0]!) + ']';
+      case 'unary-expression': return node.operator === 'not' ? '(!' + this.expression(node.operand, receiver) + ')'
+        : '(' + node.operator + 'finiteNumber(' + this.expression(node.operand, receiver) + ', "unary operand"))';
       case 'binary-expression': {
         const left = this.expression(node.left, receiver), right = this.expression(node.right, receiver);
         if (node.operator === '==' || node.operator === '!=') return (node.operator === '!=' ? '!' : '') + 'comparisonEqual(' + left + ', ' + right + ')';
@@ -62,12 +96,18 @@ export class AcceptanceProjection {
       case 'call-expression': {
         const selected = this.current.specification.call(node.id).value!;
         const operation = this.inspection.read(selected);
+        const arguments_ = [...node.arguments, ...('parameters' in operation ? operation.parameters.slice(node.arguments.length).flatMap(parameter => parameter.defaultValue ? [parameter.defaultValue] : []) : [])]
+          .map(item => this.expression(item, receiver)).join(', ');
         const target = this.targets.get(this.current.id(selected));
-        if (target) return 'await ' + this.imported(target) + '(' + node.arguments.map(item => this.expression(item, receiver)).join(', ') + ')';
+        if (target && !this.bridges.has(selected)) {
+          this.runtimeTargets.add(this.current.id(selected));
+          const object = target.instance ? '(' + this.expression(this.receiver(node)!, receiver) + ')' : this.imported(target);
+          return 'await ' + object + (target.member ? '[' + quote(target.member) + ']' : '') + '(' + arguments_ + ')';
+        }
         if (!this.operations.some(item => item.id === selected)) return this.problem('missing-native-mapping', node, 'The selected application call requires its actual executable association.');
         if (!('name' in operation)) return this.problem('missing-native-mapping', node, 'This checked call needs an executable native association.');
-        const prefix = receiver === 'this' && 'body' in operation && operation.body.kind === 'absent' && operation.kind !== 'check' ? 'this.driver' : receiver;
-        return 'await ' + prefix + '.' + this.name(operation) + '(' + node.arguments.map(item => this.expression(item, receiver)).join(', ') + ')';
+        const prefix = receiver === 'this' && this.needsDriver(operation as Operation) ? 'this.driver' : receiver;
+        return 'await ' + prefix + '.' + (prefix === 'this.driver' ? this.driverName(operation) : this.name(operation)) + '(' + arguments_ + ')';
       }
       default: return this.problem('unsupported-output', node, 'Expression generation is not available for ' + node.kind + '.');
     }
@@ -89,8 +129,9 @@ export class AcceptanceProjection {
       return ({ Text: 'string', Number: 'number', Boolean: 'boolean', Nothing: 'void' } as Record<string, string>)[item.name] ?? 'unknown';
     }
     if (type.kind === 'declared' || type.kind === 'alias' || type.kind === 'parameter') {
-      const target = this.targets.get(this.current.id(type.declaration));
-      if (target) return this.imported(target);
+      if (type.kind === 'parameter') return this.name(this.inspection.read(type.declaration));
+      const rule = this.bindings?.imported(this.inspection.read(type.declaration)), target = rule ?? this.targets.get(this.current.id(type.declaration));
+      if (target) return this.imported(target) + (type.arguments.length ? '<' + type.arguments.map(argument => this.typeValue(argument)).join(', ') + '>' : '');
       return this.problem('missing-native-mapping', this.inspection.read(type.declaration), 'The declared runtime type requires its exact native association.');
     }
     if (type.kind === 'optional') return this.typeValue(type.inner) + ' | undefined';
@@ -100,12 +141,14 @@ export class AcceptanceProjection {
     throw Error('Unsupported checked type.');
   }
   private method(operation: Operation, driver: boolean): string {
+    const names = operation.parameters.map(parameter => this.name(parameter));
+    if (new Set(names).size !== names.length) this.problem('native-name-conflict', operation, 'Distinct parameters require distinct native names.');
     const parameters = operation.parameters.map(parameter => this.name(parameter) + ': ' + this.type(parameter.declaredType.id)).join(', ');
     const result = operation.kind === 'check' || !operation.returnType ? 'void' : this.type(operation.returnType.id);
     const missing = 'throw new Error(' + quote('Not implemented: ' + this.domain + '.' + this.name(operation)) + ');';
     let body = missing;
-    if (driver || operation.kind === 'check' && operation.body.kind === 'absent') this.obligations.push({ code: 'implementation-required', message: 'Implement ' + this.domain + '.' + operation.name + '.', at: operation.origin, related: [] });
-    if (!driver && operation.body.kind === 'available') body = operation.body.content.members.map(statement => {
+    if (driver || operation.kind === 'check' && operation.body.kind === 'absent') this.implementations.set(this.current.id(operation.id), { code: 'implementation-required', message: 'Implement ' + this.domain + '.' + operation.name + '.', at: operation.origin, related: [] });
+    if (!driver && !this.bridges.has(operation.id) && operation.body.kind === 'available') body = operation.body.content.members.map(statement => {
       switch (statement.kind) {
         case 'let': return 'const ' + statement.name + ' = ' + this.expression(statement.value, 'this') + ';';
         case 'assert': return this.assertion(statement.expression, 'this');
@@ -113,11 +156,11 @@ export class AcceptanceProjection {
         case 'return': return 'return ' + this.expression(statement.expression, 'this') + ';';
       }
     }).join('\n    ');
-    else if (!driver && operation.kind !== 'check') body = 'return await this.driver.' + this.name(operation) + '(' + operation.parameters.map(parameter => this.name(parameter)).join(', ') + ');';
+    else if (!driver && operation.kind !== 'check') body = 'return await this.driver.' + this.driverName(operation) + '(' + operation.parameters.map(parameter => this.name(parameter)).join(', ') + ');';
     return '  async ' + this.name(operation) + '(' + parameters + '): Promise<' + result + '> {\n    ' + body + '\n  }';
   }
   files(): AcceptanceFile[] {
-    const className = this.domain[0]!.toUpperCase() + this.domain.slice(1), groups = [...this.inspection.query('examples')], tests: AcceptanceFile[] = [];
+    const className = this.domain[0]!.toUpperCase() + this.domain.slice(1), groups = [...this.inspection.query('examples')].filter(item => this.owned(item)), tests: AcceptanceFile[] = [];
     const paths = new Set<string>(), names = new Set<string>();
     for (const operation of this.operations) {
       const name = this.name(operation);
@@ -146,9 +189,10 @@ export class AcceptanceProjection {
         });
         return '/* @expec-test ' + quote(id).replaceAll('/', '\\/') + ' */\ntest(' + quote(scenario.title.value) + ', async ({ ' + this.domain + ' }) => {\n' + steps.join('\n') + '\n});';
       });
-      tests.push({ path, text: 'import { test } from "../dsl/' + this.domain + '-test.js";\nimport { expect } from "vitest";\nimport { expectData, comparisonEqual, finiteNumber } from "../dsl/comparison.js";\n' + this.importText(path) + '\n' + bodies.join('\n\n') + '\n' });
+      const fixture = this.fixture ?? { name: 'test', file: this.root + '/dsl/' + this.domain + '-test.ts' }, relative = posix.relative(posix.dirname(path), fixture.file!).replace(/\.ts$/, '.js');
+      tests.push({ path, text: 'import { ' + fixture.name + (fixture.name === 'test' ? '' : ' as test') + ' } from ' + quote(relative.startsWith('.') ? relative : './' + relative) + ';\nimport { expect } from "vitest";\nimport { expectData, comparisonEqual, finiteNumber } from "../dsl/comparison.js";\n' + this.importText(path) + '\n' + bodies.join('\n\n') + '\n' });
     }
-    for (const operation of this.operations) for (const layer of operation.body.kind === 'absent' && operation.kind !== 'check' ? ['dsl', 'driver'] : ['dsl']) {
+    for (const operation of this.operations) for (const layer of this.needsDriver(operation) ? ['dsl', 'driver'] : ['dsl']) {
       if (layer === 'driver' && this.driver) {
         const mapped = this.current.baseline.artifacts.filter(item => item.specId === this.current.id(operation.id) && item.locator.outputId === 'acceptance'
           && item.locator.format === 'typescript-symbol-1' && (item.locator.value as { file: string }).file === this.driver!.file);
@@ -168,12 +212,14 @@ export class AcceptanceProjection {
     const driverName = this.driver?.name ?? className + 'Driver';
     const driverImport = posix.relative(this.root + '/dsl', this.driver?.file ?? this.root + '/driver/' + this.domain + '.ts').replace(/\.ts$/, '.js');
     this.imports.clear();
-    const driverMethods = this.operations.filter(operation => operation.body.kind === 'absent' && operation.kind !== 'check').map(operation => this.method(operation, true)).join('\n');
+    const driverMethods = this.operations.filter(operation => this.needsDriver(operation)).map(operation => this.method(operation, true)).join('\n');
     const driverImports = this.importText(this.root + '/driver/' + this.domain + '.ts');
     this.imports.clear();
     const fixtures: string[] = [], visited = new Set<NodeId>();
     const fixture = (item: Item<'fixture'>): void => {
       if (visited.has(item.id)) return; visited.add(item.id);
+      const name = this.name(item);
+      if (names.has(name)) this.problem('native-name-conflict', item, 'Distinct data and operations require distinct native names: ' + name); names.add(name);
       const dependencies = (node: Item): void => {
         if (node.kind === 'reference' && node.resolution.status === 'bound') {
           const target = this.inspection.read(node.resolution.target); if (target.kind === 'fixture') fixture(target);
@@ -181,12 +227,12 @@ export class AcceptanceProjection {
         for (const child of this.inspection.children(node.id)) dependencies(child);
       };
       dependencies(item.value);
-      fixtures.push('  readonly ' + item.name + ': ' + this.type(item.declaredType.id) + ' = ' + this.expression(item.value, 'this') + ';');
+      fixtures.push('  readonly ' + name + ': ' + this.type(item.declaredType.id) + ' = ' + this.expression(item.value, 'this') + ';');
       this.artifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'acceptance', format: 'typescript-symbol-1', value: {
-        file: this.root + '/dsl/' + this.domain + '.ts', declaration: [{ kind: 'class', name: className }, { kind: 'property', name: item.name, static: false }],
+        file: this.root + '/dsl/' + this.domain + '.ts', declaration: [{ kind: 'class', name: className }, { kind: 'property', name, static: false }],
       } } });
     };
-    for (const item of this.inspection.query('fixture')) fixture(item);
+    for (const item of this.inspection.query('fixture')) if (this.owned(item)) fixture(item);
     const methods = this.operations.map(operation => this.method(operation, false)).join('\n');
     return [
       { path: this.root + '/dsl/comparison.ts', text: 'import { expect } from "vitest";\n' + acceptanceRuntime + '\nexport function expectData(actual: unknown, expected: unknown): void {\n  expect(comparisonData(actual, "actual")).toStrictEqual(comparisonData(expected, "expected"));\n}\n' },
@@ -194,14 +240,14 @@ export class AcceptanceProjection {
       { path: this.root + '/dsl/' + this.domain + '.ts', text: 'import { expect } from "vitest";\nimport { expectData, comparisonEqual, finiteNumber } from "./comparison.js";\nimport { ' + driverName + ' } from ' + quote(driverImport.startsWith('.') ? driverImport : './' + driverImport) + ';\n'
         + this.importText(this.root + '/dsl/' + this.domain + '.ts')
         + 'export class ' + className + ' {\n  constructor(private readonly driver: ' + driverName + ') {}\n' + fixtures.join('\n') + '\n' + methods + '\n}\n' },
-      { path: this.root + '/dsl/' + this.domain + '-test.ts', text: 'import { test as baseTest } from "vitest";\nimport { ' + className + ' } from "./' + this.domain + '.js";\nimport { ' + driverName + ' } from ' + quote(driverImport.startsWith('.') ? driverImport : './' + driverImport) + ';\nexport const test = baseTest.extend(' + quote(this.domain) + ', () => new ' + className + '(new ' + driverName + '()));\n' },
+      ...this.fixture ? [] : [{ path: this.root + '/dsl/' + this.domain + '-test.ts', text: 'import { test as baseTest } from "vitest";\nimport { ' + className + ' } from "./' + this.domain + '.js";\nimport { ' + driverName + ' } from ' + quote(driverImport.startsWith('.') ? driverImport : './' + driverImport) + ';\nexport const test = baseTest.extend(' + quote(this.domain) + ', () => new ' + className + '(new ' + driverName + '()));\n' }],
       ...tests,
     ];
   }
   private importText(file: string): string {
-    return [...this.imports].map(([name, target]) => {
-      const path = posix.relative(posix.dirname(file), target.file).replace(/\.ts$/, '.js');
-      return 'import { ' + target.name + (name === target.name ? '' : ' as ' + name) + ' } from ' + quote(path.startsWith('.') ? path : './' + path) + ';\n';
+    return [...this.imports].filter(([, target]) => target.file || target.from).map(([name, target]) => {
+      const path = target.file ? posix.relative(posix.dirname(file), target.file).replace(/\.ts$/, '.js') : undefined;
+      return 'import { ' + target.name + (name === target.name ? '' : ' as ' + name) + ' } from ' + quote(target.from ?? (path!.startsWith('.') ? path! : './' + path)) + ';\n';
     }).join('');
   }
 }

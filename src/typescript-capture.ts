@@ -36,7 +36,7 @@ export class TypeScriptCapture {
   readonly resolveModule: (name: string, from: string) => ts.SourceFile | undefined;
   private readonly nativeFiles = new Set<string>();
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
-  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs) {
+  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs, requireChecking = false) {
     requireInput(snapshot && snapshot.root && typeof snapshot.root.path === 'string' && isAbsolute(snapshot.root.path)
       && typeof snapshot.root.identity === 'string' && !!snapshot.root.identity && Array.isArray(snapshot.files)
       && Array.isArray(snapshot.problems) && typeof snapshot.complete === 'boolean' && snapshot.complete === !snapshot.problems.length
@@ -96,6 +96,7 @@ export class TypeScriptCapture {
     // Acquisition must see missing inputs even when the user's semantic checks are disabled.
     // Pure project queries retain the original checking options.
     if (inputs) options = { ...options, skipLibCheck: false, skipDefaultLibCheck: false, noCheck: false };
+    else if (requireChecking) options = { ...options, noCheck: false };
     const read = (path: string): string | undefined => {
       if (!path.startsWith(libraries + '/')) return projectRead(path);
       const name = path.slice(libraries.length + 1);

@@ -21,6 +21,28 @@ const shoppingSource = `examples {
 afterEach(async () => { for (const project of projects.splice(0)) await project.dispose(); });
 export class AcceptanceGenerationExamples {
   constructor(readonly driver: AcceptanceGenerationDriver) {}
+  insert(): Promise<void> { return this.driver.insert(); }
+  mapDifferentDriverName(from: string, to: string): Promise<void> { return this.driver.mapDifferentDriverName(from, to); }
+  renameCheck(from: string, to: string, comparison: string): void { this.driver.renameCheck(from, to, comparison); }
+  connectNativeDriver(text: string, types: string[] = []): Promise<void> { return this.driver.operations(text, types); }
+  readExamples(): Promise<void> { return this.driver.readGroup(); }
+  async disableNativeChecking(): Promise<void> {
+    const config = JSON.parse(await this.driver.text('tsconfig.json')); config.compilerOptions.noCheck = true;
+    await this.driver.file('tsconfig.json', JSON.stringify(config));
+  }
+  async captureOldApplication(): Promise<void> {
+    await this.driver.basket();
+    await this.driver.file('test/driver/basket.ts', (await this.driver.text('test/driver/basket.ts')).replace('bookQuantity(title: string): number', 'bookQuantity(title: string): string').replace('return this.basket.quantity(title);', 'return "old result";'));
+    this.driver.snapshot = await this.driver.context.readSnapshot();
+    expect(new TextDecoder().decode(this.driver.snapshot.files.find(file => file.path === 'test/driver/basket.ts')!.bytes)).toContain('return "old result"');
+  }
+  async expectOneDriverMethod(name: string): Promise<void> {
+    const node = await this.driver.driverMethod(name);
+    expect(node.parent.getChildren().flatMap(child => child.getChildren()).filter(child => 'name' in child && (child.name as { getText(): string }).getText() === name)).toHaveLength(1);
+  }
+  expectApplicationAssociation(name: string, outputId: string): void {
+    expect(this.driver.current.baseline.artifacts.filter(item => item.specId === this.driver.subject(name)).map(item => item.locator.outputId)).toEqual([outputId]);
+  }
   static async fromSource(text: string): Promise<AcceptanceGenerationExamples> {
     const driver = new AcceptanceGenerationDriver(); projects.push(driver);
     await driver.connect(); driver.source(text); return new AcceptanceGenerationExamples(driver);
@@ -44,11 +66,43 @@ export class AcceptanceGenerationExamples {
 }`);
   }
   generate(options: Record<string, unknown>): Promise<void> { return this.driver.generate(options); }
+  reopen(options: Record<string, unknown>): void { this.driver.reopen(options); }
+  revise(text: string): void { this.driver.revise(text); }
   rememberFiles(): Promise<void> { return this.driver.remember(); }
   async expectAllBytesUnchanged(): Promise<void> { expect(await this.driver.unchanged()).toBe(true); }
+  rememberScenarioIdentity(title: string): void { this.driver.rememberedIdentity = this.driver.subject(title); }
+  renameScenario(from: string, to: string): void { this.driver.rename(from, to); }
+  expectScenarioIdentityUnchanged(title: string): void { expect(this.driver.subject(title)).toBe(this.driver.rememberedIdentity); }
+  establishScenarioIdentity(id: string): void { this.driver.identify(['scenario', 'example'], [id]); }
+  expectDefinitionFiles(paths: string[]): void { expect([...new Set(this.driver.searched.definitions.map(item => (item.value as { file: string }).file))].sort()).toEqual([...paths].sort()); }
+  expectScenarioDefinition(title: string, file: string): void {
+    expect(this.driver.searched.definitions).toEqual([{ outputId: 'acceptance', format: 'vitest-test-1', value: { file, id: this.driver.subject(title) } }]);
+  }
+  async expectActualUse(file: string, token: string, direction: 'incoming' | 'outgoing', target?: 'project'): Promise<void> {
+    const text = await this.driver.text(file), uses = this.driver.searched[direction].uses;
+    expect(uses.some(use => { const at = use.at.value as { file: string; start: number; end: number; role: string };
+      return at.file === file && text.slice(at.start, at.end) === token && at.role === 'call' && (!target || use.target.kind === target); })).toBe(true);
+  }
+  changeActualScenarioCall(title: string, from: string, to: string): Promise<void> { return this.driver.changeCallback(title, from, to); }
+  copyActualScenarioWithMarker(title: string): Promise<void> { return this.driver.duplicateCallback(title); }
+  removeActualVitestDeclaration(): Promise<void> { return this.driver.removeNativeVitestDeclaration(); }
+  expectIncompleteNativeSearch(): void { expect(this.driver.searched.problems.length).toBeGreaterThan(0); expect(this.driver.searched.incoming.coverage.complete).toBe(false); }
+  prepareUpdate(): Promise<void> { return this.driver.prepareUpdate(); }
+  applyPreparedUpdate(): Promise<void> { return this.driver.applyPrepared(); }
+  expectStaleWriteStopped(): void { expect(this.driver.written.receipt?.status).toBe('stopped'); expect(this.driver.written.problems.map(item => item.code)).toContain('stale-project'); }
+  emptyGeneratedCheck(name: string): Promise<void> { return this.driver.emptyCheck(name); }
+  establishHandwrittenFixtureProject(): Promise<void> { return this.driver.existingFixture(); }
+  rememberFile(path: string): Promise<void> { return this.driver.rememberFile(path); }
+  async expectRememberedFileUnchanged(): Promise<void> { expect(await this.driver.sameFile()).toBe(true); }
+  expectNoAcceptanceOwnershipOf(path: string): void { expect(this.driver.written.artifacts!.some(item => (item.locator.value as { file: string }).file === path)).toBe(false); }
   expectWriteStatus(status: string): void { expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]); expect(this.driver.written.receipt?.status).toBe(status); }
   reviseToShoppingContract(): void { this.driver.revise(shoppingSource); }
   update(): Promise<void> { return this.driver.update(); }
+  deleteScenario(title: string): Promise<void> { return this.driver.deleteSubject(title); }
+  deleteOnlyExamplesGroup(): Promise<void> { return this.driver.deleteGroup(); }
+  expectNoConfirmedScenarioAssociation(title: string): void { expect(this.driver.written.artifacts!.some(item => item.specId === this.driver.subject(title))).toBe(false); }
+  addScenarioComment(title: string, comment: string): Promise<void> { return this.driver.scenarioComment(title, comment); }
+  async expectFileAbsent(path: string): Promise<void> { await expect(this.driver.text(path)).rejects.toMatchObject({ code: 'ENOENT' }); }
   mapDriverClass(file: string, name: string): void { this.driver.settings.driver = { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
   mapDriverMethods(names: string[]): void { this.driver.mapDriverMethods(names); }
   rememberDriverBody(name: string): Promise<void> { return this.driver.rememberBody(name); }
@@ -76,10 +130,35 @@ export class AcceptanceGenerationExamples {
   expectNoOutgoingOperation(name: string): void { expect(this.driver.searched.outgoing.uses.some(use => use.target.kind === 'specified' && use.target.id === this.driver.subject(name))).toBe(false); }
   expectIncomingScenario(title: string): void { expect(this.driver.searched.incoming.uses).toEqual(expect.arrayContaining([expect.objectContaining({ target: { kind: 'specified', id: this.driver.subject(title) } })])); }
   expectReadProblem(code: string): void { expect(this.driver.read.problems.map(item => item.code)).toContain(code); expect(this.driver.read.coverage.complete).toBe(false); }
+  async expectReadProblemAt(code: string, file: string, text: string): Promise<void> {
+    this.expectReadProblem(code); const bytes = await this.driver.text(file);
+    expect(this.driver.read.problems.some(problem => problem.code === code && problem.at.kind === 'dependency'
+      && problem.at.path[1] === file && typeof problem.at.path[2] === 'number' && typeof problem.at.path[3] === 'number'
+      && bytes.slice(problem.at.path[2], problem.at.path[2] + problem.at.path[3]) === text)).toBe(true);
+  }
   expectSearchProblem(code: string): void { expect(this.driver.searched.problems.map(item => item.code)).toContain(code); expect(this.driver.searched.outgoing.coverage.complete).toBe(false); }
   editScenarioExpectedQuantity(value: number): Promise<void> { return this.driver.changeExpected(value); }
   emptyScenarioCallback(): Promise<void> { return this.driver.emptyCallback(); }
   aliasAndFormatScenario(): Promise<void> { return this.driver.aliasFixture(); }
+  redirectScenarioFixture(): Promise<void> { return this.driver.redirectFixture(); }
+  failRealWriteTo(path: string): void { this.driver.denyWrite(path); }
+  async expectStoppedWithPartialFiles(): Promise<void> {
+    expect(this.driver.written.receipt?.status).toBe('stopped'); expect(this.driver.written.problems.length).toBeGreaterThan(0);
+    expect(this.driver.written.artifacts).toBeUndefined(); expect(await this.driver.partialFilesAgree()).toBe(true);
+  }
+  implementActualBasketRuntimeExcept(name: string): Promise<void> { return this.driver.implementBasketExcept(name); }
+  expectNoImplementationObligation(name: string): void { expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]); expect(this.driver.written.obligations?.filter(item => item.code === 'implementation-required' && item.message.includes(name))).toEqual([]); }
+  expectThrownMessage(message: string): void { expect(this.driver.nativeResult?.success).toBe(false); expect(this.driver.nativeResult!.testResults.flatMap(file => file.assertionResults).flatMap(test => test.failureMessages).join('\n')).toContain(message); }
+  denyProcessNetworkAndRuntimeCalls(): void { this.driver.denyReads('runtime'); }
+  expectNoForbiddenEffects(): void { expect(this.driver.forbidden).toEqual([]); }
+  static async importedOperationContract(): Promise<AcceptanceGenerationExamples> {
+    const project = await this.fromSource('examples {}'); project.driver.provider(); return project;
+  }
+  expectNoVendoredProviderDeclarations(): void {
+    expect(this.driver.written.problems).toEqual([]);
+    const ids = new Set(this.driver.current.baseline.elements.filter(item => item.address.module === 'library').map(item => item.id));
+    expect(this.driver.written.artifacts!.filter(item => ids.has(item.specId))).toEqual([]);
+  }
   connectRealBasketDriver(): Promise<void> { return this.driver.basket(); }
   runGeneratedVitest(): Promise<void> { return this.driver.run(); }
   changeBasketObservationTo(value: number): Promise<void> { return this.driver.observedQuantity(value); }
@@ -94,7 +173,6 @@ export class AcceptanceGenerationExamples {
     expect(text).toContain('expectData(await multiply(' + arguments_.join(', ') + '), ' + expected + ')');
   }
   expectObligation(code: string, text: string): void {
-    expect(this.driver.written.problems).toEqual([]);
     expect(this.driver.written.obligations).toEqual(expect.arrayContaining([expect.objectContaining({ code, message: expect.stringContaining(text) })]));
   }
   expectVerificationFailure(text: string): void {
