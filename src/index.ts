@@ -59,3 +59,4 @@ export { pythonOutput } from './output-python.js';
 export { pythonAcceptanceOutput } from './output-python-acceptance.js';
 export { PythonContext } from './python-context.js';
 export { PythonProject } from './python-project.js';
+export { runCli, type CliOutputs } from './cli.js';

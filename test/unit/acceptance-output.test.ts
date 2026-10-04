@@ -6,12 +6,13 @@ const empty: ProjectSnapshot = { root: { path: '/acceptance-fixture', identity: 
 function caller(options: Record<string, unknown> = {}) {
   const outputs = new Outputs(); outputs.register(acceptanceOutput);
   const opened = outputs.open('acceptance', { domain: 'shopping', ...options }, { root: empty.root, readSnapshot: async () => empty }, { apply: async () => { throw Error('Pure planning cannot write.'); } });
-  return { opened, async plan(text: string, snapshot = empty) {
+  return { opened, async plan(text: string, snapshot = empty, operation: 'create' | 'update' = 'create') {
     const compilation = new Compiler().compile({ source: { sourceId: 'main.expec', text }, locator: 'main', dependencies: { modules: [], packages: [] } });
     if (!compilation.value) throw Error(JSON.stringify(compilation)); let next = 0;
     const current = new SpecificationIdentity(() => 'unit-' + ++next).associate(compilation.value);
     if (!current.value) throw Error(JSON.stringify(current));
-    return opened.value!.plan({ operation: 'create', current: current.value }, snapshot);
+    return opened.value!.plan(operation === 'create' ? { operation, current: current.value }
+      : { operation, current: current.value, diff: new SpecificationIdentity(() => 'unused').compare(current.value.baseline, current.value).value! }, snapshot);
   } };
 }
 const emitted = (plan: Awaited<ReturnType<ReturnType<typeof caller>['plan']>>, path: string): string => {
@@ -112,5 +113,30 @@ describe('acceptance projection contracts for its caller', () => {
     const id = plan.value!.artifacts.find(item => item.locator.format === 'typescript-symbol-1')!.specId;
     const next = await value.opened.value!.plan({ operation: 'delete', id }, snapshot);
     expect(next.value).toBeUndefined(); expect(next.problems[0]?.code).toBe('nested-delete');
+  });
+});
+
+describe('initial native fixture selection keeps other placement promises', () => {
+  const source = 'examples { observation count() returns Number }';
+  const fixture = (file: string) => ({ outputId: 'acceptance', format: 'typescript-symbol-1', value: { file, declaration: [{ kind: 'variable', name: 'test' }] } });
+  it('requires update rather than silently changing selection during create', async () => {
+    const first = await caller().plan(source), snapshot = recorded(first.value!, () => {});
+    const next = await caller({ fixture: fixture('test/dsl/http-test.ts') }).plan(source, snapshot);
+    expect(next.value).toBeUndefined(); expect(next.problems.map(item => item.code)).toEqual(['output-options-changed']);
+  });
+  it('does not move the domain or its files while selecting the initial fixture', async () => {
+    const first = await caller().plan(source), snapshot = recorded(first.value!, () => {});
+    const next = await caller({ domain: 'other', fixture: fixture('test/dsl/http-test.ts') }).plan(source, snapshot, 'update');
+    expect(next.value).toBeUndefined(); expect(next.problems.map(item => item.code)).toEqual(['output-options-changed']);
+  });
+  it('does not replace one already selected authored fixture with another', async () => {
+    const first = await caller().plan(source), snapshot = recorded(first.value!, state => { state.options = JSON.stringify({ ...JSON.parse(state.options), fixture: fixture('test/dsl/first.ts') }); });
+    const next = await caller({ fixture: fixture('test/dsl/second.ts') }).plan(source, snapshot, 'update');
+    expect(next.value).toBeUndefined(); expect(next.problems.map(item => item.code)).toEqual(['output-options-changed']);
+  });
+  it('does not revert an authored fixture to the default as a side effect of update', async () => {
+    const first = await caller().plan(source), snapshot = recorded(first.value!, state => { state.options = JSON.stringify({ ...JSON.parse(state.options), fixture: fixture('test/dsl/first.ts') }); });
+    const next = await caller().plan(source, snapshot, 'update');
+    expect(next.value).toBeUndefined(); expect(next.problems.map(item => item.code)).toEqual(['output-options-changed']);
   });
 });

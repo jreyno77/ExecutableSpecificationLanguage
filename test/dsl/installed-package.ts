@@ -9,7 +9,49 @@ export class PackageExamples {
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
+  checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
+  buildPublicCatalog(source: string): Promise<void> { return this.driver.buildPublicCatalog(source); }
+  expectPublicCatalog(text: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.customCli!;
+    expect(observed.result).toMatchObject({ status: 'built', exitCode: 0, problems: [], stages: [
+      expect.objectContaining({ name: 'contracts', status: 'applied' }), { name: 'tests', status: 'not-run' },
+    ] });
+    expect(observed.catalog).toBe(text); expect(observed.note).toBe('Keep this handwritten note.');
+  }
+  expectCheckoutAndPrivateImportsBlocked(): void {
+    expect(this.driver.report.customCli).toMatchObject({ checkoutDenied: 'ERR_ACCESS_DENIED', privateImportDenied: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+  }
+  expectInstalledCommandCheckedWithoutWriting(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.cli!;
+    expect(observed.result).toMatchObject({ format: 1, status: 'checked', exitCode: 0, version: '1.2.3', problems: [], syntax: [], stages: [] });
+    expect(observed.stderr).toBe(''); expect(observed.manifestAfter).toBe(observed.manifestBefore);
+    expect(observed.files).toEqual(['notes.txt']); expect(observed.note).toBe('Keep this handwritten note.');
+    expect(observed.executable.replaceAll('\\', '/')).toContain('/node_modules/executable-specification-language/dist/cli-entry.js');
+  }
   generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
+  runInstalledHttpLifecycle(): Promise<void> { return this.driver.runHttpLifecycle(); }
+  expectHttpScenarioPassed(title: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.lifecycle!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    expect(observed.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+    expect(observed.passed.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual: 1 }));
+  }
+  expectHttpNoOpFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.lifecycle!;
+    expect(observed.broken).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.broken.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+    expect(observed.broken.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual }));
+    expect(observed.unchangedTests).toBe(true);
+  }
+  expectHttpServersClosed(): void {
+    for (const run of [this.driver.report.lifecycle!.passed, this.driver.report.lifecycle!.broken]) {
+      const started = run.events.filter(event => event.event === 'started'); expect(started).toHaveLength(1);
+      expect(run.events.filter(event => event.event === 'closed')).toEqual([expect.objectContaining({ id: started[0]!.id, listening: false })]);
+    }
+  }
   expectShoppingSteps(steps: string[]): void {
     this.expectConsumerRan(); const observed = this.driver.report.acceptance!;
     expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });

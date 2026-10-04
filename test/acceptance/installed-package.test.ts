@@ -5,6 +5,31 @@ beforeAll(() => PackageExamples.prepare());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed package consumers', () => {
+  it('builds a useful catalog through a public installed launcher with checkout access blocked', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.buildPublicCatalog('function save(snapshot: Text) returns Nothing');
+    consumer.expectPublicCatalog('save(snapshot: Text) returns Nothing\n');
+    consumer.expectCheckoutAndPrivateImportsBlocked();
+    consumer.expectInstalledPackageUsed();
+  });
+  it('checks a real manifest through the installed expec command without writing project files', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.checkFromInstalledCommand();
+    consumer.expectInstalledCommandCheckedWithoutWriting();
+    consumer.expectInstalledPackageUsed();
+    await consumer.checkTypeScriptConsumer(); consumer.expectDeclarationsAccepted();
+  });
+
+  it('runs generated shopping scenarios through an authored HTTP fixture and closes its servers', async () => {
+    const consumer = new PackageExamples();
+    await consumer.installCurrentPackage();
+    await consumer.runInstalledHttpLifecycle();
+    consumer.expectHttpScenarioPassed('a shopper can add an available book');
+    consumer.expectHttpNoOpFailed('a shopper can add an available book', 0, 1);
+    consumer.expectHttpServersClosed(); consumer.expectInstalledPackageUsed();
+  });
   it('generates readable shopping tests that reject a real basket which adds nothing', async () => {
     const consumer = new PackageExamples();
     await consumer.installCurrentPackage();

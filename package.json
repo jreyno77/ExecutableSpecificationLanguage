@@ -52,5 +52,8 @@
     "@xmldom/xmldom": "0.9.12",
     "langium-cli": "4.4.0",
     "vitest": "5.0.2"
+  },
+  "bin": {
+    "expec": "./dist/cli-entry.js"
   }
 }
