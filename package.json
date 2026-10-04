@@ -14,7 +14,9 @@
   "files": [
     "dist",
     "README.md",
-    "test/resources/package-consumer/signatures-output.ts"
+    "test/resources/package-consumer/signatures-output.ts",
+    "test/resources/package-consumer/workspace-build.mjs",
+    "test/resources/package-consumer/adopt-store-game.mjs"
   ],
   "description": "A compiler for readable executable software specifications.",
   "engines": {

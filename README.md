@@ -155,7 +155,10 @@ another manifest. `project.root` records the connected directory; declared
 `packages`, `libraries` and output options describe its requirements.
 
 Build preserves established identities and mapped implementations. An ambiguous
-rename requests a deliberate decision. `build --decisions changes.json` accepts:
+rename requests a deliberate decision. Run `build --json` and copy the ID from
+the `identity-correspondence` message for the previous declaration. That
+diagnostic's location refers to the previous source, before your edit.
+`build --decisions changes.json` accepts:
 
 ```json
 {
@@ -167,7 +170,7 @@ rename requests a deliberate decision. `build --decisions changes.json` accepts:
 }
 ```
 
-Use the actual established subject ID and new declaration location. A retirement
+Use that ID and the new declaration's starting line/column (both start at 1). A retirement
 does not authorize destroying handwritten code. Resolve reported conflicts and
 inspect partial write receipts before retrying.
 
@@ -176,31 +179,95 @@ mappings and a host-owned baseline. `SpecificationIdentity.read/write/withArtifa
 preserve those associations; `Outputs.open(...).read(id)` reads the current
 subject and `search(id)` returns definitions, uses and honest coverage.
 The CLI's private ledger is not an adoption API.
-[The StoreGame pilot](https://app.notion.com/p/3ee039145665816e80c2d3261981224e)
-shows the complete adoption and revision contract.
+The shipped `test/resources/package-consumer/adopt-store-game.mjs` is a concrete
+recipe you can copy and edit. It expects an authored StoreGame class with
+`save(snapshot: Text) returns Nothing`, mapped explicitly to
+`StoreGame.save(snapshot: string): void` in the connected `src/game.ts`.
+Supply expec.json with that source entry and project root, plus the project's
+tsconfig.json. This local-source example has no external library/package requirements.
+
+```js
+import { adoptStoreGame, readStoreGame } from "./adopt-store-game.mjs";
+const adopted = await adoptStoreGame("./expec.json", "./author.identity.json");
+console.log(adopted.written);
+const current = await readStoreGame("./expec.json", "./author.identity.json");
+console.log(current.read, current.search);
+```
+
+Keep author.identity.json outside the connected project. It records confirmed
+associations through the public API; native files remain the source of current
+implementation and usage facts. [The StoreGame pilot](https://app.notion.com/p/3ee039145665816e80c2d3261981224e)
+describes the adoption and revision contract.
 
 ## Compose source through the public API
 
 ```ts
-import { Compiler, SourceComposer, SourceLoader } from "executable-specification-language";
+import { buildWorkspace } from "./workspace-build.mjs";
+const { current, written } = await buildWorkspace("./expec.json", "./author.identity.json");
+console.log(written);
+for (const capability of current.specification.inspection.query("capability"))
+  console.log(capability.name, current.specification.types.callable(capability.id));
+```
 
-// configuration and dependencies are successful ConfigurationReader / DependencyPlanner results.
-const loaded = await new SourceLoader(absoluteManifestFilename).load(configuration, dependencies);
-if (loaded.value) {
-  const resolution = new SourceComposer(loaded.value.locate).compose(loaded.value.entries);
-  const compiled = new Compiler().compile({ resolution });
-  if (compiled.value) {
-    for (const capability of compiled.value.inspection.query("capability"))
-      console.log(capability.name, compiled.value.types.callable(capability.id));
-  } else console.error(compiled.syntax, compiled.problems, compiled.deferred);
+Copy `workspace-build.mjs` from the installed package's
+`test/resources/package-consumer` directory. Provide a connected TypeScript
+project with package.json (`"type": "module"`) and a tsconfig.json including
+its source files. The local-source recipe accepts this manifest:
+
+```json
+{
+  "formatVersion": 1,
+  "version": "0.1.0",
+  "project": { "root": "./project" },
+  "build": { "entries": ["game.expec", "checkout.expec"] },
+  "outputs": [{ "id": "typescript", "options": { "directory": "src", "configFile": "tsconfig.json" } }]
 }
 ```
 
-Compose the workspace once, including all entries. Imported shared declarations
+Both source files can import `Book` from a shared `book.expec`. The recipe
+composes all entries once and then generates their contracts. External dependencies
+require an explicit acquisition step when you extend this local-source example.
+After a confirmed write, it saves the public baseline outside the project;
+a failed baseline save does not undo already applied native writes.
+Imported shared declarations
 retain their identities and scopes. Built-in Text, Number, Boolean, List and
 Nothing need no imports. Other names must be declared or imported.
 Compilation checks supplied descriptions; it does not install dependencies,
 scan a project or execute scenarios.
+
+## Generate documentation
+
+In another empty working directory, install the same artifact and create an
+empty `game` directory. Save **main.expec** and **expec.json**:
+
+<!-- expec-example: store-design/main.expec -->
+```expec
+type PlayerStateSnapshot { shoppingCart: Text }
+concept StoreGame {
+  public save
+  capability save(snapshot: PlayerStateSnapshot) returns Nothing
+}
+```
+
+<!-- expec-example: store-design/expec.json -->
+```json
+{
+  "formatVersion": 1,
+  "version": "0.1.0",
+  "build": { "entries": ["main.expec"] },
+  "project": { "root": "./game" },
+  "outputs": [
+    { "id": "markdown", "options": { "directory": "docs" } },
+    { "id": "uml", "options": { "directory": "design", "views": ["structure"] } }
+  ]
+}
+```
+
+Run `node node_modules/executable-specification-language/dist/cli-entry.js build`.
+Read `game/docs/StoreGame.md` and open `game/design/structure.svg`; the editable
+diagram source is beside it. The input points toward its consumer, StoreGame.
+These documents describe checked contracts; they do not prove runtime behavior,
+ownership or lifetime. Explicit communication scenarios can supply sequence views.
 
 ## Add an output
 

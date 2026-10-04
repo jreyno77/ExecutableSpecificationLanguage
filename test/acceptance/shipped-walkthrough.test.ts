@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { PackageDriver } from '../driver/installed-package.js';
 import { ShippedWalkthrough } from '../dsl/shipped-walkthrough.js';
 
@@ -48,3 +48,40 @@ it('declines the installed initialization prompt without creating a project', as
   await author.declineInitialization();
   await author.expectDeclinedWithoutChanges();
 }, 90_000);
+
+it('uses a public rename diagnostic to retain a handwritten body and its identity', async () => {
+  const author = await ShippedWalkthrough.install();
+  await author.copySpecification(); await author.useTypeScriptOutput();
+  await author.source('class StoreGame { public save\ncapability save(snapshot: Text) returns Nothing }');
+  await author.command(['init', '--root', './game', '--target', 'typescript', '--yes']); author.expectSuccess();
+  await author.command(['install']); author.expectSuccess();
+  await author.configureDocumentedNativeProject();
+  await author.command(['build']); author.expectSuccess();
+  await author.implementSave('localStorage.setItem("save", JSON.stringify(snapshot));');
+
+  await author.source('class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }');
+  await author.rememberProjectFiles();
+  await author.command(['build']);
+  const savedIdentity = author.identityDecision('save', 2);
+  await author.expectProjectFilesUnchanged();
+  await author.writeCorrespondence(savedIdentity, 2, 1);
+  await author.command(['build', '--decisions', './changes.json']); author.expectSuccess();
+  await author.expectSaveBody('saveGame', 'localStorage.setItem("save", JSON.stringify(snapshot));');
+
+  await author.source('class StoreGame { public saveAgain\ncapability saveAgain(snapshot: Text) returns Nothing }');
+  await author.rememberProjectFiles();
+  await author.command(['build']);
+  expect(author.identityDecision('saveGame', 2)).toBe(savedIdentity);
+  await author.expectProjectFilesUnchanged();
+  await author.source('class StoreGame { public saveGame\ncapability saveGame(snapshot: Text) returns Nothing }');
+  await author.command(['build']); author.expectUnchangedBuild();
+  await author.expectProjectFilesUnchanged();
+}, 360_000);
+
+it('builds Markdown and UML from the shipped contracts without claiming execution', async () => {
+  const author = await ShippedWalkthrough.install('store-design');
+  author.expectDocumentedDesignFiles();
+  await author.copySpecification(); await author.createDocumentProject();
+  await author.command(['build']); author.expectSuccess();
+  await author.expectDocumentedContract('StoreGame', 'save', 'PlayerStateSnapshot', 'Nothing');
+}, 120_000);

@@ -27,6 +27,7 @@ export class TypeScriptContext implements ProjectContext {
       const capture = new TypeScriptCapture({ ...snapshot, readOnlyFiles: [] }, 'native-inputs', this.options.configFile, this.libraries, native);
       try {
         for (const problem of capture.problems) {
+          if (capture.editableImportProblems.has(problem)) continue;
           if (problem.code === 'native-input-unavailable') problems.push(problem);
           else if (/^typescript-(2307|2688|2726|2727|6053|6231|5083|2792|7016)$/.test(problem.code) || problem.code === 'missing-project-config') problems.push({ ...problem, code: 'native-input-unavailable' });
           else if (['unsupported-native-input', 'unsupported-project-config', 'typescript-library-unavailable', 'invalid-project-encoding'].includes(problem.code)) problems.push(problem);
