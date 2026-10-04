@@ -624,7 +624,55 @@ instance per test. Existing classes and native Vitest fixtures require exact
 Application mappings retain their original output namespace. Updates preserve
 handwritten bodies and refuse competing edits; `read` and `search` inspect current
 native callbacks and report changed generated assertions. Runtime resource lifecycle
-management is a separate boundary.
+management belongs to the native fixture.
+
+After default generation, select an authored fixture importing the generated DSL:
+
+```ts
+const fixture = { outputId: 'acceptance', format: 'typescript-symbol-1', value: {
+  file: 'test/dsl/http-shopping-test.ts', declaration: [{ kind: 'variable', name: 'test' }],
+} };
+const selected = outputs.open('acceptance', {
+  domain: 'shopping', configFile: 'tsconfig.json', fixture,
+}, project, new FileProjectWriter(project), { workspaceModules });
+const diff = identities.compare(current.baseline, current);
+if (selected.value && diff.value) {
+  const result = await selected.value.update(diff.value, current);
+  // Inspect the receipt and confirm only actually applied associations.
+}
+```
+
+This first default-to-authored selection preserves the old default fixture and
+handwritten callers. Repeating it is unchanged; replacing an authored fixture or
+changing placement remains an unsupported migration. Unselected default stubs
+remain visible scaffolds, not proof of missing selected-runtime behavior.
+
+Use Vitest's native test-scoped fixtures for resources. Finish acquisition and
+register cleanup in one fixture; put fallible preparation in its dependent DSL
+fixture so setup and cleanup failures both remain visible:
+
+```ts
+import { test as baseTest } from 'vitest';
+import { Shopping } from './shopping.js';
+import { HttpShoppingDriver } from '../driver/http-shopping.js';
+import { startShop } from '../../src/shop.js';
+
+export const test = baseTest
+  .extend('shop', async ({}, { onCleanup }) => {
+    const server = await startShop();
+    onCleanup(() => server.close());
+    return server;
+  })
+  .extend('shopping', async ({ shop }) => {
+    await shop.prepareCatalog();
+    return new Shopping(new HttpShoppingDriver(shop.url));
+  });
+```
+
+The project supplies `startShop` and its driver; partial acquisition cleans up its
+own resources. Compilation/generation never starts them. Invoke native Vitest
+explicitly for runtime results; type compatibility and generation do not establish
+a pass. Source `.expec` fixtures remain data-only.
 
 ## Development and delivery
 

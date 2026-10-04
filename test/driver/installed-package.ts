@@ -23,6 +23,11 @@ interface ConsumerReport {
     testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[]; jars: number; nativeBytes: number; notice: string;
     artifacts: { file: string; expected: string; actual: string; notices: { path: string; bytes: number }[] }[];
   };
+  lifecycle?: {
+    written: OutputWrite; scenario: string; unchangedTests: boolean;
+    passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[]; events: { id: string; event: string; title?: string; actual?: number; listening?: boolean }[] };
+    broken: NonNullable<ConsumerReport['lifecycle']>['passed'];
+  };
   acceptance?: {
     written: OutputWrite; scenario: string; driverBefore: string; driverAfter: string; unchangedTests: boolean;
     passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
@@ -170,6 +175,12 @@ export class PackageDriver {
     await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
     await cp(join(resources, 'acceptance-consumer.mjs'), join(this.consumer, 'acceptance-consumer.mjs'));
     this.result = await run(process.execPath, ['acceptance-consumer.mjs'], this.consumer); await this.readReport();
+  }
+  async runHttpLifecycle(): Promise<void> {
+    await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
+    await cp(join(resources, 'execution-consumer.mjs'), join(this.consumer, 'execution-consumer.mjs'));
+    await cp(join(checkout, 'test/resources/scenario-execution'), join(this.consumer, 'resources'), { recursive: true });
+    this.result = await run(process.execPath, ['execution-consumer.mjs'], this.consumer); await this.readReport();
   }
   async applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
     await cp(join(resources, 'native-input-consumer.mjs'), join(this.consumer, 'native-input-consumer.mjs'));
