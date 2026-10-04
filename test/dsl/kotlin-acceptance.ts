@@ -10,6 +10,8 @@ export class KotlinAcceptance {
   nativeFile(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   testRoot(path: string): void { this.driver.acceptanceOptions.testRoot = path; }
   source(text: string, renames: Readonly<Record<string, string>> = {}, retired: readonly string[] = []): void { this.driver.source(text, renames, retired); }
+  nameOperation(name: string, native: string): void { this.driver.nameOperation(name, native); }
+  nameExample(title: string, native: string): void { this.driver.nameExample(title, native); }
   implementDriver(text: string): Promise<void> { return this.driver.driver(text); }
   buildContracts(): Promise<void> { return this.driver.contracts(); }
   implement(name: string, body: string): Promise<void> { return this.driver.implement(name, body); }

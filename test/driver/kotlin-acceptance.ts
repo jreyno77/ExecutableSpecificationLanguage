@@ -11,6 +11,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   failureContext = '';
   readonly acceptanceOptions: Record<string, unknown> = {};
   private readonly remembered = new Map<string, string>();
+  private readonly names = new Map<string, string>();
   readonly outcomes: { title: string; status: string; failure: string }[] = [];
   async prepare(): Promise<void> {
     if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR.');
@@ -23,6 +24,15 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     const confirmed = this.identity.withArtifacts(this.current, this.written.artifacts);
     if (!confirmed.value) throw new Error(JSON.stringify(confirmed)); this.current = confirmed.value;
   }
+  nameOperation(name: string, native: string): void {
+    this.names.set(this.subject(this.current, 'examples.' + name), native); this.namedOptions();
+  }
+  nameExample(title: string, native: string): void {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.names.set(this.current.id(matches[0]!.id), native); this.namedOptions();
+  }
+  private namedOptions(): void { this.acceptanceOptions.names = [...this.names].map(([id, name]) => ({ id, name })); }
   async implement(name: string, body: string): Promise<void> {
     const previous = this.implementations.get(name) ?? 'throw NotImplementedError("Not implemented: ' + name + '")';
     await this.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', previous, body); this.implementations.set(name, body);

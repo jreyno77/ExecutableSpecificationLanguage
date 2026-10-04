@@ -4,15 +4,16 @@ import type { NodeId } from './model.js';
 import type { OutputContext } from './output.js';
 import type { IdentifiedSpecification, ArtifactAssociation } from './specification-identity.js';
 import type { TypeId } from './types.js';
-import type { KotlinFile } from './kotlin-declarations.js';
+import type { KotlinFile, KotlinOptions } from './kotlin-declarations.js';
 import type { KotlinQuery } from './kotlin-query.js';
 import { kotlinName } from './kotlin-fixture.js';
 import { decimal } from './decimal.js';
 import { ExpressionChecker } from './expression-checker.js';
 import { KotlinData } from './kotlin-data.js';
 import { fromFact } from './checking.js';
+import { selectKotlinMapping } from './kotlin-mapping.js';
 
-export interface KotlinTestOptions { testRoot: string; package: string; domain: string }
+export interface KotlinTestOptions { testRoot: string; package: string; domain: string; names: KotlinOptions['names'] }
 type Operation = Item<'setup' | 'action' | 'observation' | 'check'>;
 const quote = (text: string) => JSON.stringify(text).replaceAll('$', '\\$');
 const identifier = (name: string) => /^[A-Za-z_][A-Za-z_0-9]*$/.test(name) && !new Set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while'.split(' ')).has(name);
@@ -29,6 +30,7 @@ export class KotlinExamples {
   private readonly modules: Set<string>;
   private readonly className: string;
   private readonly locals = new Map<string, TypeId>();
+  private readonly names = new Map<NodeId, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
     private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number]) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
@@ -36,11 +38,21 @@ export class KotlinExamples {
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
+    const kinds = new Set(['setup', 'action', 'observation', 'check', 'fixture', 'parameter', 'example', 'scenario']);
+    for (const rule of options.names) {
+      const selected = selectKotlinMapping(current, rule, item => this.owned(item) && kinds.has(item.kind)
+        && (item.kind !== 'parameter' || this.operations.some(operation => operation.id === this.inspection.parent(item.id)?.id)), 'kotlin-acceptance');
+      this.problems.push(...selected.problems);
+      if (!selected.value) continue;
+      if (this.names.has(selected.value.id)) this.problem('invalid-native-mapping', selected.value, 'A declaration has more than one native name.');
+      else this.names.set(selected.value.id, rule.name);
+    }
   }
+  mapping(): { id: string; name: string }[] { return [...this.names].map(([node, name]) => ({ id: this.current.id(node), name })).sort((a, b) => a.id.localeCompare(b.id)); }
   private owned(item: Item): boolean { return item.origin.kind === 'source' && this.modules.has(item.origin.module); }
   private problem(code: string, item: Item, message: string): string { this.problems.push({ code, at: item.origin, message, related: [] }); return 'error(' + quote(message) + ')'; }
   private name(item: Item): string {
-    const name = 'name' in item ? item.name : item.kind;
+    const name = this.names.get(item.id) ?? ('name' in item ? item.name : item.kind);
     return identifier(name) ? name : this.problem('invalid-native-name', item, 'An explicit valid Kotlin name is required: ' + name);
   }
   private type(id: TypeId, item: Item): string { return this.data.type(id, item); }
@@ -185,7 +197,7 @@ export class KotlinExamples {
       if (groups.length > 1) { this.problem('ambiguous-group-name', group, 'Distinct example groups require distinct native names.'); continue; }
       const name = this.className + 'Acceptance', artifacts = [artifact(group.id, 'acceptance', name)];
       const bodies = group.members.filter(member => member.kind === 'example' || member.kind === 'scenario').map(example => {
-        const method = example.title.value.replace(/[^A-Za-z0-9]+(.)/g, (_, next: string) => next.toUpperCase()).replace(/^[A-Z]/, letter => letter.toLowerCase());
+        const method = this.names.get(example.id) ?? example.title.value.replace(/[^A-Za-z0-9]+(.)/g, (_, next: string) => next.toUpperCase()).replace(/^[A-Z]/, letter => letter.toLowerCase());
         if (!identifier(method) || methodNames.has(method)) this.problem('native-name-conflict', example, 'Give examples distinct native method names.'); methodNames.add(method);
         artifacts.push(artifact(example.id, 'acceptance', name, method));
         let body: string;

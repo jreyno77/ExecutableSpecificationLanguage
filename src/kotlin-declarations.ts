@@ -10,6 +10,7 @@ import type { TypeFact, TypeId } from './type-description.js';
 import { literal } from './project-files.js';
 import { language } from './language-text.js';
 import { identifier as specIdentifier } from './identity-baseline.js';
+import { selectKotlinMapping } from './kotlin-mapping.js';
 
 const reserved = new Set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while'.split(' '));
 const identifier = (value: string) => /^[A-Za-z_][A-Za-z_0-9]*$/.test(value) && !reserved.has(value);
@@ -78,17 +79,8 @@ export class KotlinDeclarations {
       .sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind));
   }
   private select(rule: KotlinOptions['names'][number], eligible: (item: Item) => boolean): Item | undefined {
-    const records = new Map(this.current.baseline.elements.map(record => [record.id, record]));
-    const path = (id: string): readonly (string | null)[] => {
-      const record = records.get(id)!; return [...(record.address.owner ? path(record.address.owner) : []), record.address.name];
-    };
-    const matches = this.current.baseline.elements.filter(record => 'id' in rule ? record.id === rule.id
-      : (!rule.module || rule.module === record.address.module) && JSON.stringify(path(record.id)) === JSON.stringify(rule.declaration))
-      .map(record => this.inspection.read(this.current.node(record.id))).filter(eligible);
-    if (matches.length === 1) return matches[0];
-    this.problems.push({ code: 'invalid-native-mapping', message: 'A mapping must select exactly one eligible declaration.',
-      at: { kind: 'dependency', path: ['outputs', 'kotlin', 'id' in rule ? rule.id : rule.declaration.join('.')] }, related: matches.map(item => item.origin) });
-    return undefined;
+    const selected = selectKotlinMapping(this.current, rule, eligible, 'kotlin');
+    this.problems.push(...selected.problems); return selected.value;
   }
   private problem(code: string, item: Item, message: string): void { this.problems.push({ code, message, at: item.origin, related: [] }); }
   private known<T>(fact: TypeFact<T>): T { if (fact.status !== 'known') throw new Error('Kotlin output requires checked type facts.'); return fact.value; }
