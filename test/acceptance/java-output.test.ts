@@ -23,7 +23,7 @@ describe('native Java questions over captured source', { timeout: 90_000 }, () =
     const file = 'src/main/java/store/Read.java';
     await p.file(file, 'package store; class Read { String title(catalog.Book book) { return book.title; } catalog.Book create() { return new catalog.Book(); } }');
     p.mapType('read', file, 'store.Read'); await p.search('read');
-    p.expectExternalTarget('catalog.Book', 'title'); p.expectExternalConstructor('catalog.Book', []); p.expectNativeCatalogEvidence(); p.expectCoverageComplete();
+    p.expectExternalTarget('catalog.Book', 'title'); p.expectExternalConstructor('catalog.Book', []); p.expectNativeCatalogEvidence([file]); p.expectCoverageComplete();
   });
   it('refuses changed native input before a direct query uses its old capture', async () => {
     const p = await JavaExamples.connect(); await p.installCatalogJar('public class Book { public String title; }');

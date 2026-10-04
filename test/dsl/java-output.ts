@@ -131,11 +131,12 @@ export class JavaExamples {
     });
     expect(found, JSON.stringify(this.driver.searchResult)).toBe(true);
   }
-  expectNativeCatalogEvidence(): void {
+  expectNativeCatalogEvidence(editableSources: string[]): void {
     const uri = pathToFileURL(this.driver.catalogJar).href;
     expect(this.driver.snapshot.nativeInputs).toEqual(expect.arrayContaining([expect.objectContaining({ uri, version: expect.stringMatching(/^[a-f0-9]{64}$/) })]));
     expect(this.driver.searchResult.outgoing.coverage.scope.some(at => at.format === 'native-input-1' && (at.value as { uri: string }).uri === uri)).toBe(true);
-    expect(this.driver.snapshot.files.some(file => file.path.includes('catalog') || file.path.endsWith('.jar'))).toBe(false);
+    expect(this.driver.snapshot.files.some(file => pathToFileURL(join(this.driver.snapshot.root.path, file.path)).href === uri)).toBe(false);
+    expect(this.driver.snapshot.files.filter(file => file.path.endsWith('.java')).map(file => file.path)).toEqual(editableSources);
   }
   expectNativeInputChanged(): void {
     const uri = pathToFileURL(this.driver.catalogJar).href;

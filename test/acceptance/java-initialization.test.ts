@@ -10,6 +10,8 @@ describe('a Java starter remains an explicit guarded project choice', () => {
     p.expectProposedPackages([
       { alias: 'junit', name: 'maven:org.junit.jupiter:junit-jupiter', version: '6.1.3', phases: ['test'] },
       { alias: 'junit-launcher', name: 'maven:org.junit.platform:junit-platform-launcher', version: '6.1.3', phases: ['test'] },
+      { alias: 'junit-console', name: 'maven:org.junit.platform:junit-platform-console', version: '6.1.3', phases: ['test'] },
+      { alias: 'junit-reporting', name: 'maven:org.junit.platform:junit-platform-reporting', version: '6.1.3', phases: ['test'] },
     ]);
     await p.expectDestinationAbsent(); await p.expectManifestUnchanged(); p.expectNoForbiddenExecution();
   });

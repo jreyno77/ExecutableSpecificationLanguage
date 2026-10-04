@@ -1,8 +1,8 @@
 # Java native analysis resources
 
-The unmodified runtime JARs beside this file are dependencies of the private Expec Java bridge. `artifacts.json` records their exact filenames and SHA-256 digests; `notices/` reproduces their embedded notices and license texts, which also remain inside each JAR.
+The unmodified runtime JARs beside this file are dependencies of the private Expec Java bridge. `artifacts.json` records their exact filenames, SHA-256 digests, Maven coordinates, matching source-archive URLs and reproduced notice paths. `notices/` retains their embedded notices and license texts, which also remain inside each JAR. The Gradle wrapper JAR retains its embedded `META-INF/LICENSE`.
 
-Eclipse JDT, Eclipse Platform and Equinox sources are available from the Eclipse projects and the matching Maven Central `-sources.jar` artifacts. JNA and OSGi sources are likewise available from their matching Maven Central source artifacts. The exact resolved versions are recorded in the repository's `src/java-native/gradle.lockfile`.
+Eclipse JDT, Eclipse Platform, Equinox, JNA and OSGi sources are available through the exact Maven Central source links in the shipped manifest. Repository builds select those versions through `src/java-native/gradle.lockfile`.
 
 - Eclipse JDT: https://github.com/eclipse-jdt/eclipse.jdt.core
 - Eclipse Platform: https://github.com/eclipse-platform

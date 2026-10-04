@@ -17,17 +17,23 @@ tasks.register('stageNative', Sync) {
     into('wrapper') { from 'gradlew', 'gradlew.bat'; into('gradle/wrapper') { from 'gradle/wrapper' } }
     into '../java'
     doLast {
-        def artifacts = destinationDir.listFiles().findAll { it.name.endsWith('.jar') }.sort { it.name }.collect { file ->
-            [file: file.name, version: java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()]
-        }
-        new File(destinationDir, 'artifacts.json').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([format: 1, artifacts: artifacts])) + '\n'
+        def origins = [:]
         configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+            def notices = new File(destinationDir, 'notices/' + artifact.file.name)
             copy {
                 from zipTree(artifact.file)
                 include 'about.html', 'about_files/**', 'META-INF/LICENSE*', 'META-INF/NOTICE*'
-                into new File(destinationDir, 'notices/' + artifact.file.name)
+                into notices
             }
+            def module = artifact.moduleVersion.id
+            origins[artifact.file.name] = [coordinate: "${module.group}:${module.name}:${module.version}",
+                source: "https://repo.maven.apache.org/maven2/${module.group.replace('.', '/')}/${module.name}/${module.version}/${module.name}-${module.version}-sources.jar",
+                notices: fileTree(notices).files.collect { destinationDir.toPath().relativize(it.toPath()).toString().replace(File.separatorChar, '/' as char) }.sort()]
         }
+        def artifacts = destinationDir.listFiles().findAll { it.name.endsWith('.jar') }.sort { it.name }.collect { file ->
+            [file: file.name, version: java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()] + (origins[file.name] ?: [:])
+        }
+        new File(destinationDir, 'artifacts.json').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([format: 1, artifacts: artifacts])) + '\n'
     }
 }
 tasks.named('wrapper') {
