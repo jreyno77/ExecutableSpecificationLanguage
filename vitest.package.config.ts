@@ -7,6 +7,6 @@ export default defineConfig({
     passWithNoTests: false,
     testTimeout: 180_000,
     hookTimeout: 180_000,
-    maxWorkers: 2,
+    maxWorkers: 1,
   },
 });

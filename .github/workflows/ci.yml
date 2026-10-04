@@ -16,14 +16,14 @@ permissions:
 
 jobs:
   check:
-    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 4
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,7 +42,7 @@ jobs:
       - name: Check all source and test types
         run: npm run typecheck
       - name: Build and test the shard
-        run: npm test -- --shard=${{ matrix.shard }}/4 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -51,14 +51,14 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
-    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of 4
+    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of 3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,7 +73,7 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
-        run: npm run test:pilot -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:pilot -- --shard=${{ matrix.shard }}/3 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:

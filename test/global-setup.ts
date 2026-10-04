@@ -8,8 +8,11 @@ const checkout = fileURLToPath(new URL('../', import.meta.url));
 export default async function setup(project: TestProject): Promise<void> {
   const compile = async () => {
     project.provide('compiledCheckout', '');
-    await promisify(execFile)(process.execPath, [join(checkout, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
-      { cwd: checkout, windowsHide: true, timeout: 25_000, maxBuffer: 4 * 1024 * 1024 });
+    const signal = AbortSignal.timeout(25_000);
+    for (const [tool, ...args] of [['typescript/bin/tsc', '-p', 'tsconfig.build.json'], ['rolldown/bin/cli.mjs', '-c']])
+      await promisify(execFile)(process.execPath, [join(checkout, 'node_modules', tool!), ...args],
+        { cwd: checkout, windowsHide: true, signal, maxBuffer: 4 * 1024 * 1024 });
+    signal.throwIfAborted();
     project.provide('compiledCheckout', checkout);
   };
   project.onTestsRerun(async () => { await project.vitest.waitForTestRunEnd(); await compile(); });
