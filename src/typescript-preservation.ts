@@ -6,13 +6,14 @@ import type { FileChange } from './project-writer.js';
 import { canonical } from './identity-baseline.js';
 import { hash } from './project-files.js';
 import { TypeScriptCapture, diagnostic } from './typescript-capture.js';
-import { TypeScriptSymbols, type Selector } from './typescript-symbols.js';
+import { TypeScriptSymbols, nativeSelection, type Selector } from './typescript-symbols.js';
 import { NativeEdits, headerEnd, nativeMembers, nativeName, tokens, type NativeDeclaration } from './typescript-edits.js';
-import type { NativeFile, TypeScriptOptions } from './typescript-declarations.js';
+import type { NativeContainer, NativeFile, TypeScriptOptions } from './typescript-declarations.js';
 import { nativeImports, nativeTypeText } from './typescript-imports.js';
 
 export interface NativeBaseline {
   id: string; path: string; generated: string; hash: string; artifacts: ArtifactAssociation[];
+  container?: NativeContainer;
   renderedArtifacts?: ArtifactAssociation[] | undefined; adopted?: string[] | undefined; documentation?: string[] | undefined; confirmed?: string | undefined;
 }
 const address = (item: ArtifactAssociation) => item.locator.value as unknown as { file: string; declaration: Selector[] };
@@ -47,18 +48,18 @@ export class TypeScriptPreservation {
   readonly files: NativeBaseline[] = [];
   readonly changes: FileChange[] = [];
   private readonly edits = new NativeEdits();
-  constructor(private readonly snapshot: ProjectSnapshot, private readonly options: TypeScriptOptions, private readonly diff?: SpecDiff) {}
+  constructor(private readonly snapshot: ProjectSnapshot, private readonly options: TypeScriptOptions, private readonly diff?: SpecDiff, private readonly outputId = 'typescript') {}
   reconcile(previous: readonly NativeBaseline[], desired: readonly NativeFile[], mappings: readonly ArtifactAssociation[], adoption: boolean): void {
-    if (!previous.length && !mappings.some(item => item.locator.outputId === 'typescript')) {
+    if (!previous.length && !mappings.some(item => item.locator.outputId === this.outputId) && !desired.some(file => file.container && this.snapshot.files.some(item => item.path === file.path))) {
       for (const file of desired) {
-        this.files.push({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: structuredClone(file.artifacts) as ArtifactAssociation[], confirmed: hash(Buffer.from(file.text)) });
+        this.files.push({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: structuredClone(file.artifacts) as ArtifactAssociation[], confirmed: hash(Buffer.from(file.text)), ...file.container ? { container: file.container } : {} });
         this.changes.push({ kind: 'write', path: file.path, bytes: Buffer.from(file.text) });
       }
       return;
     }
-    const capture = new TypeScriptCapture(this.snapshot, 'typescript', this.options.configFile);
+    const capture = new TypeScriptCapture(this.snapshot, this.outputId, this.options.configFile);
     try {
-      const oldArtifacts = previous.flatMap(file => file.artifacts), claimed = mappings.filter(item => item.locator.outputId === 'typescript');
+      const oldArtifacts = previous.flatMap(file => file.artifacts), claimed = mappings.filter(item => item.locator.outputId === this.outputId);
       const placements = new Map(desired.map(file => {
         const prior = previous.find(item => item.id === file.id), mapped = claimed.find(item => item.specId === file.id);
         return [file.id, prior?.adopted?.length ? prior.path : !prior && mapped ? address(mapped).file : file.path];
@@ -71,7 +72,7 @@ export class TypeScriptPreservation {
         const node = selected?.nodes.find(node => !('body' in node) || !!node.body) ?? selected?.nodes[0];
         if (node) actual.set(selectionKey(association), node as NativeDeclaration);
       }
-      const old = declarations(previous.map(file => ({ id: file.id, path: address((file.renderedArtifacts ?? file.artifacts)[0]!).file,
+      const old = declarations(previous.map(file => ({ id: file.id, path: file.path,
         text: file.generated, artifacts: file.renderedArtifacts ?? file.artifacts }))), next = declarations(desired);
       if (previous.some(file => (file.renderedArtifacts ?? file.artifacts).some(item => !old.has(selectionKey(item))))) {
         this.problems.push(diagnostic('invalid-output-state', 'Recorded generated syntax does not describe its associated declarations.', '.expec/outputs/74797065736372697074.json')); return;
@@ -131,7 +132,8 @@ export class TypeScriptPreservation {
       }
       for (const file of desired) {
         const before = previous.find(item => item.id === file.id), rootMapping = claimed.find(item => item.specId === file.id),
-          isAdopted = !before && !!rootMapping, path = before?.adopted?.length ? before.path : isAdopted ? address(rootMapping!).file : file.path;
+          isAdopted = !before && (!!rootMapping || !!file.container && this.snapshot.files.some(item => item.path === file.path)),
+          path = before?.adopted?.length ? before.path : isAdopted && rootMapping ? address(rootMapping).file : file.path;
         if (isAdopted && !adoption) { this.problems.push(diagnostic('unowned-project-artifact', 'Explicit adoption permission is required for this existing declaration.', path)); continue; }
         const artifacts: ArtifactAssociation[] = [], adopted = before?.adopted?.filter(id => file.artifacts.some(item => item.specId === id)) ?? (isAdopted ? file.artifacts.map(item => item.specId) : []);
         const documentation = new Set(before?.documentation ?? []);
@@ -170,17 +172,20 @@ export class TypeScriptPreservation {
             }
           } else if (prior && !removed.has(key)) this.problems.push(diagnostic('missing-project-symbol', 'Recorded declaration is absent.', path));
           else {
-            const parentId = ownerId(association, nextArtifacts), parentAssociation = oldArtifacts.find(item => item.specId === parentId), parent = parentAssociation && actual.get(selectionKey(parentAssociation));
+            const parentId = ownerId(association, nextArtifacts), parentAssociation = oldArtifacts.find(item => item.specId === parentId),
+              container = file.container && existingSource ? nativeSelection(existingSource, file.container.declaration) : [],
+              parent = parentAssociation ? actual.get(selectionKey(parentAssociation)) : container.length === 1 ? container[0] : undefined;
             if (!parent) { this.problems.push(diagnostic('missing-project-symbol', 'The parent for this member is unavailable.', path)); continue; }
             const collision = nativeMembers(parent).find(member => nativeName(member) === nativeName(wanted));
             if (collision) { problem('native-name-conflict', collision, 'An existing unowned member occupies this native name.'); continue; }
             const source = parent.getSourceFile(), newline = source.text.includes('\r\n') ? '\r\n' : '\n';
-            const container = ts.isTypeAliasDeclaration(parent) && ts.isTypeLiteralNode(parent.type) ? parent.type : parent;
+            const body = ts.isTypeAliasDeclaration(parent) && ts.isTypeLiteralNode(parent.type) ? parent.type : parent;
             const documentation = docs(wanted).map(doc => doc.getText() + newline).join('');
-            this.edits.add(capture.projectPath(source.fileName)!, container.end - 1, container.end - 1, newline + documentation + nativeTypeText(wanted, aliases).replace(/\r?\n/g, newline) + newline);
+            this.edits.add(capture.projectPath(source.fileName)!, body.end - 1, body.end - 1, newline + documentation + nativeTypeText(wanted, aliases).replace(/\r?\n/g, newline) + newline);
           }
         }
         this.files.push({ id: file.id, path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts,
+          ...file.container ? { container: file.container } : {},
           ...(adopted.length ? { adopted, renderedArtifacts: structuredClone(file.artifacts) as ArtifactAssociation[], documentation: [...documentation].sort() } : {}) });
       }
       if (this.problems.length) return;

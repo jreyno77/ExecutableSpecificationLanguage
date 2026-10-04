@@ -16,6 +16,11 @@ const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
 interface ConsumerReport {
   packageUrl: string;
+  acceptance?: {
+    written: OutputWrite; scenario: string; driverBefore: string; driverAfter: string; unchangedTests: boolean;
+    passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
+    broken: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[] };
+  };
   nativeInputs?: {
     complete: boolean; problems: unknown[]; evidence: { uri: string; version: string }[]; actualUri: string;
     editable: string[]; before: string; after: string; laterVersion: string; targetExists: boolean; handwritten: string;
@@ -146,6 +151,11 @@ export class PackageDriver {
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
+  }
+  async generateShoppingAcceptance(): Promise<void> {
+    await npm(this.consumer, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', 'vitest@5.0.2', '@types/node@24.13.6']);
+    await cp(join(resources, 'acceptance-consumer.mjs'), join(this.consumer, 'acceptance-consumer.mjs'));
+    this.result = await run(process.execPath, ['acceptance-consumer.mjs'], this.consumer); await this.readReport();
   }
   async applyWriteAfterNativeReplacement(input: { library: string; before: string; after: string; file: string; text: string }): Promise<void> {
     await cp(join(resources, 'native-input-consumer.mjs'), join(this.consumer, 'native-input-consumer.mjs'));
