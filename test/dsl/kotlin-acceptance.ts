@@ -17,6 +17,11 @@ export class KotlinAcceptance {
   nameGroupFor(title: string, native: string): void { this.driver.nameGroupFor(title, native); }
   readGroupFor(title: string): Promise<void> { return this.driver.readGroupFor(title); }
   changeGroups(text: string, retained: readonly string[], retired: readonly string[] = []): void { this.driver.changeGroups(text, retained, retired); }
+  retireExamples(text: string, titles: readonly string[]): void { this.driver.retireExamples(text, titles); }
+  addComparisonNeighbor(text: string): Promise<void> { return this.driver.addComparisonNeighbor(text); }
+  async expectComparisonContains(text: string): Promise<void> { expect(await this.driver.comparisonText()).toContain(text); }
+  async expectComparisonExcludes(text: string): Promise<void> { expect(await this.driver.comparisonText()).not.toContain(text); }
+  weakenFiniteNumberGuard(): Promise<void> { return this.driver.replace('src/test/kotlin/store/tests/dsl/ExpecChecks.kt', 'require(value.isFinite())', 'require(true)'); }
   deleteGroupFor(title: string): Promise<void> { return this.driver.deleteGroupFor(title); }
   async expectNoNativeGroup(title: string): Promise<void> {
     await this.driver.searchGroupFor(title);

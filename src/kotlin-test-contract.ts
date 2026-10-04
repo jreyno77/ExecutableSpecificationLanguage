@@ -5,7 +5,7 @@ import { canonical } from './identity-baseline.js';
 import { hash, problem } from './project-files.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
-type Baseline = { path: string; generated: string; artifacts: readonly ArtifactAssociation[] };
+type Baseline = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[] };
 
 /** Owned expectations stay intact while unowned neighboring methods and driver implementations remain editable. */
 export async function checkKotlinTests(snapshot: ProjectSnapshot, current: KotlinQuery, files: readonly Baseline[], driver: string): Promise<Check> {
@@ -18,7 +18,8 @@ export async function checkKotlinTests(snapshot: ProjectSnapshot, current: Kotli
   const problems = [];
   for (const file of changed) {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.files.find(actual => actual.path === file.path)!.bytes);
-    const declarations = [...baseline.value.declarations.filter(node => node.file === file.path && node.kind === 'class' && node.selector.length === 1), ...file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').flatMap(item =>
+    const declarations = [...baseline.value.declarations.filter(node => node.file === file.path && node.selector.length === 1
+      && (node.kind === 'class' || file.id === 'support:comparison' && node.kind === 'function')), ...file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').flatMap(item =>
       baseline.value!.declarations.filter(node => canonical({ file: node.file, declaration: node.selector }) === canonical(item.locator.value)
         && ['function', 'property'].includes(node.kind)))];
     const contract = (node: KotlinQuery['declarations'][number], source: string) => source.slice(node.range.start, node.kind === 'class' ? node.bodyRange?.start ?? node.range.end : node.range.end);

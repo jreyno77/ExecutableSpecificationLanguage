@@ -41,7 +41,7 @@ export async function retireKotlin(snapshot: ProjectSnapshot, previous: readonly
 }
 
 /** Reconciles native declaration edits against the last generated text, keeping current implementation bytes. */
-export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[], constraints: ReadonlySet<string>): Promise<Check<{ changes: readonly FileChange[]; obligations: readonly Diagnostic[] }>> {
+export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[], constraints: ReadonlySet<string>, generatedSupport: ReadonlySet<string> = new Set()): Promise<Check<{ changes: readonly FileChange[]; obligations: readonly Diagnostic[] }>> {
   const problems: Diagnostic[] = [], edits = new Map<string, Edit[]>();
   const refuse = (path: string, message: string) => problems.push(problem(snapshot.root, 'output-conflict', path, message));
   const current = await queryKotlin(snapshot, 'expec.kotlin.json');
@@ -84,6 +84,13 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   };
   const replacements = new Map<string, string>(), replaced: { before: Declaration; after: Declaration }[] = [];
   const constrained = new Set(previous.flatMap(file => file.artifacts.filter(item => constraints.has(item.specId)).map(item => canonical(item.locator.value))));
+  const generated = new Set([...before.value.support].flatMap(([id, addresses]) => generatedSupport.has(id) ? addresses.map(address => canonical(address)) : []));
+  for (const address of generated) constrained.add(address);
+  const generatedCaller = (reference: KotlinQuery['references'][number]) => [...constrained].some(address => {
+    const node = currentNodes.get(address), old = oldNodes.get(address);
+    return node?.kind === 'function' && old && contains(node, reference.file, reference.range)
+      && sources.get(node.file)!.slice(node.range.start, node.range.end) === original.get(old.file)!.slice(old.range.start, old.range.end);
+  });
   for (const [id, address] of oldSymbols) {
     if (!constrained.has(address)) continue;
     const old = oldNodes.get(address), node = currentNodes.get(address), next = newNodes.get(newSymbols.get(id) ?? '');
@@ -92,6 +99,9 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (beforeText === afterText) continue;
     if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== beforeText || previous.some(file => file.adopted && file.artifacts.some(item => canonical(item.locator.value) === address))) {
       problems.push(problem(snapshot.root, 'handwritten-contract-change', node.file, 'A changed restriction cannot replace a handwritten or adopted native implementation.')); continue;
+    }
+    if (generated.has(address) && references(node).some(reference => !generatedCaller(reference) && !retired.some(removed => contains(removed, reference.file, reference.range)))) {
+      refuse(node.file, 'A handwritten native caller prevents changing the meaning of this generated comparison.'); continue;
     }
     edit(node.file, node.range, afterText, true); replaced.push({ before: node, after: next });
     for (const member of current.value.declarations.filter(member => contains(node, member.file, member.range))) {
@@ -111,7 +121,8 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
         || previous.some(file => file.adopted && file.artifacts.some(item => canonical(item.locator.value) === address))) {
         problems.push(problem(snapshot.root, 'handwritten-removal', node.file, 'The retired declaration contains handwritten changes.')); continue;
       }
-      if (references(node).some(reference => !retired.some(removed => contains(removed, reference.file, reference.range)))) {
+      if (references(node).some(reference => !retired.some(removed => contains(removed, reference.file, reference.range))
+        && !replaced.some(root => contains(root.before, reference.file, reference.range)))) {
         refuse(node.file, 'A current native caller still uses the retired declaration.'); continue;
       }
       edit(node.file, node.range, '', true); continue;
@@ -143,7 +154,15 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (replaced.some(root => contains(root.after, next.file, next.range))) continue;
     const ownerAddress = key(next.file, next.selector.slice(0, -1));
     const ownerId = [...newSymbols].find(([, address]) => address === ownerAddress)?.[0];
-    if (!ownerId) continue; // A newly created top-level file is emitted below.
+    if (!ownerId) {
+      // A new support function joins its recorded file without replacing unowned neighbors.
+      const file = desired.find(file => file.path === next.file && generatedSupport.has(file.id));
+      if (file && next.kind === 'function' && next.selector.length === 1 && previous.some(before => before.id === file.id) && sources.has(next.file)) {
+        const end = sources.get(next.file)!.length;
+        edit(next.file, { start: end, end }, '\n' + wanted.get(next.file)!.slice(next.range.start, next.range.end) + '\n');
+      }
+      continue; // A newly created top-level file is emitted below.
+    }
     if (!oldSymbols.has(ownerId)) continue; // Its new parent already contains this declaration.
     const owner = currentById.get(ownerId);
     if (!owner?.bodyRange) { refuse(next.file, 'The containing native declaration has no editable body.'); continue; }

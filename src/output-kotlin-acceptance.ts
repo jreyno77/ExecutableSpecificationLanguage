@@ -169,12 +169,10 @@ class KotlinAcceptance implements OutputAdapter {
       if (actual?.version !== version) changes.push({ kind: 'write', path: file.path, bytes });
     }
     if (stored.value && !migrating) {
-      const helpers = prefix + '/dsl/ExpecChecks.kt';
-      if (stored.value.files.some(before => before.path === helpers && files.find(file => file.path === helpers)?.text !== before.generated)) return failure('native-preservation-unavailable', 'Changed data comparisons require native runtime ownership reconciliation.', helpers);
       const ownedBodies = new Set([...request.current.specification.inspection.query('example'), ...request.current.specification.inspection.query('scenario'),
         ...request.current.specification.inspection.query('fixture'), ...request.current.specification.inspection.query('setup'), ...request.current.specification.inspection.query('action'),
         ...request.current.specification.inspection.query('observation'), ...request.current.specification.inspection.query('check')].filter(item => !('body' in item) || item.body.kind === 'available').map(item => request.current.id(item.id)));
-      const preserved = await preserveKotlin(snapshot, stored.value.files.filter(file => file.path !== helpers), files.filter(file => file.path !== helpers), ownedBodies);
+      const preserved = await preserveKotlin(snapshot, stored.value.files, files, ownedBodies, new Set(['support:comparison']));
       if (!preserved.value) return { problems: preserved.problems, deferred: preserved.deferred };
       changes.length = 0; changes.push(...preserved.value.changes);
       proposed.clear(); for (const file of snapshot.files) proposed.set(file.path, file);

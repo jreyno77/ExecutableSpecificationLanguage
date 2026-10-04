@@ -60,6 +60,22 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     for (const id of this.names.keys()) if (this.current.baseline.retired.includes(id)) this.names.delete(id);
     this.namedOptions();
   }
+  retireExamples(text: string, titles: readonly string[]): void {
+    const examples = [...this.current.specification.inspection.query('example')];
+    const decisions = titles.map(title => {
+      const selected = examples.filter(item => item.title.value === title);
+      if (selected.length !== 1) throw Error('Select one actual example title: ' + title);
+      return { retire: this.current.id(selected[0]!.id) };
+    });
+    const compiled = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: [], packages: [] }) });
+    if (!compiled.value) throw Error(JSON.stringify(compiled));
+    this.identify(compiled.value, {}, [], decisions);
+  }
+  async addComparisonNeighbor(text: string): Promise<void> {
+    const path = 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt';
+    await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\n' + text + '\n');
+  }
+  async comparisonText(): Promise<string> { return fs.readFile(join(this.root, 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt'), 'utf8'); }
   async deleteGroupFor(title: string): Promise<void> {
     const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
     this.written = await this.output.delete(id); this.files = await this.capturedFiles();
