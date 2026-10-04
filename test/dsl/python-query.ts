@@ -74,4 +74,3 @@ export class PythonQueries {
   }
   async expectFile(file: string, text: string) { expect(await this.driver.text(file)).toBe(text); }
 }
-

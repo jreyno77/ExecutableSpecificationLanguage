@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { Diagnostic } from './checking.js';
 import type { ProjectSnapshot } from './project-connection.js';
 import { canonical } from './identity-baseline.js';
-import { pythonConfiguration } from './python-profile.js';
+import { pythonConfiguration, pythonReportPath } from './python-profile.js';
 import { PythonInputs, pythonEnvironment } from './python-inputs.js';
 import { runPython } from './python-process.js';
 import { outputProblem } from './output-documents.js';
@@ -25,6 +25,7 @@ const result = z.strictObject({
   problems: z.array(z.strictObject({ code: z.string(), file: z.string(), start: z.number().int().nonnegative().optional(), message: z.string() })),
   rewritten: z.array(z.strictObject({ file: z.string(), text: z.string() })).optional(),
   driver: z.array(declaration).optional(),
+  fixture: z.strictObject({ name: z.string(), generator: z.boolean() }).optional(),
 });
 export type PythonFacts = z.infer<typeof result>;
 export const pythonTargetKey = (target: PythonFacts['declarations'][number]['target']): string => canonical([target.file, target.line, target.column]);
@@ -35,7 +36,10 @@ export interface PythonRewrite {
   move?: { from: string; to: string; old: string; next: string };
 }
 type AcceptanceFile = { file: string; text: string; driver: boolean };
-export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] } | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
+type PytestFixture = { file: string; name: string; consumer?: string };
+type InspectionRequest = (PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] }
+  | { consumer: string; file: string; target: PythonFacts['declarations'][number]['target'] } | { fixture: PytestFixture }) & { fixture?: PytestFixture };
+export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: InspectionRequest): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
   if (!snapshot.complete || !configuration.value || problems.length) return { problems };
@@ -43,8 +47,9 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
   if (!environment.value) return { problems };
   const inputs = new PythonInputs(); await inputs.capture(environment.value, configuration.value); problems.push(...inputs.problems);
   const supplied = nativeInputs(snapshot);
-  if (!supplied || inputs.evidence().some(input => { const path = fileURLToPath(input.uri); return supplied.get(process.platform === 'win32' ? path.toLowerCase() : path) !== input.version; }))
-    problems.push(outputProblem('native-input-changed', '', 'Native Python inputs differ from the supplied capture.'));
+  const changed = supplied && inputs.evidence().find(input => { const path = fileURLToPath(input.uri); return supplied.get(process.platform === 'win32' ? path.toLowerCase() : path) !== input.version; });
+  if (!supplied || changed)
+    problems.push(outputProblem('native-input-changed', changed ? fileURLToPath(changed.uri) : pythonReportPath, 'Native Python inputs differ from the supplied capture.'));
   if (problems.length) return { problems };
   const temporary = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-python-query-')), root = join(temporary, 'source');
   try {
@@ -59,7 +64,7 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
     const request = { root, cache: join(temporary, 'cache'), files: files.map(file => file.path), sites: environment.value.environment.sites,
       main: profile.sourceRoots.main, paths: [...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib],
       stdlib: environment.value.python.stdlib, sourcePaths: profile.sourcePath,
-      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite || 'consumer' in rewrite ? rewrite : { rewrite } : {}) };
+      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite || 'consumer' in rewrite || 'fixture' in rewrite ? rewrite : { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
     problems.push(...await inputs.verify());

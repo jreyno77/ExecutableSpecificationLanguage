@@ -16,6 +16,7 @@ import { ExpressionChecker } from './expression-checker.js';
 type Operation = Item<'setup' | 'action' | 'observation' | 'check'>;
 type Options = Pick<PythonOptions, 'names' | 'imports'> & { domain: string; testRoot: string };
 type Driver = { file: string; module: string; name: string };
+type Fixture = Driver & { parameter: string; generator: boolean };
 const indent = (text: string): string => text.split('\n').map(line => '    ' + line).join('\n');
 
 /** Checked examples become domain calls; the driver alone performs application effects. */
@@ -32,7 +33,7 @@ export class PythonExamples {
   private readonly values = new Map<string, TypeId>();
   private readonly imports = new Map<string, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: Options, context?: OutputContext,
-    private readonly native?: { facts: PythonFacts; roots: readonly string[] }, private readonly driver?: Driver) {
+    private readonly native?: { facts: PythonFacts; roots: readonly string[] }, private readonly driver?: Driver, private readonly fixture?: Fixture) {
     this.inspection = current.specification.inspection;
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
@@ -163,7 +164,14 @@ export class PythonExamples {
         + '    return ' + receiver + '.' + this.name(operation) + '(' + operation.parameters.map(parameter => this.name(parameter)).join(', ') + ')';
     });
     return 'from __future__ import annotations\n' + this.typings() + this.driverImport()
-      + '\ndef _expec_construct() -> _ExpecDriver:\n    return _ExpecDriver()\n\n' + checks.join('\n\n') + '\n';
+      + '\ndef _expec_construct() -> ' + (this.fixture ? 'type[_ExpecDriver]:\n    return _ExpecDriver' : '_ExpecDriver:\n    return _ExpecDriver()') + '\n\n' + checks.join('\n\n') + '\n';
+  }
+  fixtureCheck(): string | undefined {
+    if (!this.fixture) return;
+    const owner = this.options.domain[0]!.toUpperCase() + this.options.domain.slice(1);
+    return 'from typing import Callable, Iterator, ParamSpec\nfrom dsl.' + this.options.domain + ' import ' + owner
+      + '\nfrom ' + this.fixture.module + ' import ' + this.fixture.name + ' as _selected_fixture\n_P = ParamSpec("_P")\n'
+      + 'def _expec_accept(factory: Callable[_P, ' + (this.fixture.generator ? 'Iterator[' + owner + ']' : owner) + ']) -> None: pass\n_expec_accept(_selected_fixture)\n';
   }
   bindDriver(methods: PythonFacts['declarations']): void {
     this.operations.filter(operation => operation.kind !== 'check' && operation.body.kind !== 'available').forEach((operation, index) => {
@@ -179,6 +187,20 @@ export class PythonExamples {
   private driverImport(): string {
     return this.driver ? 'from ' + this.driver.module + ' import ' + this.driver.name + ' as _ExpecDriver\n'
       : 'from driver.' + this.options.domain + '_driver import ' + this.options.domain[0]!.toUpperCase() + this.options.domain.slice(1) + 'Driver\n';
+  }
+  private fixtureAdmission(owner: string): string {
+    if (!this.fixture) return '';
+    const methods = this.operations.map(operation => this.name(operation)).map(name => '        (' + JSON.stringify(name) + ', ' + owner + '.' + name + ', ' + owner + '.' + name + '.__code__),');
+    return '\ndef _expec_fixture(value: ' + owner + ', _owner: type[' + owner + '] = ' + owner
+      + ',\n    _dictionary: object = ' + owner + '.__dict__["__dict__"],\n    _operations: tuple[tuple[str, object, object], ...] = (\n' + methods.join('\n') + '\n    )) -> None:\n'
+      + '    if type(value) is not _owner:\n        raise AssertionError("Expected the actual generated ' + owner + ' fixture.")\n'
+      + '    members = type.__getattribute__(_owner, "__dict__")\n'
+      + '    if "__getattr__" in members or members.get("__getattribute__", object.__getattribute__) is not object.__getattribute__ or members.get("__dict__") is not _dictionary:\n'
+      + '        raise AssertionError("The generated fixture access protocol changed.")\n'
+      + '    values = object.__getattribute__(value, "__dict__")\n'
+      + '    for name, function, code in _operations:\n'
+      + '        if name in values or members.get(name) is not function or object.__getattribute__(function, "__code__") is not code:\n'
+      + '            raise AssertionError("The generated fixture operation changed: " + name)\n';
   }
   private method(operation: Operation, driver: boolean, path: string, owner: string): string {
     this.values.clear();
@@ -210,7 +232,9 @@ export class PythonExamples {
   }
   files(): { path: string; text: string }[] {
     const { domain, testRoot } = this.options, owner = domain[0]!.toUpperCase() + domain.slice(1), driverName = this.driver ? '_ExpecDriver' : owner + 'Driver';
-    if (domain.toLowerCase() === 'comparison' || domain === '_expec' || !pythonName(owner)) this.problems.push({ code: 'native-name-conflict',
+    const receiver = this.fixture?.parameter ?? domain;
+    if (!pythonName(receiver) || ['_expec', '_expec_fixture'].includes(receiver) || this.fixture && ['_expec', '_expec_fixture', owner].includes(this.fixture.name)) this.problems.push({ code: 'invalid-native-fixture', message: 'The fixture needs usable native import and test parameter names.', at: { kind: 'dependency', path: ['outputs', 'python-acceptance', 'fixture'] }, related: [] });
+    if (domain.toLowerCase() === 'comparison' || ['_expec', '_expec_fixture'].includes(domain) || !pythonName(owner)) this.problems.push({ code: 'native-name-conflict',
       message: 'The domain conflicts with a native keyword or generated comparison name: ' + domain, at: { kind: 'dependency', path: ['outputs', 'python-acceptance', 'domain'] }, related: [] });
     const driverPath = testRoot + '/driver/' + domain + '_driver.py', dslPath = testRoot + '/dsl/' + domain + '.py', testPath = testRoot + '/acceptance/test_' + domain + '.py';
     const used = new Set(['driver', '__init__']);
@@ -250,8 +274,8 @@ export class PythonExamples {
       this.associate(scenario, testPath, [{ kind: 'function', name }]);
       let steps: string[];
       if (scenario.kind === 'example') steps = [scenario.expected.kind === 'prose-expectation'
-        ? this.expression(scenario.actual, domain) + '\n' + this.verification(scenario.expected)
-        : '_expec.expect_data(' + this.comparison(scenario.actual, scenario.expected, domain) + ')'];
+        ? this.expression(scenario.actual, receiver) + '\n' + this.verification(scenario.expected)
+        : '_expec.expect_data(' + this.comparison(scenario.actual, scenario.expected, receiver) + ')'];
       else steps = scenario.steps.map(step => {
         const facts = this.current.specification.step(step.id).value;
         if (!facts) throw Error('Python acceptance requires checked steps.');
@@ -260,20 +284,21 @@ export class PythonExamples {
         if (step.content.kind === 'prose-expectation') return this.verification(step.content);
         if (facts.capture) {
           const name = this.inspection.read(facts.capture.name, 'name').decoded;
-          if (!pythonName(name) || [domain, '_expec'].includes(name)) this.problem('native-name-conflict', step, 'Capture conflicts with a generated native name: ' + name);
-          return name + ' = ' + this.expression(step.content, domain);
+          if (!pythonName(name) || [receiver, '_expec', '_expec_fixture'].includes(name)) this.problem('native-name-conflict', step, 'Capture conflicts with a generated native name: ' + name);
+          return name + ' = ' + this.expression(step.content, receiver);
         }
         const check = step.content.kind === 'call-expression' && this.inspection.read(this.current.specification.call(step.content.id).value!).kind === 'check';
-        return step.kind === 'then' && !check ? this.assertion(step.content, domain) : this.expression(step.content, domain);
+        return step.kind === 'then' && !check ? this.assertion(step.content, receiver) : this.expression(step.content, receiver);
       });
-      tests.push('# @expec-test ' + JSON.stringify(this.current.id(scenario.id)) + '\ndef ' + name + '(' + domain + ': ' + owner + ') -> None:\n' + indent(steps.join('\n') || 'raise NotImplementedError("Empty scenario")'));
+      if (this.fixture) steps.unshift('_expec_fixture(' + receiver + ')');
+      tests.push('# @expec-test ' + JSON.stringify(this.current.id(scenario.id)) + '\ndef ' + name + '(' + receiver + ': ' + owner + ') -> None:\n' + indent(steps.join('\n') || 'raise NotImplementedError("Empty scenario")'));
     }
     const typings = this.typings(), driverImport = this.driverImport();
     return [
       ...this.driver ? [] : [{ path: driverPath, text: 'from __future__ import annotations\n' + typings + '\nclass ' + driverName + ':\n' + indent(driverMethods.join('\n\n') || 'pass') + '\n' }],
-      { path: dslPath, text: 'from __future__ import annotations\n' + typings + driverImport + 'from dsl import comparison as _expec\n\n_expec_types: _expec.Shapes = ' + pythonValue(this.data.shapes) + '\n\nclass ' + owner + ':\n' + indent(fixtures.map(fixture => fixture.name + ': ' + fixture.type + '\n').join('') + 'def __init__(self, driver: ' + driverName + ') -> None:\n' + indent(['self.driver = driver', ...fixtures.map(fixture => 'self.' + fixture.name + ' = ' + fixture.value)].join('\n')) + '\n\n' + methods.join('\n\n')) + '\n' },
-      { path: testRoot + '/dsl/' + domain + '_fixture.py', text: 'import pytest\n' + driverImport + 'from dsl.' + domain + ' import ' + owner + '\n\n@pytest.fixture\ndef ' + domain + '() -> ' + owner + ':\n    return ' + owner + '(' + driverName + '())\n' },
-      { path: testPath, text: 'from dsl.' + domain + ' import ' + owner + '\nfrom dsl.' + domain + '_fixture import ' + domain + '\nfrom dsl import comparison as _expec\n\n' + tests.join('\n\n') + '\n' },
+      { path: dslPath, text: 'from __future__ import annotations\n' + typings + driverImport + 'from dsl import comparison as _expec\n\n_expec_types: _expec.Shapes = ' + pythonValue(this.data.shapes) + '\n\nclass ' + owner + ':\n' + indent(fixtures.map(fixture => fixture.name + ': ' + fixture.type + '\n').join('') + 'def __init__(self, driver: ' + driverName + ') -> None:\n' + indent(['self.driver = driver', ...fixtures.map(fixture => 'self.' + fixture.name + ' = ' + fixture.value)].join('\n')) + '\n\n' + methods.join('\n\n')) + '\n' + this.fixtureAdmission(owner) },
+      ...this.fixture ? [] : [{ path: testRoot + '/dsl/' + domain + '_fixture.py', text: 'import pytest\n' + driverImport + 'from dsl.' + domain + ' import ' + owner + '\n\n@pytest.fixture\ndef ' + domain + '() -> ' + owner + ':\n    return ' + owner + '(' + driverName + '())\n' }],
+      { path: testPath, text: 'from dsl.' + domain + ' import ' + owner + (this.fixture ? ', _expec_fixture' : '') + '\nfrom ' + (this.fixture ? this.fixture.module + ' import ' + this.fixture.name : 'dsl.' + domain + '_fixture import ' + domain) + '\nfrom dsl import comparison as _expec\n\n' + tests.join('\n\n') + '\n' },
     ];
   }
 }

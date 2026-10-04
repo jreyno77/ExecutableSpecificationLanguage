@@ -24,6 +24,7 @@ const saved = z.strictObject({ format: z.literal(1), options: z.string(),
 type State = z.infer<typeof saved>;
 const statePath = '.expec/outputs/707974686f6e2d616363657074616e6365.json';
 const selectedDriver = z.strictObject({ file: z.string().refine(pythonPath), declaration: z.tuple([z.strictObject({ kind: z.literal('class'), name: z.string().refine(pythonName) })]) });
+const selectedFixture = selectedDriver.extend({ declaration: z.tuple([z.strictObject({ kind: z.literal('function'), name: z.string().refine(pythonName) })]) });
 export const pythonAcceptanceOutput: OutputRegistration = {
   id: 'python-acceptance',
   validate(value) { const parsed = pythonAcceptanceOptions.safeParse(value); return parsed.success ? [] : parsed.error.issues.map(item => ({ path: item.path as (string | number)[], message: item.message })); },
@@ -31,6 +32,9 @@ export const pythonAcceptanceOutput: OutputRegistration = {
     const options = pythonAcceptanceOptions.parse(value), driverPath = options.testRoot + '/driver/' + options.domain + '_driver.py';
     const selected = options.driver && options.driver.outputId === 'python-acceptance' && options.driver.format === 'python-symbol-1'
       ? selectedDriver.safeParse(options.driver.value).data : undefined;
+    const fixture = options.fixture && options.fixture.outputId === 'python-acceptance' && options.fixture.format === 'python-symbol-1'
+      ? selectedFixture.safeParse(options.fixture.value).data : undefined;
+    const fixtureSelection = fixture ? { file: fixture.file, name: fixture.declaration[0].name } : undefined;
     const native = (state?: State) => new PythonProject({ outputId: 'python-acceptance', ...options.configFile ? { configFile: options.configFile } : {} }, state?.artifacts ?? []);
     const state = (snapshot: ProjectSnapshot): Check<State | undefined> => {
       const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
@@ -47,21 +51,32 @@ export const pythonAcceptanceOutput: OutputRegistration = {
       async plan(request, snapshot) {
         if (request.operation === 'delete') return failure('unsupported-native-acceptance', 'Python acceptance retirement is not implemented.');
         if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Provide the actual specification transition.');
-        if (options.fixture) return failure('unsupported-native-acceptance', 'Explicit Python fixture adoption is not implemented.');
+        if (options.fixture && !fixture) return failure('invalid-native-fixture', 'Select one Python fixture by its actual native locator.');
         if (options.driver && !selected) return failure('invalid-native-driver', 'Select one Python acceptance class by its actual native locator.');
         const previous = state(snapshot); if (previous.problems.length) return { problems: previous.problems, deferred: [] };
-        const inspected = await inspectPython(snapshot, options.configFile, previous.value ? { tests: previous.value.files } : undefined);
-        if (inspected.problems.length) return { problems: inspected.problems, deferred: [] };
+        const inspected = await inspectPython(snapshot, options.configFile, previous.value ? { tests: previous.value.files, ...fixtureSelection ? { fixture: fixtureSelection } : {} }
+          : fixtureSelection ? { fixture: fixtureSelection } : undefined);
+        if (!inspected.value || inspected.problems.length && !(fixture && inspected.value.fixture && inspected.problems.every(problem => problem.code === 'unresolved-python-import')))
+          return { problems: inspected.problems, deferred: [] };
         const profile = pythonConfiguration(snapshot, options.configFile).value!;
         const roots = [...profile.sourceRoots.main, ...profile.sourceRoots.test], root = selected && roots.find(root => selected.file.startsWith(root + '/'));
         const module = selected && root ? selected.file.slice(root.length + 1).replace(/\.py$/, '').replace(/\/__init__$/, '').replaceAll('/', '.') : '';
+        const fixtureRoot = fixture && roots.find(root => fixture.file.startsWith(root + '/'));
+        const fixtureModule = fixture && fixtureRoot ? fixture.file.slice(fixtureRoot.length + 1).replace(/\.py$/, '').replace(/\/__init__$/, '').replaceAll('/', '.') : '';
+        if (fixture && (!fixtureRoot || !fixture.file.endsWith('.py') || !fixtureModule.split('.').every(pythonName) || !inspected.value.fixture))
+          return failure('invalid-native-fixture', 'The selected fixture must be an importable native function.', [fixture.file]);
         if (selected && (!root || !selected.file.endsWith('.py') || !module.split('.').every(pythonName)
           || inspected.value!.declarations.filter(item => item.file === selected.file && canonical(item.declaration) === canonical(selected.declaration)).length !== 1))
           return failure('invalid-native-driver', 'The selected driver must have exactly one importable class definition.', [selected.file]);
         const target = selected && inspected.value!.declarations.find(item => item.file === selected.file && canonical(item.declaration) === canonical(selected.declaration))!.target;
         const imports = (facts: PythonFacts): Check<void> => {
-          if (!target) return success(undefined);
-          for (const file of [options.testRoot + '/dsl/' + options.domain + '.py', options.testRoot + '/dsl/' + options.domain + '_fixture.py']) {
+          const dsl = options.testRoot + '/dsl/' + options.domain + '.py', test = options.testRoot + '/acceptance/test_' + options.domain + '.py';
+          const owner = options.domain[0]!.toUpperCase() + options.domain.slice(1);
+          const definition = facts.declarations.find(item => item.file === dsl && canonical(item.declaration) === canonical([{ kind: 'class', name: owner }]));
+          const references = facts.uses.filter(use => use.file === test && !use.owner.length && use.name === owner);
+          if (!definition || !references.length || references.some(use => canonical(use.targets) !== canonical([definition.target])))
+            return failure('invalid-native-mapping', 'The generated test must use its actual generated DSL class.', [test]);
+          for (const file of target ? [options.testRoot + '/dsl/' + options.domain + '.py', ...fixture ? [] : [options.testRoot + '/dsl/' + options.domain + '_fixture.py']] : []) {
             const scope = file.endsWith('_fixture.py') ? [{ kind: 'function', name: options.domain }]
               : [{ kind: 'class', name: options.domain[0]!.toUpperCase() + options.domain.slice(1) }, { kind: 'method', name: '__init__' }];
             const uses = facts.uses.filter(use => use.file === file && (!use.owner.length || canonical(use.owner) === canonical(scope))
@@ -69,21 +84,36 @@ export const pythonAcceptanceOutput: OutputRegistration = {
             if (!uses.length || uses.some(use => use.targets.length !== 1 || canonical(use.targets[0]) !== canonical(target)))
               return failure('invalid-native-driver', 'The generated import must resolve to the selected native class.', [file]);
           }
+          if (fixture) {
+            const expected = inspected.value!.declarations.find(item => item.file === fixture.file && canonical(item.declaration) === canonical(fixture.declaration))!.target;
+            const uses = facts.uses.filter(use => use.file === options.testRoot + '/acceptance/test_' + options.domain + '.py' && !use.owner.length && use.name === fixtureSelection!.name);
+            if (uses.length !== 1 || canonical(uses[0]!.targets) !== canonical([expected])) return failure('invalid-native-fixture', 'The generated test must import the selected native fixture.', [fixture.file]);
+          }
           return success(undefined);
         };
-        const examples = new PythonExamples(request.current, options, context, { facts: inspected.value!, roots }, selected ? { file: selected.file, module, name: selected.declaration[0].name } : undefined);
+        const examples = new PythonExamples(request.current, options, context, { facts: inspected.value!, roots }, selected ? { file: selected.file, module, name: selected.declaration[0].name } : undefined,
+          fixture ? { file: fixture.file, module: fixtureModule, name: fixtureSelection!.name, parameter: inspected.value.fixture!.name, generator: inspected.value.fixture!.generator } : undefined);
         const files = examples.files(), consumer = examples.driverCheck();
         if (examples.problems.length) return { problems: examples.problems, deferred: [] };
-        if (consumer) {
-          const checked = await inspectPython(snapshot, options.configFile, { consumer, file: selected!.file, target: target! });
-          if (checked.problems.length) return { problems: checked.problems, deferred: [] };
-          examples.bindDriver(checked.value!.driver ?? []);
-          if (examples.problems.length) return { problems: examples.problems, deferred: [] };
-        }
         files.unshift({ path: options.testRoot + '/dsl/comparison.py', text: await readFile(new URL('./python/comparison.py', import.meta.url), 'utf8') });
+        if (!previous.value) for (const file of files) {
+          if (snapshot.files.some(existing => existing.path === file.path)) return failure('output-conflict', 'Existing Python acceptance files require native preserving reconciliation.', [file.path]);
+          if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes this acceptance destination.', [file.path]);
+        }
+        const changes = files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }));
+        for (const layer of ['dsl', 'driver', 'acceptance']) {
+          const path = options.testRoot + '/' + layer + '/__init__.py';
+          if (!snapshot.files.some(file => file.path === path)) changes.unshift({ kind: 'write', path, bytes: Buffer.from('') });
+        }
+        const candidate = previous.value ? snapshot : { ...snapshot, files: [...snapshot.files, ...changes.map(change => ({ path: change.path, bytes: change.bytes, version: hash(change.bytes) }))] };
+        const fixtureCheck = fixtureSelection ? { fixture: { ...fixtureSelection, consumer: examples.fixtureCheck()! } } : undefined;
+        const checked = await inspectPython(candidate, options.configFile, consumer ? { consumer, file: selected!.file, target: target!, ...fixtureCheck } : fixtureCheck);
+        if (checked.problems.length) return { problems: checked.problems, deferred: [] };
+        const bound = imports(checked.value!); if (bound.problems.length) return { problems: bound.problems, deferred: [] };
+        if (consumer) examples.bindDriver(checked.value!.driver ?? []);
+        if (examples.problems.length) return { problems: examples.problems, deferred: [] };
         const next: State = { format: 1, options: canonical(options), files: files.map(file => ({ file: file.path, text: file.text, hash: hash(Buffer.from(file.text)), driver: file.path === driverPath })), artifacts: examples.artifacts };
         if (previous.value) {
-          const bound = imports(inspected.value!); if (bound.problems.length) return { problems: bound.problems, deferred: [] };
           if (canonical(previous.value) === canonical(next)) return success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
           if (request.operation !== 'update') return failure('use-update', 'Use update for changed existing Python examples.');
           const rewritten = await inspectPython(snapshot, options.configFile, { tests: previous.value.files, desiredTests: next.files });
@@ -94,18 +124,6 @@ export const pythonAcceptanceOutput: OutputRegistration = {
           changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
           return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts, obligations: examples.obligations });
         }
-        for (const file of files) {
-          if (snapshot.files.some(existing => existing.path === file.path)) return failure('output-conflict', 'Existing Python acceptance files require native preserving reconciliation.', [file.path]);
-          if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes this acceptance destination.', [file.path]);
-        }
-        const changes = files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }));
-        for (const layer of ['dsl', 'driver', 'acceptance']) {
-          const path = options.testRoot + '/' + layer + '/__init__.py';
-          if (!snapshot.files.some(file => file.path === path)) changes.unshift({ kind: 'write', path, bytes: Buffer.from('') });
-        }
-        const planned = await inspectPython({ ...snapshot, files: [...snapshot.files, ...changes.map(change => ({ path: change.path, bytes: change.bytes, version: hash(change.bytes) }))] }, options.configFile);
-        if (planned.problems.length) return { problems: planned.problems, deferred: [] };
-        const bound = imports(planned.value!); if (bound.problems.length) return { problems: bound.problems, deferred: [] };
         changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
         return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: examples.artifacts, obligations: examples.obligations });
       },

@@ -59,4 +59,3 @@ describe('current Python declarations and their actual consumers', { timeout: 12
     await p.expectFile('src/caller.py', caller.replace('game.save(', 'game.saveGame('));
   });
 });
-

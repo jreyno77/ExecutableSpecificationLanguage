@@ -42,4 +42,3 @@ export class PythonQueryDriver extends PythonPreservationDriver {
       utf16Column: lines.at(-1)!.length + 1, statement: source.split(/\r?\n/)[lines.length - 1]!.trim() };
   }
 }
-
