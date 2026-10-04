@@ -1,10 +1,12 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { PythonProjectDriver } from './python-project.js';
-import { FileProjectWriter, pythonAcceptanceOutput } from '../../src/index.js';
+import { FileProjectWriter, pythonAcceptanceOutput, type ProjectRead, type ProjectFile } from '../../src/index.js';
 
 export class PythonAcceptanceDriver extends PythonProjectDriver {
   scenario = '';
+  remembered: readonly ProjectFile[] = [];
+  scenarioRead!: ProjectRead;
   async initializeAcceptance(): Promise<void> { await this.initialize(); await this.installFixture(); this.outputs.register(pythonAcceptanceOutput); }
   authorShopping(title: string, expected: number): void {
     this.source(`examples {
@@ -28,6 +30,26 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
     this.written = output.value ? await output.value.create(this.current) : { problems: output.problems };
     if (!this.written.problems.length) this.scenario = await fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8');
+  }
+  async rememberGeneratedFiles(): Promise<void> { this.remembered = (await this.context.readSnapshot()).files.filter(file => file.path.startsWith('test/') || file.path === 'src/basket.py'); }
+  async rememberedFiles(): Promise<{ path: string; bytes: Uint8Array }[]> {
+    return Promise.all(this.remembered.map(async file => ({ path: file.path, bytes: await fs.readFile(join(this.root, file.path)) })));
+  }
+  async addReadableNativeEdits(): Promise<void> {
+    const path = 'test/dsl/shopping.py', source = await fs.readFile(join(this.root, path), 'utf8');
+    await this.file(path, '# Keep the human explanation.\n' + source.replace('comparison as _expec', 'comparison as comparison')
+      .replace(/\b_expec\b/g, 'comparison')
+      + '\ndef neighbor() -> str:\n    return "unchanged human code"\n');
+  }
+  async removeExpectedQuantity(): Promise<void> {
+    const path = 'test/dsl/shopping.py', source = await fs.readFile(join(this.root, path), 'utf8');
+    if (!source.includes('        _expec.expect_data(actual, expected)')) throw Error('The actual generated quantity assertion was not found.');
+    await this.file(path, source.replace('        _expec.expect_data(actual, expected)', '        pass  # This lost the promised assertion.'));
+  }
+  async readScenario(): Promise<void> {
+    const scenario = [...this.current.specification.inspection.query('scenario')][0]!;
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+    if (!output.value) throw Error(JSON.stringify(output)); this.scenarioRead = await output.value.read(this.current.id(scenario.id));
   }
   authorBook(): void {
     this.source(`type Book { title: Text\ncopies: Number\nnote: Text? }

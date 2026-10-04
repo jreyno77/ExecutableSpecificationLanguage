@@ -12,6 +12,23 @@ export class PythonAcceptance {
   aBookRetainsItsDeclaredData(): void { this.driver.authorBook(); }
   numbersRetainTheirDeclaredMeaning(): void { this.driver.authorNumberComparison(); }
   source(text: string): void { this.driver.source(text); }
+  rememberGeneratedFiles(): Promise<void> { return this.driver.rememberGeneratedFiles(); }
+  addReadableNativeEdits(): Promise<void> { return this.driver.addReadableNativeEdits(); }
+  removeExpectedQuantity(): Promise<void> { return this.driver.removeExpectedQuantity(); }
+  readScenario(): Promise<void> { return this.driver.readScenario(); }
+  expectNoEdits(): void { expect(this.driver.written.receipt?.status).toBe('unchanged'); expect(this.driver.written.receipt?.outcomes).toEqual([]); }
+  async expectRememberedFilesUnchanged(): Promise<void> {
+    expect(await this.driver.rememberedFiles()).toEqual(this.driver.remembered.map(file => ({ path: file.path, bytes: Buffer.from(file.bytes) })));
+  }
+  expectCompleteScenarioRead(): void {
+    expect(this.driver.scenarioRead.problems, JSON.stringify(this.driver.scenarioRead.problems)).toEqual([]);
+    expect(this.driver.scenarioRead.coverage.complete).toBe(true);
+    expect(this.driver.scenarioRead.artifacts.map(artifact => artifact.file.path)).toContain('test/acceptance/test_shopping.py');
+  }
+  expectCoverageProblem(code: string): void {
+    expect(this.driver.scenarioRead.coverage.complete).toBe(false);
+    expect(this.driver.scenarioRead.problems.map(problem => problem.code), JSON.stringify(this.driver.scenarioRead)).toContain(code);
+  }
   implementTakingOneCopy(): Promise<void> { return this.driver.implementTakingOneCopy(); }
   observePosition(expression: string): Promise<void> { return this.driver.observePosition(expression); }
   async expectNativeTypesAgree(): Promise<void> {
@@ -39,7 +56,7 @@ export class PythonAcceptance {
   }
   async generateTests(): Promise<void> {
     await this.driver.generate(); expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
-    expect(this.driver.written.receipt?.status).toBe('applied');
+    expect(['applied', 'unchanged']).toContain(this.driver.written.receipt?.status);
   }
   implementBasket(copies: number): Promise<void> { return this.driver.implementBasket(copies); }
   runTests(): Promise<void> { return this.driver.runGeneratedTests(); }

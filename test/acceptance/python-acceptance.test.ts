@@ -97,4 +97,33 @@ examples {
     await positions.observePosition('(2.0, 1.0)');
     positions.expectComparisonFailed();
   });
+  it('repeats generation without changing the implemented driver or readable tests', async () => {
+    const shopping = await PythonAcceptance.create();
+    shopping.aShopperCanAddAnAvailableBook('Dune', 1);
+    await shopping.generateTests();
+    await shopping.implementBasket(1);
+    await shopping.rememberGeneratedFiles();
+    await shopping.generateTests();
+    shopping.expectNoEdits();
+    await shopping.expectRememberedFilesUnchanged();
+    await shopping.runTests(); shopping.expectPassed(1);
+  });
+  it('retains comments, equivalent import aliases and an unowned neighboring function', async () => {
+    const shopping = await PythonAcceptance.create();
+    shopping.aShopperCanAddAnAvailableBook('Dune', 1);
+    await shopping.generateTests();
+    await shopping.addReadableNativeEdits();
+    await shopping.rememberGeneratedFiles();
+    await shopping.generateTests(); shopping.expectNoEdits();
+    await shopping.expectRememberedFilesUnchanged();
+    await shopping.readScenario(); shopping.expectCompleteScenarioRead();
+  });
+  it('cannot certify coverage after an authored assertion was removed', async () => {
+    const shopping = await PythonAcceptance.create();
+    shopping.aShopperCanAddAnAvailableBook('Dune', 1);
+    await shopping.generateTests();
+    await shopping.removeExpectedQuantity();
+    await shopping.readScenario();
+    shopping.expectCoverageProblem('generated-tests-changed');
+  });
 });

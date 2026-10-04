@@ -32,7 +32,7 @@ export interface PythonRewrite {
   before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[];
   move?: { from: string; to: string; old: string; next: string };
 }
-export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
+export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly { file: string; text: string; driver: boolean }[] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
   if (!snapshot.complete || !configuration.value || problems.length) return { problems };
@@ -55,7 +55,7 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
     }
     const request = { root, cache: join(temporary, 'cache'), files: files.map(file => file.path), sites: environment.value.environment.sites,
       main: profile.sourceRoots.main, paths: [...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib],
-      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? { rewrite } : {}) };
+      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? 'tests' in rewrite ? rewrite : { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
     problems.push(...await inputs.verify());

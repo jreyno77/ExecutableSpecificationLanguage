@@ -148,6 +148,12 @@ def inspect_files(request):
 
 root = pathlib.Path(request["root"])
 result = inspect_files(request)
+if "tests" in request and not result["problems"]:
+    import importlib.util
+    specification = importlib.util.spec_from_file_location("expec_integrity", pathlib.Path(__file__).with_name("integrity.py"))
+    integrity = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(integrity)
+    result["problems"].extend(integrity.check(request["tests"], root))
 if "rewrite" in request and not result["problems"]:
     import importlib.util
     specification = importlib.util.spec_from_file_location("expec_preservation", pathlib.Path(__file__).with_name("preservation.py"))
