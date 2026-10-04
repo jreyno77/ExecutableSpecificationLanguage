@@ -83,6 +83,11 @@ export class KotlinExamples {
     return fact.value.kind === 'none' ? 'Unit' : fact.value.kind === 'value' ? this.type(fact.value.type, operation) : this.problem('unspecified-native-result', operation, 'Specify the executable operation result.');
   }
   private expression(item: Item, receiver: string, expected?: TypeId): string {
+    while (expected) {
+      const shape = this.data.shape(expected);
+      if (shape.kind !== 'optional') break;
+      expected = shape.inner;
+    }
     switch (item.kind) {
       case 'number-literal': {
         const number = Number(item.token);
