@@ -14,12 +14,39 @@ type RecordedFile = { id: string; path: string; generated: string; artifacts: re
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 const key = (file: string, selector: Declaration['selector']) => canonical({ file, declaration: selector });
 
+/** Uses native PSI spans to remove an owned declaration from its generated contract baseline. */
+export async function retireKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], id: string): Promise<Check<{ files: KotlinFile[]; removed: string[] }>> {
+  const inputs = previous.map((file, index) => ({ ...file, temporary: file.path.slice(0, file.path.lastIndexOf('/') + 1) + '__expec_retire_' + index + '.kt' }));
+  const parsed = await queryKotlin({ ...snapshot, files: [...snapshot.files.filter(file => !file.path.endsWith('.kt')),
+    ...inputs.map(file => ({ path: file.temporary, bytes: Buffer.from(file.generated), version: hash(Buffer.from(file.generated)) }))] }, 'expec.kotlin.json');
+  if (!parsed.value) return { problems: parsed.problems, deferred: parsed.deferred };
+  const removed = new Set<string>(), files: KotlinFile[] = [];
+  for (const file of inputs) {
+    const nodes = parsed.value.declarations.filter(node => node.file === file.temporary);
+    const selected = nodes.filter(node => file.artifacts.some(item => item.specId === id && item.locator.format === 'kotlin-symbol-1'
+      && same((item.locator.value as { declaration: Declaration['selector'] }).declaration, node.selector)));
+    const inside = (selector: Declaration['selector']) => selected.some(node => same(selector.slice(0, node.selector.length), node.selector));
+    const artifacts = file.artifacts.filter(item => {
+      const remove = item.locator.format === 'kotlin-symbol-1' && inside((item.locator.value as { declaration: Declaration['selector'] }).declaration)
+        || item.specId === id && item.locator.format === 'kotlin-file-1';
+      if (remove) removed.add(item.specId); return !remove;
+    });
+    if (!artifacts.some(item => item.locator.format === 'kotlin-symbol-1')) continue;
+    let text = file.generated;
+    for (const node of selected.filter(node => !selected.some(parent => parent !== node && parent.range.start <= node.range.start && parent.range.end >= node.range.end))
+      .sort((a, b) => b.range.start - a.range.start)) text = text.slice(0, node.range.start) + text.slice(node.range.end);
+    files.push({ id: file.id, path: file.path, text, artifacts, ...file.adopted ? { adopted: true } : {} });
+  }
+  return success({ files, removed: [...removed] });
+}
+
 /** Reconciles native declaration edits against the last generated text, keeping current implementation bytes. */
-export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[], constraints: ReadonlySet<string>): Promise<Check<readonly FileChange[]>> {
+export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readonly RecordedFile[], desired: readonly KotlinFile[], constraints: ReadonlySet<string>): Promise<Check<{ changes: readonly FileChange[]; obligations: readonly Diagnostic[] }>> {
   const problems: Diagnostic[] = [], edits = new Map<string, Edit[]>();
   const refuse = (path: string, message: string) => problems.push(problem(snapshot.root, 'output-conflict', path, message));
   const current = await queryKotlin(snapshot, 'expec.kotlin.json');
-  if (!current.value || current.problems.length) return { problems: current.problems, deferred: [] };
+  const currentProblems = bindingProblems(current, snapshot);
+  if (!current.value || currentProblems.length) return { problems: currentProblems, deferred: [] };
   const owned = previous.flatMap(file => file.artifacts);
   const before = await compareKotlin(snapshot, current.value, previous.map(file => ({ ...file, text: file.generated })), owned);
   const after = await compareKotlin(snapshot, current.value, desired, owned);
@@ -44,7 +71,9 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     && (same(reference.target, node.selector) || reference.role === 'construction' && same(reference.target?.slice(0, -1), node.selector)));
   const edit = (file: string, range: { start: number; end: number }, text: string, replacesBinding = false) => {
     if (sources.get(file)?.slice(range.start, range.end) === text) return;
-    const changes = edits.get(file) ?? [];
+    let changes = edits.get(file) ?? [];
+    if (changes.some(change => change.replacesBinding && change.start <= range.start && change.end >= range.end)) return;
+    if (replacesBinding) changes = changes.filter(change => change.start < range.start || change.end > range.end);
     if (!changes.some(change => change.start === range.start && change.end === range.end && change.text === text)) changes.push({ ...range, text, ...(replacesBinding ? { replacesBinding: true as const } : {}) });
     edits.set(file, changes);
   };
@@ -73,7 +102,8 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (replaced.some(root => contains(root.before, node.file, node.range))) continue;
     if (!next) {
       if (retired.some(parent => parent !== node && contains(parent, node.file, node.range))) continue;
-      if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)) {
+      if (sources.get(node.file)!.slice(node.range.start, node.range.end) !== original.get(old.file)!.slice(old.range.start, old.range.end)
+        || previous.some(file => file.adopted && file.artifacts.some(item => canonical(item.locator.value) === address))) {
         problems.push(problem(snapshot.root, 'handwritten-removal', node.file, 'The retired declaration contains handwritten changes.')); continue;
       }
       if (references(node).some(reference => !retired.some(removed => contains(removed, reference.file, reference.range)))) {
@@ -84,13 +114,20 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     if (old.kind !== next.kind) { refuse(node.file, 'Native declaration category cannot change over an implementation.'); continue; }
     if (old.name !== next.name) {
       edit(node.file, node.nameRange, next.name);
-      for (const reference of references(node)) if (reference.name === node.name) edit(reference.file, reference.range, next.name);
+      for (const reference of references(node)) {
+        const text = sources.get(reference.file)!.slice(reference.range.start, reference.range.end);
+        if (reference.name === node.name && (text === node.name || text === '`' + node.name + '`')) edit(reference.file, reference.range, next.name);
+      }
     }
-    if (old.typeRange && next.typeRange && node.typeRange) {
+    if (old.typeRange && next.typeRange) {
       const oldType = original.get(old.file)!.slice(old.typeRange.start, old.typeRange.end), nextType = wanted.get(next.file)!.slice(next.typeRange.start, next.typeRange.end);
       if (oldType !== nextType) {
-        if (sources.get(node.file)!.slice(node.typeRange.start, node.typeRange.end) !== oldType) refuse(node.file, 'Both the author and specification changed this type annotation.');
-        else edit(node.file, node.typeRange, nextType, true);
+        if (node.typeRange) {
+          if (sources.get(node.file)!.slice(node.typeRange.start, node.typeRange.end) !== oldType) refuse(node.file, 'Both the author and specification changed this type annotation.');
+          else edit(node.file, node.typeRange, nextType, true);
+        } else if (node.typePosition !== undefined && node.returnType === old.returnType) {
+          edit(node.file, { start: node.typePosition, end: node.typePosition }, ': ' + nextType, true);
+        } else refuse(node.file, 'The inferred native result no longer matches the owned signature.');
       }
     }
     if (old.kind === 'function' && !same(old.selector.at(-1)?.parameters, next.selector.at(-1)?.parameters)) refuse(node.file, 'Parameter changes require explicit native signature preservation.');
@@ -118,7 +155,9 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       text = text.slice(0, change.start) + change.text + text.slice(change.end);
     }
     const before = previous.find(item => item.path === file), after = before && desired.find(item => item.id === before.id);
-    if (after && after.path !== file) {
+    if (!after && !desired.some(item => item.path === file) && previous.some(item => item.path === file && !item.adopted && item.generated === sources.get(file))) {
+      changes.push({ kind: 'remove', path: file });
+    } else if (after && after.path !== file) {
       if (sources.has(after.path)) refuse(after.path, 'The renamed native file destination already exists.');
       const owned = new Set(previous.flatMap(file => file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').map(item => canonical(item.locator.value))));
       if (current.value.declarations.some(node => node.file === file && node.selector.length === 1 && !owned.has(key(node.file, node.selector)))) {
@@ -139,12 +178,13 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
       const bytes = change.bytes!; proposed.set(path, { path, bytes, version: hash(bytes) }); }
   }
   const verified = await queryKotlin({ ...snapshot, files: [...proposed.values()] }, 'expec.kotlin.json');
-  if (verified.problems.length || !verified.value) return { problems: verified.problems, deferred: [] };
+  const failures = bindingProblems(verified, snapshot);
+  if (failures.length || !verified.value) return { problems: failures, deferred: [] };
   const movedFiles = new Map(changes.flatMap(change => change.kind === 'move' ? [[change.from, change.to] as const] : []));
   for (const reference of changedBindings(current.value, verified.value, edits, movedFiles, replacements)) {
     problems.push(problem(snapshot.root, 'native-binding-changed', reference.file, 'A surviving native reference changes target at UTF-16 offset ' + reference.range.start + '.'));
   }
-  return problems.length ? { problems, deferred: [] } : success(changes);
+  return problems.length ? { problems, deferred: [] } : success({ changes, obligations: verified.problems });
 }
 
 /** Declaration sites retain identity across edits even when their names or signatures change. */
@@ -154,24 +194,40 @@ function changedBindings(before: KotlinQuery, after: KotlinQuery, edits: Readonl
     for (const edit of edits.get(file) ?? []) {
       if (edit.end <= range.start) offset += edit.text.length - (edit.end - edit.start);
       else if (edit.start === range.start && edit.end === range.end) length = edit.text.length;
+      else if (edit.start >= range.start && edit.end <= range.end) length += edit.text.length - (edit.end - edit.start);
       else if (edit.start < range.end && edit.end > range.start) return undefined;
     }
     return { file: moved.get(file) ?? file, range: { start: range.start + offset, end: range.start + offset + length } };
   };
   const declaration = (query: KotlinQuery, reference: KotlinQuery['references'][number]) => query.declarations.find(node =>
     node.file === reference.targetFile && same(node.selector, reference.target));
+  const identity = (query: KotlinQuery, reference: KotlinQuery['references'][number], changed: boolean): string | undefined => {
+    if (reference.external) return 'external:' + reference.external;
+    const target = declaration(query, reference);
+    if (!target) return undefined;
+    const replacement = changed && replacements.get(key(target.file, target.selector));
+    const node = replacement ? after.declarations.find(node => key(node.file, node.selector) === replacement) : target;
+    if (!node) return undefined;
+    const site = changed && !replacement ? position(node.file, node.nameRange) : { file: node.file, range: node.nameRange };
+    return site && canonical({ kind: node.kind, ...site });
+  };
+  const visited = new Set<string>();
   return before.references.filter(reference => {
     if (edits.get(reference.file)?.some(edit => edit.replacesBinding && edit.start <= reference.range.start && edit.end >= reference.range.end)) return false;
-    const site = position(reference.file, reference.range);
+    const site = position(reference.file, reference.range), location = canonical(site);
     if (!site) return true;
-    const matches = after.references.filter(item => item.file === site.file && same(item.range, site.range));
-    if (matches.length !== 1) return true;
-    const next = matches[0]!;
-    if (reference.external) return reference.external !== next.external;
-    const target = declaration(before, reference), actual = declaration(after, next);
-    const replacement = target && replacements.get(key(target.file, target.selector));
-    if (replacement) return !actual || key(actual.file, actual.selector) !== replacement;
-    const expected = target && position(target.file, target.nameRange);
-    return !target || !actual || !expected || target.kind !== actual.kind || actual.file !== expected.file || !same(actual.nameRange, expected.range);
+    if (visited.has(location)) return false; visited.add(location);
+    const expected = before.references.filter(item => item.file === reference.file && same(item.range, reference.range)).map(item => identity(before, item, true));
+    const actual = after.references.filter(item => item.file === site.file && same(item.range, site.range)).map(item => identity(after, item, false));
+    return expected.includes(undefined) || actual.includes(undefined) || !same(expected.sort(), actual.sort());
   });
+}
+
+/** A retained body may need implementing after a deliberate result-contract change. */
+function bindingProblems(checked: Check<KotlinQuery>, snapshot: ProjectSnapshot): readonly Diagnostic[] {
+  const ordinary = new Set(checked.value?.problems.filter(issue => issue.code === 'RETURN_TYPE_MISMATCH'
+    && checked.value!.declarations.some(node => node.file === issue.file && node.bodyRange
+      && node.bodyRange.start <= issue.range.start && node.bodyRange.end >= issue.range.end))
+    .map(issue => canonical(problem(snapshot.root, 'kotlin-' + issue.code, issue.file, issue.message))) ?? []);
+  return checked.problems.filter(item => !ordinary.has(canonical(item)));
 }

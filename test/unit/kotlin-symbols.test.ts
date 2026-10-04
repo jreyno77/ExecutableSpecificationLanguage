@@ -81,3 +81,32 @@ it('binds omitted arguments to the declared constructor without inventing a zero
   expect(missing.incoming.coverage.complete).toBe(false);
   expect(missing.problems.map(problem => problem.code)).toContain('native-definition-unavailable');
 }, 90_000);
+
+it('finds a native operator call at its authored operator token', async () => {
+  const { native, snapshot } = await project('package store\nclass StoreGame { operator fun plus(copies: Double): String = copies.toString() }\n',
+    'package store\nfun launch(game: StoreGame) = game + 1.0\n',
+    [association('addition', [game, { kind: 'function', name: 'plus', parameters: ['kotlin.Double'] }])]);
+  expect(uses(await native.search('addition', snapshot))).toEqual([
+    { file: 'src/main/kotlin/store/Launcher.kt', start: 49, end: 50, role: 'call' },
+  ]);
+}, 60_000);
+
+it('finds the actual component method used by native destructuring', async () => {
+  const { native, snapshot } = await project('package store\nclass StoreGame { operator fun component1(): String = "Dune" }\n',
+    'package store\nfun launch(game: StoreGame): String { val (title) = game; return title }\n',
+    [association('first', [game, { kind: 'function', name: 'component1', parameters: [] }])]);
+  expect(uses(await native.search('first', snapshot))).toEqual([
+    { file: 'src/main/kotlin/store/Launcher.kt', start: 57, end: 62, role: 'call' },
+  ]);
+}, 60_000);
+
+it('keeps distinct binary overload targets distinct in outgoing native relationships', async () => {
+  const { native, snapshot } = await project('package store\nclass StoreGame { fun one() = "Dune".substring(1); fun two() = "Dune".substring(1, 2) }\n',
+    'package store\n', [association('game', [game])]);
+  const result = await native.search('game', snapshot);
+  expect(result.problems).toEqual([]);
+  expect(result.outgoing.coverage.complete).toBe(true);
+  const calls = result.outgoing.uses.filter(use => (use.at.value as { role: string }).role === 'call');
+  expect(calls).toHaveLength(2);
+  expect(new Set(calls.map(use => use.target.id)).size).toBe(2);
+}, 60_000);

@@ -146,6 +146,10 @@ export class KotlinDeliveryDriver {
     const opened = this.open(); this.written = opened.value ? await opened.value.update(this.diff, this.current) : { problems: opened.problems };
     this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
   }
+  async delete(name: string): Promise<void> {
+    const opened = this.open(); this.written = opened.value ? await opened.value.delete(this.subject(this.current, name)) : { problems: opened.problems };
+    this.files = await this.capturedFiles();
+  }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }
   private subjectPath(current: IdentifiedSpecification, id: string): string {

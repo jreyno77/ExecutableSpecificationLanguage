@@ -148,3 +148,23 @@ it('preserves two explicitly adopted declarations in one shared native file', as
   await project.runConsumer('fun main() { println(store.bookTitle("Dune") + ":" + store.copies()) }');
   project.expectStdout('Dune:2.0');
 }, 120_000);
+
+it('retains implicit iteration calls while renaming an unrelated application function', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('function title() returns Text');
+  await project.buildContracts();
+  await project.implement('title', 'return "Dune:"');
+  await project.file('src/main/kotlin/store/Books.kt', `package store
+class Books {
+    private var available = true
+    operator fun iterator() = this
+    operator fun hasNext() = available
+    operator fun next(): String { available = false; return "Dune" }
+}
+fun launch(): String { for (book in Books()) return title() + book; return "empty" }
+`);
+  project.change('function label() returns Text', { title: 'label' });
+  await project.updateContracts();
+  await project.runConsumer('fun main() { println(store.launch()) }');
+  project.expectStdout('Dune:Dune');
+}, 120_000);

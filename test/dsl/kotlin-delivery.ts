@@ -108,6 +108,15 @@ export class KotlinDelivery {
   async updateContracts(): Promise<void> {
     await this.driver.update(); expect(this.driver.written.problems).toEqual([]); expect(['applied', 'unchanged']).toContain(this.driver.written.receipt?.status);
   }
+  async deleteContracts(name: string): Promise<void> {
+    await this.driver.delete(name); expect(this.driver.written.problems).toEqual([]); expect(['applied', 'unchanged']).toContain(this.driver.written.receipt?.status);
+  }
+  async expectDeleteRefused(name: string, code: string): Promise<void> {
+    const before = await this.driver.capturedFiles(); await this.driver.delete(name);
+    expect(this.driver.written.problems.map(item => item.code)).toContain(code); expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.files).toEqual(before);
+  }
+  expectUnchanged(): void { expect(this.driver.written.receipt?.status).toBe('unchanged'); }
+  expectNativeObligation(code: string): void { expect(this.driver.written.obligations?.map(item => item.code)).toContain(code); }
   expectFileContains(path: string, text: string): void { expect(this.driver.files.get(path)).toContain(text); }
   expectFileText(path: string, text: string): void { expect(this.driver.files.get(path)).toBe(text); }
   expectMissingFile(path: string): void { expect(this.driver.files.has(path)).toBe(false); }

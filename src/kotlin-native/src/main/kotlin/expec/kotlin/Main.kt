@@ -2,9 +2,11 @@
 package expec.kotlin
 
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
@@ -12,13 +14,14 @@ import org.jetbrains.kotlin.analysis.api.standalone.buildStandaloneAnalysisAPISe
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.idea.references.mainReference
+import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
@@ -101,6 +104,7 @@ fun main(args: Array<String>) {
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
                     if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
+                    if (node is KtNamedFunction) node.valueParameterList?.let { put("typePosition", text.range(it).getValue("end")) }
                 })
                 if (node is KtClass && node !is KtEnumEntry && node.primaryConstructor == null && node.secondaryConstructors.isEmpty() && !node.isInterface()) analyze(node) {
                     for (constructor in (node.symbol as KaNamedClassSymbol).declaredMemberScope.constructors.filter { it.psi == node }) declarations.add(buildJsonObject {
@@ -121,33 +125,34 @@ fun main(args: Array<String>) {
                         put("code", diagnostic.factoryName)
                     })
                 }
-                for (reference in file.collectDescendantsOfType<KtNameReferenceExpression>()) {
-                    if (parents(reference).any { it is KtPackageDirective }) continue
-                    val call = reference.parent as? KtCallExpression
-                    val symbol = call?.takeIf { it.calleeExpression == reference }?.resolveSymbol()
-                        ?: reference.mainReference.resolveToSymbol()
-                        ?: reference.resolveSymbol() ?: continue
-                    val target = sourceDeclaration(symbol.psi)
-                    val targetFile = target?.containingFile as? KtFile
-                    val owner = parents(reference).filterIsInstance<KtNamedDeclaration>().firstOrNull()
-                    references.add(buildJsonObject {
-                        put("file", text.file); put("range", text.range(reference.getReferencedNameElement())); put("name", reference.getReferencedName())
-                        put("owner", owner?.let { JsonArray(selector(it)) } ?: JsonNull)
-                        if (target != null && targetFile in originals) {
-                            val selected = selector(target) + if (symbol is KaConstructorSymbol && target is KtClass) listOf(buildJsonObject {
-                                put("kind", "constructor"); put("name", "<init>")
-                                put("parameters", JsonArray(symbol.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
-                            }) else emptyList()
-                            put("targetFile", originals.getValue(targetFile!!).file); put("target", JsonArray(selected))
-                        } else put("external", external(symbol))
-                        put("role", if (symbol is KaConstructorSymbol) "construction" else if (reference.parent is KtCallExpression) "call" else if (parents(reference).any { it is KtTypeReference }) "type" else "reference")
-                    })
+                for (reference in file.collectDescendantsOfType<KtElement>().flatMap { it.references.filterIsInstance<KtReference>() }) {
+                    val element = reference.element
+                    if (parents(element).any { it is KtPackageDirective }) continue
+                    val call = element.parent as? KtCallExpression
+                    val direct = call?.takeIf { it.calleeExpression == element }?.resolveSymbol()
+                    for (symbol in direct?.let { listOf(it) } ?: reference.resolveToSymbols()) {
+                        val target = sourceDeclaration(symbol.psi)
+                        val targetFile = target?.containingFile as? KtFile
+                        val owner = parents(element).filterIsInstance<KtNamedDeclaration>().firstOrNull()
+                        references.add(buildJsonObject {
+                            put("file", text.file); put("range", text.range((element as? KtSimpleNameExpression)?.getReferencedNameElement()?.textRange ?: reference.absoluteRange)); put("name", (element as? KtSimpleNameExpression)?.getReferencedName() ?: reference.canonicalText)
+                            put("owner", owner?.let { JsonArray(selector(it)) } ?: JsonNull)
+                            if (target != null && targetFile in originals) {
+                                val selected = selector(target) + if (symbol is KaConstructorSymbol && target is KtClass) listOf(buildJsonObject {
+                                    put("kind", "constructor"); put("name", "<init>")
+                                    put("parameters", JsonArray(symbol.valueParameters.map { JsonPrimitive(it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }))
+                                }) else emptyList()
+                                put("targetFile", originals.getValue(targetFile!!).file); put("target", JsonArray(selected))
+                            } else put("external", external(symbol))
+                            put("role", if (symbol is KaConstructorSymbol) "construction" else if (element is KtOperationReferenceExpression || element !is KtSimpleNameExpression || element.parent is KtCallExpression) "call" else if (parents(element).any { it is KtTypeReference }) "type" else "reference")
+                        })
+                    }
                 }
             }
         }
         println(buildJsonObject {
             put("files", JsonArray(files.map { JsonPrimitive(originals.getValue(it).file) }))
-            put("declarations", JsonArray(declarations)); put("references", JsonArray(references)); put("problems", JsonArray(problems))
+            put("declarations", JsonArray(declarations)); put("references", JsonArray(references.distinct())); put("problems", JsonArray(problems))
             put("imports", JsonArray(imports))
         })
     } catch (error: Throwable) {
@@ -182,9 +187,12 @@ private fun selector(node: KtNamedDeclaration): List<JsonElement> =
             declaration.receiverTypeReference?.let { put("receiver", it.type.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT)) }
         }
     } }
-private fun external(symbol: KaSymbol): String = when (symbol) {
+private fun KaSession.external(symbol: KaSymbol): String = when (symbol) {
     is KaClassLikeSymbol -> symbol.classId?.asSingleFqName()?.asString()
-    is KaCallableSymbol -> symbol.callableId?.asSingleFqName()?.asString()
+    is KaCallableSymbol -> symbol.callableId?.asSingleFqName()?.asString()?.let { name ->
+        name + (symbol.receiverParameter?.let { " on " + it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT) } ?: "") +
+            if (symbol is KaFunctionSymbol) symbol.valueParameters.joinToString(",", "(", ")") { it.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT) } else ""
+    }
     else -> null
 } ?: symbol.javaClass.simpleName
 
@@ -198,7 +206,8 @@ private class NativeText(root: Path, source: KtFile) {
         while (index < original.length) { add(index); if (original[index] == '\r' && original.getOrNull(index + 1) == '\n') index++; index++ }
         add(original.length)
     }
-    fun range(node: PsiElement): JsonObject = buildJsonObject {
-        put("start", offsets[node.textRange.startOffset]); put("end", offsets[node.textRange.endOffset])
+    fun range(node: PsiElement): JsonObject = range(node.textRange)
+    fun range(range: TextRange): JsonObject = buildJsonObject {
+        put("start", offsets[range.startOffset]); put("end", offsets[range.endOffset])
     }
 }
