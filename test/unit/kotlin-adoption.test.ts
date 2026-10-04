@@ -78,4 +78,14 @@ describe('explicit Kotlin adoption verifies actual native contract facts', () =>
   it('does not treat a private zero-argument constructor as the public default construction', async () => {
     await refused(await adoption('class StoreGame private constructor() { fun save() = "saved" }'), 'native-signature-conflict');
   }, 60_000);
+  it('refuses a native signature that lacks the promised default argument', async () => {
+    const fixture = new KotlinDeliveryDriver(); fixtures.push(fixture);
+    await fixture.initialize(); await fixture.configureNative(); fixture.options = { adoptExisting: true };
+    fixture.source('function title(book: Text = "Dune") returns Text');
+    const path = 'src/main/kotlin/store/Books.kt', selector = [{ kind: 'function', name: 'title', parameters: ['kotlin.String'] }];
+    await fixture.file(path, 'package store\nfun title(book: String): String = book\n');
+    fixture.associate('title', path, selector);
+    fixture.associate('title.book', path, [...selector, { kind: 'parameter', name: 'book' }]);
+    await refused(fixture, 'native-signature-conflict');
+  }, 90_000);
 });

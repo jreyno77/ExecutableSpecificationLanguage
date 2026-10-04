@@ -161,15 +161,36 @@ export class KotlinDeclarations {
     if (meaning.kind === 'literal' || meaning.kind === 'union') {
       const name = this.nativeName(owner).split('.').map(part => part.slice(0, 1).toUpperCase() + part.slice(1)).join('')
         + (owner.kind === 'alias-type-declaration' ? 'Value' : owner.kind === 'function' || owner.kind === 'capability' ? 'Result' : '') + suffix;
+      const parameters = this.typeParameters(id);
       if (this.selected.some(item => this.name(item) === name) || this.restrictionTypes.has(name) && this.restrictionTypes.get(name) !== id) {
         this.problem('native-name-conflict', owner, 'The anonymous restriction conflicts with another native declaration: ' + name);
       } else if (!this.restrictionTypes.has(name)) {
-        this.restrictionTypes.set(name, id); this.restrictions.set(name, this.restriction(id, name, owner));
-        this.associate(owner, [{ kind: 'class', name }]);
+        this.restrictionTypes.set(name, id); this.restrictions.set(name, this.restriction(id, name, owner, parameters));
+        this.associate(owner, [{ kind: this.restrictionKind(id), name }]);
       }
-      return (qualified ? this.options.package + '.' : '') + name;
+      return (qualified ? this.options.package + '.' : '') + name + parameters;
     }
     this.problem('unsupported-native-type', owner, 'This type requires a named native restriction.'); return 'Any?';
+  }
+  private restrictionKind(id: TypeId): 'class' | 'interface' {
+    const shape = this.types.describe(id);
+    return shape.kind === 'union' && !shape.alternatives.every(type => {
+      const meaning = this.types.describe(type);
+      return meaning.kind === 'literal' && this.inspection.read(meaning.expression, 'literal-type').value.kind === 'string-literal';
+    }) ? 'interface' : 'class';
+  }
+  private typeParameters(id: TypeId, seen = new Set<TypeId>()): string {
+    const parameters = new Set<string>();
+    const visit = (type: TypeId): void => {
+      if (seen.has(type)) return; seen.add(type);
+      const meaning = this.types.describe(type);
+      if (meaning.kind === 'parameter') parameters.add(this.name(this.inspection.read(meaning.declaration)));
+      else if ('arguments' in meaning) meaning.arguments.forEach(visit);
+      else if (meaning.kind === 'tuple') meaning.elements.forEach(visit);
+      else if (meaning.kind === 'union') meaning.alternatives.forEach(visit);
+      else if (meaning.kind === 'optional') visit(meaning.inner);
+    };
+    visit(id); return parameters.size ? '<' + [...parameters].join(', ') + '>' : '';
   }
   private literal(item: Item<'literal-type'>): { type: string; value: string } {
     if (item.value.kind === 'string-literal') return { type: 'kotlin.String', value: quote(item.value.value) };
@@ -187,6 +208,8 @@ export class KotlinDeclarations {
     if (shape.kind !== 'union') throw new Error('Expected a checked restriction.');
     const text = shape.alternatives.map(type => this.types.describe(type)).flatMap(type => type.kind === 'literal' ? [this.inspection.read(type.expression, 'literal-type')] : []);
     if (text.length === shape.alternatives.length && text.every(item => item.value.kind === 'string-literal')) {
+      if (parameters) return 'data class ' + name + parameters + '(val value: kotlin.String) {\n    init { require('
+        + text.map(item => 'value == ' + this.literal(item).value).join(' || ') + ') { ' + quote('Expected ' + this.authored(owner)) + ' } }\n}';
       const names = new Set<string>();
       const cases = text.map(item => {
         if (item.value.kind !== 'string-literal') throw new Error('Expected text literal.');
@@ -221,7 +244,9 @@ export class KotlinDeclarations {
     const facts = this.types.callable(item.id), result = this.known(facts.result), name = this.name(item);
     const returns = result.kind === 'value' ? this.type(result.type, item) : result.kind === 'none' ? 'Unit' : 'Any?';
     const parameters = item.parameters.map(parameter => this.type(this.known(this.types.typeOf(parameter.declaredType.id)), parameter, true));
-    this.associate(item, [...owner, { kind: 'function', name, parameters }]);
+    const selector = [...owner, { kind: 'function', name, parameters }];
+    this.associate(item, selector);
+    for (const parameter of item.parameters) this.associate(parameter, [...selector, { kind: 'parameter', name: this.name(parameter) }]);
     const lines = ['Unverified implementation obligation: ' + this.authored(item) + '.'];
     if (result.kind === 'unspecified') lines.push('unspecified-result: Any? is a scaffold placeholder.');
     if (item.body.kind === 'available') lines.push(...item.body.content.members.map(member => member.kind === 'promises' ? member.text : language(member)));
@@ -234,14 +259,16 @@ export class KotlinDeclarations {
     if (item.kind === 'function') return this.callable(item, owners);
     if (item.kind === 'alias-type-declaration') {
       const target = this.known(this.types.typeOf(item.targetType.id)), shape = this.types.describe(target);
-      if (shape.kind === 'union' || shape.kind === 'literal') {
-        this.associate(item, [...owners, { kind: 'class', name }]);
-        return this.restriction(target, name, item, parameters);
-      }
-      this.associate(item, [...owners, { kind: 'typealias', name }]); return 'typealias ' + name + parameters + ' = ' + this.type(target, item);
+      const restricted = shape.kind === 'union' || shape.kind === 'literal';
+      const selector = [...owners, { kind: restricted ? this.restrictionKind(target) : 'typealias', name }];
+      this.associate(item, selector);
+      for (const parameter of item.typeParameters) this.associate(parameter, [...selector, { kind: 'type-parameter', name: this.name(parameter) }]);
+      return restricted ? this.restriction(target, name, item, parameters) : 'typealias ' + name + parameters + ' = ' + this.type(target, item);
     }
     if (item.kind === 'record-type-declaration') {
-      this.associate(item, [...owners, { kind: 'class', name }]);
+      const selector = [...owners, { kind: 'class', name }];
+      this.associate(item, selector);
+      for (const parameter of item.typeParameters) this.associate(parameter, [...selector, { kind: 'type-parameter', name: this.name(parameter) }]);
       const fields = item.fields.map(unwrap).filter((item): item is Item<'field'> => item.kind === 'field');
       const content = fields.map(field => {
         const type = this.type(this.known(this.types.typeOf(field.declaredType.id)), field);

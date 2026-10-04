@@ -10,7 +10,7 @@ import { compareKotlin } from './kotlin-comparison.js';
 type Declaration = KotlinQuery['declarations'][number];
 const address = (node: Declaration) => canonical({ file: node.file, declaration: node.selector });
 const signature = (node: Declaration) => canonical({ kind: node.kind, selector: node.selector, packageName: node.packageName,
-  visibility: node.visibility, returnType: node.returnType, typeParameters: node.typeParameters, mutable: node.mutable });
+  visibility: node.visibility, returnType: node.returnType, typeParameters: node.typeParameters, parameterNames: node.parameterNames, mutable: node.mutable });
 
 /** Explicit associations identify existing implementations; native facts establish contract compatibility. */
 export async function adoptKotlin(snapshot: ProjectSnapshot, files: readonly KotlinFile[], associations: readonly ArtifactAssociation[], packageName: string): Promise<Check<KotlinFile[]>> {
@@ -44,13 +44,19 @@ export async function adoptKotlin(snapshot: ProjectSnapshot, files: readonly Kot
     const selected: ArtifactAssociation[] = [];
     for (const contract of file.artifacts) {
       const wanted = expected.value.native.declarations.find(node => address(node) === canonical(contract.locator.value));
-      const matches = supplied.filter(item => item.specId === contract.specId && item.locator.format === 'kotlin-symbol-1')
+      let matches = supplied.filter(item => item.specId === contract.specId && item.locator.format === 'kotlin-symbol-1')
         .flatMap(item => current.value!.declarations.filter(node => address(node) === canonical(item.locator.value)).map(node => ({ item, node })));
+      if (wanted && !matches.length && ['parameter', 'type-parameter'].includes(wanted.kind) && !supplied.some(item => item.specId === contract.specId)) {
+        const parent = canonical({ file: wanted.file, declaration: wanted.selector.slice(0, -1) });
+        if (selected.some(item => canonical(item.locator.value) === parent)) {
+          matches = current.value.declarations.filter(node => address(node) === canonical(contract.locator.value)).map(node => ({ item: contract, node }));
+        }
+      }
       if (!wanted || matches.length !== 1) {
         problems.push(problem(snapshot.root, 'unowned-declaration', file.path, 'Each adopted contract needs one actual native declaration.')); continue;
       }
       const { item, node } = matches[0]!, key = address(node);
-      if (claimed.has(key) || signature(node) !== signature(wanted) || wanted.zeroArgumentConstruction && !node.zeroArgumentConstruction) {
+      if (wanted.hasDefault && !node.hasDefault || claimed.has(key) || signature(node) !== signature(wanted) || wanted.zeroArgumentConstruction && !node.zeroArgumentConstruction) {
         problems.push(problem(snapshot.root, 'native-signature-conflict', node.file, 'The selected native declaration is already claimed or does not satisfy the contract.')); continue;
       }
       claimed.add(key); selected.push(item);

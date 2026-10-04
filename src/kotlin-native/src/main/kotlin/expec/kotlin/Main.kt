@@ -91,6 +91,8 @@ fun main(args: Array<String>) {
                         put("returnType", node.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT))
                     }
                     if (node is KtTypeParameterListOwner) put("typeParameters", JsonArray(node.typeParameters.map { JsonPrimitive(it.name) }))
+                    if (node is KtFunction) put("parameterNames", JsonArray(node.valueParameters.map { JsonPrimitive(it.name) }))
+                    if (node is KtParameter) put("hasDefault", node.hasDefaultValue())
                     if (node is KtProperty) put("mutable", node.isVar)
                     if (node is KtParameter && node.hasValOrVar()) put("mutable", node.isMutable)
                     if (node is KtClass && !node.isInterface()) put("zeroArgumentConstruction",

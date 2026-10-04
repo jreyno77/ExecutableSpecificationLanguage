@@ -52,6 +52,9 @@ export class KotlinDelivery {
     this.driver.associate(name, file, declarations.map(name => name.endsWith('()')
       ? { kind: 'function', name: name.slice(0, -2), parameters: [] } : { kind: 'class', name }));
   }
+  associateCallable(name: string, file: string, owners: string[], nativeName: string, parameters: string[]): void {
+    this.driver.associate(name, file, [...owners.map(name => ({ kind: 'class', name })), { kind: 'function', name: nativeName, parameters }]);
+  }
   async expectBuildRefused(code: string): Promise<void> {
     const before = await this.driver.capturedFiles(); await this.driver.build();
     expect(this.driver.written.problems.map(problem => problem.code)).toContain(code);
@@ -116,6 +119,11 @@ export class KotlinDelivery {
       target: expect.objectContaining({ kind: 'project' }),
       at: expect.objectContaining({ format: 'kotlin-site-1', value: expect.objectContaining({ file: path, start, end }) }),
     })]));
+  }
+  expectIncomingUse(name: string, path: string, start: number, end: number): void {
+    expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);
+    expect(this.driver.searchResult.incoming.uses).toContainEqual({ target: { kind: 'specified', id: this.driver.subject(this.driver.current, name) },
+      at: expect.objectContaining({ format: 'kotlin-site-1', value: expect.objectContaining({ file: path, start, end }) }) });
   }
   expectSearchScope(paths: string[]): void {
     expect(this.driver.searchResult.incoming.coverage.complete, JSON.stringify(this.driver.searchResult.problems)).toBe(true);

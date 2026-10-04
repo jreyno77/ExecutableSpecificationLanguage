@@ -126,3 +126,37 @@ it('keeps Text independent of a generic parameter named String', async () => {
   await project.runConsumer('fun main() { println(store.Shelf<Int>("Dune").title) }');
   project.expectStdout('Dune');
 }, 90_000);
+
+it('retains generic arity while admitting a declared operating-system value', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type OS<T> = "windows" | "linux"');
+  await project.buildContracts();
+  await project.runConsumer('fun main() { println(store.OS<Double>("windows").value) }');
+  project.expectStdout('windows');
+}, 90_000);
+
+it('refuses a string outside a generic finite text restriction', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type OS<T> = "windows" | "linux"');
+  await project.buildContracts();
+  await project.runConsumer('fun main() { try { store.OS<Double>("plan9"); println("accepted") } catch (error: IllegalArgumentException) { println("rejected") } }');
+  project.expectStdout('rejected');
+}, 90_000);
+
+it('does not erase a generic restriction argument during native assignment', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type OS<T> = "windows" | "linux"');
+  await project.buildContracts();
+  await project.compileConsumer('val value: store.OS<String> = store.OS<String>("windows")');
+  project.expectNativeCompilationPassed();
+  await project.compileConsumer('val value: store.OS<String> = store.OS<Double>("windows")');
+  project.expectNativeCompilationFailedAt('OS<Double>');
+}, 90_000);
+
+it('carries the enclosing record parameter into its anonymous union companion', async () => {
+  const project = await KotlinDelivery.create();
+  project.source('type Box<T> { value: T }\ntype Shelf<T> { item: Box<T> | Text }');
+  await project.buildContracts();
+  await project.runConsumer('fun main() { val shelf: store.Shelf<Double> = store.Shelf(store.ShelfItem.Box(store.Box(2.0))); println((shelf.item as store.ShelfItem.Box).value.value) }');
+  project.expectStdout('2.0');
+}, 90_000);
