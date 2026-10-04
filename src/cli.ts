@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { Diagnostic } from './checking.js';
-import { checkManifest, cliProblem } from './cli-check.js';
+import { checkManifest, readManifest, cliProblem } from './cli-check.js';
+import { initialize, install } from './cli-project.js';
+import { ProjectConnector } from './project-connection.js';
 import { Outputs, contractListOutput, structureListOutput, type OutputRegistration } from './output.js';
 import { acceptanceOutput } from './output-acceptance.js';
 import { markdownOutput } from './output-markdown.js';
@@ -28,10 +30,14 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
   const report = (status: string, exitCode: number, values: Partial<Report> = {}): number => {
     const result: Report = { format: 1, command, status, exitCode, manifest, problems: [], syntax: [], deferred: [],
       obligations: [], stages: [], ...values };
-    if (json) process.stdout.write(JSON.stringify(result) + '\n');
+    if (json) process.stdout.write(JSON.stringify(result, function (key, value: unknown) {
+      const original = key ? this[key] as unknown : value;
+      return original instanceof Uint8Array ? { encoding: 'base64', data: Buffer.from(original).toString('base64') } : value;
+    }) + '\n');
     else {
       const stream = exitCode ? process.stderr : process.stdout;
       stream.write(status + ': ' + manifest + (result.version ? ' (specification ' + result.version + ')' : '') + '\n');
+      for (const stage of result.stages as { name: string; status: string }[]) stream.write(stage.name + ': ' + stage.status + '\n');
       for (const problem of result.problems) stream.write(problem.code + ': ' + problem.message + ' ' + JSON.stringify(problem.at) + '\n');
       for (const finding of [...result.syntax, ...result.deferred]) stream.write(JSON.stringify(finding) + '\n');
     }
@@ -66,15 +72,40 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     if (command === 'init' && (!values.root || !values.target)) throw Error('init requires --root and --target.');
     if (values.config !== undefined) manifest = resolve(cwd, values.config as string);
   } catch (error) { return report('usage-error', 2, { problems: [cliProblem('invalid-command', String(error), manifest)] }); }
+  const controller = new AbortController(), cancel = () => controller.abort();
+  process.once('SIGINT', cancel);
   try {
     const outputs = new Outputs();
     for (const registration of [typescriptOutput, markdownOutput, umlOutput, contractListOutput, structureListOutput,
       acceptanceOutput, ...supplied.contracts, ...supplied.tests]) outputs.register(registration);
-    const checked = await checkManifest(manifest, outputs.profiles); manifest = checked.manifest;
+    const selected = manifest;
+    let checked = await (command === 'init' || command === 'install' ? readManifest : checkManifest)(manifest, outputs.profiles);
+    manifest = checked.manifest;
+    const interactive = !json && !!process.stdin.isTTY && !!process.stderr.isTTY;
+    if (checked.configuration && (command === 'init' || command === 'install')) {
+      const result = command === 'init' ? await initialize(checked, selected, { root: values.root as string, target: values.target as string }, values.yes === true, interactive, controller.signal)
+        : await install(checked);
+      return report(controller.signal.aborted ? 'cancelled' : result.status, controller.signal.aborted ? 130 : result.exitCode,
+        { version: checked.configuration.version, ...result, ...(controller.signal.aborted ? { exitCode: 130, status: 'cancelled' } : {}) });
+    }
     const details = { ...(checked.configuration ? { version: checked.configuration.version } : {}),
       ...(checked.project ? { project: checked.project } : {}), problems: checked.problems, syntax: checked.syntax, deferred: checked.deferred };
     if (!checked.specification) return report('invalid', 1, details);
     if (command === 'check') return report('checked', 0, details);
+    if (command === 'build') {
+      if (!checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
+      const connection = await new ProjectConnector(manifest).connect(checked.configuration!);
+      if (!connection.value) return report('invalid', 1, { ...details, problems: connection.problems });
+      if (connection.value.status === 'unconnected') {
+        const initialized = await initialize(checked, selected, undefined, false, interactive, controller.signal);
+        if (initialized.exitCode) return report(initialized.status, initialized.exitCode, { ...details, ...initialized });
+        checked = await checkManifest(manifest, outputs.profiles);
+        if (!checked.specification) return report('invalid', 1, { ...(checked.configuration ? { version: checked.configuration.version } : {}), project: initialized.project,
+          stages: [...initialized.stages, { name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }], syntax: checked.syntax,
+          deferred: checked.deferred, problems: [...checked.problems, cliProblem('installation-required', 'Run expec install explicitly before continuing this build.', manifest)] });
+      }
+    }
     return report('not-implemented', 1, details);
-  } catch (error) { return report('failed', 1, { problems: [cliProblem('host-failure', String(error), manifest)] }); }
+  } catch (error) { return report(controller.signal.aborted ? 'cancelled' : 'failed', controller.signal.aborted ? 130 : 1, { problems: [cliProblem('host-failure', String(error), manifest)] }); }
+  finally { process.removeListener('SIGINT', cancel); }
 }

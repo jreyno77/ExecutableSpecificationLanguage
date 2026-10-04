@@ -13,6 +13,7 @@ import { SourceLoader, type SourceCapture } from './source-loader.js';
 
 export interface CheckedManifest {
   manifest: string;
+  text?: string;
   configuration?: Configuration;
   project?: ProjectRoot;
   specification?: Specification;
@@ -21,7 +22,7 @@ export interface CheckedManifest {
   syntax: readonly SyntaxDiagnostic[];
   deferred: readonly Requirement[];
 }
-export async function checkManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
+export async function readManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
   const result: CheckedManifest = { manifest: filename, captures: [], problems: [], syntax: [], deferred: [] };
   let text: string;
   try { result.manifest = await realpath(filename); text = await readFile(result.manifest, 'utf8'); }
@@ -31,7 +32,12 @@ export async function checkManifest(filename: string, profiles: readonly OutputP
   const read = new ConfigurationReader(profiles).read({ sourceId: pathToFileURL(result.manifest).href, text });
   result.problems = read.problems;
   if (!read.value) return result;
-  const configuration = result.configuration = read.value;
+  result.configuration = read.value; result.text = text; return result;
+}
+export async function checkManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
+  const result = await readManifest(filename, profiles);
+  if (!result.configuration) return result;
+  const configuration = result.configuration;
   const libraries = await new LibraryLoader(result.manifest).load(configuration);
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
