@@ -45,7 +45,7 @@ sys.exit(status)`, [sites, join(this.root, 'src'), join(this.root, 'test'), this
   async shadowDsl(): Promise<void> {
     await this.file('src/dsl/__init__.py', '');
     await this.file('src/dsl/comparison.py', 'unused = True\n');
-    await this.file('src/dsl/shopping.py', 'class Shopping:\n    def __init__(self, driver: object) -> None: pass\n'
+    await this.file('src/dsl/shopping.py', 'def _expec_fixture(value: object) -> None: pass\n\nclass Shopping:\n    def __init__(self, driver: object) -> None: pass\n'
       + '    def bookIsAvailable(self, title: str) -> None: pass\n    def startWithEmptyBasket(self) -> None: pass\n'
       + '    def addBook(self, title: str) -> None: pass\n    def expectBookQuantity(self, title: str, expected: float) -> None: pass\n');
   }
