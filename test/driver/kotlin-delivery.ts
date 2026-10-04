@@ -27,6 +27,7 @@ export class KotlinDeliveryDriver {
   planned!: Check<OutputPlan>;
   options: Record<string, unknown> = {};
   private readonly externalModules: ModuleModel[] = [];
+  private sourceText = '';
   private workspaceModules: string[] = ['main'];
   searchResult!: ProjectSearch;
   readResult!: ProjectRead;
@@ -92,9 +93,20 @@ export class KotlinDeliveryDriver {
     if (!result.value) throw new Error(JSON.stringify(result)); this.identify(result.value);
   }
   source(text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
-    const result = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: this.externalModules, packages: [] }) });
+    this.sourceFile('main', text, renames, retire);
+  }
+  sourceFile(module: string, text: string, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
+    this.sourceText = text; this.workspaceModules = [module];
+    const result = new Compiler().compile({ resolution: new SourceComposer().compose(this.model(module, text), { modules: this.externalModules, packages: [] }) });
     if (!result.value) throw new Error(JSON.stringify(result));
     this.identify(result.value, renames, retire);
+  }
+  moveSource(module: string, names: string[]): void { this.sourceFile(module, this.sourceText, Object.fromEntries(names.map(name => [name, name]))); }
+  associate(name: string, file: string, declaration: { kind: string; name: string; parameters?: string[] }[]): void {
+    const result = this.identity.withArtifacts(this.current, [...this.current.baseline.artifacts, { specId: this.subject(this.current, name),
+      locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file, declaration } },
+    }]);
+    if (!result.value) throw new Error(JSON.stringify(result)); this.current = result.value;
   }
   private identify(specification: Specification, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
     const previous = this.current;

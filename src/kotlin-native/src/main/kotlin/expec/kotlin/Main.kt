@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
@@ -74,6 +75,22 @@ fun main(args: Array<String>) {
                 declarations.add(buildJsonObject {
                     put("file", text.file); put("selector", JsonArray(selector)); put("kind", kind(node)); put("name", node.name)
                     put("range", text.range(node)); put("nameRange", text.range(node.nameIdentifier ?: node))
+                    put("packageName", file.packageFqName.asString())
+                    put("visibility", when {
+                        node.hasModifier(KtTokens.PRIVATE_KEYWORD) -> "private"
+                        node.hasModifier(KtTokens.PROTECTED_KEYWORD) -> "protected"
+                        node.hasModifier(KtTokens.INTERNAL_KEYWORD) -> "internal"
+                        else -> "public"
+                    })
+                    if (node is KtCallableDeclaration) analyze(node) {
+                        put("returnType", node.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.INVARIANT))
+                    }
+                    if (node is KtTypeParameterListOwner) put("typeParameters", JsonArray(node.typeParameters.map { JsonPrimitive(it.name) }))
+                    if (node is KtProperty) put("mutable", node.isVar)
+                    if (node is KtParameter && node.hasValOrVar()) put("mutable", node.isMutable)
+                    if (node is KtClass && !node.isInterface()) put("zeroArgumentConstruction",
+                        (node.primaryConstructor?.let { accessible(it) } ?: node.secondaryConstructors.isEmpty()) && node.primaryConstructorParameters.all { it.hasDefaultValue() || it.isVarArg }
+                            || node.secondaryConstructors.any { constructor -> accessible(constructor) && constructor.valueParameters.all { it.hasDefaultValue() || it.isVarArg } })
                     if (node is KtDeclarationWithBody) node.bodyExpression?.let { put("bodyRange", text.range(it)) }
                     if (node is KtClassOrObject) node.body?.let { put("bodyRange", text.range(it)) }
                     if (node is KtCallableDeclaration) node.typeReference?.let { put("typeRange", text.range(it)) }
@@ -115,6 +132,8 @@ fun main(args: Array<String>) {
     exitProcess(code)
 }
 
+private fun accessible(node: KtModifierListOwner): Boolean =
+    !node.hasModifier(KtTokens.PRIVATE_KEYWORD) && !node.hasModifier(KtTokens.PROTECTED_KEYWORD) && !node.hasModifier(KtTokens.INTERNAL_KEYWORD)
 private fun parents(element: PsiElement): Sequence<PsiElement> = generateSequence(element.parent) { it.parent }
 private fun sourceDeclaration(psi: PsiElement?): KtNamedDeclaration? = when (psi) {
     is KtPrimaryConstructor -> psi.getContainingClassOrObject()

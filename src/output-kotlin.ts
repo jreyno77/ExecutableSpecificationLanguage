@@ -8,6 +8,7 @@ import { canonical, identifier, locatorSchema, success } from './identity-baseli
 import { z } from 'zod';
 import { hash, literal } from './project-files.js';
 import { KotlinProject } from './kotlin-project.js';
+import { adoptKotlin } from './kotlin-adoption.js';
 import { preserveKotlin } from './kotlin-preservation.js';
 import { nativeInputs } from './native-inputs.js';
 import { validDiff } from './output-contract.js';
@@ -16,7 +17,7 @@ import { kotlinConfiguration } from './kotlin-configuration.js';
 const statePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
 const state = z.strictObject({ format: z.literal(1), options: z.string(), subjects: z.array(identifier),
   mappings: z.array(z.strictObject({ id: identifier, kind: z.enum(['name', 'import']), name: z.string(), as: z.string().optional() })), files: z.array(z.strictObject({
-  id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
+  adopted: z.boolean().optional(), id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
   artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })),
 })) });
 
@@ -50,7 +51,17 @@ class KotlinOutput implements OutputAdapter {
     if (previous?.files.some(file => file.artifacts.some(item => !known.has(item.specId)))) return { problems: [outputProblem('unknown-output-identity', statePath, 'Current identity does not recognize earlier Kotlin output subjects.')], deferred: [] };
     if ('diff' in request && !validDiff(request.diff, request.current)) return { problems: [outputProblem('inconsistent-diff', '', 'The supplied transition disagrees with current identity facts.')], deferred: [] };
     if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts')))) return { problems: [outputProblem('not-addition-only', '', 'Use update when existing contracts change.')], deferred: [] };
-    const declarations = new KotlinDeclarations(request.current, this.options, this.context), files = declarations.render();
+    const declarations = new KotlinDeclarations(request.current, this.options, this.context);
+    let files = declarations.render().map(file => {
+      const adopted = previous?.files.find(old => old.id === file.id && old.adopted);
+      return adopted ? { ...file, adopted: true, path: adopted.path, artifacts: file.artifacts.map(item => ({ ...item, locator: { ...item.locator,
+        value: { ...item.locator.value as { file: string }, file: adopted.path },
+      } })) } : file;
+    });
+    if (!previous && this.options.adoptExisting && !declarations.problems.length) {
+      const adopted = await adoptKotlin(snapshot, files, request.current.baseline.artifacts);
+      if (!adopted.value) return { problems: adopted.problems, deferred: adopted.deferred }; files = adopted.value;
+    }
     const mappings = declarations.mapping(), problems = [...declarations.problems];
     if (previous) {
       const fixed = ({ names: _names, imports: _imports, ...options }: KotlinOptions) => canonical(options);
@@ -66,15 +77,15 @@ class KotlinOutput implements OutputAdapter {
     if (request.operation === 'create' && previous?.files.some(before => !files.some(file => file.id === before.id && file.path === before.path && file.text === before.generated))) return { problems: [outputProblem('use-update', statePath, 'Existing Kotlin contracts changed; use update.')], deferred: [] };
     for (const file of files) {
       const existing = snapshot.files.find(existing => existing.path === file.path), before = previous?.files.find(before => before.path === file.path);
-      if (request.operation === 'create' && existing && !before) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs explicit ownership before changing it.'));
+      if (request.operation === 'create' && existing && !before && !file.adopted) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs explicit ownership before changing it.'));
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
     }
-    const next = { format: 1, options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+    const next = { format: 1, options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ ...(file.adopted ? { adopted: true } : {}), id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     if (problems.length) return { problems, deferred: [] };
     const unchanged = previous && canonical(next) === canonical(previous);
     const preserved = unchanged ? success([]) : request.operation === 'create' && !previous ? undefined : await preserveKotlin(snapshot, previous?.files ?? [], files);
     if (preserved?.problems.length) problems.push(...preserved.problems);
-    const changes = [...(preserved?.value ?? files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
+    const changes = [...(preserved?.value ?? files.filter(file => !file.adopted).map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
     return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts) });
   }

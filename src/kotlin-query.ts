@@ -16,7 +16,9 @@ export const kotlinSelector = z.array(z.strictObject({ kind: z.enum(['class', 'i
   name: z.string().min(1), parameters: z.array(z.string()).optional(), receiver: z.string().optional() })).min(1);
 const result = z.strictObject({
   files: z.array(z.string().refine(literal)),
-  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional() })),
+  declarations: z.array(z.strictObject({ file: z.string().refine(literal), selector: kotlinSelector, kind: z.string(), name: z.string(), range, nameRange: range, bodyRange: range.optional(), typeRange: range.optional(),
+    packageName: z.string(), visibility: z.enum(['public', 'private', 'protected', 'internal']), returnType: z.string().optional(),
+    typeParameters: z.array(z.string()).optional(), mutable: z.boolean().optional(), zeroArgumentConstruction: z.boolean().optional() })),
   references: z.array(z.strictObject({ file: z.string().refine(literal), range, owner: kotlinSelector.nullable(), targetFile: z.string().refine(literal).optional(), target: kotlinSelector.optional(), external: z.string().optional(), role: z.string() })),
   problems: z.array(z.strictObject({ file: z.string().refine(literal), range, message: z.string(), code: z.string() })),
 });

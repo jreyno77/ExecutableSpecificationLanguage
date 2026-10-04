@@ -24,7 +24,7 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const before = await queryKotlin(generated(previous.map(file => ({ path: file.path, text: file.generated }))), 'expec.kotlin.json');
   const after = await queryKotlin(generated(desired), 'expec.kotlin.json');
   if (!before.value || before.problems.length || !after.value || after.problems.length) return { problems: [...before.problems, ...after.problems], deferred: [] };
-  const sources = new Map(snapshot.files.map(file => [file.path, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)]));
+  const sources = new Map(snapshot.files.filter(file => current.value!.files.includes(file.path)).map(file => [file.path, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)]));
   const original = new Map(previous.map(file => [file.path, file.generated])), wanted = new Map(desired.map(file => [file.path, file.text]));
   const declarations = (query: KotlinQuery) => new Map(query.declarations.map(node => [key(node.file, node.selector), node]));
   const oldNodes = declarations(before.value), newNodes = declarations(after.value), currentNodes = declarations(current.value);
@@ -89,6 +89,10 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     const before = previous.find(item => item.path === file), after = before && desired.find(item => item.id === before.id);
     if (after && after.path !== file) {
       if (sources.has(after.path)) refuse(after.path, 'The renamed native file destination already exists.');
+      const owned = new Set(previous.flatMap(file => file.artifacts.filter(item => item.locator.format === 'kotlin-symbol-1').map(item => canonical(item.locator.value))));
+      if (current.value.declarations.some(node => node.file === file && node.selector.length === 1 && !owned.has(key(node.file, node.selector)))) {
+        refuse(file, 'Moving this file would also move an unowned top-level declaration.');
+      }
       changes.push({ kind: 'move', from: file, to: after.path, bytes: Buffer.from(text) }); moved.add(after.path);
     } else changes.push({ kind: 'write', path: file, bytes: Buffer.from(text) });
   }

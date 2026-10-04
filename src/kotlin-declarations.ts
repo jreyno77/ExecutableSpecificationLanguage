@@ -24,7 +24,7 @@ export const kotlinOptions = z.strictObject({
   imports: z.array(importRule).default([]),
 });
 export type KotlinOptions = z.infer<typeof kotlinOptions>;
-export interface KotlinFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[] }
+export interface KotlinFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly adopted?: boolean }
 const typeKinds = new Set(['class', 'interface', 'concept', 'component', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration']);
 const roots = new Set([...typeKinds, 'function']);
 const namedKinds = new Set([...roots, 'capability', 'field', 'parameter', 'type-parameter']);

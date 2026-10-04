@@ -46,6 +46,21 @@ export class KotlinDelivery {
   }
   static async dispose(): Promise<void> { for (const project of this.instances.splice(0)) await project.driver.dispose(); }
   source(text: string): void { this.driver.source(text); }
+  sourceFile(module: string, text: string): void { this.driver.sourceFile(module, text); }
+  moveSource(module: string, rootNames: string[]): void { this.driver.moveSource(module, rootNames); }
+  associateNative(name: string, file: string, declarations: string[]): void {
+    this.driver.associate(name, file, declarations.map(name => name.endsWith('()')
+      ? { kind: 'function', name: name.slice(0, -2), parameters: [] } : { kind: 'class', name }));
+  }
+  async expectBuildRefused(code: string): Promise<void> {
+    const before = await this.driver.capturedFiles(); await this.driver.build();
+    expect(this.driver.written.problems.map(problem => problem.code)).toContain(code);
+    expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.files).toEqual(before);
+  }
+  expectDefinitionFile(name: string, file: string): void {
+    const id = this.driver.subject(this.driver.current, name);
+    expect(this.driver.written.artifacts).toContainEqual(expect.objectContaining({ specId: id, locator: expect.objectContaining({ value: expect.objectContaining({ file }) }) }));
+  }
   external(module: string, text: string): void { this.driver.external(module, text); }
   workspace(sources: Record<string, string>): void { this.driver.workspace(sources); }
   identifier(module: string, path: string[]): string { return this.driver.identifier(module, path); }
@@ -77,7 +92,7 @@ export class KotlinDelivery {
   }
   expectFileMissingText(path: string, text: string): void { expect(this.driver.files.get(path)).not.toContain(text); }
   async updateContracts(): Promise<void> {
-    await this.driver.update(); expect(this.driver.written.problems).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied');
+    await this.driver.update(); expect(this.driver.written.problems).toEqual([]); expect(['applied', 'unchanged']).toContain(this.driver.written.receipt?.status);
   }
   expectFileContains(path: string, text: string): void { expect(this.driver.files.get(path)).toContain(text); }
   expectFileText(path: string, text: string): void { expect(this.driver.files.get(path)).toBe(text); }
