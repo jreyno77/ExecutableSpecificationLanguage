@@ -1,0 +1,4110 @@
+{
+  "SPDXID" : "SPDXRef-DOCUMENT",
+  "spdxVersion" : "SPDX-2.3",
+  "creationInfo" : {
+    "created" : "2026-07-14T10:21:16Z",
+    "creators" : [ "Tool: spdx-gradle-plugin", "Organization: JetBrains s.r.o." ]
+  },
+  "name" : "Kotlin Compiler Distribution",
+  "dataLicense" : "CC0-1.0",
+  "hasExtractedLicensingInfos" : [ {
+    "licenseId" : "LicenseRef-gnrtd0",
+    "extractedText" : "New BSD License",
+    "name" : "New BSD License",
+    "seeAlsos" : [ "http://www.opensource.org/licenses/bsd-license.php" ]
+  }, {
+    "licenseId" : "LicenseRef-gnrtd1",
+    "extractedText" : "LGPL-2.1-or-later",
+    "name" : "LGPL-2.1-or-later",
+    "seeAlsos" : [ "http://www.gnu.org/licenses/old-licenses/lgpl-2.1" ]
+  }, {
+    "licenseId" : "LicenseRef-gnrtd2",
+    "extractedText" : "BSD-3-Clause",
+    "name" : "BSD-3-Clause",
+    "seeAlsos" : [ "http://www.antlr.org/license.html" ]
+  } ],
+  "documentNamespace" : "https://www.jetbrains.com/spdxdocs/39ee0912-ab7f-4df4-bfd4-dde1d565291a",
+  "packages" : [ {
+    "SPDXID" : "SPDXRef-gnrtd0",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Compiler",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-compiler",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-compiler[:kotlin-compiler]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd1",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Standard Library JDK 8 extension",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-stdlib-jdk8",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-stdlib-jdk8[:kotlin-stdlib-jdk8]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd2",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Standard Library",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-stdlib",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-stdlib[:kotlin-stdlib]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd3",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "8cc20c07506ec18e0834947b84a864bfc094484e"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains/annotations@23.0.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains:annotations",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "23.0.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd4",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Standard Library JDK 7 extension",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-stdlib-jdk7",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-stdlib-jdk7[:kotlin-stdlib-jdk7]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd5",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Script Runtime",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-script-runtime",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-script-runtime[:kotlin-script-runtime]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd6",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "1cbe9c92c12a94eea200d23c2bbaedaf3daf5132"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.kotlin/kotlin-reflect@1.6.10",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.kotlin:kotlin-reflect",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "1.6.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd7",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "ac1dc37a30a93150b704022f8d895ee1bd3a36b3"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm@1.8.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "1.8.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd8",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-build-tools-api",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-build-tools-api[:compiler:build-tools:kotlin-build-tools-api]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd9",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "919f0dfe192fb4e063e7dacadee7f8bb9a2672a9"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains/annotations@13.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains:annotations",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "13.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd10",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-annotation-processing-cli",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-annotation-processing-cli[:kotlin-annotation-processing-cli]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd11",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Annotation Processing Runtime",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-annotation-processing-runtime",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-annotation-processing-runtime[:kotlin-annotation-processing-runtime]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd12",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Annotation Processor for Kotlin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-annotation-processing",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-annotation-processing[:kotlin-annotation-processing]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd13",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin annotations for JVM",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-annotations-jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-annotations-jvm[:kotlin-annotations-jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd14",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Daemon",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-daemon",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-daemon[:kotlin-daemon]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd15",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Daemon Client",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-daemon-client",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-daemon-client[:kotlin-daemon-client]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd16",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin \"main\" script definition",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-main-kts",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-main-kts[:kotlin-main-kts]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd17",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Preloader",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-preloader",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-preloader[:kotlin-preloader]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd18",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Full Reflection Library",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-reflect",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-reflect[:kotlin-reflect]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd19",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin JVM metadata manipulation library",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-metadata-jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-metadata-jvm[:kotlin-metadata-jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd20",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Runner",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-runner",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-runner[:kotlin-runner]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd21",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-scripting-common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-scripting-common[:kotlin-scripting-common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd22",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Scripting Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-scripting-compiler",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-scripting-compiler[:kotlin-scripting-compiler]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd23",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Compiler Infrastructure for Scripting",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-scripting-compiler-impl",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-scripting-compiler-impl[:kotlin-scripting-compiler-impl]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd24",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-scripting-jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-scripting-jvm[:kotlin-scripting-jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd25",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Compatibility artifact with Mutable and ReadOnly annotations",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "mutability-annotations-compat",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#mutability-annotations-compat[:libraries:tools:mutability-annotations-compat]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd26",
+    "copyrightText" : "NOASSERTION",
+    "description" : "ABI generation for Kotlin/JVM",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "jvm-abi-gen",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#jvm-abi-gen[:plugins:jvm-abi-gen]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd27",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-jklib-compiler",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-jklib-compiler[:kotlin-jklib-compiler]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd28",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Test Library",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-test",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-test[:kotlin-test]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd29",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "8ac9e16d933b6fb43bc7f576336b8f4d7eb5ba12"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/junit/junit@4.13.2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "EPL-1.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "junit:junit",
+    "supplier" : "Organization: JUnit",
+    "versionInfo" : "4.13.2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd30",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "42a25dc3219429f0e5d060061f71acb49bf010a0"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.hamcrest/hamcrest-core@1.3",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "LicenseRef-gnrtd0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.hamcrest:hamcrest-core",
+    "supplier" : "Person: Joe Walnes",
+    "versionInfo" : "1.3"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd31",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin AllOpen Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-allopen-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-allopen-compiler-plugin[:kotlin-allopen-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd32",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Parcelize compiler plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "parcelize-compiler",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#parcelize-compiler[:plugins:parcelize:parcelize-compiler]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd33",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Runtime library for the Parcelize compiler plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "parcelize-runtime",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#parcelize-runtime[:plugins:parcelize:parcelize-runtime]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd34",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin NoArg Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-noarg-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-noarg-compiler-plugin[:kotlin-noarg-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd35",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Power-Assert Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-power-assert-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-power-assert-compiler-plugin[:kotlin-power-assert-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd36",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin SamWithReceiver Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-sam-with-receiver-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-sam-with-receiver-compiler-plugin[:kotlin-sam-with-receiver-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd37",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Serialization Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlinx-serialization-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlinx-serialization-compiler-plugin[:kotlinx-serialization-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd38",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Lombok compiler plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-lombok-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-lombok-compiler-plugin[:kotlin-lombok-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd39",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Assignment Compiler Plugin",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-assignment-compiler-plugin",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-assignment-compiler-plugin[:kotlin-assignment-compiler-plugin]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd40",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Contains the Kotlin compiler plugin for Compose used in Android Studio and IDEA",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler-hosted",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler-hosted[:plugins:compose-compiler-plugin:compiler-hosted]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd41",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.tree",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.tree[:compiler:ir.tree]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd42",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.serialization.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.serialization.common[:compiler:ir.serialization.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd43",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.serialization.js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.serialization.js[:compiler:ir.serialization.js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd44",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.serialization.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.serialization.jvm[:compiler:ir.serialization.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd45",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.serialization.native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.serialization.native[:compiler:ir.serialization.native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd46",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.objcinterop",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.objcinterop[:compiler:ir.objcinterop]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd47",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.backend.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.backend.common[:compiler:ir.backend.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd48",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.backend.native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.backend.native[:compiler:ir.backend.native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd49",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.actualization",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.actualization[:compiler:ir.actualization]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd50",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.interpreter",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.interpreter[:compiler:ir.interpreter]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd51",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.inline",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.inline[:compiler:ir.inline]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd52",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.validation",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.validation[:compiler:ir.validation]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd53",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "wasm.ir",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#wasm.ir[:wasm:wasm.ir]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd54",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "typescript-export-model",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#typescript-export-model[:js:typescript-export-model]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd55",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "typescript-printer",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#typescript-printer[:js:typescript-printer]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd56",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler[:compiler]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd57",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "descriptors.runtime",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#descriptors.runtime[:core:descriptors.runtime]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd58",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "descriptors",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#descriptors[:core:descriptors]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd59",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "descriptors.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#descriptors.jvm[:core:descriptors.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd60",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "light-classes",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#light-classes[:compiler:light-classes]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd61",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "resolution",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#resolution[:compiler:resolution]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd62",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "serialization",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#serialization[:compiler:serialization]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd63",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend[:compiler:frontend]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd64",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "container",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#container[:compiler:container]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd65",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "deserialization",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#deserialization[:core:deserialization]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd66",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cfg",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cfg[:compiler:frontend:cfg]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd67",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "ir.psi2ir",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#ir.psi2ir[:compiler:ir.psi2ir]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd68",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.jvm[:compiler:backend.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd69",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.jvm.lower",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.jvm.lower[:compiler:backend.jvm.lower]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd70",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.jvm.codegen",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.jvm.codegen[:compiler:backend.jvm.codegen]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd71",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.jvm.entrypoint",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.jvm.entrypoint[:compiler:backend.jvm.entrypoint]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd72",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.js[:compiler:backend.js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd73",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.wasm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.wasm[:compiler:backend.wasm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd74",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Common klib metadata reader and writer",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-util-klib-metadata",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-util-klib-metadata[:kotlin-util-klib-metadata]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd75",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend[:compiler:backend]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd76",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "javac-wrapper",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#javac-wrapper[:compiler:javac-wrapper]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd77",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "incremental-compilation-impl",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#incremental-compilation-impl[:compiler:incremental-compilation-impl]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd78",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.ast",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.ast[:js:js.ast]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd79",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.sourcemap",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.sourcemap[:js:js.sourcemap]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd80",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.serializer",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.serializer[:js:js.serializer]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd81",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.parser",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.parser[:js:js.parser]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd82",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.frontend",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.frontend[:js:js.frontend]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd83",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.translator",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.translator[:js:js.translator]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd84",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend.native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend.native[:native:frontend.native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd85",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "wasm.frontend",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#wasm.frontend[:wasm:wasm.frontend]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd86",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "backend.common.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#backend.common.jvm[:compiler:backend.common.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd87",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cli-base",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cli-base[:compiler:cli-base]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd88",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cli",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cli[:compiler:cli]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd89",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cli-jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cli-jvm[:compiler:cli-jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd90",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cli-js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cli-js[:compiler:cli-js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd91",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cli-metadata",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cli-metadata[:compiler:cli-metadata]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd92",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "psi-api",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#psi-api[:compiler:psi:psi-api]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd93",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "psi-impl",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#psi-impl[:compiler:psi:psi-impl]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd94",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "psi-utils",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#psi-utils[:compiler:psi:psi-utils]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd95",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "psi-frontend-utils",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#psi-frontend-utils[:compiler:psi:psi-frontend-utils]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd96",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "parser",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#parser[:compiler:psi:parser]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd97",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend.common-psi",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend.common-psi[:compiler:frontend.common-psi]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd98",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend.common[:compiler:frontend.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd99",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "util",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#util[:compiler:util]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd100",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "config",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#config[:compiler:config]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd101",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "config.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#config.jvm[:compiler:config.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd102",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "arguments.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#arguments.common[:compiler:arguments.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd103",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "resolution.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#resolution.common[:compiler:resolution.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd104",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "resolution.common.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#resolution.common.jvm[:compiler:resolution.common.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd105",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "plugin-api",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#plugin-api[:compiler:plugin-api]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd106",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "metadata",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#metadata[:core:metadata]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd107",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "metadata.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#metadata.jvm[:core:metadata.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd108",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "deserialization.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#deserialization.common[:core:deserialization.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd109",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "deserialization.common.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#deserialization.common.jvm[:core:deserialization.common.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd110",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common[:core:compiler.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd111",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common.jvm[:core:compiler.common.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd112",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common.js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common.js[:core:compiler.common.js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd113",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common.native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common.native[:core:compiler.common.native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd114",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common.wasm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common.wasm[:core:compiler.common.wasm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd115",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.common.web",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.common.web[:core:compiler.common.web]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd116",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "util.runtime",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#util.runtime[:core:util.runtime]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd117",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "names",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#names[:core:names]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd118",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "language.model",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#language.model[:core:language.model]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd119",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "language.targets",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#language.targets[:core:language.targets]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd120",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "language.targets.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#language.targets.jvm[:core:language.targets.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd121",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "language.version-settings",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#language.version-settings[:core:language.version-settings]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd122",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend.common.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend.common.jvm[:compiler:frontend.common.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd123",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "frontend.java",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#frontend.java[:compiler:frontend.java]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd124",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "analysis-internal-utils",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#analysis-internal-utils[:analysis:analysis-internal-utils]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd125",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "light-classes-base",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#light-classes-base[:analysis:light-classes-base]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd126",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "decompiler-to-stubs",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#decompiler-to-stubs[:analysis:decompiled:decompiler-to-stubs]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd127",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "decompiler-to-file-stubs",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#decompiler-to-file-stubs[:analysis:decompiled:decompiler-to-file-stubs]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd128",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "decompiler-js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#decompiler-js[:analysis:decompiled:decompiler-js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd129",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "decompiler-native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#decompiler-native[:analysis:decompiled:decompiler-native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd130",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "decompiler-to-psi",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#decompiler-to-psi[:analysis:decompiled:decompiler-to-psi]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd131",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "light-classes-for-decompiled",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#light-classes-for-decompiled[:analysis:decompiled:light-classes-for-decompiled]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd132",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kt-references",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kt-references[:analysis:kt-references]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd133",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Build Common",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-build-common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-build-common[:kotlin-build-common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd134",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-util-io",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-util-io[:kotlin-util-io]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd135",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Common klib reader and writer",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-util-klib",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-util-klib[:kotlin-util-klib]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd136",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-util-klib-abi",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-util-klib-abi[:kotlin-util-klib-abi]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd137",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "base",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#base[:native:base]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd138",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "binary-options",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#binary-options[:native:binary-options]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd139",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin/Native utils",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-native-utils",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-native-utils[:native:kotlin-native-utils]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd140",
+    "copyrightText" : "NOASSERTION",
+    "description" : "Kotlin Build Report Common",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "kotlin-build-statistics",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#kotlin-build-statistics[:compiler:build-tools:kotlin-build-statistics]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd141",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.config",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.config[:js:js.config]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd142",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "js.frontend.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#js.frontend.common[:js:js.frontend.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd143",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "wasm.config",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#wasm.config[:wasm:wasm.config]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd144",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "native.config",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#native.config[:native:native.config]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd145",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "cones",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#cones[:compiler:fir:cones]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd146",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "providers",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#providers[:compiler:fir:providers]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd147",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "semantics",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#semantics[:compiler:fir:semantics]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd148",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "resolve",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#resolve[:compiler:fir:resolve]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd149",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir-serialization",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir-serialization[:compiler:fir:fir-serialization]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd150",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir-deserialization",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir-deserialization[:compiler:fir:fir-deserialization]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd151",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "plugin-utils",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#plugin-utils[:compiler:fir:plugin-utils]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd152",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "tree",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#tree[:compiler:fir:tree]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd153",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir-jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir-jvm[:compiler:fir:fir-jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd154",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir-js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir-js[:compiler:fir:fir-js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd155",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir-native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir-native[:compiler:fir:fir-native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd156",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "raw-fir.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#raw-fir.common[:compiler:fir:raw-fir:raw-fir.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd157",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "psi2fir",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#psi2fir[:compiler:fir:raw-fir:psi2fir]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd158",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers[:compiler:fir:checkers]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd159",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers.jvm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers.jvm[:compiler:fir:checkers:checkers.jvm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd160",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers.js",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers.js[:compiler:fir:checkers:checkers.js]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd161",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers.native",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers.native[:compiler:fir:checkers:checkers.native]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd162",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers.wasm",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers.wasm[:compiler:fir:checkers:checkers.wasm]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd163",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "checkers.web.common",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#checkers.web.common[:compiler:fir:checkers:checkers.web.common]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd164",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "diagnostic-renderers",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#diagnostic-renderers[:compiler:fir:diagnostic-renderers]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd165",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "entrypoint",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#entrypoint[:compiler:fir:entrypoint]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd166",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "jvm-backend",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#jvm-backend[:compiler:fir:fir2ir:jvm-backend]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd167",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "fir2ir",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#fir2ir[:compiler:fir:fir2ir]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd168",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "light-tree2fir",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#light-tree2fir[:compiler:fir:raw-fir:light-tree2fir]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd169",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "analysis-tests",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#analysis-tests[:compiler:fir:analysis-tests]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd170",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "legacy-fir-tests",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#legacy-fir-tests[:compiler:fir:analysis-tests:legacy-fir-tests]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd171",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "6975da39a7040257bd51d21a231b76c915872d38"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/javax.inject/javax.inject@1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "javax.inject:javax.inject",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd172",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "bd0e64bc24b21a975d47f9d12d73119ab51dce7639f0b45889d89f6325679c6d"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "babbac968fafe76884b0cf41124569e8bc004d04"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jline/jline@3.24.1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "BSD-3-Clause",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jline:jline",
+    "supplier" : "Person: Guillaume Nodet (gnodet@gmail.com)",
+    "versionInfo" : "3.24.1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd173",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "6cd91991323dd7b2fb28ca93d7ac12af5a86a2f53279e2b35827b30313fd0b9f"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "321c614f85f1dea6bb08c1817c60d53b7f3552fd"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.fusesource.jansi/jansi@2.4.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.fusesource.jansi:jansi",
+    "supplier" : "Organization: FuseSource, Corp.",
+    "versionInfo" : "2.4.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd174",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "47f0b5678d5f6c425a0762b28407d398e5e8ede56487c9ad5867cb4c422f32f9"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "7387d2458ff050572e497faf84a32b99ffa852ce"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.kotlin/protobuf-relocated@2.6.1-2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.kotlin:protobuf-relocated",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "2.6.1-2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd175",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "905721a0eea90a81534abb7ee6ef4ea2e5e645fa1def0a5cd88402df1b46c9ed"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "40719ea6961c0cb6afaeb6a921eaa1f6afd4cfdf"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.google.code.findbugs/jsr305@1.3.9",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.google.code.findbugs:jsr305",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "1.3.9"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd176",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "c120b6912f6e838fdd30638b8fd5ec1c84773319"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "12622deeea2618b59b284051a9484f1def8ccbebc847c350358f12d325ba9dd5"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/io.vavr/vavr@0.10.4",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "io.vavr:vavr",
+    "supplier" : "Person: Daniel Dietrich (cafebab3@gmail.com)",
+    "versionInfo" : "0.10.4"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd177",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "d46f96bf59ccd5800261eec5869a6877ee0a37ea781312e6735be55539f50354"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "64a1405f5846a77ab1c1ef2e86e08b30e3507321"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/io.vavr/vavr-match@0.10.4",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "io.vavr:vavr-match",
+    "supplier" : "Person: Daniel Dietrich (cafebab3@gmail.com)",
+    "versionInfo" : "0.10.4"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd178",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "1cd4ff7059bcb437086b76311a9fc4775a887bcc"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "0c461865231ff825d6fa18d9d333363c1f3866ffb685451e5fca66c1f22c873e"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.kotlinx/kotlinx-collections-immutable-jvm@0.3.7",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "0.3.7"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd179",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "intellij-core",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#intellij-core[:dependencies:intellij-core]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd180",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "ef604bacb5fcc4dd55dcc5ecaa887fc70a54e95638ed39a4ca3f4bdfde48846a"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "9c6c29a19a9b2432ab80c67c06ef012319a5edb3"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-rt@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-rt",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd181",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "40d78a8218c592a898014f8b227299eef85e6ae803cf9728ee60bd955b2fb581"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "d13d9a216266af89fafb6b6d59e08abe34eadb78"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-class-loader@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-class-loader",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd182",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "741cbc5c8d00b6b6290709bb05428078321477e9"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "9394ee3a95e7985a22d07fcc8ce44c24b47e81e9232477093221ddc389ab7c25"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd183",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "a1624aa6898f4e6f56cc447e7c70d97929aff25de4b297ff87395c744ada2156"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "52395876e8b1a4eab03e13b09cd67b3b95bb5e45"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-base@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-base",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd184",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "7ca655c4e3e028fa80de69a2a3b9f2fb1e21a224"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "d27e2ab8440cea742bb69415ba043efcf81caae70f6ba1de792b691086901d46"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-xml-dom@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-xml-dom",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd185",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "2a360e0757104021952e79579fa46150c9a599c625a01f46dbb546707e1f6a8f"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "365595cf252eee7f3436822b516d0365ab0e7daa"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/core@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:core",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd186",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "747a9c471deedf2f5349d7678e3e30a74e35cff2d7f8cd9af026531da4d014e2"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "9e364509d79432e65273ed125c14b4a2e140e765"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/core-impl@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:core-impl",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd187",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "b3a49773587cf25b8781d474acd19f486e636a17"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "4eed3f20016072bb53fc738b866a7117d449cb6b7ed8543107740f11b80f6f9c"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/extensions@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:extensions",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd188",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "9feaa3d907d7bee5903fef947b053e1dbafca0d06c2822e29b789c9bd0964e75"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "5ca1f4189b40b7b50dd131a181730f4be24a053c"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.java/java-frontback-psi@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.java:java-frontback-psi",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd189",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "6626d048e289da02393200a581b3c08bfcf1454b219775d0eae39e86b6244dbe"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "2f602ec64f97110aaef9a8690a27f9d2ee9f45af"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.java/java-frontback-psi-impl@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.java:java-frontback-psi-impl",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd190",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "f56029ff30dc3e8f1f0136a77aef739b14e09f3c1928e5b1a6e81186336fd3fa"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "bc51f3b32d361fd42bb20f1b72a27ae7050a1527"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.java/java-psi@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.java:java-psi",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd191",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "d47d88dcda91e65da292686bca326805c745025326edfbc5b28968cad8e07c22"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "cf5c464c521e59507d75046cceeac5490d2d34d4"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.java/java-psi-impl@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.java:java-psi-impl",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd192",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "bfc585d09cf54835fa98568803ec6929bfcda3a2"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "89566f24046e2212171c3698423e9242ca4ba3805a316b069ae48f2f83a071cb"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/diagnostic@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:diagnostic",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd193",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "a03afdce3ecd82accd54526fefa0be83d4528415"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "17e79277b6c5de35475376b19064b01efa9db6ba0a9b1cb758d466ba0b55fd40"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/diagnostic-telemetry@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:diagnostic-telemetry",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd194",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "f2f3c42012d817545a693673f6e7dd72041959d4c896508078e9d67c323243f2"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "98d3975cce3d29b9178ae10191e9b436bd781384"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-progress@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-progress",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd195",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "b49a9e77a1df690e1539c08cee49ad8fb53f317e"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "b6e463db1726440f56607ff5bc2674614144e3bccb9ed93dbf376b7583ef9779"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-coroutines@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-coroutines",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd196",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "9336668f388de68a0a2c3e114154febd29db19a7644f27c4eba548f5de852258"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "ec5ad3b420c9fba4b340e85a3199fd0f2accd023"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/io.opentelemetry/opentelemetry-api@1.41.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "io.opentelemetry:opentelemetry-api",
+    "supplier" : "Person: OpenTelemetry",
+    "versionInfo" : "1.41.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd197",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "95cce782fbabcb47d5b5c50ce39bb7359661dc2e0be78940705219e5a5d48fc5"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "5cbb1121cc71494e2ca4334c641b2d3e73e5d398"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.intellij.deps.jna/jna@5.9.0.26",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "(Apache-2.0 AND LicenseRef-gnrtd1)",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.intellij.deps.jna:jna",
+    "supplier" : "Person: Timothy Wall",
+    "versionInfo" : "5.9.0.26"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd198",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "8ae256de4d37a3c2a1b1d7963a366597a027b710"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "5fdb6e09052a296b9d9272c30e1c1d231314ee0869afcc3167666dd27f232997"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.intellij.deps.jna/jna-platform@5.9.0.26",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "(Apache-2.0 AND LicenseRef-gnrtd1)",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.intellij.deps.jna:jna-platform",
+    "supplier" : "Person: Timothy Wall",
+    "versionInfo" : "5.9.0.26"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd199",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "d9652a225d86e5420d1a07b2bd5be33cdaff9184a2522ced837bd3b963e7f4a4"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "dd42e1b5856a004de9c76475fbb3deefed272bd1"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.intellij.deps.fastutil/intellij-deps-fastutil@8.5.14-jb1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.intellij.deps.fastutil:intellij-deps-fastutil",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "8.5.14-jb1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd200",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "f1167a45d4b8002053670ef6991ca66d1bab9dcc03e4ef00183674d2f3fb9cac"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "c4d931ef8ad2c9c35d65b231a33e61428472d0da"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.lz4/lz4-java@1.7.1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.lz4:lz4-java",
+    "supplier" : "Person: Adrien Grand (jpountz@gmail.com)",
+    "versionInfo" : "1.7.1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd201",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "4090f44cc6d54de074b3ab7a1a894a58163b90b7"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "a72e84efb1406a7ab326e0b28c4376e9e1ebfc08c09f23edff5e6e7249588df7"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.intellij.deps/asm-all@9.6.1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.intellij.deps:asm-all",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "9.6.1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd202",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "852f8b363da0111e819460021ca693cacca3e8db"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "4bf0e2c5af8e4525c96e8fde17a4f7307f97f8478f11c4c8e35a0e3298ae4e90"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.google.guava/guava@33.3.1-jre",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.google.guava:guava",
+    "supplier" : "Organization: Google",
+    "versionInfo" : "33.3.1-jre"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd203",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "c4a06a64e650562f30b7bf9aaec1bfed43aca12b"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.google.guava/failureaccess@1.0.2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.google.guava:failureaccess",
+    "supplier" : "Organization: Google",
+    "versionInfo" : "1.0.2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd204",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "678567e48b51a42c65c699f266539ad3d676d4b1a5b0ad7d89ece8b9d5772579"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "a3f7325c52240418c2ba257b103c3c550e140c83"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.codehaus.woodstox/stax2-api@4.2.1",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "LicenseRef-gnrtd0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.codehaus.woodstox:stax2-api",
+    "supplier" : "Organization: fasterxml.com",
+    "versionInfo" : "4.2.1"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd205",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "fc3db6d844df652a3d5db31c87fa12757f13691d"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "dd3e8a13a2d669bf84fb8d834de35ce4875f27157698d206241ec8488aadcaf7"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.antlr/antlr4-runtime@4.13.2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "LicenseRef-gnrtd2",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.antlr:antlr4-runtime",
+    "supplier" : "Organization: ANTLR",
+    "versionInfo" : "4.13.2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd206",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "aa7cf475448404b1f48a5667454edf83b60b9671191415cef9baa89ead5b0b1e"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "250473f4a3b72766651a36e8becbfef1c49de353"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.fasterxml/aalto-xml@1.3.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.fasterxml:aalto-xml",
+    "supplier" : "Organization: FasterXML",
+    "versionInfo" : "1.3.0"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd207",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "5592374f834645c4ae250f4c9fbb314c9369d698"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "e00ccdad5df7eb43fdee44232ef64602bf63807c2d133a7be83ba09fd49af26e"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/oro/oro@2.0.8",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "oro:oro",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "2.0.8"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd208",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "f59a74e793e3c897d9d0603fbeb08b3f34c9963f1cc918c0c5352eb83cd8a998"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "cd3c1be97b6654f91a318e37e2696f12493b212b"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.jetbrains.intellij.platform/util-jdom@251.27812.49",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.jetbrains.intellij.platform:util-jdom",
+    "supplier" : "Organization: JetBrains",
+    "versionInfo" : "251.27812.49"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd209",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "ed30ed0df6768d51e8bc000bdad6577a10fad7f6c0743f7f28c835390ba5ccb7"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "fd39418692a9290b156c180cd3fe341a9a50d904"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/org.jetbrains.intellij.deps/log4j@1.2.17.2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "org.jetbrains.intellij.deps:log4j",
+    "supplier" : "Organization: NOASSERTION",
+    "versionInfo" : "1.2.17.2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd210",
+    "checksums" : [ {
+      "algorithm" : "SHA1",
+      "checksumValue" : "582657af30cf50aa82ce9094f47af18643785c2e"
+    }, {
+      "algorithm" : "SHA256",
+      "checksumValue" : "2ee26418e492a618dcdeeca33218aaf8c88e4129999d75be3a25d2153a7eb5d2"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/one.util/streamex@0.7.2",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "one.util:streamex",
+    "supplier" : "Person: Tagir Valeev (amaembo@gmail.com)",
+    "versionInfo" : "0.7.2"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd211",
+    "copyrightText" : "NOASSERTION",
+    "description" : "",
+    "downloadLocation" : "NOASSERTION",
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "NOASSERTION",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "compiler.version",
+    "sourceInfo" : "git+https://github.com/JetBrains/kotlin.git@v2.4.10#compiler.version[:compiler:compiler.version]",
+    "supplier" : "Organization: JetBrains s.r.o.",
+    "versionInfo" : "2.4.10"
+  }, {
+    "SPDXID" : "SPDXRef-gnrtd212",
+    "checksums" : [ {
+      "algorithm" : "SHA256",
+      "checksumValue" : "57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b"
+    }, {
+      "algorithm" : "SHA1",
+      "checksumValue" : "527175ca6d81050b53bdd4c457a6d6e017626b0e"
+    } ],
+    "copyrightText" : "NOASSERTION",
+    "downloadLocation" : "NOASSERTION",
+    "externalRefs" : [ {
+      "referenceCategory" : "PACKAGE-MANAGER",
+      "referenceLocator" : "pkg:maven/com.google.code.gson/gson@2.11.0",
+      "referenceType" : "purl"
+    } ],
+    "filesAnalyzed" : false,
+    "licenseConcluded" : "NOASSERTION",
+    "licenseDeclared" : "Apache-2.0",
+    "licenseInfoFromFiles" : [ ],
+    "name" : "com.google.code.gson:gson",
+    "supplier" : "Organization: Google",
+    "versionInfo" : "2.11.0"
+  } ],
+  "relationships" : [ {
+    "spdxElementId" : "SPDXRef-DOCUMENT",
+    "relationshipType" : "DESCRIBES",
+    "relatedSpdxElement" : "SPDXRef-gnrtd0"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd1"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd6"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd5"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd204"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd203"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd205"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd197"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd179"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd199"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd198"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd175"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd178"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd176"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd201"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd200"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd202"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd168"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd167"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd170"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd169"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd166"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd165"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd172"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd171"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd174"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd173"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd157"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd156"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd159"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd158"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd206"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd155"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd164"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd161"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd160"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd163"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd162"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd23"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd22"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd19"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd18"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd21"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd20"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd15"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd14"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd17"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd16"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd12"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd11"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd13"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd7"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd10"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd8"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd137"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd136"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd143"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd142"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd145"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd144"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd139"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd138"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd141"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd140"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd135"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd150"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd209"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd208"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd152"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd126"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd151"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd210"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd132"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd131"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd134"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd133"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd154"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd128"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd153"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd127"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd130"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd207"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd129"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd147"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd146"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd149"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd148"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd122"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd121"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd124"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd123"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd125"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd118"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd117"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd120"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd119"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd111"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd110"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd113"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd112"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd115"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd114"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd116"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd107"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd109"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd108"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd92"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd91"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd84"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd83"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd86"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd85"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd88"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd87"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd90"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd89"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd40"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd39"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd36"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd35"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd38"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd37"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd32"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd34"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd33"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd27"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd26"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd31"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd28"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd25"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd24"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd106"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd105"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd104"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd103"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd102"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd95"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd94"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd97"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd96"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd99"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd98"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd101"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd100"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd93"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd69"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd68"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd71"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd70"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd65"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd67"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd66"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd73"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd72"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd74"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd58"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd57"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd60"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd59"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd56"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd55"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd62"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd61"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd64"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd63"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd47"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd80"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd46"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd79"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd49"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd82"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd48"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd81"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd76"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd45"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd78"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd77"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd54"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd51"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd50"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd53"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd52"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd44"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd43"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd42"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd75"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd41"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd212"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd0",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd211"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd1",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd2"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd2",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd4"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd2",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd3"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd2",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd9"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd28",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd29"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd29",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd30"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd176",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd177"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd186"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd180"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd181"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd183"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd182"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd185"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd184"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd188"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd187"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd190"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd189"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd194"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd193"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd196"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd195"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd192"
+  }, {
+    "spdxElementId" : "SPDXRef-gnrtd179",
+    "relationshipType" : "DEPENDS_ON",
+    "relatedSpdxElement" : "SPDXRef-gnrtd191"
+  } ]
+}

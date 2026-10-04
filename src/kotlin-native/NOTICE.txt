@@ -1,14 +1,15 @@
 expec Kotlin/JVM target
 
-The private bridge uses Kotlin compiler and Analysis API 2.4.10, Kotlinx
-Serialization 1.11.0, the pinned IntelliJ coroutine adapter, and the exact
-dependencies recorded in gradle.lockfile. Kotlin and Kotlinx are Apache-2.0;
-individual distributed JARs retain their original META-INF license notices.
-The Gradle wrapper is Apache-2.0. Full transitive license inventory is required
-before this target's package is marked ready for delivery.
+This package contains the private expec native bridge plus unmodified Kotlin
+compiler/Analysis API and supporting runtime JARs. dependencies.json identifies
+each upstream artifact, exact version, SHA-256 and source/license locations.
+licenses/SOURCES.md explains the pinned compiler distribution and incorporated
+third-party code. The license bundles retain their original copyright,
+attribution and terms; they are not all covered by a single license label.
+The Gradle wrapper retains its embedded license and script copyright headers.
 
 Native queries require an explicitly configured JDK21. No JDK is bundled.
 Queries never install dependencies or execute the connected application.
-Explicit expec install performs Gradle9.1 dependency acquisition and locking;
+Explicit installation performs Gradle9.1 dependency acquisition and locking;
 it can access configured repositories and modifies native dependency state.
-Running the generated native tests executes application and fixture code.
+Running generated native tests executes application and fixture code.

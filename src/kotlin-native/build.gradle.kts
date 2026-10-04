@@ -30,7 +30,8 @@ fun bridgeStage(name: String, destination: String) = tasks.register<Sync>(name) 
     dependsOn(tasks.jar)
     from(configurations.runtimeClasspath) { into("lib") }
     from(tasks.jar) { into("lib") }
-    from("NOTICE.txt")
+    from("NOTICE.txt", "dependencies.json")
+    from("licenses") { into("licenses") }
     from("acquire.gradle")
     from("gradle/wrapper/gradle-wrapper.jar") { into("wrapper") }
     from(listOf("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.properties")) { into("wrapper") }

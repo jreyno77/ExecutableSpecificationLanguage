@@ -1,0 +1,234 @@
+{
+  "description": "Unmodified upstream runtime JARs shipped with the private Kotlin bridge. See licenses/SOURCES.md for compiler incorporation, exact upstream bundles and wrapper provenance.",
+  "artifacts": [
+    {
+      "coordinate": "com.github.ben-manes.caffeine:caffeine:2.9.3",
+      "file": "caffeine-2.9.3.jar",
+      "sha256": "1e0a7bbef1dd791653143f3f05d0e489934bf5481e58a87c9e619cd46b68729b",
+      "notices": [
+        "licenses/caffeine-2.9.3/LICENSE"
+      ],
+      "source": "https://github.com/ben-manes/caffeine/tree/v2.9.3"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.10.0",
+      "file": "error_prone_annotations-2.10.0.jar",
+      "sha256": "a249d4d25dfb86d41e6c82fc335df580189f0c9feeabdc53233fc1e5060724a1",
+      "notices": [
+        "licenses/error-prone-2.10.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/google/error-prone/tree/v2.10.0"
+    },
+    {
+      "coordinate": "org.checkerframework:checker-qual:3.19.0",
+      "file": "checker-qual-3.19.0.jar",
+      "sha256": "a827c49183f3a632277d27a0a4673686cb341507447b9d570261094bd748aa68",
+      "notices": [
+        "licenses/checker-qual-3.19.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/typetools/checker-framework/tree/checker-framework-3.19.0"
+    },
+    {
+      "coordinate": "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm:1.10.2-intellij-2",
+      "file": "kotlinx-coroutines-core-jvm-1.10.2-intellij-2.jar",
+      "sha256": "28f4820b648f65500f9d88d87e0990543399c06f9d6dca57e8102cf802b3f930",
+      "notices": [
+        "licenses/coroutines-1.10.2-intellij-2/LICENSE.txt"
+      ],
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/intellij/deps/kotlinx/kotlinx-coroutines-core-jvm/1.10.2-intellij-2/kotlinx-coroutines-core-jvm-1.10.2-intellij-2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:analysis-api-for-ide:2.4.10",
+      "file": "analysis-api-for-ide-2.4.10.jar",
+      "sha256": "bb360e9e672fe19a5770339d042464fe1e1eded657846a653a5c9070ec1eb721",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:analysis-api-impl-base-for-ide:2.4.10",
+      "file": "analysis-api-impl-base-for-ide-2.4.10.jar",
+      "sha256": "1caaa8d50b5b7212f151674bf08bf3384617579cd7f56658412f02ad461530c6",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:analysis-api-k2-for-ide:2.4.10",
+      "file": "analysis-api-k2-for-ide-2.4.10.jar",
+      "sha256": "20e7caaf90c6c30ed771d8431eb769c5fae3e2d8f1b47baf2e812a037f242f54",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:analysis-api-platform-interface-for-ide:2.4.10",
+      "file": "analysis-api-platform-interface-for-ide-2.4.10.jar",
+      "sha256": "14a8b3e8f3fdc57875add6dfc5a25e6a604f9b0b25fc3f489ccadec6002a1697",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:analysis-api-standalone-for-ide:2.4.10",
+      "file": "analysis-api-standalone-for-ide-2.4.10.jar",
+      "sha256": "e5c0676cbdf7d07a08684a1a8d0bc00acb14d6b75444f13807610cda5c8d57ad",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.10",
+      "file": "kotlin-build-tools-api-2.4.10.jar",
+      "sha256": "3953d283e7710c990672e403a87df393d9726a9bf3e172194ebb5c33e062fcb0",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler:2.4.10",
+      "file": "kotlin-compiler-2.4.10.jar",
+      "sha256": "db12b1af0db0e10eeedfc15d5dac0316604e5c556321f60e3bcd73075a66f0a3",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md",
+        "licenses/intellij-251.27812.49/LICENSE.txt",
+        "licenses/intellij-251.27812.49/NOTICE.txt",
+        "licenses/intellij-251.27812.49/JDOM-LICENSE.txt"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:1.6.10",
+      "file": "kotlin-reflect-1.6.10.jar",
+      "sha256": "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203",
+      "notices": [
+        "licenses/kotlin-1.6.10/LICENSE.txt",
+        "licenses/kotlin-1.6.10/NOTICE.txt",
+        "licenses/kotlin-1.6.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v1.6.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-script-runtime:2.4.10",
+      "file": "kotlin-script-runtime-2.4.10.jar",
+      "sha256": "f4a5b30c2fdfbe386b097101b7989dbeea3743c06396136664784e08e15c6899",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.4.10",
+      "file": "kotlin-stdlib-jdk7-2.4.10.jar",
+      "sha256": "e7a8fe7cacf3b9c838f6b3fcb26dfdd41f844551a3ba67fd3f959a0d9d5c0bef",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.10",
+      "file": "kotlin-stdlib-jdk8-2.4.10.jar",
+      "sha256": "08346b7f4cfba40c1139161c9f30b68199f425cecf3b63de67838063f34a05c7",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.10",
+      "file": "kotlin-stdlib-2.4.10.jar",
+      "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:low-level-api-fir-for-ide:2.4.10",
+      "file": "low-level-api-fir-for-ide-2.4.10.jar",
+      "sha256": "ba10b67b5e06183a65c57e7761149753045a9fe30aee74ad359e4aa3e9fb60ee",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:symbol-light-classes-for-ide:2.4.10",
+      "file": "symbol-light-classes-for-ide-2.4.10.jar",
+      "sha256": "ee162638f3fcbb5f81af147806dcbc7ec8e3d08a5989474d650300a35757b838",
+      "notices": [
+        "licenses/kotlin-2.4.10/LICENSE.txt",
+        "licenses/kotlin-2.4.10/NOTICE.txt",
+        "licenses/kotlin-2.4.10/README.md"
+      ],
+      "source": "https://github.com/JetBrains/kotlin/tree/v2.4.10"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0",
+      "file": "kotlinx-coroutines-core-jvm-1.8.0.jar",
+      "sha256": "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5",
+      "notices": [
+        "licenses/coroutines-1.8.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.coroutines/tree/1.8.0"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0",
+      "file": "kotlinx-serialization-core-jvm-1.11.0.jar",
+      "sha256": "f4a801c647d4351327cd9e1ac4113e2be9ea37a64ab0abae269c25a52e28f35d",
+      "notices": [
+        "licenses/serialization-1.11.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.serialization/tree/v1.11.0"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0",
+      "file": "kotlinx-serialization-json-jvm-1.11.0.jar",
+      "sha256": "563a25b4eb5c9128ae9c2479f3d1a5c44dcd176112b91cf03682e906eba5c935",
+      "notices": [
+        "licenses/serialization-1.11.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.serialization/tree/v1.11.0"
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:23.0.0",
+      "file": "annotations-23.0.0.jar",
+      "sha256": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05",
+      "notices": [
+        "licenses/annotations-23.0.0/LICENSE.txt"
+      ],
+      "source": "https://github.com/JetBrains/java-annotations/tree/23.0.0"
+    }
+  ]
+}
