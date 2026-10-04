@@ -19,3 +19,10 @@ examples { example "eight squared": multiply(8, 8) => 64 }`);
   await project.expectInstalledPackageAndNotices();
   project.expectCheckoutCanariesDenied();
 });
+
+it('uses the installed Kotlin commands from initialization through actual verification', async () => {
+  const project = new InstalledKotlin();
+  await project.installCurrentPackage();
+  await project.deliverCli('function multiply(a: Number, b: Number) returns Number\nexamples { example "eight squared": multiply(8, 8) => 64 }');
+  project.expectCliDelivery();
+}, 600_000);

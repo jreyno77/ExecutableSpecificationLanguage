@@ -14,7 +14,14 @@ const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
+interface KotlinCommand {
+  code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[]; stages: {
+    name: string; status: string; packages?: PackageRead; tests?: {title:string;state:string;errors:string[]}[];
+  }[] };
+}
 interface ConsumerReport {
+  kotlinCli?: { executable: string; initialized: KotlinCommand; acquired: KotlinCommand; built: KotlinCommand; passed: KotlinCommand; broken: KotlinCommand;
+    original: string; testText: string; testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[] };
   customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
     checkoutDenied: string; privateImportDenied: string; catalog: string; note: string };
   cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
@@ -166,6 +173,12 @@ export class PackageDriver {
     const source = join(this.consumer, 'source.expec');
     await writeFile(source, text);
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
+    await this.readReport();
+  }
+  async deliverKotlinCli(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-cli-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin-cli.json'), JSON.stringify({source}));
+    this.result = await run(process.execPath, ['kotlin-cli-consumer.mjs', 'kotlin-cli.json'], this.consumer, 600_000, {EXPEC_DENIED_CHECKOUT:checkout});
     await this.readReport();
   }
   async deliverKotlin(source: string): Promise<void> {

@@ -1,3 +1,4 @@
+import { testKotlinProject } from './cli-kotlin-test.js';
 import { fork } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -17,6 +18,7 @@ import { testIdentities } from './acceptance-state.js';
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {
+  if (checked.configuration!.outputs.some(profile => profile.id === 'kotlin-acceptance')) return testKotlinProject(checked, project, outputs, signal);
   const result: CommandResult = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [] };
   const fail = (code: string, message: string) => ({ ...result, problems: [cliProblem(code, message, checked.manifest)] });
   const profiles = checked.configuration!.outputs.filter(profile => profile.id === 'acceptance');

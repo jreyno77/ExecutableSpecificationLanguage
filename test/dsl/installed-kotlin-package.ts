@@ -8,6 +8,30 @@ export class InstalledKotlin {
   static prepare() { return PackageDriver.prepare(); }
   static finish() { return PackageDriver.finish(); }
   installCurrentPackage() { return this.driver.install(); }
+  deliverCli(source: string) { return this.driver.deliverKotlinCli(source); }
+  expectCliDelivery(): void {
+    expect(this.driver.result.code, this.driver.result.stderr).toBe(0);
+    const actual = this.driver.report.kotlinCli!;
+    expect(actual).toBeDefined();
+    expect(this.driver.location.real).toBe(this.driver.location.expected); expect(this.driver.location.insidePackage).toBe(true);
+    for (const command of [actual.initialized, actual.acquired, actual.built]) expect(command.code, JSON.stringify(command)).toBe(0);
+    expect(actual.initialized.report.status).toBe('initialized');
+    expect(actual.acquired.report.stages.find(stage=>stage.name === 'installation')?.packages?.value)
+      .toContainEqual({name:'maven:org.jetbrains.kotlin:kotlin-stdlib',version:'2.4.10'});
+    expect(actual.built.report.stages.map(stage=>({name:stage.name,status:stage.status})))
+      .toEqual(expect.arrayContaining([{name:'contracts',status:'applied'},{name:'tests',status:'applied'}]));
+    expect(actual.original).toContain('fun multiply(a: Double, b: Double): Double');
+    expect(actual.testText).toContain('generated.multiply(8.0, 8.0)');
+    expect(actual.testUnchanged).toBe(true);
+    expect(actual.passed.code, JSON.stringify(actual.passed)).toBe(0);
+    expect(actual.passed.report.stages.find(stage=>stage.name==='execution')?.tests)
+      .toEqual([expect.objectContaining({title:'eight squared',state:'passed',errors:[]})]);
+    expect(actual.broken.code, JSON.stringify(actual.broken)).toBe(1);
+    const tests = actual.broken.report.stages.find(stage=>stage.name==='execution')?.tests;
+    expect(tests).toEqual([expect.objectContaining({title:'eight squared',state:'failed'})]);
+    expect(tests![0]!.errors.join('\n')).toContain('expected: <64.0> but was: <16.0>');
+    expect(actual.canaries).toEqual([true,true]); expect(actual.unexpectedDenials).toEqual([]);
+  }
   deliver(source: string) { return this.driver.deliverKotlin(source); }
   private get observed() { expect(this.driver.result.code, this.driver.result.stderr).toBe(0); expect(this.driver.report.kotlin).toBeDefined(); return this.driver.report.kotlin!; }
   expectInitializedAndInstalled(name: string, version: string): void {

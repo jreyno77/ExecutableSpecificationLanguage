@@ -6,6 +6,8 @@ import { Compiler, type Specification } from './compiler.js';
 import { DependencyPlanner } from './dependency-planner.js';
 import type { SyntaxDiagnostic } from './grammar/source.js';
 import { LibraryLoader } from './library-loader.js';
+import { cliProfile } from './cli-profile.js';
+import { readKotlinPackages, kotlinExclusions } from './cli-kotlin.js';
 import { readPackages } from './cli-packages.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { SourceComposer } from './source-composer.js';
@@ -39,16 +41,19 @@ export async function readManifest(filename: string, profiles: readonly OutputPr
 export async function checkManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
   const result = await readManifest(filename, profiles);
   if (!result.configuration) return result;
-  const configuration = result.configuration;
+  const configuration = result.configuration, profile = cliProfile(configuration);
+  if (!profile.value) { result.problems = profile.problems; return result; }
   const libraries = await new LibraryLoader(result.manifest).load(configuration);
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
   if (configuration.packages.length) {
-    const connection = await new ProjectConnector(result.manifest).connect(configuration);
+    const connection = await new ProjectConnector(result.manifest, profile.value.target === 'kotlin' ? { excludeNames: kotlinExclusions } : {}).connect(configuration);
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
-      const observed = await readPackages(result.project, configuration.packages);
+      const observed = profile.value.target === 'kotlin'
+        ? await readKotlinPackages(connection.value.context, configuration.packages)
+        : await readPackages(result.project, configuration.packages);
       result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];
     } else if (connection.value) result.problems = [...result.problems, cliProblem('project-required',
