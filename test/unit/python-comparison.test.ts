@@ -49,4 +49,40 @@ except AssertionError as error:
     assert str(error) == "Cyclic comparison data"
 else:
     raise AssertionError("Cyclic data was accepted")`));
+  it('does not let two wrong Text values satisfy their declared Number boundary', () => compare(`
+try:
+    expect_data(checked("Dune", [["Number"]], 0), checked("Dune", [["Number"]], 0))
+except AssertionError as error:
+    assert str(error) == "Expected a finite Number"
+else:
+    raise AssertionError("Matching wrong observations passed")`));
+  it('rejects truthy Text where Boolean was declared', () => compare(`
+try:
+    checked("yes", [["Boolean"]], 0)
+except AssertionError as error:
+    assert str(error) == "Expected Boolean"
+else:
+    raise AssertionError("A truthy value became Boolean")`));
+  it('checks known fields and permits only the declared optional key to be absent', () => compare(`
+shapes = [["record", ["title", 1], ["note", 2]], ["Text"], ["optional", 1]]
+book = {"title": "Dune"}
+assert checked(book, shapes, 0) is book
+for invalid in [{}, {"title": "Dune", "note": None}, {"title": "Dune", "unknown": 1}]:
+    try:
+        checked(invalid, shapes, 0)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("Invalid declared record was accepted")`));
+  it('validates finite recursive data without accepting a cyclic instance', () => compare(`
+shapes = [["record", ["title", 1], ["children", 2]], ["Text"], ["List", 0]]
+book = {"title": "Dune", "children": [{"title": "Chapter", "children": []}]}
+assert checked(book, shapes, 0) is book
+book["children"].append(book)
+try:
+    checked(book, shapes, 0)
+except AssertionError as error:
+    assert str(error) == "Cyclic comparison data"
+else:
+    raise AssertionError("Cyclic declared data was accepted")`));
 });

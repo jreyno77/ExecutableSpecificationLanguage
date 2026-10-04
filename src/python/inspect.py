@@ -36,6 +36,7 @@ def inspect_files(request):
         try:
             text = data.decode("utf-8-sig")
             ast.parse(text, filename=filename)
+            compile(text, filename, "exec", dont_inherit=True)
             wrapper = MetadataWrapper(cst.parse_module(data))
         except (UnicodeError, SyntaxError, cst.ParserSyntaxError) as error:
             problems.append({"code": "invalid-python-source", "file": filename, "message": str(error)})

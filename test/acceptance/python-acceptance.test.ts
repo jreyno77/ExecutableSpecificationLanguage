@@ -27,4 +27,21 @@ describe('readable Python acceptance tests that reach the application', { timeou
     await shopping.runTests();
     shopping.expectUnimplemented('bookIsAvailable');
   });
+  it('compares independent Book data while keeping an absent note distinct from None', async () => {
+    const books = await PythonAcceptance.create();
+    books.aBookRetainsItsDeclaredData();
+    await books.generateBookContract();
+    await books.generateTests();
+    await books.observeBook('{"copies": 1, "title": "Dune"}');
+    books.expectPassed(1);
+    await books.observeBook('{"title": "Dune", "copies": 1, "note": None}');
+    books.expectInvalidBook();
+  });
+  it('rejects two equally wrong observations when Number was declared', async () => {
+    const numbers = await PythonAcceptance.create();
+    numbers.numbersRetainTheirDeclaredMeaning();
+    await numbers.generateTests();
+    await numbers.observeTextAsNumbers();
+    numbers.expectInvalidNumber();
+  });
 });

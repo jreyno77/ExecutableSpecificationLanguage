@@ -29,6 +29,34 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     this.written = output.value ? await output.value.create(this.current) : { problems: output.problems };
     if (!this.written.problems.length) this.scenario = await fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8');
   }
+  authorBook(): void {
+    this.source(`type Book { title: Text\ncopies: Number\nnote: Text? }
+examples {
+  observation book() returns Book
+  example "a book retains its data": book() => { title: "Dune", copies: 1 }
+}`);
+  }
+  authorNumberComparison(): void {
+    this.source(`examples {
+  observation left() returns Number
+  observation right() returns Number
+  example "numbers retain their declared meaning": left() => right()
+}`);
+  }
+  async observeTextAsNumbers(): Promise<void> {
+    await this.file('test/driver/shopping_driver.py', 'class ShoppingDriver:\n    def left(self) -> float:\n        return "Dune"\n    def right(self) -> float:\n        return "Dune"\n');
+    await this.runGeneratedTests();
+  }
+  async generateBookContract(): Promise<void> {
+    await this.build();
+    if (this.written.problems.length || !this.written.artifacts) throw Error(JSON.stringify(this.written));
+    const associated = this.identity.withArtifacts(this.current, this.written.artifacts);
+    if (!associated.value) throw Error(JSON.stringify(associated)); this.current = associated.value;
+  }
+  async observeBook(expression: string): Promise<void> {
+    await this.file('test/driver/shopping_driver.py', 'from store.contracts import Book\n\nclass ShoppingDriver:\n    def book(self) -> Book:\n        return ' + expression + '\n');
+    await this.runGeneratedTests();
+  }
   async implementBasket(copies: number): Promise<void> {
     const source = await fs.readFile(new URL('../resources/python/basket.py', import.meta.url), 'utf8');
     await this.file('src/basket.py', source.replace('COPIES_ADDED = 1', 'COPIES_ADDED = ' + copies));

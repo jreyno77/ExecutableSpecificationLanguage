@@ -9,6 +9,19 @@ export class PythonAcceptance {
   }
   static async dispose(): Promise<void> { for (const value of this.examples.splice(0)) await value.driver.dispose(); }
   aShopperCanAddAnAvailableBook(title: string, quantity: number): void { this.driver.authorShopping(title, quantity); }
+  aBookRetainsItsDeclaredData(): void { this.driver.authorBook(); }
+  numbersRetainTheirDeclaredMeaning(): void { this.driver.authorNumberComparison(); }
+  observeTextAsNumbers(): Promise<void> { return this.driver.observeTextAsNumbers(); }
+  expectInvalidNumber(): void {
+    expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);
+    expect(this.driver.runtime.text).toContain('Expected a finite Number'); expect(this.driver.runtime.text).toContain('1 failed');
+  }
+  generateBookContract(): Promise<void> { return this.driver.generateBookContract(); }
+  observeBook(expression: string): Promise<void> { return this.driver.observeBook(expression); }
+  expectInvalidBook(): void {
+    expect(this.driver.runtime.code, this.driver.runtime.text).not.toBe(0);
+    expect(this.driver.runtime.text).toContain('AssertionError'); expect(this.driver.runtime.text).toContain('1 failed');
+  }
   async generateTests(): Promise<void> {
     await this.driver.generate(); expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
     expect(this.driver.written.receipt?.status).toBe('applied');
