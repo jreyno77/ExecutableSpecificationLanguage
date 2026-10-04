@@ -6,6 +6,7 @@ export class KotlinAcceptance {
   static async connect(): Promise<KotlinAcceptance> {
     const driver = new KotlinAcceptanceDriver(), example = new KotlinAcceptance(driver); await driver.prepare(); return example;
   }
+  replaceNativeText(path: string, before: string, after: string): Promise<void> { return this.driver.replace(path, before, after); }
   nativeFile(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
   testRoot(path: string): void { this.driver.acceptanceOptions.testRoot = path; }
   source(text: string): void { this.driver.source(text); }

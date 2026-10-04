@@ -15,14 +15,13 @@ export function kotlinDriver(native: KotlinQuery, locator: ArtifactLocator): Dec
     && same(locator.value, { file: node.file, declaration: node.selector }));
   return found.length === 1 ? found[0] : undefined;
 }
-export function kotlinDriverBindings(current: IdentifiedSpecification, driver: Declaration,
+export function kotlinDriverBindings(current: IdentifiedSpecification,
   targets: ReadonlyMap<NodeId, Declaration>): Check<ArtifactAssociation[]> {
   const value: ArtifactAssociation[] = [], problems = [];
   for (const [id, target] of targets) {
     const operation = current.specification.inspection.read(id);
     if (!['setup', 'action', 'observation', 'check'].includes(operation.kind)) continue;
     if (!('body' in operation) || operation.body.kind === 'available' || target.kind !== 'function'
-      || target.file !== driver.file || !same(target.selector.slice(0, -1), driver.selector)
       || !['public', 'internal'].includes(target.visibility)) {
       problems.push({ code: 'native-signature-conflict', at: operation.origin, message: 'Select an accessible method on this driver for a bodyless operation.', related: [] }); continue;
     }
@@ -40,7 +39,9 @@ export function checkKotlinDriver(current: IdentifiedSpecification, native: Kotl
     if (actual.length !== 1 || expected.length !== 1 || actual[0]!.returnType !== expected[0]!.returnType
       || !same(actual[0]!.parameterNames, expected[0]!.parameterNames)
       || !same(actual[0]!.selector.at(-1)!.parameters, expected[0]!.selector.at(-1)!.parameters)
-      || !same(actual[0]!.typeParameters ?? [], expected[0]!.typeParameters ?? [])) {
+      || !same(actual[0]!.typeParameters ?? [], expected[0]!.typeParameters ?? [])
+      || !native.references.some(reference => reference.file === adapter.path && same(reference.owner, expected[0]!.selector)
+        && reference.targetFile === actual[0]!.file && same(reference.target, actual[0]!.selector) && reference.role === 'call')) {
       problems.push({ code: 'native-signature-conflict', at: current.specification.inspection.read(current.node(binding.specId)).origin,
         message: 'The selected native method must match the checked operation signature.', related: [] });
     }

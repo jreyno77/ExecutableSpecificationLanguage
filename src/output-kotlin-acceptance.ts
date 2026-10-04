@@ -74,7 +74,7 @@ class KotlinAcceptance implements OutputAdapter {
       if (before && canonical(before) !== canonical(declarations[0])) return failure('ambiguous-native-target', 'Select one executable Kotlin target for this source declaration.');
       targets.set(id, declarations[0]!);
     }
-    const mapped = driver ? kotlinDriverBindings(request.current, driver, targets) : { value: [], problems: [], deferred: [] };
+    const mapped = driver ? kotlinDriverBindings(request.current, targets) : { value: [], problems: [], deferred: [] };
     if (!mapped.value) return { problems: mapped.problems, deferred: mapped.deferred };
     const bindings = mapped.value;
     if (stored.value?.bindings?.some(before => !bindings.some(after => before.specId === after.specId && canonical(before.locator) === canonical(after.locator)))) return failure('output-options-changed', 'A retained native operation binding cannot silently change.');

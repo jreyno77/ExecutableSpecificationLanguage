@@ -68,3 +68,29 @@ it('does not invent arguments for a selected native driver constructor', async (
   project.mapOperation('quantity', native, 'NativeBasket', 'quantity', ['kotlin.String']);
   await project.expectAcceptanceRefused('invalid-native-driver');
 }, 180_000);
+
+it('uses the explicitly mapped inherited native operation', async () => {
+  const project = await KotlinAcceptance.connect();
+  project.source('examples { observation quantity(title: Text) returns Number\nexample "one Dune": quantity("Dune") => 1 }');
+  const native = 'src/test/kotlin/store/native/NativeBasket.kt';
+  await project.nativeFile(native, 'package store.native\nopen class Catalog { fun copies(title: String): Double = if (title == "Dune") 1.0 else 0.0 }\nclass NativeBasket : Catalog()');
+  project.selectDriver(native, 'NativeBasket');
+  project.mapOperation('quantity', native, 'Catalog', 'copies', ['kotlin.String']);
+  await project.rememberFile(native);
+  await project.buildAcceptance();
+  project.expectNoObligation('implementation-required');
+  await project.expectFileUnchanged(native);
+  await project.runTests(); project.expectTests(1, 0);
+  await project.readOperation('quantity');
+  project.expectReadContains('class Catalog');
+}, 180_000);
+
+it('refuses a mapping to a different native receiver with the same method signature', async () => {
+  const project = await KotlinAcceptance.connect();
+  project.source('examples { observation quantity(title: Text) returns Number\nexample "one Dune": quantity("Dune") => 1 }');
+  const native = 'src/test/kotlin/store/native/NativeBasket.kt';
+  await project.nativeFile(native, 'package store.native\nclass NativeBasket { fun copies(title: String): Double = 2.0 }\nclass OtherBasket { fun copies(title: String): Double = 1.0 }');
+  project.selectDriver(native, 'NativeBasket');
+  project.mapOperation('quantity', native, 'OtherBasket', 'copies', ['kotlin.String']);
+  await project.expectAcceptanceRefused('native-signature-conflict');
+}, 180_000);

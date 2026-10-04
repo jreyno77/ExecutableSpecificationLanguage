@@ -45,3 +45,14 @@ open class ConcurrentShopping {
   project.expectDistinctResources(2);
   project.expectRuntimeLines('RESOURCE_CLOSED=true', 2);
 }, 180_000);
+
+it('refuses changing the owned per-method test lifecycle to shared state', async () => {
+  const project = await KotlinAcceptance.connect();
+  project.source('examples { example "one": 1 => 1 }');
+  await project.buildAcceptance();
+  const testFile = 'src/test/kotlin/store/tests/acceptance/ShoppingAcceptance.kt';
+  await project.replaceNativeText(testFile, 'Lifecycle.PER_METHOD', 'Lifecycle.PER_CLASS');
+  await project.rememberFile(testFile);
+  await project.expectAcceptanceRefused('output-conflict');
+  await project.expectFileUnchanged(testFile);
+}, 180_000);
