@@ -106,8 +106,10 @@ export class ConnectedBuildDriver {
         { cwd: this.path(cwd), timeout: deadline, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, NODE_PATH: '' } });
       this.result = { ...result, code: 0 };
     } catch (error) {
-      const result = error as { code: number; stdout: string; stderr: string };
-      if (typeof result.code !== 'number') throw error;
+      const result = error as { code: number | string; stdout: string; stderr: string; killed?: boolean; signal?: string };
+      if (typeof result.code !== 'number') throw new Error('Connected CLI process failed: ' + JSON.stringify({
+        deadline, code: result.code, killed: result.killed, signal: result.signal, stdout: result.stdout, stderr: result.stderr,
+      }), { cause: error });
       this.result = { code: result.code, stdout: result.stdout, stderr: result.stderr };
     }
     this.report = args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
