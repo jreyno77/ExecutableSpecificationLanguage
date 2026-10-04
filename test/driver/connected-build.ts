@@ -10,6 +10,7 @@ import ts from 'typescript';
 import { pathToFileURL } from 'node:url';
 import { NativePackageDriver } from './native-packages.js';
 import { copyInstalledPackages } from './typescript-context.js';
+import { requireCompiledCheckout } from './compiled-checkout.js';
 
 const execute = promisify(execFile);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -30,10 +31,7 @@ export class ConnectedBuildDriver {
   result!: { code: number; stdout: string; stderr: string };
   report: any;
   private launcher?: string;
-  static async prepare(): Promise<void> {
-    await execute(process.execPath, [join(checkout, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
-      { cwd: checkout, timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
-  }
+  static async prepare(): Promise<void> { requireCompiledCheckout(); }
   async initialize(connected: boolean): Promise<void> {
     this.parent = await realpath(tmpdir());
     this.directory = await realpath(await mkdtemp(join(this.parent, 'expec-cli-')));

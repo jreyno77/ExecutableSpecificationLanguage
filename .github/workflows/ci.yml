@@ -16,13 +16,14 @@ permissions:
 
 jobs:
   check:
-    name: Node 24 / ${{ matrix.os }}
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 4
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,16 +37,28 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
-      - name: Regenerate, typecheck, test, and build
-        run: npm run check
+      - name: Regenerate the grammar
+        run: npm run grammar:generate
+      - name: Check all source and test types
+        run: npm run typecheck
+      - name: Build and test the shard
+        run: npm test -- --shard=${{ matrix.shard }}/4 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: core-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   project-pilot:
-    name: Project pilot / ${{ matrix.os }}
+    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of 4
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,15 +73,23 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
-        run: npm run test:pilot
+        run: npm run test:pilot -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: pilot-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   installed-package:
-    name: Installed package / ${{ matrix.os }}
+    name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of 2
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,4 +104,11 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed package consumers
-        run: npm run test:package
+        run: npm run test:package -- --shard=${{ matrix.shard }}/2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: installed-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
