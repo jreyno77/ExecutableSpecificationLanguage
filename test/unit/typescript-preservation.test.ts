@@ -394,4 +394,23 @@ describe('native preservation decisions', { timeout: 30_000 }, () => {
     const result = await adapter.plan({ operation: 'update', current: user.initial, diff: user.identity.compare(user.initial.baseline, user.initial).value! }, snapshot);
     expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('contract-drift');
   });
+  it('retains the implementation obligation when an untouched generated stub is renamed', async () => {
+    const user = author('function save() returns Nothing'), adapter = output();
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, captured({}));
+    const snapshot = materialize(captured({}), first.value!), current = user.rename('function saveGame() returns Nothing', 'save', 'saveGame');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]);
+    expect(result.value!.obligations).toMatchObject([{ code: 'implementation-required', message: 'Implement saveGame.', at: { kind: 'source' } }]);
+  });
+  it('does not label a signature-only interface as an unfinished implementation', async () => {
+    const user = author('interface Store { capability save() returns Nothing }');
+    const result = await output().plan({ operation: 'create', current: user.initial }, captured({}));
+    expect(result.problems).toEqual([]); expect(result.value!.obligations).toEqual([]);
+  });
+  it('does not infer generated ownership from an adopted handwritten throw', async () => {
+    const user = author('function save() returns Nothing'), mapped = user.map(user.initial, 'save', 'manual.ts', [{ kind: 'function', name: 'save' }]);
+    const result = await output().plan({ operation: 'create', current: mapped }, captured({ 'manual.ts': 'export function save(): void { throw new Error("Not implemented: handwritten policy"); }' }));
+    expect(result.problems).toEqual([]); expect(result.value!.obligations).toEqual([]);
+  });
+
 });

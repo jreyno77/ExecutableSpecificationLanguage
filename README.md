@@ -674,6 +674,24 @@ own resources. Compilation/generation never starts them. Invoke native Vitest
 explicitly for runtime results; type compatibility and generation do not establish
 a pass. Source `.expec` fixtures remain data-only.
 
+## Connected commands
+
+The installed package provides the `expec` command. Start with an `expec.json` manifest and authored source entries. Paths in the manifest stay relative to that file, including when commands run from another directory.
+
+```sh
+expec check --config spec/expec.json
+expec init --config spec/expec.json --root ../store-game --target typescript --yes
+expec install --config spec/expec.json
+expec build --config spec/expec.json
+expec test --config spec/expec.json
+```
+
+Initialization and installation are explicit. Build checks the supplied source, preserves confirmed identities, applies selected contracts, then reads the actual project before generating acceptance tests. It reports unfinished implementations; it does not run them. Test requires current generated evidence and project-installed Vitest 5.0.2, selects the actual generated callbacks, and retains assertion and cleanup failures. Handwritten implementation edits may be tested without rebuilding; changed generated assertions require repair or generation.
+
+Use `--json` for one format-1 report on stdout; native application logs go to stderr. Exit codes are 0 for success, 1 for failed/invalid work, 2 for command usage, 3 for a required author decision, and 130 for cancellation. Failed writes retain actual receipts and recognized pending intent; a later build resumes only a verified unchanged prefix. Identity rename/retirement decisions use `build --decisions changes.json`.
+
+A deliberate custom launcher can import `runCli` and pass `{ contracts: [registration], tests: [registration] }` using ordinary `OutputRegistration` implementations. It receives the same checked specification and guarded project boundaries. Configuration does not load executable plugins.
+
 ## Development and delivery
 
 Use Node 24.19.0 and npm 11.20.0.

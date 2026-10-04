@@ -127,4 +127,17 @@ describe('recovering a partially applied connected build', () => {
     await project.expectPendingBuildRetained();
   }, 60_000);
 
+  it('retains implementation obligations when a later recovery still cannot confirm the output', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'function save() returns Nothing');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    project.failActualWrite('.expec/identity.json');
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectObligation('implementation-required', 'save');
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(1); project.expectProblem('unconfirmed-state');
+    project.expectObligation('implementation-required', 'save');
+    await project.expectNoDestinationFile('project/.expec/identity.json'); await project.expectPendingBuildRetained();
+  }, 60_000);
+
 });

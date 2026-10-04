@@ -9,10 +9,10 @@ const registration = item => ({ id: item.id, validate: () => [], open() { let ow
     owned = new Set(request.current.baseline.elements.filter(element => element.address.owner === null && (!item.subject || element.address.name === item.subject)).map(element => element.id));
     const locator = { outputId: item.id, format: 'fixture-file-1', value: { file: item.file } };
     return { value: { outputId: item.id, basedOn, changes: item.file ? [{ kind: 'write', path: item.file, bytes: Buffer.from(item.text) }] : [],
-      artifacts: item.file ? [...owned].map(specId => ({ specId, locator })) : [] }, problems: [], deferred: [] };
+      artifacts: item.file ? [...owned].map(specId => ({ specId, locator: { ...locator, value: { file: item.file, subject: specId } } })) : [] }, problems: [], deferred: [] };
   },
   async read(id, basedOn) {
-    const file = owned.has(id) ? basedOn.files.find(file => file.path === item.file) : undefined, at = { outputId: item.id, format: 'fixture-file-1', value: { file: item.file } };
+    const file = owned.has(id) ? basedOn.files.find(file => file.path === item.file) : undefined, at = { outputId: item.id, format: 'fixture-file-1', value: { file: item.file, subject: id } };
     return { artifacts: file ? [{ file, at }] : [], problems: [], coverage: { scope: [at], complete: !!file, limitations: file ? [] : ['missing fixture artifact'] } };
   },
   async search() { throw Error('This fixture does not provide native semantic search.'); },

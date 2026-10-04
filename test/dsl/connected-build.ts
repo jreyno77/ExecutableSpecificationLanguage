@@ -151,6 +151,7 @@ export class ConnectedBuild {
   async expectIdentitiesUnchanged(): Promise<void> { expect(await readFile(this.driver.path('project/.expec/identity.json'), 'utf8')).toBe(this.driver.identities); }
   changeAfterOutputWrite(source: string, path: string, text: string): void { this.driver.afterOutputWrite = { source, path, text }; }
   changeAfterWriterRelease(count: number, path: string, text: string): void { this.driver.afterWriterRelease = { count, path, text }; }
+  interruptAfterOutputWrite(path: string): void { this.driver.signalAfterOutputWrite = path; }
   failActualWrite(path: string): void { this.driver.failure = { operation: 'write', path }; }
   failPendingRemoval(): void { this.driver.failure = { operation: 'remove', path: '.expec/build-pending.json' }; }
   clearActualWriteFailure(): void { delete this.driver.failure; }

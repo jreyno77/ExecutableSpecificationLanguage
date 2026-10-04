@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { Diagnostic } from './checking.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { BuildContext } from './cli-context.js';
@@ -11,6 +12,8 @@ import { FileProjectWriter, type FileChange } from './project-writer.js';
 export async function build(checked: CheckedManifest, project: ProjectContext, outputs: Outputs,
   testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string): Promise<CommandResult & { obligations: Diagnostic[] }> {
   const result: CommandResult & { obligations: Diagnostic[] } = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [], obligations: [] };
+  const retain = (obligations: readonly Diagnostic[]) => { for (const obligation of obligations)
+    if (!result.obligations.some(before => isDeepStrictEqual(before, obligation))) result.obligations.push(obligation); };
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
@@ -20,7 +23,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
   if (!('value' in recovered)) return { ...result, problems: recovered.problems };
   if (recovered.value) {
-    result.stages.push(...recovered.value.stages);
+    result.stages.push(...recovered.value.stages); retain(recovered.value.obligations ?? []);
     if (recovered.value.exitCode) return { ...result, problems: recovered.value.problems };
   }
   const snapshot = await allContext.readSnapshot();
@@ -53,7 +56,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     if (!confirmed.value) return { ...result, problems: confirmed.problems };
     const applied = await new BuildJournal(checked, context, signal).apply(name, basedOn, plans, confirmed.value.baseline);
     result.stages.push(...applied.stages);
-    result.obligations.push(...plans.flatMap(plan => [...plan.obligations ?? []]));
+    retain(plans.flatMap(plan => [...plan.obligations ?? []]));
     if (applied.exitCode) return { ...result, problems: applied.problems };
     current = confirmed.value;
     if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {

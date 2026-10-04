@@ -29,17 +29,17 @@ type Report = { format: 1; command: string; status: string; exitCode: number; ma
 export async function runCli(input: readonly string[], additional: CliOutputs = {}): Promise<number> {
   const args = [...input], supplied = { contracts: [...additional.contracts ?? []], tests: [...additional.tests ?? []] };
   const cwd = process.cwd();
-  let command = '', manifest = resolve(cwd, 'expec.json'), json = args.includes('--json');
+  let command = '', manifest = resolve(cwd, 'expec.json'), json = args.includes('--json'), interrupted = false;
   const report = (status: string, exitCode: number, values: Partial<Report> = {}): number => {
     const result: Report = { format: 1, command, status, exitCode, manifest, problems: [], syntax: [], deferred: [],
-      obligations: [], stages: [], ...values };
+      obligations: [], stages: [], ...values, ...(interrupted ? { status: 'cancelled', exitCode: 130 } : {}) };
     if (json) process.stdout.write(JSON.stringify(result, function (key, value: unknown) {
       const original = key ? this[key] as unknown : value;
       return original instanceof Uint8Array ? { encoding: 'base64', data: Buffer.from(original).toString('base64') } : value;
     }) + '\n');
     else {
-      const stream = exitCode ? process.stderr : process.stdout;
-      stream.write(status + ': ' + manifest + (result.version ? ' (specification ' + result.version + ')' : '') + '\n');
+      const stream = result.exitCode ? process.stderr : process.stdout;
+      stream.write(result.status + ': ' + manifest + (result.version ? ' (specification ' + result.version + ')' : '') + '\n');
       if (result.project) stream.write('Project: ' + result.project.path + '\n');
       for (const stage of result.stages as { name: string; status: string; outputs?: string[]; receipt?: WriteResult; write?: WriteResult; initialization?: { write?: WriteResult }; tests?: { title: string; state: string; errors: unknown[] }[]; errors?: unknown[] }[]) {
         stream.write(stage.name + ': ' + stage.status + (stage.outputs?.length ? ' (' + stage.outputs.join(', ') + ')' : '') + '\n');
@@ -52,7 +52,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
       for (const problem of result.problems) stream.write(problem.code + ': ' + problem.message + ' ' + JSON.stringify(problem.at) + '\n');
       for (const finding of [...result.syntax, ...result.deferred]) stream.write(JSON.stringify(finding) + '\n');
     }
-    return exitCode;
+    return result.exitCode;
   };
   let values: ReturnType<typeof parseArgs>['values'];
   try {
@@ -83,7 +83,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     if (command === 'init' && (!values.root || !values.target)) throw Error('init requires --root and --target.');
     if (values.config !== undefined) manifest = resolve(cwd, values.config as string);
   } catch (error) { return report('usage-error', 2, { problems: [cliProblem('invalid-command', String(error), manifest)] }); }
-  const controller = new AbortController(), cancel = () => controller.abort();
+  const controller = new AbortController(), cancel = () => { interrupted = true; controller.abort(); };
   process.once('SIGINT', cancel);
   try {
     const outputs = new Outputs();

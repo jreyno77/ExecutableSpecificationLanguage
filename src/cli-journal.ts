@@ -108,7 +108,8 @@ export class BuildJournal {
     } catch (error) { return { problems: [...problems, this.problem(String(error))], deferred: [] }; }
   }
   private async finish(journal: Journal, snapshot: ProjectSnapshot, prefix: number, confirmed: boolean, pendingVersion: string): Promise<CommandResult> {
-    const stageContext = this.context.during(restoreGraph(journal.graph)), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [] };
+    const stageContext = this.context.during(restoreGraph(journal.graph)), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],
+      obligations: journal.plans.flatMap(plan => plan.obligations) as Diagnostic[] };
     let receipt: WriteResult | undefined;
     const all = changes(journal), expected = new Map(versions(restoreGraph(journal.graph)));
     all.slice(0, prefix).forEach(change => advance(expected, change));

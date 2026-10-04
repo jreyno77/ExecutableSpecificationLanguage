@@ -12,6 +12,7 @@ export interface CommandResult {
   exitCode: number;
   project?: ProjectRoot;
   problems: readonly Diagnostic[];
+  obligations?: readonly Diagnostic[];
   stages: { name: string; status: string; [key: string]: unknown }[];
 }
 export async function answer(question: string, signal: AbortSignal): Promise<string> {

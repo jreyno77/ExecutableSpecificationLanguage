@@ -24,6 +24,7 @@ export class ConnectedBuildDriver {
   manifestChange?: Record<string, unknown>;
   failure?: { operation: "write" | "remove"; path: string };
   pendingIds?: Record<string, string>;
+  signalAfterOutputWrite?: string;
   afterOutputWrite?: { source: string; path: string; text: string };
   afterWriterRelease?: { count: number; path: string; text: string };
   result!: { code: number; stdout: string; stderr: string };
@@ -77,6 +78,9 @@ export class ConnectedBuildDriver {
     if (this.afterWriterRelease) prelude.push('import { promises as changedFs } from "node:fs"; import { dirname as changeParent } from "node:path"; const mutation = ' + JSON.stringify({ ...this.afterWriterRelease, path: this.path('project/' + this.afterWriterRelease.path), lock: this.path('project/.expec/write.lock') }) + ';' +
       'const unlink = changedFs.unlink; let releases = 0; changedFs.unlink = async (...args) => { const result = await unlink(...args); if (String(args[0]) === mutation.lock && ++releases === mutation.count) {' +
       'await changedFs.mkdir(changeParent(mutation.path), {recursive:true}); await changedFs.writeFile(mutation.path, mutation.text); } return result; };');
+    if (this.signalAfterOutputWrite) prelude.push('import { promises as signalFs } from "node:fs"; const signalPath = ' + JSON.stringify(this.path('project/' + this.signalAfterOutputWrite)) + ';' +
+      'const signalOpen = signalFs.open; let sent = false; signalFs.open = async (...args) => { const handle = await signalOpen(...args); if (String(args[0]) === signalPath && args[1] !== "r") {' +
+      'const close = handle.close.bind(handle); handle.close = async () => { await close(); if (!sent) { sent = true; process.emit("SIGINT"); } }; } return handle; };');
     if (this.afterOutputWrite) prelude.push('import { promises as outputFs } from "node:fs"; const outputMutation = ' + JSON.stringify({ ...this.afterOutputWrite, source: this.path('project/' + this.afterOutputWrite.source), path: this.path('project/' + this.afterOutputWrite.path) }) + ';' +
       'const outputOpen = outputFs.open; let outputChanged = false; outputFs.open = async (...args) => { const handle = await outputOpen(...args); if (String(args[0]) === outputMutation.source && args[1] !== "r") {' +
       'const close = handle.close.bind(handle); handle.close = async () => { await close(); if (!outputChanged) { outputChanged = true; await outputFs.writeFile(outputMutation.path, outputMutation.text); } }; } return handle; };');

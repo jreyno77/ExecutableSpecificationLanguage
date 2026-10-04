@@ -5,19 +5,15 @@ import { isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import ts from 'typescript';
-import { z } from 'zod';
+import { nativeReport, testsPassed, type NativeReport, type SelectedTest } from './cli-test-result.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { BuildContext } from './cli-context.js';
 import { identities, pendingPath, readIdentity } from './cli-identity.js';
 import type { CommandResult } from './cli-project.js';
 import type { Outputs } from './output.js';
-import type { ProjectContext } from './project-connection.js';
+import type { ProjectContext, ProjectRoot } from './project-connection.js';
 import { FileProjectWriter } from './project-writer.js';
 import { testIdentities } from './acceptance-state.js';
-
-export interface SelectedTest { id: string; file: string; title: string; line: number; column: number; version: string }
-const nativeReport = z.strictObject({ tests: z.array(z.object({ id: z.string(), file: z.string(), title: z.string(), state: z.string(), errors: z.array(z.unknown()) })),
-  errors: z.array(z.unknown()), problems: z.array(z.object({ code: z.string(), message: z.string() })), cancelled: z.boolean() });
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {
@@ -65,25 +61,35 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   if (!selections.length) return fail('generated-tests-not-executed', 'No generated cases were selected.');
   if (!isDeepStrictEqual(snapshot, await context.readSnapshot())) return fail('stale-project', 'Project changed during native test selection.');
   if (signal.aborted) return { ...result, status: 'cancelled', exitCode: 130 };
+  return runSelectedTests(project.root, checked.manifest, runner, selections, signal);
+}
+
+/** Process observations stay separate from the source/identity eligibility checks. */
+export function runSelectedTests(root: ProjectRoot, manifest: string, runner: string, selections: SelectedTest[], signal: AbortSignal): Promise<CommandResult> {
+  const result: CommandResult = { status: 'invalid', exitCode: 1, project: root, problems: [], stages: [] };
   const entry = fileURLToPath(new URL('./cli-vitest.js', import.meta.url)), args = [entry];
   return new Promise(resolveResult => {
-    const child = fork(entry, [], { cwd: project.root.path, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], execArgv: [], env: { ...process.env, NODE_PATH: '' } });
-    let response: z.infer<typeof nativeReport> | undefined, failure: unknown;
-    const cancel = () => { if (child.connected) child.send({ cancel: true }); };
+    const child = fork(entry, [], { cwd: root.path, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], execArgv: [], env: { ...process.env, NODE_PATH: '' } });
+    let response: NativeReport | undefined, failure: unknown, cancellation: NodeJS.Timeout | undefined, forced = false;
+    const cancel = () => {
+      if (cancellation) return;
+      if (child.connected) child.send({ cancel: true }, error => { if (error) failure = error; });
+      cancellation = setTimeout(() => { forced = child.kill('SIGKILL'); }, 5_000);
+    };
     signal.addEventListener('abort', cancel, { once: true });
     child.stdout!.on('data', chunk => process.stderr.write(chunk)); child.stderr!.on('data', chunk => process.stderr.write(chunk));
     child.on('message', message => { const parsed = nativeReport.safeParse(message); if (parsed.success && !response) response = parsed.data; else failure = Error('Invalid native result.'); });
     child.on('error', error => { failure = error; });
     child.on('close', (exitCode, terminated) => {
-      signal.removeEventListener('abort', cancel);
-      const passed = exitCode === 0 && !failure && response && !response.cancelled && !response.errors.length && !response.problems.length
-        && selections.every(item => response!.tests.filter(test => test.id === item.id && test.state === 'passed').length === 1);
+      signal.removeEventListener('abort', cancel); clearTimeout(cancellation);
+      const passed = exitCode === 0 && !failure && response && testsPassed(selections, response);
       resolveResult({ ...result, status: signal.aborted ? 'cancelled' : passed ? 'tested' : 'failed', exitCode: signal.aborted ? 130 : passed ? 0 : 1,
-        problems: [...response?.problems.map(problem => cliProblem(problem.code, problem.message, checked.manifest)) ?? [],
-          ...failure || !response ? [cliProblem('native-test-failure', String(failure ?? 'Native process returned no result.'), checked.manifest)] : []],
-        stages: [{ name: 'execution', status: passed ? 'passed' : 'failed', native: { command: process.execPath, args, cwd: project.root.path, exitCode, signal: terminated },
-          tests: response?.tests ?? [], errors: response?.errors ?? [] }] });
+        problems: [...(forced ? [cliProblem('native-test-terminated', 'Native cancellation did not finish within five seconds; the child was terminated and cleanup is unconfirmed.', manifest)] : []), ...response?.problems.map(problem => cliProblem(problem.code, problem.message, manifest)) ?? [],
+          ...failure || !response ? [cliProblem('native-test-failure', String(failure ?? 'Native process returned no result.'), manifest)] : []],
+        stages: [{ name: 'execution', status: passed ? 'passed' : 'failed', native: { command: process.execPath, args, cwd: root.path, exitCode, signal: terminated },
+          collected: response?.collected ?? [], tests: response?.tests ?? [], errors: response?.errors ?? [] }] });
     });
-    child.send({ runner, selections });
+    child.send({ runner, selections }, error => { if (error) failure = error; });
+    if (signal.aborted) cancel();
   });
 }
