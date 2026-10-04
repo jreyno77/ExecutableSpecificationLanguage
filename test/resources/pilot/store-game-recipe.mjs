@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { Compiler, ConfigurationReader, FileProjectWriter, Outputs, ProjectConnector,
   SourceComposer, SourceLoader, SpecificationIdentity, TypeScriptContext, acceptanceOutput, typescriptOutput } from 'executable-specification-language';
@@ -24,8 +23,13 @@ const context = new TypeScriptContext(connection.context, { configFile: 'tsconfi
 const writer = new FileProjectWriter(context);
 const modules = [...new Set([specification.entry, ...[...specification.inspection.query('class'), ...specification.inspection.query('opaque-type-declaration')]
   .map(item => item.origin.module)])];
+const nativeModule = name => {
+  const declarations = [...specification.inspection.query('opaque-type-declaration')].filter(item => item.name === name);
+  assert.equal(declarations.length, 1, 'Select one actual imported ' + name + ' declaration.');
+  return declarations[0].origin.module;
+};
 const options = { directory: 'src', configFile: 'tsconfig.json', adoptExisting: true,
-  imports: ['SystemConfig', 'PlayerStateSnapshot'].map(name => ({ module: pathToFileURL(resolve('models.expec')).href,
+  imports: (settings.layout === 'generated' ? [] : ['SystemConfig', 'PlayerStateSnapshot']).map(name => ({ module: nativeModule(name),
     declaration: [name], name, ...(settings.layout === 'distributed' ? { from: './models.js', as: name === 'SystemConfig' ? 'Configuration' : 'Snapshot' } : {}) })) };
 const output = value(outputs.open('typescript', options, context, writer, { workspaceModules: modules }));
 let baseline;

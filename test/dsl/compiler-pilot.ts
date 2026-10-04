@@ -1,4 +1,7 @@
 import { expect, onTestFinished } from 'vitest';
+import { realpath } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CompilerPilotDriver } from '../driver/compiler-pilot.js';
 
 export class CompilerPilot {
@@ -109,8 +112,9 @@ ${examples}
     expect(this.driver.version).toBe(this.original!.version);
     expect(await this.original!.text('project/test/dsl/compiler.ts')).toBe('export class {');
     for (const item of await this.driver.observations()) {
-      expect(decodeURIComponent(new URL(item.packageUrl).pathname).replaceAll('\\', '/')).toContain(this.driver.root.replaceAll('\\', '/') + '/project/node_modules/executable-specification-language/');
-      expect(item.packageUrl).not.toContain(this.original!.root);
+      const actual = await realpath(fileURLToPath(item.packageUrl));
+      expect(actual).toBe(await realpath(join(this.driver.root, 'project/node_modules/executable-specification-language/dist/index.js')));
+      expect(actual).not.toBe(await realpath(join(this.original!.root, 'project/node_modules/executable-specification-language/dist/index.js')));
     }
     expect(await this.driver.implementationBytes()).toEqual(this.savedImplementation);
   }
