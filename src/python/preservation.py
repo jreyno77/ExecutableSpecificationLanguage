@@ -8,6 +8,16 @@ def selector(artifact):
     return tuple((part["kind"], part["name"]) for part in artifact["locator"]["value"]["declaration"])
 
 
+def associations(items):
+    counts, found = {}, {}
+    for item in items:
+        identity = item["specId"]
+        ordinal = counts.get(identity, 0)
+        counts[identity] = ordinal + 1
+        found[(identity, ordinal)] = item
+    return found
+
+
 def declarations(module):
     found, scope = {}, []
 
@@ -45,14 +55,43 @@ def contract(node):
         node = node.with_changes(body=cst.IndentedBlock([cst.SimpleStatementLine([cst.Pass()])]), decorators=[], leading_lines=[])
     elif isinstance(node, cst.AnnAssign):
         node = cst.SimpleStatementLine([node.with_changes(value=None)])
-    return ast.dump(ast.parse(cst.Module([]).code_for_node(node)), include_attributes=False)
+    tree = ast.parse(cst.Module([]).code_for_node(node))
+    for item in ast.walk(tree):
+        if isinstance(item, ast.arguments):
+            item.defaults = [ast.Constant(None) for _ in item.defaults]
+            item.kw_defaults = [ast.Constant(None) if value is not None else None for value in item.kw_defaults]
+    return ast.dump(tree, include_attributes=False)
+
+
+def signature(current, wanted):
+    def annotation(current, wanted):
+        return current.with_changes(annotation=wanted.annotation) if current and wanted else wanted
+
+    previous = {}
+    fields = ("posonly_params", "params", "kwonly_params", "star_arg", "star_kwarg")
+    for field in fields:
+        value = getattr(current.params, field)
+        for parameter in value if isinstance(value, (tuple, list)) else [value]:
+            if isinstance(parameter, cst.Param):
+                previous[parameter.name.value] = parameter
+
+    def parameter(wanted):
+        old = previous.get(wanted.name.value) if isinstance(wanted, cst.Param) else None
+        return old.with_changes(annotation=annotation(old.annotation, wanted.annotation),
+                                default=old.default if old.default is not None else wanted.default) if old else wanted
+
+    changes = {field: [parameter(value) for value in getattr(wanted.params, field)]
+               if isinstance(getattr(wanted.params, field), (tuple, list)) else parameter(getattr(wanted.params, field)) for field in fields}
+    return current.with_changes(name=current.name.with_changes(value=wanted.name.value),
+                                params=current.params.with_changes(**changes, posonly_ind=wanted.params.posonly_ind),
+                                returns=annotation(current.returns, wanted.returns))
 
 
 def preserve(request, root, facts=None):
     before = declarations(cst.parse_module(request["before"]))
     after = declarations(cst.parse_module(request["after"]))
-    previous = {item["specId"]: item for item in request["previous"]}
-    desired = {item["specId"]: item for item in request["next"]}
+    previous = associations(request["previous"])
+    desired = associations(request["next"])
     files = {item["locator"]["value"]["file"] for item in request["previous"]} | set(facts["files"] if facts else [])
     wrappers = {file: MetadataWrapper(cst.parse_module((root / file).read_bytes())) for file in sorted(files)}
     modules = {file: wrapper.module for file, wrapper in wrappers.items()}
@@ -100,8 +139,8 @@ def preserve(request, root, facts=None):
             else:
                 problem("unsupported-python-change", file, "This native declaration change needs explicit preservation support.")
         else:
-            owner = next((item for item in desired.values() if selector(item) == key[:-1]), None)
-            saved = owner and previous.get(owner["specId"])
+            owner = next((identity for identity, item in desired.items() if selector(item) == key[:-1]), None)
+            saved = previous.get(owner)
             if not saved or not isinstance(wanted, cst.FunctionDef):
                 problem("unsupported-python-change", artifact["locator"]["value"]["file"], "This new declaration needs an available mapped native owner."); continue
             file = saved["locator"]["value"]["file"]
@@ -131,7 +170,7 @@ def preserve(request, root, facts=None):
 
         def leave_FunctionDef(self, original, updated):
             wanted = replacements.get(original)
-            return wanted.with_changes(body=updated.body, decorators=updated.decorators, leading_lines=updated.leading_lines) if wanted else updated
+            return signature(updated, wanted) if wanted else updated
 
         def leave_AnnAssign(self, original, updated):
             return replacements.get(original, updated)

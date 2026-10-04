@@ -38,4 +38,10 @@ describe('native Python declaration edits', () => {
     expect(result.problems).toEqual([]); expect(result.files[0]?.text.startsWith('\uFEFF# 🛒 keep the source encoding\r\n')).toBe(true);
     expect(result.files[0]?.text).not.toMatch(/(?<!\r)\n/); expect(result.files[0]?.text).toContain('self.saved = title  # Keep me.\r\n');
   });
+  it('keeps a handwritten default and parameter comment while changing its declared type', async () => {
+    const generated = 'class StoreGame:\n    def save(self, title: str = None) -> None:\n        raise NotImplementedError()\n';
+    const current = 'class StoreGame:\n    def save(\n        self,\n        title: str = choose_title(),  # Keep the author\'s default.\n    ) -> None:\n        self.saved = title\n';
+    const result = await preserve(generated, current, generated.replace('title: str', 'title: float'));
+    expect(result.problems).toEqual([]); expect(result.files[0]?.text).toBe(current.replace('title: str', 'title: float'));
+  });
 });

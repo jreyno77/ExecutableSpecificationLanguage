@@ -12,7 +12,7 @@ export class PythonPreservationDriver extends PythonProjectDriver {
     await super.installFixture(); const actual = this.context;
     this.context = { root: actual.root, readSnapshot: async () => { const snapshot = await actual.readSnapshot(); this.captureProblems.push(...snapshot.problems); return snapshot; } };
   }
-  async generate(): Promise<void> { await this.build(); this.remember(); }
+  async generate(options: Record<string, unknown> = {}): Promise<void> { await this.build(options); this.remember(); }
   private remember(): void {
     if (!this.written.artifacts) return;
     const identified = this.identity.withArtifacts(this.current, this.written.artifacts);
@@ -40,6 +40,25 @@ export class PythonPreservationDriver extends PythonProjectDriver {
     const path = 'src/store/contracts.py', text = await this.text(path), stub = 'raise NotImplementedError("Not implemented: StoreGame.save")';
     if (text.split(stub).length !== 2) throw new Error('Expected one generated save stub for this fixture.');
     await this.file(path, text.replace(stub, body));
+  }
+  async implementTitleDefault(value: string): Promise<void> {
+    const path = 'src/store/contracts.py', text = await this.text(path);
+    await this.file(path, text.replace('class StoreGame:', 'def choose_title() -> str:\n    return ' + JSON.stringify(value) + '\n\nclass StoreGame:')
+      .replace('title: str | Absent = Absent.value', 'title: str | Absent = choose_title()'));
+  }
+  associateStoreFile(file: string): void {
+    const inspection = this.current.specification.inspection, store = [...inspection.query('class')].find(item => item.name === 'StoreGame');
+    if (!store) throw new Error('The fixture needs its explicit StoreGame contract.');
+    const owner = [{ kind: 'class', name: 'StoreGame' }];
+    const artifacts = [{ specId: this.current.id(store.id), locator: { outputId: 'python', format: 'python-symbol-1', value: { file, declaration: owner } } }];
+    for (const method of store.members) if (method.kind === 'capability') {
+      const declaration = [...owner, { kind: 'method', name: method.name }];
+      artifacts.push({ specId: this.current.id(method.id), locator: { outputId: 'python', format: 'python-symbol-1', value: { file, declaration } } });
+      for (const parameter of method.parameters) artifacts.push({ specId: this.current.id(parameter.id), locator: {
+        outputId: 'python', format: 'python-symbol-1', value: { file, declaration: [...declaration, { kind: 'parameter', name: parameter.name }] } } });
+    }
+    const identified = this.identity.withArtifacts(this.current, artifacts);
+    if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
   }
   text(path: string): Promise<string> { return fs.readFile(join(this.root, path), 'utf8'); }
   async run(text: string): Promise<void> { await this.file('consumer.py', text); await this.runConsumer(); }

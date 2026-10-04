@@ -12,12 +12,28 @@ import { validDiff } from './output-contract.js';
 import { hash } from './project-files.js';
 import { pythonPath } from './python-profile.js';
 import { readJson } from './json-data.js';
+import type { ArtifactAssociation } from './specification-identity.js';
 
 const schema = z.strictObject({ format: z.literal(1), options: z.string(), path: z.string().refine(pythonPath), generated: z.string(),
   hash: z.string().regex(/^[a-f0-9]{64}$/), artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })) });
 type State = z.infer<typeof schema>;
 const statePath = '.expec/outputs/707974686f6e.json';
 const placement = ({ adoptExisting: _permission, ...options }: PythonOptions): string => canonical(options);
+type Location = { file: string; declaration: { kind: string; name: string }[] };
+
+/** Retained subjects keep their actual files; new members follow their mapped native owner. */
+function locate(projected: readonly ArtifactAssociation[], existing: readonly ArtifactAssociation[]): ArtifactAssociation[] {
+  const counts = new Map<string, number>(), placed: ArtifactAssociation[] = [];
+  for (const artifact of projected) {
+    const at = artifact.locator.value as Location, ordinal = counts.get(artifact.specId) ?? 0;
+    counts.set(artifact.specId, ordinal + 1);
+    const prior = existing.filter(item => item.specId === artifact.specId)[ordinal];
+    const owner = [...placed].reverse().find(item => { const value = item.locator.value as Location;
+      return value.declaration.length < at.declaration.length && value.declaration.every((part, index) => canonical(part) === canonical(at.declaration[index])); });
+    placed.push({ ...artifact, locator: { ...artifact.locator, value: { ...at, file: ((prior ?? owner)?.locator.value as Location | undefined)?.file ?? at.file } } });
+  }
+  return placed;
+}
 
 export const pythonOutput: OutputRegistration = {
   id: 'python', validate: options => {
@@ -34,7 +50,7 @@ class PythonOutput implements OutputAdapter {
     const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
     try {
       const state = schema.parse(readJson(new TextDecoder('utf8', { fatal: true }).decode(file.bytes), (_code, message) => { throw Error(message); }));
-      if (hash(Buffer.from(state.generated)) !== state.hash || state.artifacts.some(item => (item.locator.value as { file: string }).file !== state.path)) throw Error('Invalid generated ownership.');
+      if (hash(Buffer.from(state.generated)) !== state.hash) throw Error('Invalid generated ownership.');
       new PythonProject({ outputId: this.id }, state.artifacts);
       return state.options === placement(this.options) ? success(state) : failure('output-options-changed', 'Python placement requires an explicit migration.', [statePath]);
     } catch { return failure('invalid-output-state', 'Recorded Python ownership or generated text is invalid.', [statePath]); }
@@ -62,7 +78,21 @@ class PythonOutput implements OutputAdapter {
       return failure('not-addition-only', 'Use update when existing Python contracts change.');
     const previous = stored.value, declarations = new PythonDeclarations(request.current, this.options, this.context), file = declarations.render();
     if (declarations.problems.length) return { problems: declarations.problems, deferred: [] };
-    const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: [...file.artifacts] };
+    const supplied = request.current.baseline.artifacts.filter(item => item.locator.outputId === this.id);
+    if (!previous && supplied.length && !this.options.adoptExisting) return failure('explicit-adoption-required', 'Enable adoption for the explicitly associated Python definitions.');
+    const adopted: ArtifactAssociation[] = [];
+    if (!previous && supplied.length) {
+      try { new PythonProject({ outputId: this.id }, supplied); }
+      catch { return failure('invalid-native-mapping', 'Provide valid exact Python declaration associations.'); }
+      for (const projected of file.artifacts) {
+        const matches = supplied.filter(item => item.specId === projected.specId && item.locator.format === 'python-symbol-1'
+          && canonical((item.locator.value as Location).declaration) === canonical((projected.locator.value as Location).declaration));
+        if (matches.length !== 1) return failure('invalid-native-mapping', 'Explicitly associate each projected declaration with one matching native selector; use names for different native names.');
+        adopted.push(matches[0]!);
+      }
+    }
+    const artifacts = locate(file.artifacts, previous?.artifacts ?? adopted);
+    const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts };
     const changes: FileChange[] = [];
     if (previous) {
       const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
@@ -74,6 +104,11 @@ class PythonOutput implements OutputAdapter {
         const bytes = Buffer.from(rewritten.text), before = snapshot.files.find(item => item.path === rewritten.file);
         if (!before || before.version !== hash(bytes)) changes.push({ kind: 'write', path: rewritten.file, bytes });
       }
+    } else if (supplied.length) {
+      const inspected = await inspectPython(snapshot, this.options.configFile, { before: file.text, after: file.text, previous: artifacts, next: artifacts });
+      if (inspected.problems.length || !inspected.value?.rewritten) return { problems: inspected.problems.length ? inspected.problems : [outputProblem('python-preservation-unavailable', file.path, 'Native adoption returned no result.')], deferred: [] };
+      if (inspected.value.rewritten.some(item => hash(Buffer.from(item.text)) !== snapshot.files.find(file => file.path === item.file)?.version))
+        return failure('output-conflict', 'Initial adoption must preserve every handwritten byte.');
     } else {
       if (snapshot.files.some(item => item.path === file.path)) return failure('output-conflict', 'Existing Python code needs explicit preserving adoption.', [file.path]);
       const parts = file.path.split('/');
