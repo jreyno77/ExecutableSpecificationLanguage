@@ -12,7 +12,8 @@ from libcst.metadata import MetadataWrapper, PositionProvider, ParentNodeProvide
 
 root = pathlib.Path(request["root"])
 jedi.settings.cache_directory = request["cache"]
-project = jedi.Project(root, sys_path=request["paths"], smart_sys_path=False, load_unsafe_extensions=False)
+projects = {main: jedi.Project(root, sys_path=request["mainPaths"] + ([] if main else request["testPaths"]) + request["paths"],
+                               smart_sys_path=False, load_unsafe_extensions=False) for main in (True, False)}
 declarations, uses, problems = [], [], []
 
 
@@ -38,7 +39,8 @@ for filename in request["files"]:
     except (UnicodeError, SyntaxError, cst.ParserSyntaxError) as error:
         problems.append({"code": "invalid-python-source", "file": filename, "message": str(error)})
         continue
-    script = jedi.Interpreter(text, namespaces=[{}], path=path, project=project)
+    script = jedi.Interpreter(text, namespaces=[{}], path=path,
+                              project=projects[any(filename.startswith(part + "/") for part in request["main"])])
     errors = script.get_syntax_errors()
     if errors:
         problems.append({"code": "unsupported-analyzer-syntax", "file": filename,
@@ -62,8 +64,26 @@ for filename in request["files"]:
                                  "start": offset(at.start), "end": offset(at.end), "target": target,
                                  "begin": offset(positions[node].start), "finish": offset(positions[node].end)})
 
+    def imported(node):
+        while isinstance(node, cst.Attribute):
+            node = node.attr
+        if not isinstance(node, cst.Name):
+            return
+        at = positions[node]
+        found = script.goto(at.start.line, at.start.column + min(1, len(node.value) - 1), follow_imports=True, follow_builtin_imports=True)
+        targets = [value for name in found if (value := native(name))]
+        if not targets:
+            problems.append({"code": "unresolved-python-import", "file": filename, "start": offset(at.start),
+                             "message": "The imported declaration is not available in this source scope."})
+        else:
+            uses.append({"file": filename, "start": offset(at.start), "end": offset(at.end), "name": node.value,
+                         "owner": list(scope), "member": False, "targets": targets})
+
     class Sites(cst.CSTVisitor):
         def visit_ClassDef(self, node):
+            if any(argument.keyword and argument.keyword.value == "metaclass" for argument in node.keywords):
+                problems.append({"code": "dynamic-python-lookup", "file": filename, "start": offset(positions[node.name].start),
+                                 "message": "A custom metaclass prevents complete native relationship coverage."})
             record(node, node.name, "class")
             scope.append({"kind": "class", "name": node.name.value})
 
@@ -80,6 +100,18 @@ for filename in request["files"]:
 
         def visit_Param(self, node):
             record(node, node.name, "parameter")
+
+        def visit_Import(self, node):
+            for alias in node.names:
+                imported(alias.name)
+
+        def visit_ImportFrom(self, node):
+            if isinstance(node.names, cst.ImportStar):
+                problems.append({"code": "unresolved-python-import", "file": filename, "start": offset(positions[node].start),
+                                 "message": "A wildcard import cannot establish explicit native bindings."})
+            else:
+                for alias in node.names:
+                    imported(alias.name)
 
         def visit_AnnAssign(self, node):
             if isinstance(node.target, cst.Name):
@@ -109,4 +141,12 @@ for filename in request["files"]:
 
     wrapper.visit(Sites())
 
-print(json.dumps({"files": request["files"], "declarations": declarations, "uses": uses, "problems": problems}, ensure_ascii=True))
+result = {"files": request["files"], "declarations": declarations, "uses": uses, "problems": problems}
+if "rewrite" in request and not problems:
+    import importlib.util
+    specification = importlib.util.spec_from_file_location("expec_preservation", pathlib.Path(__file__).with_name("preservation.py"))
+    preservation = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(preservation)
+    result["rewritten"], failures = preservation.preserve(request["rewrite"], root)
+    result["problems"].extend(failures)
+print(json.dumps(result, ensure_ascii=True))

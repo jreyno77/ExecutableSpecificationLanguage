@@ -10,6 +10,8 @@ import { pythonConfiguration } from './python-profile.js';
 import { PythonInputs, pythonEnvironment } from './python-inputs.js';
 import { runPython } from './python-process.js';
 import { outputProblem } from './output-documents.js';
+import type { ArtifactAssociation } from './specification-identity.js';
+import { nativeInputs } from './native-inputs.js';
 
 export const pythonSelector = z.array(z.strictObject({ kind: z.enum(['class', 'function', 'method', 'field', 'parameter', 'type']), name: z.string().min(1) })).min(1);
 const target = z.strictObject({ file: z.string(), line: z.number().int().positive(), column: z.number().int().nonnegative(), name: z.string(), builtin: z.boolean() });
@@ -20,19 +22,23 @@ const result = z.strictObject({
   uses: z.array(z.strictObject({ file: z.string(), start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), name: z.string(),
     owner: pythonSelector.or(z.tuple([])), member: z.boolean(), targets: z.array(target) })),
   problems: z.array(z.strictObject({ code: z.string(), file: z.string(), start: z.number().int().nonnegative().optional(), message: z.string() })),
+  rewritten: z.array(z.strictObject({ file: z.string(), text: z.string() })).optional(),
 });
 export type PythonFacts = z.infer<typeof result>;
 export const pythonTargetKey = (target: PythonFacts['declarations'][number]['target']): string => canonical([target.file, target.line, target.column]);
 
 /** Stages supplied editable bytes; native acquisition and stale-input refusal remain explicit. */
-export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
+export interface PythonRewrite { before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[] }
+export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
   if (!snapshot.complete || !configuration.value || problems.length) return { problems };
   const environment = pythonEnvironment(snapshot, configuration.value, configFile); problems.push(...environment.problems);
   if (!environment.value) return { problems };
   const inputs = new PythonInputs(); await inputs.capture(environment.value, configuration.value); problems.push(...inputs.problems);
-  if (canonical(inputs.evidence()) !== canonical(snapshot.nativeInputs)) problems.push(outputProblem('native-input-changed', '', 'Native Python inputs differ from the supplied capture.'));
+  const supplied = nativeInputs(snapshot);
+  if (!supplied || inputs.evidence().some(input => { const path = fileURLToPath(input.uri); return supplied.get(process.platform === 'win32' ? path.toLowerCase() : path) !== input.version; }))
+    problems.push(outputProblem('native-input-changed', '', 'Native Python inputs differ from the supplied capture.'));
   if (problems.length) return { problems };
   const temporary = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-python-query-')), root = join(temporary, 'source');
   try {
@@ -45,7 +51,8 @@ export async function inspectPython(snapshot: ProjectSnapshot, configFile?: stri
       await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, file.bytes);
     }
     const request = { root, cache: join(temporary, 'cache'), files: files.map(file => file.path), sites: environment.value.environment.sites,
-      paths: [...selected.map(path => join(root, path)), ...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib] };
+      main: profile.sourceRoots.main, paths: [...profile.sourcePath, ...environment.value.environment.sites, ...environment.value.python.stdlib],
+      mainPaths: profile.sourceRoots.main.map(path => join(root, path)), testPaths: profile.sourceRoots.test.map(path => join(root, path)), ...(rewrite ? { rewrite } : {}) };
     const requestPath = join(temporary, 'request.json'); await fs.writeFile(requestPath, JSON.stringify(request));
     const run = await runPython(profile.python, [fileURLToPath(new URL('./python/inspect.py', import.meta.url)), requestPath], temporary);
     await inputs.verify(); problems.push(...inputs.problems);

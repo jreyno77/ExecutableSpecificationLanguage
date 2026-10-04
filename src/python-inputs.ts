@@ -48,7 +48,7 @@ export class PythonInputs {
     for (const directory of environment.python.stdlib) await this.walk(directory, true);
     for (const directory of [...environment.environment.sites, ...profile.sourcePath]) await this.walk(directory);
     for (const path of [profile.python, profile.uv, ...environment.python.binaries]) await this.file(path);
-    await this.file(fileURLToPath(new URL('./python/inspect.py', import.meta.url)));
+    await this.walk(fileURLToPath(new URL('./python/', import.meta.url)));
     await this.verify();
   }
   private fingerprint(info: BigIntStats): string { return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.mode].join(':'); }

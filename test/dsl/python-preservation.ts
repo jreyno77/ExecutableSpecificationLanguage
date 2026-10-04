@@ -1,0 +1,18 @@
+import { expect } from 'vitest';
+import { PythonPreservationDriver } from '../driver/python-preservation.js';
+
+export class PythonEvolution {
+  private static readonly examples: PythonEvolution[] = [];
+  private constructor(readonly driver: PythonPreservationDriver) {}
+  static async create(): Promise<PythonEvolution> { const p = new PythonEvolution(new PythonPreservationDriver()); this.examples.push(p); await p.driver.initialize(); await p.driver.installFixture(); return p; }
+  static async dispose(): Promise<void> { for (const p of this.examples.splice(0)) await p.driver.dispose(); }
+  source(text: string): void { this.driver.source(text); }
+  async generate(): Promise<void> { await this.driver.generate(); this.expectApplied(); }
+  change(text: string): void { this.driver.change(text); }
+  update(): Promise<void> { return this.driver.update(); }
+  implementSave(body: string): Promise<void> { return this.driver.implementSave(body); }
+  run(text: string): Promise<void> { return this.driver.run(text); }
+  expectApplied(): void { expect(this.driver.written.problems, JSON.stringify({ problems: this.driver.written.problems, capture: this.driver.captureProblems.slice(0, 5), status: this.driver.written.receipt?.status })).toEqual([]); expect(this.driver.written.receipt?.status).toBe('applied'); }
+  async expectSaveImplementationKept(body: string): Promise<void> { expect(await this.driver.text('src/store/contracts.py')).toContain(body); }
+  expectOutput(text: string): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text.trim().split(/\r?\n/)).toEqual(text.split('\n')); }
+}

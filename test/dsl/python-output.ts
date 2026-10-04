@@ -13,4 +13,10 @@ export class PythonDelivery {
   expectNativeTypecheckFailedAt(text: string): void { expect(this.driver.native.code).not.toBe(0); expect(this.driver.native.text).toContain(text); }
   runConsumer(): Promise<void> { return this.driver.runConsumer(); }
   expectRaised(type: string, message: string): void { expect(this.driver.runtime.code).not.toBe(0); expect(this.driver.runtime.text).toContain(type); expect(this.driver.runtime.text).toContain(message); }
+  expectOutput(text: string): void { expect(this.driver.runtime.code, this.driver.runtime.text).toBe(0); expect(this.driver.runtime.text.trim()).toBe(text); }
+  expectProblemAt(code: string, text: string): void {
+    expect(this.driver.written.problems.some(problem => problem.code === code && problem.at.kind === 'source' && problem.at.range.sourceId === 'main.expec'), JSON.stringify(this.driver.written.problems)).toBe(true);
+    expect(this.driver.written.problems.some(problem => problem.message.includes(text))).toBe(true);
+  }
+  expectNoWrites(): void { expect(this.driver.written.receipt).toBeUndefined(); expect(this.driver.written.artifacts).toBeUndefined(); }
 }

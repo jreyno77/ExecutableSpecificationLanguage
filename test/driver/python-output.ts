@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Compiler, ConfigurationReader, FileProjectWriter, LangiumModel, LangiumReader, Outputs, ProjectConnector,
-  SourceComposer, SpecificationIdentity, pythonOutput, type IdentifiedSpecification, type OutputWrite, type ProjectContext } from '../../src/index.js';
+  SourceComposer, SpecificationIdentity, pythonOutput, type IdentifiedSpecification, type OutputWrite, type ProjectContext, type Specification } from '../../src/index.js';
 
 /** Real compiler/output calls, files, native mypy and intentional Python execution. */
 export class PythonOutputDriver {
@@ -30,12 +30,15 @@ export class PythonOutputDriver {
     }).connect(configuration.value);
     if (connected.value?.status !== 'connected') throw new Error(JSON.stringify(connected)); this.context = connected.value.context;
   }
-  source(text: string): void {
+  protected compile(text: string): Specification {
     const read = new LangiumReader().read({ sourceId: 'main.expec', text });
     if (read.status !== 'accepted') throw new Error('Invalid acceptance source: ' + JSON.stringify(read));
     const checked = new Compiler().compile({ resolution: new SourceComposer().compose(new LangiumModel('main', read.document), { modules: [], packages: [] }) });
     if (!checked.value) throw new Error('Invalid acceptance source: ' + JSON.stringify(checked));
-    const identified = this.identity.associate(checked.value); if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
+    return checked.value;
+  }
+  source(text: string): void {
+    const identified = this.identity.associate(this.compile(text)); if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
   }
   async build(options: Record<string, unknown> = {}): Promise<void> {
     const opened = this.outputs.open('python', { module: 'store.contracts', ...options }, this.context, new FileProjectWriter(this.context));

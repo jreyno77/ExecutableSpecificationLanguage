@@ -5,6 +5,8 @@ import { pythonConfiguration, pythonPath } from './python-profile.js';
 import { outputProblem } from './output-documents.js';
 import { PythonInputs, pythonEnvironment } from './python-inputs.js';
 import { isDeepStrictEqual } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { nativeInputs } from './native-inputs.js';
 
 /** Adds Python's captured native inputs to the caller's live project boundary. */
 export class PythonContext implements ProjectContext {
@@ -18,6 +20,8 @@ export class PythonContext implements ProjectContext {
   get root(): ProjectRoot { return { ...this.project.root }; }
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = structuredClone(await this.project.readSnapshot()), checked = pythonConfiguration(snapshot, this.options.configFile), problems = [...snapshot.problems, ...checked.problems];
+    const supplied = nativeInputs(snapshot), combined = supplied ? [...snapshot.nativeInputs ?? []] : [];
+    if (!supplied) problems.push(outputProblem('native-inputs-unavailable', '', 'Upstream native evidence is malformed.'));
     if (checked.value) {
       for (const excluded of snapshot.excluded.filter(path => [...checked.value!.sourceRoots.main, ...checked.value!.sourceRoots.test].some(root => path === root || path.startsWith(root + '/')))) {
         let cache = false;
@@ -33,9 +37,14 @@ export class PythonContext implements ProjectContext {
       const environment = pythonEnvironment(snapshot, checked.value, this.options.configFile); problems.push(...environment.problems);
       if (!problems.length && environment.value) {
         const inputs = new PythonInputs(); await inputs.capture(environment.value, checked.value); problems.push(...inputs.problems);
+        for (const input of inputs.evidence()) {
+          const path = fileURLToPath(input.uri), previous = supplied!.get(process.platform === 'win32' ? path.toLowerCase() : path);
+          if (previous === undefined) combined.push(input);
+          else if (previous !== input.version) problems.push(outputProblem('native-input-conflict', input.uri, 'Upstream and Python evidence disagree for this native file.'));
+        }
         const fresh = await this.project.readSnapshot();
         if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(outputProblem('stale-project', '', 'Project inputs changed during Python capture.'));
-        return { ...snapshot, nativeInputs: inputs.evidence(), complete: snapshot.complete && problems.length === 0, problems };
+        return { ...snapshot, nativeInputs: combined.sort((a, b) => a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0), complete: snapshot.complete && problems.length === 0, problems };
       }
     }
     return { ...snapshot, complete: snapshot.complete && problems.length === 0, problems };

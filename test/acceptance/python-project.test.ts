@@ -21,4 +21,29 @@ describe('a Python project answers actual native questions', { timeout: 120_000 
     p.expectUnmodeledCaller('src/caller.py', 'launch');
     p.expectInspectedFiles(['src/game.py', 'src/caller.py', 'src/other.py']);
   });
+  it('keeps a missing imported declaration visible instead of certifying complete coverage', async () => {
+    const p = await PythonInspection.connect();
+    await p.file('src/game.py', 'from missing_catalog import Book\nclass StoreGame:\n    def save(self, book: Book) -> None:\n        pass\n');
+    p.mapMethod('save', 'src/game.py', 'StoreGame', 'save'); await p.search('save');
+    p.expectLimitedBy('unresolved-python-import', 'src/game.py');
+  });
+  it('does not make a test-only source dependency visible to application code', async () => {
+    const p = await PythonInspection.connect();
+    await p.file('test/catalog.py', 'class Book: pass\n');
+    await p.file('src/game.py', 'from catalog import Book\nclass StoreGame:\n    def save(self, book: Book) -> None:\n        pass\n');
+    p.mapMethod('save', 'src/game.py', 'StoreGame', 'save'); await p.search('save');
+    p.expectLimitedBy('unresolved-python-import', 'src/game.py');
+  });
+  it('keeps a custom metaclass as an explicit limitation on native relationships', async () => {
+    const p = await PythonInspection.connect();
+    await p.file('src/game.py', 'class Custom(type): pass\nclass StoreGame(metaclass=Custom):\n    def save(self, title: str) -> None:\n        pass\n');
+    p.mapMethod('save', 'src/game.py', 'StoreGame', 'save'); await p.search('save');
+    p.expectLimitedBy('dynamic-python-lookup', 'src/game.py');
+  });
+  it('inspects declarations without executing application top-level statements', async () => {
+    const p = await PythonInspection.connect();
+    await p.file('src/game.py', 'raise RuntimeError("Application code ran during inspection")\nclass StoreGame:\n    def save(self, title: str) -> None:\n        pass\n');
+    p.mapMethod('save', 'src/game.py', 'StoreGame', 'save'); await p.search('save');
+    p.expectDefinition('src/game.py', 'StoreGame', 'save');
+  });
 });

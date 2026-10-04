@@ -138,7 +138,10 @@ export class PythonDeclarations {
         else if (member.kind === 'construction') { this.associate(member, [...path, { kind: 'method', name: '__init__' }]); body.push('def __init__(' + ['self', ...this.parameters(member.parameters, path)].join(', ') + ') -> None:\n    raise NotImplementedError(' + JSON.stringify('Not implemented: ' + name + ' construction') + ')'); }
       }
     }
-    return 'class ' + name + (bases.length ? '(' + bases.join(', ') + ')' : '') + ':\n' + indent(body.join('\n\n') || 'pass');
+    const declaration = 'class ' + name + (bases.length ? '(' + bases.join(', ') + ')' : '') + ':\n' + indent(body.join('\n\n') || 'pass');
+    if (item.kind !== 'record-type-declaration' || !item.error) return declaration;
+    const companion = name + 'Exception'; this.associate(item, [{ kind: 'class', name: companion }]);
+    return declaration + '\n\nclass ' + companion + '(Exception):\n' + indent('def __init__(self, details: object) -> None:\n' + indent('self.details = details\nsuper().__init__(' + JSON.stringify(name) + ')'));
   }
   render(): { path: string; text: string; artifacts: readonly ArtifactAssociation[] } {
     const variables: string[] = [];
@@ -150,6 +153,11 @@ export class PythonDeclarations {
         const variable = '_' + name + '_' + this.name(parameter); this.variables.set(parameter.id, variable);
         variables.push(variable + ' = ' + this.required('TypeVar') + '(' + JSON.stringify(variable) + ')');
       }
+    }
+    for (const item of this.declarations) if (item.kind === 'record-type-declaration' && item.error) {
+      const companion = this.name(item) + 'Exception';
+      if (this.used.has(companion)) this.problem('native-name-conflict', item, 'The generated exception name is already declared: ' + companion);
+      this.used.set(companion, item.id);
     }
     const declarations = this.declarations.filter(item => item.kind !== 'alias-type-declaration').map(item => this.declare(item));
     const done = new Set<NodeId>();
@@ -164,7 +172,7 @@ export class PythonDeclarations {
     const imports = [...this.library.values()].map(value => 'from ' + value.moduleName + ' import ' + value.name);
     const text = ['from __future__ import annotations', this.imports.size ? 'from typing import ' + [...this.imports].sort().join(', ') : '', ...imports,
       'from enum import Enum\n\nclass Absent(Enum):\n    value = "absent"', ...variables, ...declarations,
-      '__all__ = ' + JSON.stringify(['Absent', ...this.declarations.filter(item => item.kind !== 'opaque-type-declaration').map(item => this.name(item))]), ''].filter(value => value !== '').join('\n\n') + '\n';
+      '__all__ = ' + JSON.stringify(['Absent', ...this.declarations.filter(item => item.kind !== 'opaque-type-declaration').flatMap(item => [this.name(item), ...item.kind === 'record-type-declaration' && item.error ? [this.name(item) + 'Exception'] : []])]), ''].filter(value => value !== '').join('\n\n') + '\n';
     return { path: this.path, text, artifacts: this.artifacts };
   }
 }

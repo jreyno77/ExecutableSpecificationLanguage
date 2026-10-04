@@ -1,29 +1,91 @@
-import type { OutputRegistration } from './output.js';
-import { PythonDeclarations, pythonOptions } from './python-declarations.js';
-import { outputProblem } from './output-documents.js';
+import { z } from 'zod';
+import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from './output.js';
+import type { Check } from './checking.js';
+import type { ProjectSnapshot } from './project-connection.js';
 import type { FileChange } from './project-writer.js';
+import { PythonDeclarations, pythonOptions, type PythonOptions } from './python-declarations.js';
+import { PythonProject } from './python-project.js';
+import { inspectPython } from './python-inspection.js';
+import { canonical, identifier, locatorSchema, success, failure } from './identity-baseline.js';
+import { outputProblem } from './output-documents.js';
+import { validDiff } from './output-contract.js';
+import { hash } from './project-files.js';
+import { pythonPath } from './python-profile.js';
+import { readJson } from './json-data.js';
 
-/** The Python target is accepted through the same connected-project output contract. */
+const schema = z.strictObject({ format: z.literal(1), options: z.string(), path: z.string().refine(pythonPath), generated: z.string(),
+  hash: z.string().regex(/^[a-f0-9]{64}$/), artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })) });
+type State = z.infer<typeof schema>;
+const statePath = '.expec/outputs/707974686f6e.json';
+const placement = ({ adoptExisting: _permission, ...options }: PythonOptions): string => canonical(options);
+
 export const pythonOutput: OutputRegistration = {
   id: 'python', validate: options => {
     const parsed = pythonOptions.safeParse(options);
     return parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path as (string | number)[], message: issue.message }));
-  }, open: (options, context) => ({
-    id: 'python',
-    plan: async (request, snapshot) => {
-      if (request.operation !== 'create') return { problems: [outputProblem('python-generation-unavailable', '', 'Python updates are not implemented yet.')], deferred: [] };
-      const declarations = new PythonDeclarations(request.current, pythonOptions.parse(options), context), file = declarations.render();
-      if (declarations.problems.length) return { problems: declarations.problems, deferred: [] };
-      if (snapshot.files.some(item => item.path === file.path)) return { problems: [outputProblem('output-conflict', file.path, 'Existing Python code needs explicit preserving adoption.')], deferred: [] };
-      const changes: FileChange[] = [], parts = file.path.split('/');
+  }, open: (options, context) => new PythonOutput(pythonOptions.parse(options), context),
+};
+
+/** Coordinates checked projection, native preserving edits and the ordinary guarded writer. */
+class PythonOutput implements OutputAdapter {
+  readonly id = 'python';
+  constructor(private readonly options: PythonOptions, private readonly context?: OutputContext) {}
+  private state(snapshot: ProjectSnapshot): Check<State | undefined> {
+    const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
+    try {
+      const state = schema.parse(readJson(new TextDecoder('utf8', { fatal: true }).decode(file.bytes), (_code, message) => { throw Error(message); }));
+      if (hash(Buffer.from(state.generated)) !== state.hash || state.artifacts.some(item => (item.locator.value as { file: string }).file !== state.path)) throw Error('Invalid generated ownership.');
+      new PythonProject({ outputId: this.id }, state.artifacts);
+      return state.options === placement(this.options) ? success(state) : failure('output-options-changed', 'Python placement requires an explicit migration.', [statePath]);
+    } catch { return failure('invalid-output-state', 'Recorded Python ownership or generated text is invalid.', [statePath]); }
+  }
+  async read(id: string, snapshot: ProjectSnapshot) {
+    const state = this.state(snapshot), result = await new PythonProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state.value?.artifacts ?? []).read(id, snapshot);
+    const problems = [...state.problems, ...result.problems];
+    return { ...result, problems, coverage: { ...result.coverage, complete: !problems.length && result.coverage.complete, limitations: [...result.coverage.limitations, ...state.problems.map(problem => problem.message)] } };
+  }
+  async search(id: string, snapshot: ProjectSnapshot) {
+    const state = this.state(snapshot), result = await new PythonProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state.value?.artifacts ?? []).search(id, snapshot);
+    const problems = [...state.problems, ...result.problems], coverage = (direction: 'incoming' | 'outgoing') => ({ ...result[direction], coverage: {
+      ...result[direction].coverage, complete: !problems.length && result[direction].coverage.complete,
+      limitations: [...result[direction].coverage.limitations, ...state.problems.map(problem => problem.message)] } });
+    return { ...result, problems, incoming: coverage('incoming'), outgoing: coverage('outgoing') };
+  }
+  async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
+    if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Python generation needs a complete capture.')], deferred: [] };
+    if (snapshot.files.some(file => !pythonPath(file.path) || hash(file.bytes) !== file.version) || new Set(snapshot.files.map(file => process.platform === 'win32' ? file.path.toLowerCase() : file.path)).size !== snapshot.files.length)
+      return failure('invalid-project-snapshot', 'Captured Python paths and byte versions must be valid and distinct.');
+    const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+    if (request.operation === 'delete') return failure('python-generation-unavailable', 'Python retirement is not implemented yet.');
+    if ('diff' in request && !validDiff(request.diff, request.current)) return failure('inconsistent-diff', 'Provide the actual specification transition.');
+    if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts'))))
+      return failure('not-addition-only', 'Use update when existing Python contracts change.');
+    const previous = stored.value, declarations = new PythonDeclarations(request.current, this.options, this.context), file = declarations.render();
+    if (declarations.problems.length) return { problems: declarations.problems, deferred: [] };
+    const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: [...file.artifacts] };
+    const changes: FileChange[] = [];
+    if (previous) {
+      const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
+      if (previous.artifacts.some(item => !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must retain or explicitly retire earlier subjects.');
+      if (request.operation === 'create' && previous.hash !== next.hash) return failure('use-update', 'Use update for changed existing Python contracts.');
+      const inspected = await inspectPython(snapshot, this.options.configFile, { before: previous.generated, after: next.generated, previous: previous.artifacts, next: next.artifacts });
+      if (inspected.problems.length || !inspected.value?.rewritten) return { problems: inspected.problems.length ? inspected.problems : [outputProblem('python-preservation-unavailable', file.path, 'Native preservation returned no result.')], deferred: [] };
+      for (const rewritten of inspected.value.rewritten) {
+        const bytes = Buffer.from(rewritten.text), before = snapshot.files.find(item => item.path === rewritten.file);
+        if (!before || before.version !== hash(bytes)) changes.push({ kind: 'write', path: rewritten.file, bytes });
+      }
+    } else {
+      if (snapshot.files.some(item => item.path === file.path)) return failure('output-conflict', 'Existing Python code needs explicit preserving adoption.', [file.path]);
+      const parts = file.path.split('/');
       for (let depth = 2; depth < parts.length; depth++) {
         const path = parts.slice(0, depth).join('/') + '/__init__.py';
         if (!snapshot.files.some(item => item.path === path)) changes.push({ kind: 'write', path, bytes: Buffer.from('') });
       }
       changes.push({ kind: 'write', path: file.path, bytes: Buffer.from(file.text) });
-      return { value: { outputId: 'python', basedOn: snapshot, changes, artifacts: file.artifacts }, problems: [], deferred: [] };
-    },
-    read: async () => { throw new Error('Python read is not implemented yet.'); },
-    search: async () => { throw new Error('Python search is not implemented yet.'); },
-  }),
-};
+    }
+    for (const change of changes) if (change.kind === 'write' && change.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
+    const bytes = Buffer.from(canonical(next, 2) + '\n');
+    if (!snapshot.files.some(file => file.path === statePath && file.version === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
+    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts });
+  }
+}

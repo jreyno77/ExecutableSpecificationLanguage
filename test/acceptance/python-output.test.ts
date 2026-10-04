@@ -30,4 +30,34 @@ class StoreGame { depends on Snapshot\npublic save\ncapability save(snapshot: Sn
     await p.checkConsumer('from store.contracts import Book\nb: Book = {"title": "Dune"}'); p.expectNativeTypecheckPassed();
     await p.checkConsumer('from store.contracts import Book\nb: Book = {"title": "Dune", "note": None}'); p.expectNativeTypecheckFailedAt('None');
   });
+
+  it('represents optional values outside records with explicit absence', async () => {
+    const p = await PythonDelivery.create(); p.source('function label() returns Text?'); await p.buildContracts();
+    await p.checkConsumer('from store.contracts import Absent\nv: str | Absent = Absent.value\nw: str | Absent = "Dune"'); p.expectNativeTypecheckPassed();
+    await p.checkConsumer('from store.contracts import Absent\nv: str | Absent = None'); p.expectNativeTypecheckFailedAt('None');
+  });
+
+  it('keeps tuple positions and text literal restrictions in native contracts', async () => {
+    const p = await PythonDelivery.create(); p.source('type Position = [Number, Number]\ntype OS = "windows" | "linux"'); await p.buildContracts();
+    await p.checkConsumer('from store.contracts import Position, OS\np: Position = (1.0, 2.0)\nos: OS = "windows"'); p.expectNativeTypecheckPassed();
+    await p.checkConsumer('from store.contracts import Position, OS\np: Position = (1.0, "wrong")\nos: OS = "plan9"'); p.expectNativeTypecheckFailedAt('tuple[float, str]'); p.expectNativeTypecheckFailedAt('plan9');
+  });
+
+  it('reports a floating literal type before writing a wider restriction', async () => {
+    const p = await PythonDelivery.create(); p.source('type Exact = 1.5'); await p.buildContracts();
+    p.expectProblemAt('unsupported-native-type', '1.5'); p.expectNoWrites();
+  });
+
+  it('does not round an unrepresentable number into a different contract', async () => {
+    const p = await PythonDelivery.create(); p.source('type Exact = 9007199254740993'); await p.buildContracts();
+    p.expectProblemAt('unsupported-native-number', '9007199254740993'); p.expectNoWrites();
+  });
+
+  it('retains the declared exception family and generic error details', async () => {
+    const p = await PythonDelivery.create();
+    p.source('type Book { title: Text }\nerror type Rejected<T> { code: "rejected"\npayload: T }\nfunction save(book: Book) returns Book fails with Rejected<Book>');
+    await p.buildContracts();
+    await p.checkConsumer('from store.contracts import Book, Rejected, RejectedException\nerror: Rejected[Book] = {"code": "rejected", "payload": {"title": "Dune"}}\ntry:\n    raise RejectedException(error)\nexcept RejectedException as caught:\n    print(caught.details == error)');
+    p.expectNativeTypecheckPassed(); await p.runConsumer(); p.expectOutput('True');
+  });
 });
