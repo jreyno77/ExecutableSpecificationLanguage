@@ -51,6 +51,26 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     if (!source.includes('shopping.expectBookQuantity("Dune", 1.0)')) throw Error('Actual generated quantity step is missing.');
     await this.file(path, source.replace('shopping.expectBookQuantity("Dune", 1.0)', 'shopping.expectBookQuantity("Dune", ' + value + '.0)'));
   }
+  async changeScenarioExecution(kind: 'empty' | 'skip'): Promise<void> {
+    const changed = await this.python(`import ast, pathlib, sys
+file = pathlib.Path(sys.argv[1])
+text = file.read_text(encoding="utf-8")
+functions = [node for node in ast.parse(text).body if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")]
+if len(functions) != 1:
+    raise RuntimeError("The actual generated scenario is not unique.")
+function = functions[0]
+lines = text.splitlines(keepends=True)
+if sys.argv[2] == "empty":
+    lines[function.body[0].lineno - 1:function.end_lineno] = ["    pass\\n"]
+else:
+    lines.insert(function.lineno - 1, '@_test_pytest.mark.skip(reason="The current verification was disabled")\\n')
+    lines.insert(0, "import pytest as _test_pytest\\n")
+changed = "".join(lines)
+ast.parse(changed)
+file.write_text(changed, encoding="utf-8")
+`, [join(this.root, 'test/acceptance/test_shopping.py'), kind]);
+    if (changed.code) throw Error(changed.text);
+  }
   scenarioText(): Promise<string> { return fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8'); }
   async rememberGeneratedFiles(): Promise<void> { this.remembered = (await this.context.readSnapshot()).files.filter(file => file.path.startsWith('test/') || file.path === 'src/basket.py'); }
   async rememberedFiles(): Promise<{ path: string; bytes: Uint8Array }[]> {

@@ -32,6 +32,8 @@ export class PythonAcceptance {
   addReadableNativeEdits(): Promise<void> { return this.driver.addReadableNativeEdits(); }
   addDriverNamedNeighbor(): Promise<void> { return this.driver.addDriverNamedNeighbor(); }
   removeExpectedQuantity(): Promise<void> { return this.driver.removeExpectedQuantity(); }
+  emptyGeneratedScenario(): Promise<void> { return this.driver.changeScenarioExecution('empty'); }
+  skipGeneratedScenario(): Promise<void> { return this.driver.changeScenarioExecution('skip'); }
   readScenario(): Promise<void> { return this.driver.readScenario(); }
   expectNoEdits(): void { expect(this.driver.written.receipt?.status).toBe('unchanged'); expect(this.driver.written.receipt?.outcomes).toEqual([]); }
   async expectRememberedFilesUnchanged(): Promise<void> {
@@ -45,6 +47,13 @@ export class PythonAcceptance {
   expectCoverageProblem(code: string): void {
     expect(this.driver.scenarioRead.coverage.complete).toBe(false);
     expect(this.driver.scenarioRead.problems.map(problem => problem.code), JSON.stringify(this.driver.scenarioRead)).toContain(code);
+  }
+  async expectScenarioProblemAt(code: string, token: string): Promise<void> {
+    this.expectCoverageProblem(code);
+    const text = await this.driver.scenarioText(), offset = text.indexOf(token);
+    expect(offset).toBeGreaterThanOrEqual(0);
+    expect(this.driver.scenarioRead.problems).toContainEqual(expect.objectContaining({ code,
+      at: { kind: 'dependency', path: ['python', 'test/acceptance/test_shopping.py', offset] } }));
   }
   implementTakingOneCopy(): Promise<void> { return this.driver.implementTakingOneCopy(); }
   observePosition(expression: string): Promise<void> { return this.driver.observePosition(expression); }
