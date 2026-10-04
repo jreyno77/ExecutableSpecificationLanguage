@@ -113,7 +113,10 @@ class TypeScriptOutput implements OutputAdapter {
       request.operation === 'delete' ? [] : request.current.baseline.artifacts, request.operation === 'create' && this.options.adoptExisting);
     if (preservation.problems.length) return refused(preservation.problems);
     next.files = preservation.files;
-    const changes: FileChange[] = preservation.changes;
+    const existingPaths = new Set(snapshot.files.map(file => file.path));
+    const creates = (change: FileChange): number => Number(change.kind === 'write' && !existingPaths.has(change.path));
+    // A newly referenced file must exist before the native capture rechecks its importer.
+    const changes: FileChange[] = [...preservation.changes].sort((left, right) => creates(right) - creates(left));
     for (const path of [...next.files.map(file => file.path), ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path]), statePath]) {
       if (!literal(path) || path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(path, 'The captured scope excludes the output destination.'));
       const existing = snapshot.files.find(file => key(file.path) === key(path));

@@ -44,6 +44,35 @@ jobs:
         run: npm ci
       - name: Regenerate, typecheck, test, and build
         run: npm run check:core
+  project-pilot:
+    name: Project pilot / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Use the pinned package manager
+        run: npm install --global npm@11.20.0 --ignore-scripts
+      - name: Supply the explicit JVM toolchain
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: Verify installed project journeys
+        run: npm run test:pilot
   installed-package:
     name: Installed package / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

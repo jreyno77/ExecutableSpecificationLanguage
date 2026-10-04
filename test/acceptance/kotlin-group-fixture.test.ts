@@ -11,12 +11,12 @@ it('reads each group with its explicitly selected fixture without making the fix
   project.selectFixture(fixture, 'ConnectedShopping');
   await project.buildAcceptance();
   await project.rememberFile(fixture);
-  await project.readGroupFor('one'); project.expectReadFiles(['FirstBasketAcceptance.kt', 'ConnectedShopping.kt']);
-  await project.readGroupFor('two'); project.expectReadFiles(['SecondBasketAcceptance.kt', 'ConnectedShopping.kt']);
+  await project.readGroupFor('one'); project.expectReadFiles(['FirstBasketAcceptance.kt', 'ConnectedShopping.kt', 'ExpecChecks.kt', 'Shopping.kt', 'ShoppingDriver.kt', 'ShoppingFixture.kt']);
+  await project.readGroupFor('two'); project.expectReadFiles(['SecondBasketAcceptance.kt', 'ConnectedShopping.kt', 'ExpecChecks.kt', 'Shopping.kt', 'ShoppingDriver.kt', 'ShoppingFixture.kt']);
   await project.expectGroupDefinedIn('two', 'SecondBasketAcceptance.kt');
   await project.deleteGroupFor('one'); project.expectDeletionApplied();
   await project.expectNoNativeGroup('one');
   await project.expectFileUnchanged(fixture);
-  await project.readGroupFor('two'); project.expectReadFiles(['SecondBasketAcceptance.kt', 'ConnectedShopping.kt']);
+  await project.readGroupFor('two'); project.expectReadFiles(['SecondBasketAcceptance.kt', 'ConnectedShopping.kt', 'ExpecChecks.kt', 'Shopping.kt', 'ShoppingDriver.kt', 'ShoppingFixture.kt']);
   await project.runTestClasses(['store.tests.acceptance.SecondBasketAcceptance']); project.expectTests(1, 0);
 }, 300_000);

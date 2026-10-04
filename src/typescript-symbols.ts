@@ -136,13 +136,15 @@ export class TypeScriptSymbols {
       for (const group of this.capture.service.findReferences(node.getSourceFile().fileName, target.getStart() + (ts.isStringLiteralLike(target) ? 1 : 0)) ?? [])
         for (const reference of group.references) references.add(reference.fileName + ':' + reference.textSpan.start);
     });
-    const unresolved = (node: ts.Node, reason: string, relevant = contains(node)): void => {
+    const possibleTarget = (symbol: ts.Symbol): boolean => this.checker!.getRootSymbols(symbol)
+      .some(root => keys.has(root) || root.declarations?.some(contains));
+    const unresolved = (node: ts.Node, reason: string, relevant = contains(node), incomingRelevant = true): void => {
       const finding = { at: this.capture.site(node, 'unresolved'), reason };
-      incoming.unresolved.push(finding); if (relevant) outgoing.unresolved.push(finding);
+      if (incomingRelevant) incoming.unresolved.push(finding); if (relevant) outgoing.unresolved.push(finding);
     };
     const observe = (use: Use): void => {
       if (new Set(this.checker!.getRootSymbols(use.symbol)).size > 1) {
-        unresolved(use.node, 'The native member identifies multiple declarations.'); return;
+        unresolved(use.node, 'The native member identifies multiple declarations.', contains(use.node), possibleTarget(use.symbol)); return;
       }
       use = { ...use, symbol: this.rootSymbol(use.symbol) };
       const symbolDeclarations = use.symbol.declarations ?? [], internal = symbolDeclarations.some(contains);
@@ -165,7 +167,7 @@ export class TypeScriptSymbols {
           const members = receiver.isUnion() ? new Set(receiver.types.flatMap(type => {
             const property = this.checker!.getPropertyOfType(type, key.text); return property ? [this.rootSymbol(property)] : [];
           })) : undefined;
-          if (members && members.size > 1) unresolved(key, 'Union members identify different declarations.');
+          if (members && members.size > 1) unresolved(key, 'Union members identify different declarations.', contains(key), [...members].some(possibleTarget));
           else {
             const symbol = this.checker!.getPropertyOfType(receiver, key.text);
             if (symbol) observe({ node: key, symbol, role: 'value' });
@@ -195,7 +197,7 @@ export class TypeScriptSymbols {
           const members = new Set(receiver.types.flatMap(type => {
             const property = this.checker!.getPropertyOfType(type, name); return property ? [this.rootSymbol(property)] : [];
           }));
-          if (members.size > 1) { unresolved(node.parent, 'Union members identify different declarations.'); return; }
+          if (members.size > 1) { unresolved(node.parent, 'Union members identify different declarations.', contains(node), [...members].some(possibleTarget)); return; }
         }
       }
       const raw = this.checker?.getSymbolAtLocation(node);
