@@ -47,7 +47,7 @@ export function kotlinTupleTypes(snapshot: ProjectSnapshot, native: KotlinQuery)
     if (file.generated !== expected) continue;
     const matches = native.declarations.filter(item => item.file === file.path && item.kind === 'class' && item.selector.length === 1 && item.name === 'Tuple' + arity && item.packageName === options.package);
     const current = snapshot.files.find(item => item.path === file.path);
-    tuples.set(arity, current?.version === hash(Buffer.from(expected)) && matches.length === 1 && matches[0]!.dataConstruction
+    tuples.set(arity, current?.version === hash(Buffer.from(expected)) && Buffer.from(current.bytes).equals(Buffer.from(expected)) && matches.length === 1 && matches[0]!.dataConstruction
       ? options.package + '.Tuple' + arity : undefined);
   }
   return success(tuples);
