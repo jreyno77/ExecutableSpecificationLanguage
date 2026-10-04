@@ -55,8 +55,15 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         files.unshift({ path: options.testRoot + '/dsl/comparison.py', text: await readFile(new URL('./python/comparison.py', import.meta.url), 'utf8') });
         const next: State = { format: 1, options: canonical(options), files: files.map(file => ({ file: file.path, text: file.text, hash: hash(Buffer.from(file.text)), driver: file.path === driverPath })), artifacts: examples.artifacts };
         if (previous.value) {
-          if (canonical(previous.value) !== canonical(next)) return failure('use-update', 'Changed Python examples require native preserving update.');
-          return success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
+          if (canonical(previous.value) === canonical(next)) return success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
+          if (request.operation !== 'update') return failure('use-update', 'Use update for changed existing Python examples.');
+          const rewritten = await inspectPython(snapshot, options.configFile, { tests: previous.value.files, desiredTests: next.files });
+          if (rewritten.problems.length || !rewritten.value?.rewritten) return { problems: rewritten.problems.length ? rewritten.problems
+            : failure('python-preservation-unavailable', 'Native acceptance preservation returned no result.').problems, deferred: [] };
+          const changes = rewritten.value.rewritten.flatMap(file => hash(Buffer.from(file.text)) === snapshot.files.find(item => item.path === file.file)?.version ? []
+            : [{ kind: 'write' as const, path: file.file, bytes: Buffer.from(file.text) }]);
+          changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
+          return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts, obligations: examples.obligations });
         }
         for (const file of files) {
           if (snapshot.files.some(existing => existing.path === file.path)) return failure('output-conflict', 'Existing Python acceptance files require native preserving reconciliation.', [file.path]);

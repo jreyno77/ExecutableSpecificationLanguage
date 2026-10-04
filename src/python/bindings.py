@@ -37,9 +37,10 @@ def conflicts(before, after, traces):
         if position is None or not use["targets"]:
             continue
         found = uses.get(position)
-        expected = destination(use["targets"][0]) if len(use["targets"]) == 1 else None
-        if expected is None or not found or len(found["targets"]) != 1 or identity(found["targets"][0]) != expected \
-                or found["targets"][0]["kind"] != use["targets"][0]["kind"]:
+        mapped = [(destination(target), target["kind"]) for target in use["targets"]]
+        expected = set(mapped)
+        actual = {(identity(target), target["kind"]) for target in found["targets"]} if found else set()
+        if any(target is None for target, _kind in mapped) or expected != actual:
             problems.append({"code": "native-binding-conflict", "file": use["file"], "start": use["start"],
                              "message": "The edit cannot preserve this native reference's declaration identity."})
     return problems

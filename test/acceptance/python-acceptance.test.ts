@@ -3,6 +3,26 @@ import { PythonAcceptance } from '../dsl/python-acceptance.js';
 
 afterEach(() => PythonAcceptance.dispose());
 describe('readable Python acceptance tests that reach the application', { timeout: 240_000 }, () => {
+  it('updates an expected quantity while preserving the implemented driver and human edits', async () => {
+    const shopping = await PythonAcceptance.create();
+    shopping.aShopperCanAddAnAvailableBook('Dune', 1);
+    await shopping.generateTests(); await shopping.implementBasket(1);
+    await shopping.addReadableNativeEdits(); await shopping.rememberGeneratedFiles();
+    shopping.reviseExpectedQuantity('Dune', 2);
+    await shopping.updateTests();
+    await shopping.expectRememberedImplementationUnchanged();
+    await shopping.expectScenarioCommentRetained();
+    await shopping.runTests(); shopping.expectWrongQuantity(1, 2);
+  });
+  it('rejects prior assertion drift even when the new specification would agree with it', async () => {
+    const shopping = await PythonAcceptance.create();
+    shopping.aShopperCanAddAnAvailableBook('Dune', 1);
+    await shopping.generateTests(); await shopping.changeGeneratedQuantity(2);
+    await shopping.rememberGeneratedFiles();
+    shopping.reviseExpectedQuantity('Dune', 2);
+    await shopping.tryUpdateTests(); shopping.expectUpdateProblem('generated-tests-changed');
+    await shopping.expectRememberedFilesUnchanged();
+  });
   it('a shopper can add an available Dune through the generated DSL and real driver', async () => {
     const shopping = await PythonAcceptance.create();
     shopping.aShopperCanAddAnAvailableBook('Dune', 1);

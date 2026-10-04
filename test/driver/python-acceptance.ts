@@ -1,12 +1,13 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { PythonProjectDriver } from './python-project.js';
-import { FileProjectWriter, pythonAcceptanceOutput, type ProjectRead, type ProjectFile } from '../../src/index.js';
+import { FileProjectWriter, pythonAcceptanceOutput, type ProjectRead, type ProjectFile, type SpecDiff } from '../../src/index.js';
 
 export class PythonAcceptanceDriver extends PythonProjectDriver {
   scenario = '';
   remembered: readonly ProjectFile[] = [];
   scenarioRead!: ProjectRead;
+  private diff!: SpecDiff;
   async initializeAcceptance(): Promise<void> { await this.initialize(); await this.installFixture(); this.outputs.register(pythonAcceptanceOutput); }
   authorShopping(title: string, expected: number): void {
     this.source(`examples {
@@ -31,6 +32,23 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     this.written = output.value ? await output.value.create(this.current) : { problems: output.problems };
     if (!this.written.problems.length) this.scenario = await fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8');
   }
+  reviseExpectedQuantity(title: string, expected: number): void {
+    const previous = this.current.baseline; this.authorShopping(title, expected);
+    const identified = this.identity.associate(this.current.specification, previous);
+    if (!identified.value) throw Error(JSON.stringify(identified)); this.current = identified.value;
+    const compared = this.identity.compare(previous, this.current);
+    if (!compared.value) throw Error(JSON.stringify(compared)); this.diff = compared.value;
+  }
+  async updateTests(): Promise<void> {
+    const output = this.outputs.open('python-acceptance', { domain: 'shopping' }, this.context, new FileProjectWriter(this.context));
+    this.written = output.value ? await output.value.update(this.diff, this.current) : { problems: output.problems };
+  }
+  async changeGeneratedQuantity(value: number): Promise<void> {
+    const path = 'test/acceptance/test_shopping.py', source = await fs.readFile(join(this.root, path), 'utf8');
+    if (!source.includes('shopping.expectBookQuantity("Dune", 1.0)')) throw Error('Actual generated quantity step is missing.');
+    await this.file(path, source.replace('shopping.expectBookQuantity("Dune", 1.0)', 'shopping.expectBookQuantity("Dune", ' + value + '.0)'));
+  }
+  scenarioText(): Promise<string> { return fs.readFile(join(this.root, 'test/acceptance/test_shopping.py'), 'utf8'); }
   async rememberGeneratedFiles(): Promise<void> { this.remembered = (await this.context.readSnapshot()).files.filter(file => file.path.startsWith('test/') || file.path === 'src/basket.py'); }
   async rememberedFiles(): Promise<{ path: string; bytes: Uint8Array }[]> {
     return Promise.all(this.remembered.map(async file => ({ path: file.path, bytes: await fs.readFile(join(this.root, file.path)) })));
@@ -40,6 +58,8 @@ export class PythonAcceptanceDriver extends PythonProjectDriver {
     await this.file(path, '# Keep the human explanation.\n' + source.replace('comparison as _expec', 'comparison as comparison')
       .replace(/\b_expec\b/g, 'comparison')
       + '\ndef neighbor() -> str:\n    return "unchanged human code"\n');
+    const test = 'test/acceptance/test_shopping.py', scenario = await this.scenarioText();
+    await this.file(test, scenario.replace('shopping.expectBookQuantity(', '# Keep the quantity explanation.\n    shopping.expectBookQuantity('));
   }
   async removeExpectedQuantity(): Promise<void> {
     const path = 'test/dsl/shopping.py', source = await fs.readFile(join(this.root, path), 'utf8');

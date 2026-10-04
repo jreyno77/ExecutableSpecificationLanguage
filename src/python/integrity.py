@@ -1,6 +1,7 @@
 """Compare owned native meaning while retaining comments, layout and unowned declarations."""
 import ast
 import copy
+import dataclasses
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, QualifiedNameProvider, QualifiedNameSource
 
@@ -80,3 +81,95 @@ def check(files, root):
         except (OSError, ValueError, SyntaxError, cst.ParserSyntaxError) as error:
             problems.append({"code": "generated-tests-changed", "file": file["file"], "message": str(error)})
     return problems
+
+
+def same(left, right):
+    if isinstance(left, cst.CSTNode) and isinstance(right, cst.CSTNode):
+        return left.deep_equals(right)
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return len(left) == len(right) and all(same(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def merge(before, desired, current):
+    """Change native syntax fields without replacing unchanged spelling or trivia."""
+    if same(before, desired):
+        return current
+    if isinstance(before, cst.CSTNode) and type(before) is type(desired) is type(current):
+        return current.with_changes(**{field.name: merge(getattr(before, field.name), getattr(desired, field.name), getattr(current, field.name))
+                                       for field in dataclasses.fields(before) if not field.name.startswith('_')})
+    if isinstance(before, (tuple, list)) and isinstance(desired, (tuple, list)) and isinstance(current, (tuple, list)):
+        if len(before) != len(desired) or len(before) != len(current):
+            raise ValueError("This native structural edit needs explicit reconciliation.")
+        return [merge(old, new, actual) for old, new, actual in zip(before, desired, current)]
+    if type(before) is not type(desired) or type(before) is not type(current):
+        raise ValueError("This native replacement needs explicit reconciliation.")
+    return desired
+
+
+def functions(module):
+    found, scope = {}, []
+
+    class Index(cst.CSTVisitor):
+        def visit_ClassDef(self, node):
+            scope.append(node.name.value)
+
+        def leave_ClassDef(self, node):
+            scope.pop()
+
+        def visit_FunctionDef(self, node):
+            key = (*scope, node.name.value)
+            if key in found:
+                raise ValueError("An owned function must have exactly one native definition.")
+            found[key] = node
+            return False
+
+    module.visit(Index())
+    return found
+
+
+def preserve(previous, desired, root, files, traces):
+    """Reconcile retained function syntax; unsupported structural edits produce no source plan."""
+    before = {file['file']: file for file in previous}
+    after = {file['file']: file for file in desired}
+    if before.keys() != after.keys():
+        return [], [{"code": "unsupported-python-change", "file": "", "message": "Acceptance file additions and retirement need explicit reconciliation."}]
+    rewritten = []
+    for file in files:
+        module = cst.parse_module((root / file).read_bytes())
+        replacements = {}
+        try:
+            if file in before and before[file]['text'] != after[file]['text']:
+                old = cst.parse_module(before[file]['text'])
+                new = cst.parse_module(after[file]['text'])
+                original, wanted, actual = functions(old), functions(new), functions(module)
+                if original.keys() != wanted.keys() or not original.keys() <= actual.keys():
+                    raise ValueError("Acceptance declaration additions, renames and retirement need explicit reconciliation.")
+
+                class Baseline(cst.CSTTransformer):
+                    def leave_FunctionDef(self, node, updated):
+                        return next((wanted[key] for key, value in original.items() if value is node), updated)
+
+                if not old.visit(Baseline()).deep_equals(new):
+                    raise ValueError("Changed module or class setup needs explicit reconciliation.")
+                replacements = {actual[key]: (original[key], wanted[key].with_changes(body=original[key].body) if before[file]['driver'] else wanted[key])
+                                for key in original}
+
+            class Rewrite(cst.CSTTransformer):
+                def __init__(self):
+                    self.names = {}
+
+                def leave_Name(self, node, updated):
+                    self.names[node] = updated
+                    return updated
+
+                def leave_FunctionDef(self, node, updated):
+                    return merge(*replacements[node], updated) if node in replacements else updated
+
+            editor = Rewrite()
+            updated = module.visit(editor)
+            traces[file] = {"before": module, "after": updated, "names": editor.names, "file": file}
+            rewritten.append({"file": file, "text": updated.bytes.decode('utf-8')})
+        except (ValueError, SyntaxError, cst.ParserSyntaxError) as error:
+            return [], [{"code": "unsupported-python-change", "file": file, "message": str(error)}]
+    return rewritten, []

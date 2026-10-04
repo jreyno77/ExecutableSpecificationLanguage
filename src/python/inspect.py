@@ -148,18 +148,21 @@ def inspect_files(request):
 
 root = pathlib.Path(request["root"])
 result = inspect_files(request)
+traces = {}
 if "tests" in request and not result["problems"]:
     import importlib.util
     specification = importlib.util.spec_from_file_location("expec_integrity", pathlib.Path(__file__).with_name("integrity.py"))
     integrity = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(integrity)
     result["problems"].extend(integrity.check(request["tests"], root))
+    if "desiredTests" in request and not result["problems"]:
+        result["rewritten"], failures = integrity.preserve(request["tests"], request["desiredTests"], root, result["files"], traces)
+        result["problems"].extend(failures)
 if "rewrite" in request and not result["problems"]:
     import importlib.util
     specification = importlib.util.spec_from_file_location("expec_preservation", pathlib.Path(__file__).with_name("preservation.py"))
     preservation = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(preservation)
-    traces = {}
     result["rewritten"], failures = preservation.preserve(request["rewrite"], root, result, traces)
     result["problems"].extend(failures)
     if not failures and (move := request["rewrite"].get("move")):
@@ -181,20 +184,22 @@ if "rewrite" in request and not result["problems"]:
                 item["text"] = module.bytes.decode("utf-8")
             except ValueError as error:
                 result["problems"].append({"code": "incomplete-native-references", "file": item["file"], "message": str(error)})
-    if not result["problems"]:
-        staged = root.parent / "after"
-        for item in result["rewritten"]:
-            path = staged / item["file"]
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(item["text"].encode("utf-8"))
-        after_request = {**request, "root": str(staged), "cache": str(root.parent / "after-cache"),
-                         "files": [item["file"] for item in result["rewritten"]]}
-        for kind in ("mainPaths", "testPaths"):
-            after_request[kind] = [str(staged / pathlib.Path(path).relative_to(root)) for path in request[kind]]
-        after = inspect_files(after_request)
-        result["problems"].extend(after["problems"])
-        specification = importlib.util.spec_from_file_location("expec_bindings", pathlib.Path(__file__).with_name("bindings.py"))
-        bindings = importlib.util.module_from_spec(specification)
-        specification.loader.exec_module(bindings)
-        result["problems"].extend(bindings.conflicts(result, after, traces))
+if "rewritten" in result and not result["problems"]:
+    staged = root.parent / "after"
+    for item in result["rewritten"]:
+        path = staged / item["file"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(item["text"].encode("utf-8"))
+    after_request = {**request, "root": str(staged), "cache": str(root.parent / "after-cache"),
+                     "files": [item["file"] for item in result["rewritten"]]}
+    for kind in ("mainPaths", "testPaths"):
+        after_request[kind] = [str(staged / pathlib.Path(path).relative_to(root)) for path in request[kind]]
+    after = inspect_files(after_request)
+    result["problems"].extend(after["problems"])
+    if "desiredTests" in request:
+        result["problems"].extend(integrity.check(request["desiredTests"], staged))
+    specification = importlib.util.spec_from_file_location("expec_bindings", pathlib.Path(__file__).with_name("bindings.py"))
+    bindings = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(bindings)
+    result["problems"].extend(bindings.conflicts(result, after, traces))
 print(json.dumps(result, ensure_ascii=True))

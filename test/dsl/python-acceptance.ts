@@ -12,6 +12,22 @@ export class PythonAcceptance {
   aBookRetainsItsDeclaredData(): void { this.driver.authorBook(); }
   numbersRetainTheirDeclaredMeaning(): void { this.driver.authorNumberComparison(); }
   source(text: string): void { this.driver.source(text); }
+  reviseExpectedQuantity(title: string, quantity: number): void { this.driver.reviseExpectedQuantity(title, quantity); }
+  changeGeneratedQuantity(quantity: number): Promise<void> { return this.driver.changeGeneratedQuantity(quantity); }
+  tryUpdateTests(): Promise<void> { return this.driver.updateTests(); }
+  async updateTests(): Promise<void> {
+    await this.tryUpdateTests(); expect(this.driver.written.problems, JSON.stringify(this.driver.written.problems)).toEqual([]);
+    expect(this.driver.written.receipt?.status).toBe('applied');
+  }
+  expectUpdateProblem(code: string): void {
+    expect(this.driver.written.receipt).toBeUndefined();
+    expect(this.driver.written.problems.map(problem => problem.code), JSON.stringify(this.driver.written)).toContain(code);
+  }
+  async expectScenarioCommentRetained(): Promise<void> { expect(await this.driver.scenarioText()).toContain('# Keep the quantity explanation.'); }
+  async expectRememberedImplementationUnchanged(): Promise<void> {
+    const retained = (file: { path: string }) => file.path !== 'test/acceptance/test_shopping.py';
+    expect((await this.driver.rememberedFiles()).filter(retained)).toEqual(this.driver.remembered.filter(retained).map(file => ({ path: file.path, bytes: Buffer.from(file.bytes) })));
+  }
   rememberGeneratedFiles(): Promise<void> { return this.driver.rememberGeneratedFiles(); }
   addReadableNativeEdits(): Promise<void> { return this.driver.addReadableNativeEdits(); }
   removeExpectedQuantity(): Promise<void> { return this.driver.removeExpectedQuantity(); }

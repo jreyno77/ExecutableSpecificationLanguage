@@ -32,7 +32,8 @@ export interface PythonRewrite {
   before: string; after: string; previous: readonly ArtifactAssociation[]; next: readonly ArtifactAssociation[]; authored?: readonly string[];
   move?: { from: string; to: string; old: string; next: string };
 }
-export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly { file: string; text: string; driver: boolean }[] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
+type AcceptanceFile = { file: string; text: string; driver: boolean };
+export async function inspectPython(snapshot: ProjectSnapshot, configFile?: string, rewrite?: PythonRewrite | { tests: readonly AcceptanceFile[]; desiredTests?: readonly AcceptanceFile[] }): Promise<{ value?: PythonFacts; problems: Diagnostic[] }> {
   if (!snapshot.complete) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Native analysis requires a complete supplied project capture.')] };
   const configuration = pythonConfiguration(snapshot, configFile), problems = [...snapshot.problems, ...configuration.problems];
   if (!snapshot.complete || !configuration.value || problems.length) return { problems };
