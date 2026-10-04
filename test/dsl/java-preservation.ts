@@ -100,6 +100,17 @@ export class JavaPreservation {
     expect(state.files.map(file => file.generated).join('\n')).toContain('Not implemented: title');
   }
   expectFileUnchanged(path: string): void { expect(this.text(path)).toBe(this.before); }
+  expectFileText(path: string, text: string): void { expect(this.text(path)).toBe(text); }
+  search(name: string): Promise<void> { return this.driver.searchOwned(name); }
+  expectUnmodeledUse(path: string, expression: string, token: string): void {
+    const result = this.driver.searchResult, text = this.text(path), start = text.indexOf(expression) + expression.indexOf(token);
+    expect(text.indexOf(expression)).toBeGreaterThanOrEqual(0);
+    expect(result.problems, JSON.stringify(result.problems)).toEqual([]); expect(result.incoming.coverage.complete).toBe(true);
+    expect(result.incoming.uses.some(use => {
+      const at = use.at.value as { file: string; start: number; length: number };
+      return use.target.kind === 'project' && at.file === path && at.start === start && text.slice(at.start, at.start + at.length) === token;
+    }), JSON.stringify(result)).toBe(true);
+  }
   expectRetainedPrefix(path: string): void { expect(this.text(path).startsWith(this.before!.slice(0, -1))).toBe(true); }
   expectText(path: string, text: string): void { expect(this.text(path)).toContain(text); }
   private text(path: string): string {

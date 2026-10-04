@@ -74,6 +74,43 @@ public class StoreGame {
   await p.runJava('new StoreGame().reset();', 'store'); p.expectStub('reset');
 });
 
+it('preserves separate native data files and private bodies across an identity-backed rename', { timeout: 120_000 }, async () => {
+  const p = await JavaPreservation.connect();
+  const contract = 'opaque type SystemConfig\nopaque type PlayerStateSnapshot\nclass StoreGame {\npublic startup, save, delete, new, shutDown\ncapability startup(configurations: SystemConfig) returns Nothing\ncapability save(snapshot: PlayerStateSnapshot) returns Nothing\ncapability delete() returns Nothing\ncapability new() returns PlayerStateSnapshot\ncapability shutDown() returns Nothing\n}';
+  p.source(contract);
+  const configuration = 'package store; public record SystemConfig(String gameRoot, double brightness) {}\n';
+  const snapshot = 'package store; public record PlayerStateSnapshot(double x, double y, java.util.List<String> items) {}\n';
+  await p.file('src/main/java/store/SystemConfig.java', configuration);
+  await p.file('src/main/java/store/PlayerStateSnapshot.java', snapshot);
+  await p.file('src/main/java/store/StoreGame.java', `package store;
+public class StoreGame {
+  private SystemConfig config; private PlayerStateSnapshot current; private boolean running;
+  private final java.util.Map<String,PlayerStateSnapshot> storage = new java.util.HashMap<>();
+  public void startup(SystemConfig configurations) { config=configurations; running=true; }
+  public void save(PlayerStateSnapshot snapshot) { assertRunning(); current=snapshot; storage.put("store-game-save",snapshot); }
+  public void delete() { assertRunning(); current=null; storage.remove("store-game-save"); }
+  public PlayerStateSnapshot newGame() { assertRunning(); current=new PlayerStateSnapshot(0,0,java.util.List.of()); return current; }
+  public void shutDown() { running=false; config=null; current=null; }
+  public String savedTitle() { return storage.get("store-game-save").items().get(0); }
+  private void assertRunning() { if(!running) throw new IllegalStateException("Game is not running"); }
+}`);
+  const caller = 'package store; public class Launcher { public void run(StoreGame game, PlayerStateSnapshot state) { game.save(state); } }\n';
+  await p.file('src/main/java/store/Launcher.java', caller); p.mapStoreGame('src/main/java/store/StoreGame.java');
+  await p.adopt({ imports: [
+    { module: 'main', declaration: ['SystemConfig'], name: 'store.SystemConfig' },
+    { module: 'main', declaration: ['PlayerStateSnapshot'], name: 'store.PlayerStateSnapshot' },
+  ], names: [{ declaration: ['StoreGame', 'new'], name: 'newGame' }] }); p.expectWritten();
+  await p.update(contract.replace('startup, save,', 'startup, saveGame,').replace('capability save(', 'capability saveGame('), ['save', 'saveGame']);
+  p.expectWritten(); p.expectFileText('src/main/java/store/SystemConfig.java', configuration);
+  p.expectFileText('src/main/java/store/PlayerStateSnapshot.java', snapshot);
+  p.expectFileText('src/main/java/store/Launcher.java', caller.replace('game.save(state)', 'game.saveGame(state)'));
+  p.expectText('src/main/java/store/StoreGame.java', 'public void saveGame(PlayerStateSnapshot snapshot) { assertRunning(); current=snapshot; storage.put("store-game-save",snapshot); }');
+  p.expectText('src/main/java/store/StoreGame.java', 'private void assertRunning() { if(!running) throw new IllegalStateException("Game is not running"); }');
+  await p.search('saveGame'); p.expectUnmodeledUse('src/main/java/store/Launcher.java', 'game.saveGame(state)', 'saveGame');
+  await p.runJava('var game=new store.StoreGame(); game.startup(new store.SystemConfig("library",0.5)); new store.Launcher().run(game,new store.PlayerStateSnapshot(1,2,java.util.List.of("Dune"))); System.out.print(game.savedTitle());');
+  p.expectStdout('Dune');
+});
+
 it('updates promises while preserving the implemented body and handwritten documentation', { timeout: 120_000 }, async () => {
   const p = await JavaPreservation.connect();
   p.source('class Store { public save\ncapability save(title: Text) returns Nothing { promises "Save to disk." } }');
