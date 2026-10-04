@@ -19,7 +19,7 @@ export class AcceptancePreservation {
   readonly changes: FileChange[] = [];
   readonly state: AcceptanceState;
   private readonly captured: ProjectSnapshot;
-  constructor(snapshot: ProjectSnapshot, options: AcceptanceOptions, previous: AcceptanceState | undefined, rendered: readonly AcceptanceFile[],
+  constructor(snapshot: ProjectSnapshot, private readonly options: AcceptanceOptions, previous: AcceptanceState | undefined, rendered: readonly AcceptanceFile[],
     associations: readonly ArtifactAssociation[], mappings: readonly ArtifactAssociation[], driver: { file: string; name: string } | undefined, diff?: SpecDiff) {
     this.state = { format: 1, options: acceptancePlacement(options), mappings: previous?.mappings ?? [], deleted: previous?.deleted ?? [], authored: previous?.authored ?? [], files: [] };
     let captured = snapshot;
@@ -68,6 +68,7 @@ export class AcceptancePreservation {
       }
     }
     for (const file of previous?.files ?? []) if (!this.state.files.some(item => item.path === file.path)) {
+      if (options.fixture && file.path === options.testRoot + '/dsl/' + options.domain + '-test.ts') { this.state.files.push(file); continue; }
       const original = snapshot.files.find(item => item.path === file.path);
       if (!original || original.version !== file.confirmed) this.problems.push(diagnostic('output-conflict', 'A removed generated file contains competing edits or is missing.', file.path));
       else captured = { ...captured, files: captured.files.filter(item => item.path !== file.path) };
@@ -91,7 +92,8 @@ export class AcceptancePreservation {
       const baseline = nativeSelection(ts.createSourceFile(file.path, file.generated, ts.ScriptTarget.Latest, true), selectors)[0],
         current = actual && nativeSelection(ts.createSourceFile(file.path, new TextDecoder().decode(actual.bytes), ts.ScriptTarget.Latest, true), selectors)[0];
       return baseline && current && ts.isMethodDeclaration(baseline) && ts.isMethodDeclaration(current)
-        && baseline.body && current.body && tokens(baseline.body.getText()) !== tokens(current.body.getText()) ? [] : [problem];
+        && baseline.body && current.body && tokens(baseline.body.getText()) !== tokens(current.body.getText()) ? [] : [file.container?.role === 'driver' && this.options.fixture && !this.options.driver
+          ? { ...problem, code: 'unselected-default-scaffold', message: 'Unselected default scaffold: ' + problem.message + ' Its use depends on the authored fixture.' } : problem];
     });
   }
 }
