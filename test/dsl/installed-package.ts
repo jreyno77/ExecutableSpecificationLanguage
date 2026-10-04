@@ -10,6 +10,29 @@ export class PackageExamples {
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
   generateShoppingAcceptance(): Promise<void> { return this.driver.generateShoppingAcceptance(); }
+  runInstalledHttpLifecycle(): Promise<void> { return this.driver.runHttpLifecycle(); }
+  expectHttpScenarioPassed(title: string): void {
+    this.expectConsumerRan(); const observed = this.driver.report.lifecycle!;
+    expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
+    expect(observed.passed).toMatchObject({ code: 0, success: true, assertions: [{ title, status: 'passed' }] });
+    expect(observed.passed.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual: 1 }));
+  }
+  expectHttpNoOpFailed(title: string, actual: number, expected: number): void {
+    const observed = this.driver.report.lifecycle!;
+    expect(observed.broken).toMatchObject({ code: 1, success: false, assertions: [{ title, status: 'failed' }] });
+    const messages = observed.broken.assertions.flatMap(test => test.failureMessages).join('\n');
+    const difference = /expected ([+-]?\d+) to strictly equal ([+-]?\d+)/.exec(messages);
+    expect(difference, messages).not.toBeNull();
+    expect({ actual: Number(difference![1]), expected: Number(difference![2]) }).toEqual({ actual, expected });
+    expect(observed.broken.events).toContainEqual(expect.objectContaining({ event: 'observed', title: 'Dune', actual }));
+    expect(observed.unchangedTests).toBe(true);
+  }
+  expectHttpServersClosed(): void {
+    for (const run of [this.driver.report.lifecycle!.passed, this.driver.report.lifecycle!.broken]) {
+      const started = run.events.filter(event => event.event === 'started'); expect(started).toHaveLength(1);
+      expect(run.events.filter(event => event.event === 'closed')).toEqual([expect.objectContaining({ id: started[0]!.id, listening: false })]);
+    }
+  }
   expectShoppingSteps(steps: string[]): void {
     this.expectConsumerRan(); const observed = this.driver.report.acceptance!;
     expect(observed.written).toMatchObject({ problems: [], receipt: { status: 'applied' } });
