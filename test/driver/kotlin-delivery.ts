@@ -99,7 +99,7 @@ export class KotlinDeliveryDriver {
       classPath: { main: [library], test: [library, ...testLibraries] }, runtimeClassPath: { main: [library], test: [library, ...testLibraries] }, packages: [], inputs }));
     this.context = new KotlinContext(this.context);
   }
-  private model(module: string, text: string): ModuleModel {
+  protected model(module: string, text: string): ModuleModel {
     const read = new LangiumReader().read({ sourceId: module + '.expec', text });
     if (read.status !== 'accepted') throw new Error(JSON.stringify(read));
     return new LangiumModel(module, read.document);
@@ -127,11 +127,11 @@ export class KotlinDeliveryDriver {
     }]);
     if (!result.value) throw new Error(JSON.stringify(result)); this.current = result.value;
   }
-  private identify(specification: Specification, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = []): void {
+  protected identify(specification: Specification, renames: Readonly<Record<string, string>> = {}, retire: readonly string[] = [], decisions: readonly ({ id: string; to: import('../../src/index.js').NodeId } | { retire: string })[] = []): void {
     const previous = this.current;
     const proposed = this.identity.associate(specification);
     if (!proposed.value) throw new Error(JSON.stringify(proposed));
-    const identified = previous ? this.identity.associate(specification, previous.baseline, [...Object.entries(renames).map(([before, after]) => ({
+    const identified = previous ? this.identity.associate(specification, previous.baseline, [...decisions, ...Object.entries(renames).map(([before, after]) => ({
       id: this.subject(previous, before), to: proposed.value!.node(this.subject(proposed.value!, after)),
     })), ...retire.map(name => ({ retire: this.subject(previous, name) }))]) : proposed;
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;

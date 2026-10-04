@@ -7,17 +7,27 @@ import { hash, problem } from './project-files.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
 /** Compares contracts in the real native neighborhood, retaining unowned declarations and imports. */
-export async function compareKotlin(snapshot: ProjectSnapshot, current: KotlinQuery, files: readonly KotlinFile[], owned: readonly ArtifactAssociation[]): Promise<Check<{ native: KotlinQuery; sources: ReadonlyMap<string, string> }>> {
+export async function compareKotlin(snapshot: ProjectSnapshot, current: KotlinQuery, files: readonly KotlinFile[], owned: readonly ArtifactAssociation[],
+  recorded: readonly KotlinFile[] = files): Promise<Check<{ native: KotlinQuery; sources: ReadonlyMap<string, string>; support: ReadonlyMap<string, readonly { file: string; declaration: KotlinQuery['declarations'][number]['selector'] }[]> }>> {
   const captured = new Map(snapshot.files.map(file => [file.path, file]));
   const text = (path: string) => new TextDecoder('utf-8', { fatal: true }).decode(snapshot.files.find(file => file.path === path)!.bytes);
   const roots = current.declarations.filter(node => node.selector.length === 1);
-  const selected = roots.filter(node => owned.some(item => item.locator.format === 'kotlin-symbol-1'
-    && canonical(item.locator.value) === canonical({ file: node.file, declaration: node.selector })));
   // The first native pass supplies syntax spans only. Missing provider types here are not accepted semantic facts.
   const inputs = files.map((file, index) => ({ ...file, temporary: file.path.slice(0, file.path.lastIndexOf('/') + 1) + '__expec_comparison_' + index + '.kt' }));
+  const supportInputs = recorded.filter(file => file.support).map((file, index) => ({ ...file,
+    temporary: file.path.slice(0, file.path.lastIndexOf('/') + 1) + '__expec_owned_' + index + '.kt' }));
   const templates = await queryKotlin({ ...snapshot, files: [...snapshot.files.filter(file => !current.files.includes(file.path)),
-    ...inputs.map(file => ({ path: file.temporary, bytes: Buffer.from(file.text), version: hash(Buffer.from(file.text)) }))] }, 'expec.kotlin.json');
+    ...[...inputs, ...supportInputs].map(file => ({ path: file.temporary, bytes: Buffer.from(file.text), version: hash(Buffer.from(file.text)) }))] }, 'expec.kotlin.json');
   if (!templates.value) return { problems: templates.problems, deferred: templates.deferred };
+  const addresses = (file: typeof inputs[number]) => templates.value!.declarations.filter(node => node.file === file.temporary && node.selector.length === 1)
+    .map(node => ({ file: file.path, declaration: node.selector }));
+  const support = new Map(inputs.filter(file => file.support).map(file => [file.id, addresses(file)]));
+  const missing = supportInputs.find(file => !addresses(file).length || addresses(file).some(address =>
+    roots.filter(node => canonical({ file: node.file, declaration: node.selector }) === canonical(address)).length !== 1));
+  if (missing) return { problems: [problem(snapshot.root, 'output-conflict', missing.path, 'Recorded native support no longer selects its original declaration.')], deferred: [] };
+  const claimed = new Set([...owned.filter(item => item.locator.format === 'kotlin-symbol-1').map(item => canonical(item.locator.value)),
+    ...supportInputs.flatMap(file => addresses(file).map(value => canonical(value)))]);
+  const selected = roots.filter(node => claimed.has(canonical({ file: node.file, declaration: node.selector })));
   for (const path of new Set(selected.map(node => node.file))) {
     let retained = text(path);
     for (const node of selected.filter(node => node.file === path).sort((a, b) => b.range.start - a.range.start)) retained = retained.slice(0, node.range.start) + retained.slice(node.range.end);
@@ -47,5 +57,5 @@ export async function compareKotlin(snapshot: ProjectSnapshot, current: KotlinQu
   const failures = compared.value.problems.filter(issue => wanted.has(issue.file) && !retained.some(node => node.file === issue.file
     && node.range.start <= issue.range.start && node.range.end >= issue.range.end));
   return failures.length ? { problems: failures.map(issue => problem(snapshot.root, 'kotlin-' + issue.code, issue.file, issue.message)), deferred: [] }
-    : success({ native: compared.value, sources: new Map(compared.value.files.map(path => [path, new TextDecoder('utf-8', { fatal: true }).decode(captured.get(path)!.bytes)])) });
+    : success({ native: compared.value, sources: new Map(compared.value.files.map(path => [path, new TextDecoder('utf-8', { fatal: true }).decode(captured.get(path)!.bytes)])), support });
 }

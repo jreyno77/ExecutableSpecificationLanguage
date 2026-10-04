@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
-import { FileProjectWriter, kotlinAcceptanceOutput } from '../../src/index.js';
+import { Compiler, FileProjectWriter, SourceComposer, kotlinAcceptanceOutput, type IdentifiedSpecification } from '../../src/index.js';
 import { KotlinDeliveryDriver } from './kotlin-delivery.js';
 
 /** Compiles captured main/test source separately and observes the actual JUnit engine. */
@@ -12,6 +12,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
   readonly acceptanceOptions: Record<string, unknown> = {};
   private readonly remembered = new Map<string, string>();
   private readonly names = new Map<string, string>();
+  private readonly groups = new Map<string, string>();
   readonly outcomes: { title: string; status: string; failure: string }[] = [];
   async prepare(): Promise<void> {
     if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR.');
@@ -37,6 +38,39 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
     if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
     this.names.set(this.current.id(matches[0]!.id), native); this.namedOptions();
+  }
+  private groupFor(title: string, current: IdentifiedSpecification = this.current) {
+    const inspection = current.specification.inspection;
+    const examples = [...inspection.query('example'), ...inspection.query('scenario')].filter(item => item.title.value === title);
+    if (examples.length !== 1) throw Error('Select one actual example title: ' + title);
+    const group = inspection.parent(examples[0]!.id);
+    if (group?.kind !== 'examples') throw Error('The selected example has no examples group.');
+    return group;
+  }
+  nameGroupFor(title: string, native: string): void {
+    const id = this.current.id(this.groupFor(title).id); this.groups.set(title, id); this.names.set(id, native); this.namedOptions();
+  }
+  changeGroups(text: string, retained: readonly string[], retired: readonly string[] = []): void {
+    const compiled = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: [], packages: [] }) });
+    if (!compiled.value) throw Error(JSON.stringify(compiled));
+    const proposed = this.identity.associate(compiled.value); if (!proposed.value) throw Error(JSON.stringify(proposed));
+    const decisions = [...retained.map(title => ({ id: this.current.id(this.groupFor(title).id), to: this.groupFor(title, proposed.value!).id })),
+      ...retired.map(title => ({ retire: this.current.id(this.groupFor(title).id) }))];
+    this.identify(compiled.value, {}, [], decisions);
+    for (const id of this.names.keys()) if (this.current.baseline.retired.includes(id)) this.names.delete(id);
+    this.namedOptions();
+  }
+  async deleteGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.written = await this.output.delete(id); this.files = await this.capturedFiles();
+  }
+  async searchGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.searchResult = await this.output.search(id);
+  }
+  async readGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.readResult = await this.output.read(id);
   }
   private namedOptions(): void { this.acceptanceOptions.names = [...this.names].map(([id, name]) => ({ id, name })); }
   async implement(name: string, body: string): Promise<void> {
@@ -108,7 +142,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
     this.searchResult = await this.output.search(this.current.id(group[0]!.id));
   }
-  async runTests(concurrent = false): Promise<void> {
+  async runTests(concurrent = false, classes: readonly string[] = ['store.tests.acceptance.ShoppingAcceptance']): Promise<void> {
     this.files = await this.capturedFiles(); this.outcomes.length = 0;
     const native = await this.native(), report = JSON.parse(this.files.get('.expec/kotlin/classpath.json')!);
     const directory = await fs.mkdtemp(join(this.directory, 'native-tests-')), main = join(directory, 'main'), test = join(directory, 'test'), reports = join(directory, 'reports');
@@ -119,7 +153,7 @@ export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
     this.compiled = await compile('main', main, report.classPath.main); if (this.compiled.code) return;
     this.compiled = await compile('test', test, [main, ...report.classPath.test]); if (this.compiled.code) return;
     this.execution = await this.run(native.java, ['-jar', this.junit!, 'execute', '--class-path', [main, test, ...report.runtimeClassPath.test].join(delimiter),
-      '--select-class', 'store.tests.acceptance.ShoppingAcceptance', '--reports-dir', reports, '--disable-banner', '--disable-ansi-colors',
+      ...classes.flatMap(name => ['--select-class', name]), '--reports-dir', reports, '--disable-banner', '--disable-ansi-colors',
       ...concurrent ? ['--config=junit.jupiter.execution.parallel.enabled=true', '--config=junit.jupiter.execution.parallel.config.strategy=fixed', '--config=junit.jupiter.execution.parallel.config.fixed.parallelism=2', '--config=junit.jupiter.execution.parallel.mode.default=concurrent'] : []]);
     for (const path of await fs.readdir(reports)) if (path.endsWith('.xml')) {
       const document = new DOMParser().parseFromString(await fs.readFile(join(reports, path), 'utf8'), 'text/xml');

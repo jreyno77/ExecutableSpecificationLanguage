@@ -27,7 +27,7 @@ const options = kotlinOptions.omit({ directory: true, concepts: true }).extend({
 const statePath = '.expec/outputs/' + Buffer.from('kotlin-acceptance').toString('hex') + '.json';
 const association = z.strictObject({ specId: z.string(), locator: locatorSchema });
 const state = z.strictObject({ format: z.literal(1), options: z.string(), context: z.string(), contracts: z.array(z.strictObject({ id: z.string(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })), deleted: z.array(z.string()).default([]), subjects: z.array(z.string()).default([]), names: z.array(z.strictObject({ id: z.string(), name: z.string() })).default([]), imports: z.array(z.strictObject({ id: z.string(), name: z.string(), as: z.string().optional() })).default([]), fixture: association.optional(), driver: association.optional(), bindings: z.array(association).optional(), files: z.array(z.strictObject({
-  id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association),
+  id: z.string(), path: z.string().refine(literal), generated: z.string(), hash: z.string(), artifacts: z.array(association), support: z.literal(true).optional(),
 })) });
 export const kotlinAcceptanceOutput: OutputRegistration = {
   id: 'kotlin-acceptance', validate: value => { const parsed = options.safeParse(value); return parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path as (string | number)[], message: issue.message })); },
@@ -39,8 +39,7 @@ class KotlinAcceptance implements OutputAdapter {
   readonly id = 'kotlin-acceptance';
   constructor(private readonly settings: z.infer<typeof options>, private readonly context?: OutputContext) {}
   private artifacts(stored?: z.infer<typeof state>) {
-    return [...stored?.files.flatMap(file => file.artifacts) ?? [], ...stored?.fixture ? [stored.fixture] : [],
-      ...stored?.driver ? [stored.driver] : [], ...stored?.bindings ?? []].filter(item => !stored?.deleted.includes(item.specId));
+    return [...stored?.files.flatMap(file => file.artifacts) ?? [], ...stored?.bindings ?? []].filter(item => !stored?.deleted.includes(item.specId));
   }
   private state(snapshot: ProjectSnapshot): Check<z.infer<typeof state>> {
     const source = snapshot.files.find(file => file.path === statePath);
@@ -50,9 +49,36 @@ class KotlinAcceptance implements OutputAdapter {
       const owned = new Set([...stored.files.flatMap(file => file.artifacts.map(item => item.specId)), ...stored.deleted]);
       if (new Set(stored.contracts.map(item => item.id)).size !== stored.contracts.length || stored.contracts.length !== owned.size
         || stored.contracts.some(item => !owned.has(item.id) || !stored.subjects.includes(item.id))) throw Error('Invalid recorded source subjects.');
-      if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || file.artifacts.some(item => item.locator.outputId !== this.id))) throw Error('Invalid generated baseline.');
-      if (canonical(options.parse(JSON.parse(stored.options))) !== stored.options) throw Error('Invalid recorded options.');
+      if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || file.artifacts.some(item => item.locator.outputId !== this.id
+        || (item.locator.value as { file: string }).file !== file.path))) throw Error('Invalid generated baseline.');
+      const settings = options.parse(JSON.parse(stored.options));
+      if (canonical(settings) !== stored.options) throw Error('Invalid recorded options.');
       new KotlinProject({ outputId: this.id }, [...stored.files.flatMap(file => file.artifacts), ...stored.fixture ? [stored.fixture] : [], ...stored.driver ? [stored.driver] : [], ...stored.bindings ?? []]);
+      const prefix = settings.testRoot + '/' + settings.package.replaceAll('.', '/'), name = settings.domain[0]!.toUpperCase() + settings.domain.slice(1);
+      const roles = new Map([
+        [prefix + '/driver/' + name + 'Driver.kt', { id: 'driver', name: name + 'Driver' }],
+        [prefix + '/dsl/' + name + '.kt', { id: 'dsl', name }],
+        [prefix + '/dsl/' + name + 'Fixture.kt', { id: 'fixture', name: name + 'Fixture' }],
+        [prefix + '/dsl/ExpecChecks.kt', { id: 'comparison', name: undefined }],
+      ]);
+      for (const file of stored.files) {
+        const tuple = file.path.startsWith(prefix + '/dsl/') && /^Tuple([1-9][0-9]*)\.kt$/.exec(file.path.slice((prefix + '/dsl/').length));
+        const role = roles.get(file.path) ?? (tuple ? { id: 'tuple:' + tuple[1], name: undefined } : undefined);
+        if (file.support) {
+          if (!role || file.id !== 'support:' + role.id) throw Error('Invalid shared support ownership.');
+          continue;
+        }
+        if (!role) continue;
+        const group = stored.subjects.find(id => file.id === id + ':' + role.id);
+        const claims = file.artifacts.filter(item => item.specId === group);
+        if (!group || !claims.some(item => item.locator.format === 'kotlin-file-1') || role.name && !claims.some(item =>
+          item.locator.format === 'kotlin-symbol-1' && canonical(item.locator.value) === canonical({ file: file.path, declaration: [{ kind: 'class', name: role.name }] })))
+          throw Error('Shared support has no recorded original owner.');
+        file.id = 'support:' + role.id; file.support = true;
+        file.artifacts = file.artifacts.filter(item => item.specId !== group);
+      }
+      if (new Set(stored.files.map(file => file.id)).size !== stored.files.length || new Set(stored.files.map(file => file.path)).size !== stored.files.length)
+        throw Error('Shared support has competing recorded owners.');
       return success(stored);
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin acceptance ownership is invalid.')], deferred: [] }; }
   }
@@ -85,7 +111,6 @@ class KotlinAcceptance implements OutputAdapter {
     const native = await queryKotlin(snapshot, 'expec.kotlin.json');
     if (!native.value || native.problems.length && !this.settings.fixture) return { problems: native.problems, deferred: native.deferred };
     const className = this.settings.domain[0]!.toUpperCase() + this.settings.domain.slice(1), prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/');
-    const testFile = prefix + '/acceptance/' + className + 'Acceptance.kt';
     const intact = await checkKotlinTests(snapshot, native.value, stored.value?.files ?? [], prefix + '/driver/' + className + 'Driver.kt');
     if (intact.problems.length) return { problems: intact.problems, deferred: intact.deferred };
     const fixture = this.settings.fixture && selectedKotlinFixture(native.value, this.settings.fixture);
@@ -110,7 +135,7 @@ class KotlinAcceptance implements OutputAdapter {
     if (!imported.value) return { problems: imported.problems, deferred: imported.deferred };
     const imports = imported.value.imports;
     if (stored.value) {
-      const retained = new Set(stored.value.subjects), selected = new Set([...stored.value.imports, ...imports].map(item => item.id));
+      const retained = new Set(stored.value.subjects.filter(id => fingerprints.has(id))), selected = new Set([...stored.value.imports, ...imports].map(item => item.id));
       if ([...selected].some(id => retained.has(id) && canonical(stored.value!.imports.filter(item => item.id === id)) !== canonical(imports.filter(item => item.id === id))))
         return failure('output-options-changed', 'A retained provider mapping cannot silently change native identity or local spelling.');
     }
@@ -119,14 +144,13 @@ class KotlinAcceptance implements OutputAdapter {
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
     const names = rendered.mapping();
     if (stored.value) {
-      const retained = new Set([...stored.value.subjects, ...stored.value.files.flatMap(file => file.artifacts.map(item => item.specId))]);
+      const retained = new Set(stored.value.subjects.filter(id => fingerprints.has(id)));
       const selected = new Set([...stored.value.names, ...names].map(item => item.id));
       if ([...selected].some(id => retained.has(id) && canonical(stored.value!.names.filter(item => item.id === id)) !== canonical(names.filter(item => item.id === id))
         && !('diff' in request && request.diff.changes.some(change => change.id === id && change.kinds.some(kind => kind === 'rename' || kind === 'move')))))
         return failure('output-options-changed', 'A retained native name requires its own actual identity transition.');
     }
     if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId))) || [stored.value?.fixture, stored.value?.driver, ...stored.value?.bindings ?? []].some(item => item && !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
-    if (stored.value?.files.some(before => !files.some(file => file.path === before.path))) return failure('native-preservation-unavailable', 'Acceptance retirement requires native ownership reconciliation.');
     const changes: FileChange[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
     for (const file of files) {
       if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('excluded-kotlin-input', 'The output path intersects an excluded capture path.', file.path);
@@ -135,7 +159,7 @@ class KotlinAcceptance implements OutputAdapter {
       if (previous && !actual) return failure('output-conflict', 'Previously owned native acceptance text is missing.', file.path);
       let bytes = actual?.bytes ?? Buffer.from(file.text);
       if (previous && previous.generated !== file.text && migrating) {
-        if (!migrating || !fixture || file.path !== testFile) return failure('native-preservation-unavailable', 'Changed acceptance contracts require native ownership reconciliation.', file.path);
+        if (!fixture || !file.path.startsWith(prefix + '/acceptance/')) return failure('native-preservation-unavailable', 'Changed acceptance contracts require native ownership reconciliation.', file.path);
         const text = migrateKotlinFixture(snapshot, native.value, file.path, this.settings.package + '.dsl.' + className + 'Fixture', fixture);
         if (text === undefined) return failure('output-conflict', 'The test no longer extends its recorded default fixture.', file.path);
         bytes = Buffer.from(text);
@@ -175,10 +199,10 @@ class KotlinAcceptance implements OutputAdapter {
     }
     const owned = new Set(files.flatMap(file => file.artifacts.map(item => item.specId)));
     const next = { format: 1, options: canonical(this.settings), context: request.current.baseline.context,
-      contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, imports, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
+      contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, imports, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts, ...file.support ? { support: true as const } : {} })) };
     return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
-      artifacts: [...files.flatMap(file => file.artifacts), ...next.fixture ? [next.fixture] : [], ...next.driver ? [next.driver] : [], ...next.bindings ?? []], obligations: rendered.obligations });
+      artifacts: [...files.flatMap(file => file.artifacts), ...next.bindings ?? []], obligations: rendered.obligations });
   }
   private async delete(id: string, snapshot: ProjectSnapshot, stored?: z.infer<typeof state>): Promise<Check<OutputPlan>> {
     const failure = (code: string, message: string): Check<OutputPlan> => ({ problems: [outputProblem(code, statePath, message)], deferred: [] });
@@ -205,7 +229,12 @@ class KotlinAcceptance implements OutputAdapter {
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) } };
     const result = await new KotlinProject({ outputId: this.id }, this.artifacts(stored.value)).read(id, snapshot);
     const problems = [...result.problems, ...(result.problems.length ? [] : (await this.integrity(snapshot, stored.value)).problems)];
-    return { ...result, problems, coverage: { ...result.coverage, complete: result.coverage.complete && !problems.length,
+    const artifacts = [...result.artifacts];
+    if (!problems.length && stored.value?.fixture && stored.value.files.some(file => !file.support && file.id === id)) {
+      const fixture = await new KotlinProject({ outputId: this.id }, [{ specId: id, locator: stored.value.fixture.locator }]).read(id, snapshot);
+      artifacts.push(...fixture.artifacts); problems.push(...fixture.problems);
+    }
+    return { ...result, artifacts, problems, coverage: { ...result.coverage, complete: result.coverage.complete && !problems.length,
       limitations: [...result.coverage.limitations, ...problems.map(item => item.message)] } };
   }
   async search(id: string, snapshot: ProjectSnapshot) {

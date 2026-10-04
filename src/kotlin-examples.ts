@@ -39,7 +39,7 @@ export class KotlinExamples {
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
-    const kinds = new Set(['setup', 'action', 'observation', 'check', 'fixture', 'parameter', 'example', 'scenario']);
+    const kinds = new Set(['setup', 'action', 'observation', 'check', 'fixture', 'parameter', 'example', 'scenario', 'examples']);
     for (const rule of options.names) {
       const selected = selectKotlinMapping(current, rule, item => this.owned(item) && kinds.has(item.kind)
         && (item.kind !== 'parameter' || this.operations.some(operation => operation.id === this.inspection.parent(item.id)?.id)), 'kotlin-acceptance');
@@ -207,7 +207,7 @@ export class KotlinExamples {
   files(): KotlinFile[] {
     const files: KotlinFile[] = [], prefix = this.options.testRoot + '/' + this.options.package.replaceAll('.', '/');
     const groups = [...this.inspection.query('examples')].filter(item => this.owned(item));
-    const methodNames = new Set<string>();
+    const groupNames = new Set<string>();
     const localImports = new Set<string>();
     for (const rule of this.imports) {
       const name = rule.as ?? rule.name.split('.').at(-1)!;
@@ -223,8 +223,10 @@ export class KotlinExamples {
       ] },
     } });
     for (const group of groups) {
-      if (groups.length > 1) { this.problem('ambiguous-group-name', group, 'Distinct example groups require distinct native names.'); continue; }
-      const name = this.className + 'Acceptance', artifacts = [artifact(group.id, 'acceptance', name)];
+      const name = this.names.get(group.id) ?? this.className + 'Acceptance', artifacts = [artifact(group.id, 'acceptance', name)];
+      if (groupNames.has(name)) this.problem('native-name-conflict', group, 'Distinct example groups require distinct native names.');
+      groupNames.add(name);
+      const methodNames = new Set<string>();
       const bodies = group.members.filter(member => member.kind === 'example' || member.kind === 'scenario').map(example => {
         const method = this.names.get(example.id) ?? example.title.value.replace(/[^A-Za-z0-9]+(.)/g, (_, next: string) => next.toUpperCase()).replace(/^[A-Z]/, letter => letter.toLowerCase());
         if (!identifier(method) || methodNames.has(method)) this.problem('native-name-conflict', example, 'Give examples distinct native method names.'); methodNames.add(method);
@@ -240,7 +242,7 @@ export class KotlinExamples {
       add(this.current.id(group.id), 'acceptance', name, '@org.junit.jupiter.api.TestInstance(org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD)\nclass ' + name + ' : ' + (this.fixture ? this.fixture.packageName + '.' + this.fixture.selector.map(item => item.name).join('.') : this.options.package + '.dsl.' + this.className + 'Fixture') + '() {\n' + bodies.join('\n\n') + '\n}', artifacts);
     }
     if (!groups.length) return files;
-    const group = groups[0]!, driver: string[] = [], methods: string[] = [], driverArtifacts = [artifact(group.id, 'driver', this.className + 'Driver')], dslArtifacts = [artifact(group.id, 'dsl', this.className)];
+    const driver: string[] = [], methods: string[] = [], driverArtifacts: ArtifactAssociation[] = [], dslArtifacts: ArtifactAssociation[] = [];
     for (const operation of this.operations) {
       const name = this.name(operation), parameters = operation.parameters.map(item => this.parameter(item)).join(', '), result = this.result(operation);
       const canonical = operation.parameters.map(item => { const fact = this.types.typeOf(item.declaredType.id); return fact.status === 'known' ? this.data.type(fact.value, item, true) : ''; });
@@ -279,13 +281,14 @@ export class KotlinExamples {
     };
     this.locals.clear();
     for (const item of this.inspection.query('fixture')) if (this.owned(item)) fixture(item);
-    add(this.current.id(group.id) + ':driver', 'driver', this.className + 'Driver', 'open class ' + this.className + 'Driver' + (this.nativeDriver ? '(private val delegate: ' + kotlinName(this.nativeDriver) + (this.nativeDriver.zeroArgumentConstruction ? ' = ' + kotlinName(this.nativeDriver) + '()' : '') + ')' : '') + ' {\n' + driver.join('\n') + '\n}', driverArtifacts);
-    add(this.current.id(group.id) + ':dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + [...fixtures, ...methods].join('\n') + '\n}', dslArtifacts);
-    add(this.current.id(group.id) + ':fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? '(driver: ' + this.options.package + '.driver.' + this.className + 'Driver)' : '') + ' {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? 'driver' : this.options.package + '.driver.' + this.className + 'Driver()') + ')\n}', [artifact(group.id, 'dsl', this.className + 'Fixture')]);
-    add(this.current.id(group.id) + ':comparison', 'dsl', 'ExpecChecks', this.data.source(), []);
-    for (const arity of this.data.generatedTuples) files.push({ id: this.current.id(group.id) + ':tuple:' + arity,
+    add('support:driver', 'driver', this.className + 'Driver', 'open class ' + this.className + 'Driver' + (this.nativeDriver ? '(private val delegate: ' + kotlinName(this.nativeDriver) + (this.nativeDriver.zeroArgumentConstruction ? ' = ' + kotlinName(this.nativeDriver) + '()' : '') + ')' : '') + ' {\n' + driver.join('\n') + '\n}', driverArtifacts);
+    add('support:dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + [...fixtures, ...methods].join('\n') + '\n}', dslArtifacts);
+    add('support:fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? '(driver: ' + this.options.package + '.driver.' + this.className + 'Driver)' : '') + ' {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? 'driver' : this.options.package + '.driver.' + this.className + 'Driver()') + ')\n}', []);
+    add('support:comparison', 'dsl', 'ExpecChecks', this.data.source(), []);
+    for (const arity of this.data.generatedTuples) files.push({ id: 'support:tuple:' + arity,
       path: prefix + '/dsl/Tuple' + arity + '.kt', text: kotlinTuple(this.options.package + '.dsl', arity), artifacts: [] });
     this.problems.push(...this.data.problems);
-    return files.map(file => ({ ...file, artifacts: [...file.artifacts, { specId: this.current.id(group.id), locator: { outputId: 'kotlin-acceptance', format: 'kotlin-file-1', value: { file: file.path } } }] }));
+    return files.map(file => file.id.startsWith('support:') ? { ...file, support: true } : { ...file, artifacts: [...file.artifacts,
+      { specId: file.id, locator: { outputId: 'kotlin-acceptance', format: 'kotlin-file-1', value: { file: file.path } } }] });
   }
 }

@@ -10,7 +10,7 @@ import { compareKotlin } from './kotlin-comparison.js';
 
 type Declaration = KotlinQuery['declarations'][number];
 type Edit = { start: number; end: number; text: string; replacesBinding?: true };
-type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[]; adopted?: boolean | undefined };
+type RecordedFile = { id: string; path: string; generated: string; artifacts: readonly ArtifactAssociation[]; adopted?: boolean | undefined; support?: true | undefined };
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 const key = (file: string, selector: Declaration['selector']) => canonical({ file, declaration: selector });
 
@@ -48,8 +48,9 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
   const currentProblems = bindingProblems(current, snapshot);
   if (!current.value || currentProblems.length) return { problems: currentProblems, deferred: [] };
   const owned = previous.flatMap(file => file.artifacts);
-  const before = await compareKotlin(snapshot, current.value, previous.map(file => ({ ...file, text: file.generated })), owned);
-  const after = await compareKotlin(snapshot, current.value, desired, owned);
+  const recorded = previous.map(file => ({ ...file, text: file.generated }));
+  const before = await compareKotlin(snapshot, current.value, recorded, owned);
+  const after = await compareKotlin(snapshot, current.value, desired, owned, recorded);
   if (!before.value || before.problems.length || !after.value || after.problems.length) return { problems: [...before.problems, ...after.problems], deferred: [] };
   const sources = new Map(snapshot.files.filter(file => current.value!.files.includes(file.path)).map(file => [file.path, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)]));
   const original = before.value.sources, wanted = after.value.sources;
@@ -65,6 +66,10 @@ export async function preserveKotlin(snapshot: ProjectSnapshot, previous: readon
     return result;
   };
   const oldSymbols = symbols(previous), newSymbols = symbols(desired), currentById = new Map<string, Declaration>();
+  for (const [file, declarations] of before.value.support) for (const address of declarations)
+    oldSymbols.set(canonical([file, address.declaration]), canonical(address));
+  for (const [file, declarations] of after.value.support) for (const address of declarations)
+    newSymbols.set(canonical([file, address.declaration]), canonical(address));
   const retired = [...oldSymbols].flatMap(([id, address]) => !newSymbols.has(id) && currentNodes.has(address) ? [currentNodes.get(address)!] : []);
   const contains = (node: Declaration, file: string, range: { start: number; end: number }) => node.file === file && node.range.start <= range.start && node.range.end >= range.end;
   const references = (node: Declaration) => current.value!.references.filter(reference => reference.targetFile === node.file

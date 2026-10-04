@@ -14,6 +14,20 @@ export class KotlinAcceptance {
   source(text: string, renames: Readonly<Record<string, string>> = {}, retired: readonly string[] = []): void { this.driver.source(text, renames, retired); }
   nameOperation(name: string, native: string): void { this.driver.nameOperation(name, native); }
   nameExample(title: string, native: string): void { this.driver.nameExample(title, native); }
+  nameGroupFor(title: string, native: string): void { this.driver.nameGroupFor(title, native); }
+  readGroupFor(title: string): Promise<void> { return this.driver.readGroupFor(title); }
+  changeGroups(text: string, retained: readonly string[], retired: readonly string[] = []): void { this.driver.changeGroups(text, retained, retired); }
+  deleteGroupFor(title: string): Promise<void> { return this.driver.deleteGroupFor(title); }
+  async expectNoNativeGroup(title: string): Promise<void> {
+    await this.driver.searchGroupFor(title);
+    expect(this.driver.searchResult.definitions).toEqual([]);
+    expect(this.driver.searchResult.problems.map(problem => problem.code)).toContain('native-definition-unavailable');
+  }
+  async expectGroupDefinedIn(title: string, file: string): Promise<void> {
+    await this.driver.searchGroupFor(title); this.expectCompleteSearch();
+    expect(this.driver.searchResult.definitions.map(item => (item.value as { file: string }).file.split('/').at(-1))).toEqual([file]);
+  }
+  runTestClasses(classes: readonly string[]): Promise<void> { return this.driver.runTests(false, classes); }
   implementDriver(text: string): Promise<void> { return this.driver.driver(text); }
   buildContracts(): Promise<void> { return this.driver.contracts(); }
   implement(name: string, body: string): Promise<void> { return this.driver.implement(name, body); }
