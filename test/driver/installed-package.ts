@@ -165,6 +165,17 @@ export class PackageDriver {
     await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
     this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
   }
+  async pythonCommand(input: { command: string; source?: string; copies?: number }): Promise<unknown> {
+    for (const name of ['python-cli-consumer.mjs', 'python-cli-guard.mjs', 'python-public.mts'])
+      await cp(join(resources, name), join(this.consumer, name));
+    await cp(join(checkout, 'test/resources/python/basket.py'), join(this.consumer, 'basket.py'));
+    const checkoutFile = join(checkout, 'src/index.ts'); await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'python-cli-input.json'), JSON.stringify({ ...input, checkoutFile }));
+    this.result = await run(process.execPath, ['python-cli-consumer.mjs'], await realpath(this.consumer), 720_000);
+    await this.readReport();
+    if (this.result.code !== 0) throw Error('Installed Python consumer failed. ' + output(this.result));
+    return this.report;
+  }
   async buildPublicCatalog(source: string): Promise<void> {
     await cp(join(resources, 'cli-catalog-consumer.mjs'), join(this.consumer, 'cli-catalog-consumer.mjs'));
     const checkoutFile = join(checkout, 'src/index.ts');
@@ -352,10 +363,10 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
-async function run(executable: string, args: string[], cwd: string): Promise<ProcessResult> {
+async function run(executable: string, args: string[], cwd: string, timeout = 120_000): Promise<ProcessResult> {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
   try {
-    const result = await execute(executable, args, { cwd, env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
+    const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
   } catch (error) {
     const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
