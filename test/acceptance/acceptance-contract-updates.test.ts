@@ -2,6 +2,18 @@ import { describe, it } from 'vitest';
 import { AcceptanceGenerationExamples } from '../dsl/acceptance-generation.js';
 
 describe('native contract validation and combined authored updates', () => {
+  it('preserves the sign of a declared negative literal result', async () => {
+    const project = await AcceptanceGenerationExamples.fromSource('examples { observation selected() returns -1\nexample "negative one": selected() => -1 }');
+    await project.connectNativeDriver('export class ManualDriver { selected(): -1 { return -1; } }');
+    await project.generate({ domain: 'numbers' }); project.expectWriteStatus('applied');
+    await project.runGeneratedVitest(); project.expectTestsPassed(['negative one']);
+  }, 60_000);
+  it('refuses the opposite sign for a declared negative literal result', async () => {
+    const project = await AcceptanceGenerationExamples.fromSource('examples { observation selected() returns -1\nexample "negative one": selected() => -1 }');
+    await project.connectNativeDriver('export class ManualDriver { selected(): 1 { return 1; } }');
+    await project.rememberFiles(); await project.generate({ domain: 'numbers' });
+    project.expectMappingProblem('incompatible-driver'); await project.expectAllBytesUnchanged();
+  }, 60_000);
   it('refuses different application exports that would share one native import name', async () => {
     const project = await AcceptanceGenerationExamples.fromSource('function first() returns Number\nfunction second() returns Number\nexamples { example "sum": first() + second() => 3 }');
     await project.file('first.ts', 'export function count(): number { return 1; }');

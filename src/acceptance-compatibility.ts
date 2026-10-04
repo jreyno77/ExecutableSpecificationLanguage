@@ -31,9 +31,9 @@ export function nativeCompatibility(capture: TypeScriptCapture, options: Accepta
     }
     if (shape.kind === 'parameter') return true;
     if (shape.kind === 'literal') {
-      const value = catalog.inspection.read(shape.expression, 'literal-type').value;
+      const source = catalog.inspection.read(shape.expression, 'literal-type'), value = source.value;
       const literal = value.kind === 'string-literal' ? checker.getStringLiteralType(value.value)
-        : value.kind === 'number-literal' ? checker.getNumberLiteralType(Number(value.token)) : value.value ? checker.getTrueType() : checker.getFalseType();
+        : value.kind === 'number-literal' ? checker.getNumberLiteralType((source.negative ? -1 : 1) * Number(value.token)) : value.value ? checker.getTrueType() : checker.getFalseType();
       return input ? checker.isTypeAssignableTo(literal, type) : checker.isTypeAssignableTo(type, literal);
     }
     const slots = shape.kind === 'tuple' ? shape.elements.map((id, index) => ({ name: String(index), id })) : (() => {

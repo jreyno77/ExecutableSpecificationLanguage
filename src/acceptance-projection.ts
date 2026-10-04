@@ -137,7 +137,7 @@ export class AcceptanceProjection {
     if (type.kind === 'optional') return this.typeValue(type.inner) + ' | undefined';
     if (type.kind === 'tuple') return '[' + type.elements.map(item => this.typeValue(item)).join(', ') + ']';
     if (type.kind === 'union') return type.alternatives.map(item => this.typeValue(item)).join(' | ');
-    if (type.kind === 'literal') { const literal = this.inspection.read(type.expression, 'literal-type'); return this.expression(literal.value, ''); }
+    if (type.kind === 'literal') { const literal = this.inspection.read(type.expression, 'literal-type'); return (literal.negative ? '-' : '') + this.expression(literal.value, ''); }
     throw Error('Unsupported checked type.');
   }
   private method(operation: Operation, driver: boolean): string {
