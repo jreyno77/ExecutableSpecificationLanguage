@@ -8,10 +8,12 @@ import { ProjectConnector, nativePath, type ProjectContext } from './project-con
 import { FileProjectWriter, type FileChange, type WriteResult } from './project-writer.js';
 import { InitializationDestination, reject } from './initialization-destination.js';
 import { initialConfiguration, starter } from './initialization-profile.js';
+import { pythonStarter } from './python-initialization.js';
+import { pythonExclusions } from './python-profile.js';
 
 export interface InitializationPlan {
   readonly root: string;
-  readonly target: 'typescript';
+  readonly target: 'typescript' | 'python';
   readonly configuration: Configuration;
   readonly changes: readonly FileChange[];
 }
@@ -31,13 +33,17 @@ export class ProjectInitializer {
     if (!configurationSchema.safeParse(data).success) throw new TypeError('Provide a validated configuration.');
     this.configuration = structuredClone(configuration);
   }
-  async prepare(choice: { readonly root: string; readonly target: string }): Promise<Check<InitializationPlan>> {
+  async prepare(choice: { readonly root: string; readonly target: string; readonly python?: string; readonly uv?: string }): Promise<Check<InitializationPlan>> {
     if (!choice || !nativePath(choice.root) || typeof choice.target !== 'string') throw new TypeError('Provide a native destination and a target identifier.');
     const path = resolve(dirname(this.manifestLocation), choice.root);
     try {
-      if (choice.target !== 'typescript') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
-      const configuration = initialConfiguration(this.configuration, choice.root), destination = await InitializationDestination.capture(path);
-      const plan: InitializationPlan = { root: path, target: 'typescript', configuration, changes: starter(configuration.version) };
+      if (choice.target !== 'typescript' && choice.target !== 'python') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
+      const destination = await InitializationDestination.capture(path);
+      const python = choice.target === 'python' ? await pythonStarter(this.configuration, choice.root, choice.python ?? '', choice.uv ?? '') : undefined;
+      if (python && !python.value) return { problems: python.problems, deferred: python.deferred };
+      const configuration = python?.value?.configuration ?? initialConfiguration(this.configuration, choice.root);
+      const plan: InitializationPlan = { root: path, target: choice.target as InitializationPlan['target'], configuration,
+        changes: python?.value?.changes ?? starter(configuration.version) };
       this.plans.set(plan, { plan: structuredClone(plan), destination });
       return { value: plan, problems: [], deferred: [] };
     } catch (error) { return { problems: [finding(error, path)], deferred: [] }; }
@@ -55,7 +61,7 @@ export class ProjectInitializer {
       const cancelled = () => { if (signal?.aborted) reject('initialization-cancelled', path, 'Initialization was cancelled.'); };
       cancelled(); await destination.verifyEmpty(); cancelled(); await destination.create();
       await destination.verifyEmpty(); cancelled();
-      const connected = await new ProjectConnector(this.manifestLocation).connect(captured.plan.configuration);
+      const connected = await new ProjectConnector(this.manifestLocation, captured.plan.target === 'python' ? { excludeNames: pythonExclusions } : {}).connect(captured.plan.configuration);
       if (connected.value?.status !== 'connected') { problems.push(...connected.problems); reject('initialization-connection-failed', path, 'The chosen project could not be connected.'); }
       const context = connected.value.context;
       await destination.verifyIdentity();

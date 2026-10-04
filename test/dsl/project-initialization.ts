@@ -15,6 +15,14 @@ export class InitializationExamples {
   expectProposedPackages(packages: Configuration['packages']): void { expect(this.driver.prepared.value?.configuration.packages).toEqual(packages); }
   static withUnconnectedManifest(): Promise<InitializationExamples> { return this.withManifest(); }
   prepare(root: string, target: string): Promise<void> { return this.driver.prepare(root, target); }
+  preparePython(root: string): Promise<void> { return this.driver.preparePython(root); }
+  preparePythonWithoutInterpreter(root: string): Promise<void> { return this.driver.preparePython(root, this.driver.path('missing-python')); }
+  async expectPythonProjectVersion(version: string): Promise<void> { expect(await this.driver.pythonProjectVersion()).toBe(version); }
+  async expectReturnedCaptureExcludes(paths: string[]): Promise<void> {
+    const snapshot = await this.driver.result!.value!.context.readSnapshot(); expect(snapshot.complete).toBe(true);
+    for (const path of paths) expect(snapshot.files.map(file => file.path)).not.toContain(path);
+    expect(snapshot.files.map(file => file.path)).toContain('pyproject.toml');
+  }
   apply(accepted: boolean): Promise<void> { return this.driver.apply(accepted); }
   async applyWithAlreadyAbortedSignal(accepted: boolean): Promise<void> { const controller = new AbortController(); controller.abort(); await this.driver.apply(accepted, controller.signal); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }

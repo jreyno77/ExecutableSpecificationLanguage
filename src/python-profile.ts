@@ -14,6 +14,12 @@ const schema = z.strictObject({ format: z.literal(1), python: absolute, uv: abso
 });
 export type PythonProfile = z.infer<typeof schema>;
 export const pythonReportPath = '.expec/python/environment.json';
+export const pythonExclusions = ['.git', 'node_modules', '.venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.uv-cache'];
+/** The supported exact native release spelling; compare only insignificant trailing zeros. */
+export function samePythonRelease(left: string, right: string): boolean {
+  const normalize = (value: string) => /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/.test(value) ? value.replace(/(?:\.0)+$/, '') : undefined;
+  const first = normalize(left); return first !== undefined && first === normalize(right);
+}
 export function pythonConfiguration(snapshot: ProjectSnapshot, path = 'expec.python.json'): { value?: PythonProfile; problems: Diagnostic[] } {
   const problems: Diagnostic[] = [], file = snapshot.files.find(file => file.path === path);
   if (!file) return { problems: [outputProblem('missing-python-config', path, 'Provide ' + path + ' and run an explicit Python install.')] };
