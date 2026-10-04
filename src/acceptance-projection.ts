@@ -161,7 +161,9 @@ export class AcceptanceProjection {
   }
   files(): AcceptanceFile[] {
     const className = this.domain[0]!.toUpperCase() + this.domain.slice(1), groups = [...this.inspection.query('examples')].filter(item => this.owned(item)), tests: AcceptanceFile[] = [];
-    const paths = new Set<string>(), names = new Set<string>();
+    const paths = new Set<string>(), names = new Set(['driver']);
+    if (this.domain.toLowerCase() === 'comparison') this.problems.push({ code: 'native-name-conflict',
+      message: 'The domain needs a filename distinct from the comparison runtime.', at: { kind: 'dependency', path: ['outputs', 'acceptance', 'domain'] }, related: [] });
     for (const operation of this.operations) {
       const name = this.name(operation);
       if (names.has(name)) this.problem('native-name-conflict', operation, 'Distinct operations require distinct native names: ' + name); names.add(name);

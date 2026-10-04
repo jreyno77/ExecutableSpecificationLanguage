@@ -25,6 +25,18 @@ function recorded(plan: OutputPlan, edit: (value: Record<string, any>) => void):
 }
 
 describe('acceptance projection contracts for its caller', () => {
+  it('refuses an operation that collides with the private driver member', async () => {
+    const plan = await caller().plan('examples { action driver() returns Nothing }');
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
+  it('refuses fixture data that collides with the private driver member', async () => {
+    const plan = await caller().plan('examples { fixture driver: Number = 1 }');
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
+  it('refuses a domain whose DSL file would replace the comparison runtime', async () => {
+    const plan = await caller({ domain: 'comparison' }).plan('examples { example "one": 1 => 1 }');
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
   it('rejects an unknown option before opening', () => { expect(caller({ hiddenRunner: true }).opened.value).toBeUndefined(); });
   it('rejects a foreign driver namespace before it can claim a class', () => {
     expect(caller({ driver: { outputId: 'typescript', format: 'typescript-symbol-1', value: { file: 'driver.ts', declaration: [{ kind: 'class', name: 'Driver' }] } } }).opened.value).toBeUndefined();
