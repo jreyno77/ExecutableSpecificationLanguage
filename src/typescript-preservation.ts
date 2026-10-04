@@ -314,6 +314,7 @@ export class TypeScriptPreservation {
         }
       }
       if (token && ts.isIdentifier(token) && !(ts.isPropertyAccessExpression(token.parent) && token.parent.name === token)
+        && !((ts.isImportSpecifier(token.parent) || ts.isExportSpecifier(token.parent)) && token.parent.propertyName === token)
         && !(ts.isPropertyDeclaration(token.parent) || ts.isPropertySignature(token.parent) || ts.isMethodDeclaration(token.parent) || ts.isMethodSignature(token.parent))) {
         const siteSymbol = checker.getSymbolAtLocation(token);
         if (checker.getSymbolsInScope(token, namespace | ts.SymbolFlags.Alias).some(symbol => symbol.getName() === newName && symbol !== selected && symbol !== siteSymbol)) {
