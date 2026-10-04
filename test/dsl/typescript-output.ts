@@ -61,6 +61,7 @@ export class TypeScriptExamples {
   expectNativeMethod(name: string, parameters: string[], result: string): void { const node = this.signature(name, parameters, result); expect(ts.isMethodDeclaration(node) || ts.isMethodSignature(node)).toBe(true); }
   expectNativeFunction(name: string, parameters: string[], result: string): void { expect(ts.isFunctionDeclaration(this.signature(name, parameters, result))).toBe(true); }
   expectPrivateMethod(name: string, parameters: string[]): void { const node = this.signature(name, parameters); expect(ts.getModifiers(node as ts.MethodDeclaration)?.some(modifier => modifier.kind === ts.SyntaxKind.PrivateKeyword)).toBe(true); }
+  expectMethodBody(name: string, text: string): void { const body = (this.native(name) as ts.MethodDeclaration).body; expect(body).toBeDefined(); expect(body!.getText().slice(1, -1).trim()).toBe(text); }
   expectNativeDeclaration(name: string, kind: 'class' | 'interface'): void { expect(kind === 'class' ? ts.isClassDeclaration(this.native(name)) : ts.isInterfaceDeclaration(this.native(name))).toBe(true); }
   expectNativeConstructor(name: string, parameters: string[]): void {
     const node = this.native(name) as ts.ClassDeclaration, constructor = node.members.find(ts.isConstructorDeclaration);
@@ -156,6 +157,7 @@ export class TypeScriptExamples {
   }
   async expectGeneratedBaselineUnchanged(): Promise<void> { await this.driver.capture(); expect(this.driver.files.get(this.statePath())).toBe(this.rememberedBaseline); }
   expectBaselineExcludes(text: string): void { expect(this.driver.files.get(this.statePath())).not.toContain(text); }
+  expectGeneratedBaselineContains(path: string, text: string): void { const state = JSON.parse(this.driver.files.get(this.statePath())!); expect(state.files.find((file: { path: string }) => file.path === path)?.generated).toContain(text); }
   async tamperGeneratedBaseline(path: string, generated: string): Promise<void> {
     const text = this.driver.files.get(this.statePath()); expect(text, 'Actual persisted TypeScript baseline').toBeDefined();
     const state = JSON.parse(text!); state.files.find((file: { path: string }) => file.path === path).generated = generated; await this.file(this.statePath(), JSON.stringify(state));

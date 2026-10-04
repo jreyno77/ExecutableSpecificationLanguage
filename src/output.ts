@@ -21,8 +21,8 @@ export type OutputRequest =
   | { readonly operation: 'create'; readonly current: IdentifiedSpecification }
   | { readonly operation: 'insert' | 'update'; readonly diff: SpecDiff; readonly current: IdentifiedSpecification }
   | { readonly operation: 'delete'; readonly id: SpecIdentifier };
-export interface OutputPlan extends ProjectChanges { readonly outputId: string; readonly artifacts: readonly ArtifactAssociation[] }
-export interface OutputWrite { readonly receipt?: WriteResult; readonly problems: readonly Diagnostic[]; readonly artifacts?: readonly ArtifactAssociation[] }
+export interface OutputPlan extends ProjectChanges { readonly outputId: string; readonly artifacts: readonly ArtifactAssociation[]; readonly obligations?: readonly Diagnostic[] }
+export interface OutputWrite { readonly receipt?: WriteResult; readonly problems: readonly Diagnostic[]; readonly artifacts?: readonly ArtifactAssociation[]; readonly obligations?: readonly Diagnostic[] }
 export interface OutputAdapter {
   readonly id: string;
   plan(request: OutputRequest, basedOn: ProjectSnapshot): Promise<Check<OutputPlan>>;
@@ -48,7 +48,8 @@ export class ProjectOutput implements Output {
     const plan = await this.plan(request, await this.project.readSnapshot());
     if (!plan.value) return { problems: plan.problems };
     const receipt = await this.writer.apply(plan.value);
-    return { receipt, problems: receipt.problems, ...(receipt.status === 'stopped' ? {} : { artifacts: structuredClone(plan.value.artifacts) }) };
+    return { receipt, problems: receipt.problems, ...plan.value.obligations === undefined ? {} : { obligations: structuredClone(plan.value.obligations) },
+      ...(receipt.status === 'stopped' ? {} : { artifacts: structuredClone(plan.value.artifacts) }) };
   }
   async read(id: SpecIdentifier): Promise<ProjectRead> {
     const snapshot = await this.project.readSnapshot(), result = await this.adapter.read(id, structuredClone(snapshot));

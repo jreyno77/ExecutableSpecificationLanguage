@@ -1,5 +1,6 @@
 import {
-  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  runCli, type CliOutputs, Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  type OutputRegistration, type OutputWrite,
   ProjectInitializer, type InitializationPlan, type InitializationResult,
   LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
@@ -8,6 +9,9 @@ import {
   type NodeId, type ScenarioCapture, type ScenarioStep,
   TestOperationChecker, ExpressionChecker, FixtureChecker, type TestOperationChecking,
 } from 'executable-specification-language';
+
+export const acceptanceRegistration: OutputRegistration = acceptanceOutput;
+export function remainingTestWork(write: OutputWrite): readonly string[] { return (write.obligations ?? []).map(item => item.message); }
 
 export async function acquire(manifest: string, root: string, configuration: Configuration) {
   const libraries: LibraryLoad = await new LibraryLoader(manifest).load(configuration);
@@ -42,6 +46,14 @@ export async function writeProject(context: ProjectContext): Promise<WriteResult
   const result = await writer.apply({ basedOn: await context.readSnapshot(), changes });
   const observation: FileObservation | undefined = result.outcomes[0]?.after[0];
   return result;
+}
+
+export async function writeWithNativeEvidence(context: ProjectContext, uri: string, version: string): Promise<WriteResult> {
+  const snapshot: import('executable-specification-language').ProjectSnapshot = {
+    ...await context.readSnapshot(), nativeInputs: [{ uri, version }],
+  };
+  const captured: readonly { readonly uri: string; readonly version: string }[] = snapshot.nativeInputs ?? [];
+  return new FileProjectWriter(context).apply({ basedOn: snapshot, changes: [] });
 }
 
 export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
@@ -111,3 +123,9 @@ export function openTypeScriptOutput(project: ProjectContext, context: import('e
   outputs.register(typescriptOutput);
   return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
 }
+
+export function compileWorkspace(sources: LoadedSources): Compilation {
+  return new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(sources.entries) });
+}
+
+export function checkCommand(args: readonly string[], outputs: CliOutputs): Promise<number> { return runCli(args, outputs); }

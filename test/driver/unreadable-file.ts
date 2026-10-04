@@ -9,17 +9,30 @@ export async function unreadableFile(path: string): Promise<() => Promise<void>>
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
       { windowsHide: true, env: { ...process.env, EXPEC_LOCK_FILE: path }, stdio: ['pipe', 'pipe', 'pipe'] });
     const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
-    release = async () => { child.stdin.end('\n'); const timeout = setTimeout(() => child.kill(), 5000); try { await closed; } finally { clearTimeout(timeout); } };
+    child.stdin.on('error', () => {}); // A failed child may close its pipe before cleanup asks it to exit.
+    release = async () => {
+      child.stdin.end('\n');
+      const kill = setTimeout(() => child.kill(), 5000);
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([closed, new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('Exclusive-read fixture did not close after termination.')), 10_000);
+        })]);
+      } finally { clearTimeout(kill); clearTimeout(deadline); }
+    };
     try {
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Exclusive-read fixture did not become ready.')), 8000);
         let output = '', error = '';
+        const timeout = setTimeout(() => reject(new Error(`Exclusive-read fixture did not become ready within 15 seconds: ${error}`)), 15_000);
         child.stderr.on('data', chunk => { error += String(chunk); });
         child.once('error', failure => { clearTimeout(timeout); reject(failure); });
         child.once('close', () => { clearTimeout(timeout); reject(new Error(`Exclusive-read fixture exited: ${error}`)); });
-        child.stdout.on('data', chunk => { output += String(chunk); if (output.includes('READY')) { clearTimeout(timeout); resolve(); } });
+        child.stdout.on('data', chunk => { output += String(chunk); if (output.split(/\r?\n/).includes('READY')) { clearTimeout(timeout); resolve(); } });
       });
-    } catch (error) { await release(); throw error; }
+    } catch (error) {
+      try { await release(); } catch (cleanup) { throw new AggregateError([error, cleanup], 'Exclusive-read fixture setup and cleanup failed.'); }
+      throw error;
+    }
   } else {
     const mode = (await stat(path)).mode; release = () => chmod(path, mode); await chmod(path, 0);
   }

@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
-    "test:acceptance": "vitest run test/acceptance",
+    "test:acceptance": "vitest run test/acceptance --maxWorkers=2",
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
@@ -51,5 +51,8 @@
     "@xmldom/xmldom": "0.9.12",
     "langium-cli": "4.4.0",
     "vitest": "5.0.2"
+  },
+  "bin": {
+    "expec": "./dist/cli-entry.js"
   }
 }
