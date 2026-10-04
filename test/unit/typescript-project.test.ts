@@ -12,6 +12,11 @@ const association = (id: string, file: string, declaration: { kind: string; name
 const subject = association('store', 'store.ts', [{ kind: 'class', name: 'Store' }]);
 const query = (files: Record<string, string>, associations: ArtifactAssociation[] = [subject], id = 'store', configFile?: string): ProjectSearch =>
   new TypeScriptProject({ outputId: 'typescript', ...(configFile ? { configFile } : {}) }, associations).search(id, snapshot(files));
+const nativeQuery = (files: Record<string, string>): ProjectSearch => {
+  const captured = snapshot(files);
+  return new TypeScriptProject({ outputId: 'typescript', configFile: 'tsconfig.json' }, [subject]).search('store', { ...captured,
+    files: captured.files.filter(file => !file.path.startsWith('node_modules/')), readOnlyFiles: captured.files.filter(file => file.path.startsWith('node_modules/')) });
+};
 const texts = (result: ProjectSearch, files: Record<string, string>, direction: 'incoming' | 'outgoing'): string[] => result[direction].uses.map(use => {
   const site = use.at.value as { file: string; start: number; end: number }; return files[site.file]!.slice(site.start, site.end);
 });
@@ -219,7 +224,7 @@ describe('captured native configuration and honest reference coverage', () => {
       'node_modules/storage/package.json': '{"name":"storage","exports":{".":{"types":"./types.d.ts"}}}',
       'node_modules/storage/types.d.ts': 'export declare class Storage {}',
       'store.ts': 'import { Storage } from "storage"; export class Store { storage = new Storage(); }' };
-    const result = query(files, [subject], 'store', 'tsconfig.json');
+    const result = nativeQuery(files);
     expect(result.problems).toEqual([]); expect(result.outgoing.uses.some(use => use.target.kind === 'project')).toBe(true);
   });
   it('reports missing extended configuration rather than silently completing', () => {
@@ -246,9 +251,9 @@ describe('captured native configuration and honest reference coverage', () => {
       'node_modules/@types/catalog/package.json': '{"name":"@types/catalog","types":"index.d.ts"}',
       'node_modules/@types/catalog/index.d.ts': 'declare interface Book { title: string }',
       'store.ts': 'export class Store { read(book: Book) { return book.title; } }' };
-    const result = query(files, [subject], 'store', 'tsconfig.json');
+    const result = nativeQuery(files);
     expect(result.problems).toEqual([]); expect(result.outgoing.coverage.complete).toBe(true);
-    expect(result.outgoing.coverage.scope).toContainEqual(expect.objectContaining({ format: 'typescript-file-1', value: { file: 'node_modules/@types/catalog/index.d.ts' } }));
+    expect(result.outgoing.coverage.scope).toContainEqual(expect.objectContaining({ format: 'typescript-native-file-1', value: expect.objectContaining({ file: 'node_modules/@types/catalog/index.d.ts', version: createHash('sha256').update(files['node_modules/@types/catalog/index.d.ts']).digest('hex') }) }));
   });
   it('discovers packages under configured typeRoots without a manual types list', () => {
     const result = query({ 'tsconfig.json': '{"compilerOptions":{"typeRoots":["./types"]},"files":["store.ts"]}',
@@ -257,11 +262,11 @@ describe('captured native configuration and honest reference coverage', () => {
     expect(result.problems).toEqual([]); expect(result.outgoing.coverage.complete).toBe(true);
   });
   it('honors an explicit empty types list instead of automatically discovering captured packages', () => {
-    const result = query({ 'tsconfig.json': '{"compilerOptions":{"types":[]},"files":["store.ts"]}',
+    const result = nativeQuery({ 'tsconfig.json': '{"compilerOptions":{"types":[]},"files":["store.ts"]}',
       'node_modules/@types/catalog/index.d.ts': 'declare interface Book { title: string }',
-      'store.ts': 'export class Store { read(book: Book) { return book.title; } }' }, [subject], 'store', 'tsconfig.json');
+      'store.ts': 'export class Store { read(book: Book) { return book.title; } }' });
     expect(result.problems.map(problem => problem.code)).toContain('typescript-2304');
-    expect(result.outgoing.coverage.scope).not.toContainEqual(expect.objectContaining({ format: 'typescript-file-1', value: { file: 'node_modules/@types/catalog/index.d.ts' } }));
+    expect(result.outgoing.coverage.scope).not.toContainEqual(expect.objectContaining({ format: 'typescript-native-file-1', value: expect.objectContaining({ file: 'node_modules/@types/catalog/index.d.ts' }) }));
   });
   it('retains unresolved values and their exact native cause', () => {
     const files = { 'store.ts': 'export class Store { save() { return missing(); } }' }, result = query(files);

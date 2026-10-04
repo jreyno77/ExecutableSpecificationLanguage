@@ -19,6 +19,25 @@ function workflow(target: OutputAdapter) {
 const value: OutputPlan = { outputId: 'custom', basedOn, changes: [], artifacts: [] };
 const issue = { code: 'unsupported', message: 'No mapping', at: { kind: 'dependency', path: ['custom'] }, related: [] };
 describe('the output workflow checks its replaceable collaborators', () => {
+  it('retains nonblocking obligations through unchanged and stopped receipts without sharing caller state', async () => {
+    const obligations = [{ code: 'verification-required', message: 'Restart survives', at: { kind: 'dependency' as const, path: ['example'] }, related: [] }];
+    const target = adapter({ value: { ...value, obligations }, problems: [], deferred: [] });
+    const caller = workflow(target), written = await caller.output.create(current);
+    expect(written.obligations).toEqual(obligations);
+    obligations[0]!.message = 'changed after writing';
+    expect(written.obligations?.[0]?.message).toBe('Restart survives');
+    const output = new ProjectOutput(target, { root: basedOn.root, readSnapshot: async () => basedOn }, { apply: async () => ({
+      root: basedOn.root, status: 'stopped', outcomes: [], problems: [], createdDirectories: [], temporaryPaths: [],
+    }) });
+    const stopped = await output.create(current);
+    expect(stopped.obligations).toEqual(obligations); expect(stopped.artifacts).toBeUndefined();
+  });
+  it('rejects malformed optional obligations before calling the writer', async () => {
+    for (const obligations of [{}, [null], [{ code: 'missing', message: 1 }]]) {
+      const caller = workflow(adapter({ value: { ...value, obligations }, problems: [], deferred: [] }));
+      await expect(caller.output.create(current)).rejects.toThrow(TypeError); expect(caller.writes()).toBe(0);
+    }
+  });
   it('captures once and retains the actual applied receipt', async () => {
     const caller = workflow(adapter({ value, problems: [], deferred: [] }));
     expect(await caller.output.create(current)).toMatchObject({ receipt: { status: 'unchanged' }, artifacts: [], problems: [] });

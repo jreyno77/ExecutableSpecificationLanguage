@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { vi } from 'vitest';
-import { Compiler, ConfigurationReader, ProjectConnector, SpecificationIdentity, TypeScriptProject, reconcileRelationships,
+import { Compiler, ConfigurationReader, ProjectConnector, SpecificationIdentity, TypeScriptProject, TypeScriptContext, reconcileRelationships,
   type ArtifactAssociation, type Diagnostic, type IdentifiedSpecification, type ProjectContext, type ProjectRead,
   type ProjectSearch, type ProjectSnapshot, type Reconciliation, type TypeScriptProjectOptions } from '../../src/index.js';
 
@@ -58,6 +58,7 @@ export class ProjectReadingDriver {
     return this.reader ??= new TypeScriptProject(this.options, this.associations);
   }
   async capture(): Promise<ProjectSnapshot> { return this.snapshot = await this.context.readSnapshot(); }
+  nativeDependencies(): void { this.context = new TypeScriptContext(this.context, this.options.configFile ? { configFile: this.options.configFile } : {}); }
   async read(id: string): Promise<void> { this.readResult = this.scanner().read(id, await this.capture()); }
   async search(id: string): Promise<void> { this.searchSnapshot(id, await this.capture()); }
   searchSnapshot(id: string, snapshot: ProjectSnapshot): void { this.snapshot = snapshot; this.searchResult = this.scanner().search(id, snapshot); }
@@ -100,7 +101,7 @@ export class ProjectReadingDriver {
     const result = reconcileRelationships(this.current, names.map(name => this.id(name)), this.searchResult.outgoing);
     if (!result.value) throw Error(JSON.stringify(result)); this.compared = result.value;
   }
-  text(path: string): string { return new TextDecoder().decode(this.snapshot.files.find(file => file.path === path)?.bytes ?? this.originals.get(path)); }
+  text(path: string): string { return new TextDecoder().decode([...this.snapshot.files, ...this.snapshot.readOnlyFiles ?? []].find(file => file.path === path)?.bytes ?? this.originals.get(path)); }
   range(occurrence: Occurrence): { start: number; end: number } {
     const source = this.text(occurrence.file), context = occurrence.within ? source.indexOf(occurrence.within) : 0;
     const start = source.indexOf(occurrence.text, context);

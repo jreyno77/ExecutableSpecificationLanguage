@@ -1,11 +1,23 @@
 import {
-  Compiler, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  Compiler, TypeScriptContext, TypeScriptProject, Outputs, umlOutput, markdownOutput, typescriptOutput, acceptanceOutput, SpecificationIdentity, type CompilationInput, type Compilation, type Specification,
+  type OutputRegistration, type OutputWrite,
+  ProjectInitializer, type InitializationPlan, type InitializationResult,
+  LibraryLoader, NpmDependencies, type LibraryLoad, type PackageRead,
   type Inspection, type Item, type IdentityBaseline, type SpecDiff, type Check,
   SourceLoader, SourceComposer, type Configuration, type SourceLoad, type LoadedSources, type SourceCapture,
   FileProjectWriter, type ProjectWriter, type ProjectContext, type FileChange, type FileObservation, type WriteResult,
   type NodeId, type ScenarioCapture, type ScenarioStep,
   TestOperationChecker, ExpressionChecker, FixtureChecker, type TestOperationChecking,
 } from 'executable-specification-language';
+
+export const acceptanceRegistration: OutputRegistration = acceptanceOutput;
+export function remainingTestWork(write: OutputWrite): readonly string[] { return (write.obligations ?? []).map(item => item.message); }
+
+export async function acquire(manifest: string, root: string, configuration: Configuration) {
+  const libraries: LibraryLoad = await new LibraryLoader(manifest).load(configuration);
+  const packages: PackageRead = await new NpmDependencies(root).read(configuration.packages);
+  return { libraries, packages };
+}
 
 const input: CompilationInput = {
   source: { sourceId: 'consumer.expec', text: 'concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }' },
@@ -21,12 +33,27 @@ function capabilities(specification: Specification): readonly Item<'capability'>
 export const capabilityNames: readonly string[] = compilation.value
   ? capabilities(compilation.value).map(capability => capability.name) : [];
 
+export async function captureNative(context: ProjectContext): Promise<import('executable-specification-language').ProjectSnapshot> {
+  const native: ProjectContext = new TypeScriptContext(context, { configFile: 'tsconfig.json', imports: ['vitest'] });
+  const snapshot = await native.readSnapshot();
+  const evidence: readonly import('executable-specification-language').ProjectFile[] = snapshot.readOnlyFiles ?? [];
+  return snapshot;
+}
+
 export async function writeProject(context: ProjectContext): Promise<WriteResult> {
   const writer: ProjectWriter = new FileProjectWriter(context);
   const changes: FileChange[] = [{ kind: 'write', path: 'book.txt', bytes: new TextEncoder().encode('book') }];
   const result = await writer.apply({ basedOn: await context.readSnapshot(), changes });
   const observation: FileObservation | undefined = result.outcomes[0]?.after[0];
   return result;
+}
+
+export async function writeWithNativeEvidence(context: ProjectContext, uri: string, version: string): Promise<WriteResult> {
+  const snapshot: import('executable-specification-language').ProjectSnapshot = {
+    ...await context.readSnapshot(), nativeInputs: [{ uri, version }],
+  };
+  const captured: readonly { readonly uri: string; readonly version: string }[] = snapshot.nativeInputs ?? [];
+  return new FileProjectWriter(context).apply({ basedOn: snapshot, changes: [] });
 }
 
 export function checkedOperations(specification: Specification): readonly Check<NodeId>[] {
@@ -85,8 +112,18 @@ export function documentationProfiles() {
   return outputs.profiles;
 }
 
+export async function initializeProject(manifest: string, configuration: Configuration): Promise<InitializationResult | undefined> {
+  const initializer = new ProjectInitializer(manifest, configuration);
+  const preview: Check<InitializationPlan> = await initializer.prepare({ root: 'chosen-game', target: 'typescript' });
+  return preview.value ? initializer.apply(preview.value, true) : undefined;
+}
+
 export function openTypeScriptOutput(project: ProjectContext, context: import('executable-specification-language').OutputContext) {
   const outputs = new Outputs();
   outputs.register(typescriptOutput);
   return outputs.open('typescript', { directory: 'src' }, project, new FileProjectWriter(project), context);
+}
+
+export function compileWorkspace(sources: LoadedSources): Compilation {
+  return new Compiler().compile({ resolution: new SourceComposer(sources.locate).compose(sources.entries) });
 }
