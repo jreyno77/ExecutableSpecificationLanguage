@@ -95,9 +95,21 @@ export class KotlinExamples {
       }
       case 'name-expression': {
         const binding = item.reference.resolution;
-        if (binding.status === 'bound') { const declaration = this.inspection.read(binding.target); if (declaration.kind === 'parameter') return this.name(declaration); }
+        if (binding.status === 'bound') {
+          const declaration = this.inspection.read(binding.target);
+          if (declaration.kind === 'parameter') return this.name(declaration);
+          if (declaration.kind === 'fixture') return receiver + '.' + this.name(declaration);
+        }
         if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && item.reference.segments.length === 1 && this.locals.has(item.reference.segments[0]!)) return item.reference.segments[0]!;
         return this.problem('unsupported-native-value', item, 'This value requires an explicit executable binding.');
+      }
+      case 'unary-expression': return item.operator === 'not' ? '(!' + this.expression(item.operand, receiver) + ')'
+        : '(' + item.operator + this.options.package + '.dsl.finiteNumber(' + this.expression(item.operand, receiver) + '))';
+      case 'member-expression': {
+        const type = this.valueType(item.receiver);
+        const field = type && this.data.fields(type, item).find(field => this.inspection.read(field.declaration, 'field').name === item.member.segments[0]);
+        return field ? '(' + this.expression(item.receiver, receiver, type) + ').' + this.data.field(field.declaration)
+          : this.problem('missing-native-mapping', item, 'The checked data member needs its actual native property association.');
       }
       case 'call-expression': {
         const selected = this.current.specification.call(item.id).value!;
@@ -187,8 +199,29 @@ export class KotlinExamples {
       methods.push('  fun ' + name + '(' + parameters + '): ' + result + ' = driver.' + name + '(' + operation.parameters.map(item => this.name(item)).join(', ') + ')');
       driverArtifacts.push(artifact(operation.id, 'driver', this.className + 'Driver', name, canonical));
     }
+    const fixtures: string[] = [], visited = new Set<NodeId>(), names = new Set(this.operations.map(item => this.name(item)));
+    const fixture = (item: Item<'fixture'>): void => {
+      if (visited.has(item.id)) return; visited.add(item.id);
+      const name = this.name(item);
+      if (names.has(name)) this.problem('native-name-conflict', item, 'Distinct data and operations require distinct native names: ' + name); names.add(name);
+      const dependencies = (node: Item): void => {
+        if (node.kind === 'reference' && node.resolution.status === 'bound') {
+          const target = this.inspection.read(node.resolution.target); if (target.kind === 'fixture') fixture(target);
+        }
+        for (const child of this.inspection.children(node.id)) dependencies(child);
+      };
+      dependencies(item.value);
+      const type = this.types.typeOf(item.declaredType.id);
+      if (type.status !== 'known') { this.problem('invalid-native-type', item, 'A fixture needs its checked declared type.'); return; }
+      fixtures.push('  val ' + name + ': ' + this.type(type.value, item) + ' = ' + this.expression(item.value, 'this', type.value));
+      dslArtifacts.push({ specId: this.current.id(item.id), locator: { outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: {
+        file: prefix + '/dsl/' + this.className + '.kt', declaration: [{ kind: 'class', name: this.className }, { kind: 'property', name }],
+      } } });
+    };
+    this.locals.clear();
+    for (const item of this.inspection.query('fixture')) if (this.owned(item)) fixture(item);
     add(this.current.id(group.id) + ':driver', 'driver', this.className + 'Driver', 'open class ' + this.className + 'Driver {\n' + driver.join('\n') + '\n}', driverArtifacts);
-    add(this.current.id(group.id) + ':dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + methods.join('\n') + '\n}', dslArtifacts);
+    add(this.current.id(group.id) + ':dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + [...fixtures, ...methods].join('\n') + '\n}', dslArtifacts);
     add(this.current.id(group.id) + ':fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + this.options.package + '.driver.' + this.className + 'Driver())\n}', []);
     add(this.current.id(group.id) + ':comparison', 'dsl', 'ExpecChecks', this.data.source(), []);
     this.problems.push(...this.data.problems);
