@@ -30,6 +30,12 @@ export const acceptanceStatePath = '.expec/outputs/616363657074616e6365.json';
 export interface AcceptanceState { format: 1; options: string; mappings: AcceptanceMapping[]; deleted: string[]; authored: string[]; files: NativeBaseline[] }
 export const acceptancePlacement = ({ adoptExisting: _permission, names: _names, imports: _imports, ...settings }: AcceptanceOptions): string => canonical(settings);
 
+/** Only the first default-to-authored fixture selection changes placement. */
+export function initialFixtureSelection(state: AcceptanceState, options: AcceptanceOptions): boolean {
+  const { fixture, ...unchanged } = options;
+  return !!fixture && state.options === acceptancePlacement(unchanged);
+}
+
 export function testIdentities(statement: ts.Statement): string[] {
   const source = statement.getSourceFile();
   return (ts.getLeadingCommentRanges(source.text, statement.pos) ?? []).flatMap(range => {

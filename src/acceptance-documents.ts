@@ -96,7 +96,7 @@ export class AcceptanceDocuments {
       for (const file of this.state.files) {
         const current = this.capture.program?.getSourceFile(this.capture.absolute(file.path)), original = baseline.program?.getSourceFile(baseline.absolute(file.path));
         if (!current || !original) continue;
-        if (file.path === this.options.testRoot + '/dsl/comparison.ts' || file.path === this.options.testRoot + '/dsl/' + this.options.domain + '-test.ts') compare(original, current);
+        if (file.path === this.options.testRoot + '/dsl/comparison.ts' || !this.options.fixture && file.path === this.options.testRoot + '/dsl/' + this.options.domain + '-test.ts') compare(original, current);
         if (file.container?.role !== 'dsl') continue;
         for (const item of file.artifacts.filter(item => this.state!.authored.includes(item.specId) && !file.adopted?.includes(item.specId))) {
           const selectors = (item.locator.value as unknown as { declaration: Selector[] }).declaration;
