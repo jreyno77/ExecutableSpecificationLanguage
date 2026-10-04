@@ -1,0 +1,54 @@
+import { z } from 'zod';
+import type { Check } from './checking.js';
+import type { ProjectSnapshot } from './project-connection.js';
+import type { KotlinQuery } from './kotlin-query.js';
+import { KotlinProject } from './kotlin-project.js';
+import { kotlinOptions } from './kotlin-declarations.js';
+import { kotlinTuple } from './kotlin-tuples.js';
+import { identifier, locatorSchema, success } from './identity-baseline.js';
+import { hash, literal } from './project-files.js';
+import { readJson } from './json-data.js';
+import { outputProblem } from './output-documents.js';
+
+export const kotlinStatePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
+const state = z.strictObject({ format: z.literal(1), options: z.string(), deleted: z.array(identifier).default([]), subjects: z.array(identifier),
+  mappings: z.array(z.strictObject({ id: identifier, kind: z.enum(['name', 'import']), name: z.string(), as: z.string().optional() })), files: z.array(z.strictObject({
+  adopted: z.boolean().optional(), id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
+  artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })),
+})) });
+
+export type KotlinOutputState = z.infer<typeof state>;
+
+export function kotlinState(snapshot: ProjectSnapshot): Check<KotlinOutputState> {
+  const source = snapshot.files.find(file => file.path === kotlinStatePath);
+  if (!source) return { problems: [], deferred: [] };
+  try {
+    const parse = (text: string) => readJson(text, (_code, message) => { throw new Error(message); });
+    const stored = state.parse(parse(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes)));
+    kotlinOptions.parse(parse(stored.options));
+    if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || Buffer.from(file.generated).toString('utf8') !== file.generated
+      || file.artifacts.some(item => item.locator.outputId !== 'kotlin' || (item.locator.value as { file: string }).file !== file.path))) throw new Error('Invalid generated Kotlin baseline.');
+    new KotlinProject({ outputId: 'kotlin' }, stored.files.flatMap(file => file.artifacts));
+    return success(stored);
+  } catch { return { problems: [outputProblem('invalid-output-state', kotlinStatePath, 'Recorded Kotlin text, options or associations are invalid.')], deferred: [] }; }
+}
+
+/** Only unchanged generated tuple support supplies trusted construction/accessors. */
+export function kotlinTupleTypes(snapshot: ProjectSnapshot, native: KotlinQuery): Check<ReadonlyMap<number, string | undefined>> {
+  const stored = kotlinState(snapshot);
+  if (stored.problems.length) return { problems: stored.problems, deferred: [] };
+  const tuples = new Map<number, string | undefined>();
+  if (!stored.value) return success(tuples);
+  const options = kotlinOptions.parse(JSON.parse(stored.value.options));
+  for (const file of stored.value.files) {
+    const match = /\/Tuple([1-9][0-9]*)\.kt$/.exec(file.path);
+    if (!match) continue;
+    const arity = Number(match[1]), expected = kotlinTuple(options.package, arity);
+    if (file.generated !== expected) continue;
+    const matches = native.declarations.filter(item => item.file === file.path && item.kind === 'class' && item.selector.length === 1 && item.name === 'Tuple' + arity && item.packageName === options.package);
+    const current = snapshot.files.find(item => item.path === file.path);
+    tuples.set(arity, current?.version === hash(Buffer.from(expected)) && matches.length === 1 && matches[0]!.dataConstruction
+      ? options.package + '.Tuple' + arity : undefined);
+  }
+  return success(tuples);
+}

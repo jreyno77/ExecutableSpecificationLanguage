@@ -9,7 +9,13 @@ import type { KotlinQuery } from './kotlin-query.js';
 export class KotlinData {
   readonly problems: Diagnostic[] = [];
   private readonly comparisons = new Map<TypeId, { name: string; body: string }>();
-  constructor(private readonly types: TypeCatalog, private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>) {}
+  readonly generatedTuples = new Set<number>();
+  constructor(private readonly types: TypeCatalog, private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>,
+    private readonly tuples: ReadonlyMap<number, string | undefined>, private readonly tuplePackage: string) {}
+  private tuple(arity: number, item: Item): string {
+    if (this.tuples.has(arity)) return this.tuples.get(arity) ?? this.problem(item, 'Tuple data requires its unchanged generated carrier.');
+    this.generatedTuples.add(arity); return this.tuplePackage + '.Tuple' + arity;
+  }
   private problem(item: Item, message: string): string { this.problems.push({ code: 'unsupported-native-data', at: item.origin, message, related: [] }); return '__unsupported'; }
   shape(id: TypeId) {
     let shape = this.types.describe(id);
@@ -23,6 +29,7 @@ export class KotlinData {
       return name === 'List' ? 'MutableList<' + this.type(type.arguments[0]!, item) + '>' : ({ Text: 'String', Number: 'Double', Boolean: 'Boolean', Nothing: 'Unit' } as Record<string, string>)[name]!;
     }
     if (type.kind === 'optional') return this.type(type.inner, item) + '?';
+    if (type.kind === 'tuple') return this.tuple(type.elements.length, item) + '<' + type.elements.map(element => this.type(element, item)).join(', ') + '>';
     if (type.kind === 'declared' || type.kind === 'alias') {
       const target = this.targets.get(type.declaration);
       if (target) return target.packageName + '.' + target.selector.map(item => item.name).join('.') + (type.arguments.length ? '<' + type.arguments.map(id => this.type(id, item)).join(', ') + '>' : '');
@@ -63,6 +70,10 @@ export class KotlinData {
         : 'org.junit.jupiter.api.Assertions.assertEquals(expected, actual, path)';
     } else if (type.kind === 'builtin') {
       body = 'require(actual is List<*> && expected is List<*> && ordinaryList(actual) && ordinaryList(expected)) { path + ": expected ordinary List data" }\n  ' + this.guarded('org.junit.jupiter.api.Assertions.assertEquals(expected.size, actual.size, path + ".size")\n    for (index in expected.indices) ' + nested(type.arguments[0]!, 'actual[index]', 'expected[index]', 'path + "[" + index + "]"'));
+    } else if (type.kind === 'tuple') {
+      const name = this.tuple(type.elements.length, item), cast = name + '<' + type.elements.map(() => '*').join(', ') + '>';
+      body = 'require(actual is ' + cast + ' && expected is ' + cast + ' && actual.javaClass == ' + name + '::class.java && expected.javaClass == ' + name + '::class.java) { path + ": expected declared tuple data" }\n  ' + this.guarded(type.elements.map((element, index) =>
+        nested(element, 'actual.item' + (index + 1), 'expected.item' + (index + 1), 'path + "[' + index + ']"')).join('\n    '));
     } else if (type.kind === 'declared' && this.types.inspection.read(type.declaration).kind === 'record-type-declaration') {
       const target = this.targets.get(type.declaration), name = target && target.packageName + '.' + target.selector.map(item => item.name).join('.');
       if (!name) body = this.problem(item, 'Record comparison needs its actual native class.');

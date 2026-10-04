@@ -4,23 +4,15 @@ import type { ProjectSnapshot } from './project-connection.js';
 import type { ProjectRead, ProjectSearch } from './project-inspection.js';
 import { KotlinDeclarations, kotlinOptions, type KotlinOptions } from './kotlin-declarations.js';
 import { outputProblem } from './output-documents.js';
-import { canonical, identifier, locatorSchema, success } from './identity-baseline.js';
-import { z } from 'zod';
-import { hash, literal } from './project-files.js';
+import { canonical, success } from './identity-baseline.js';
+import { hash } from './project-files.js';
 import { KotlinProject } from './kotlin-project.js';
 import { adoptKotlin } from './kotlin-adoption.js';
 import { preserveKotlin, retireKotlin } from './kotlin-preservation.js';
 import { nativeInputs } from './native-inputs.js';
 import { validDiff } from './output-contract.js';
 import { kotlinConfiguration } from './kotlin-configuration.js';
-import { readJson } from './json-data.js';
-
-const statePath = '.expec/outputs/' + Buffer.from('kotlin').toString('hex') + '.json';
-const state = z.strictObject({ format: z.literal(1), options: z.string(), deleted: z.array(identifier).default([]), subjects: z.array(identifier),
-  mappings: z.array(z.strictObject({ id: identifier, kind: z.enum(['name', 'import']), name: z.string(), as: z.string().optional() })), files: z.array(z.strictObject({
-  adopted: z.boolean().optional(), id: identifier, path: z.string().refine(literal), generated: z.string(), hash: z.string(),
-  artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })),
-})) });
+import { kotlinState, kotlinStatePath as statePath, type KotlinOutputState } from './kotlin-output-state.js';
 
 export const kotlinOutput: OutputRegistration = {
   id: 'kotlin', validate: options => {
@@ -33,25 +25,12 @@ export const kotlinOutput: OutputRegistration = {
 class KotlinOutput implements OutputAdapter {
   readonly id = 'kotlin';
   constructor(private readonly options: KotlinOptions, private readonly context?: OutputContext) {}
-  private state(snapshot: ProjectSnapshot): Check<z.infer<typeof state>> {
-    const source = snapshot.files.find(file => file.path === statePath);
-    if (!source) return { problems: [], deferred: [] };
-    try {
-      const parse = (text: string) => readJson(text, (_code, message) => { throw new Error(message); });
-      const stored = state.parse(parse(new TextDecoder('utf-8', { fatal: true }).decode(source.bytes)));
-      kotlinOptions.parse(parse(stored.options));
-      if (stored.files.some(file => hash(Buffer.from(file.generated)) !== file.hash || Buffer.from(file.generated).toString('utf8') !== file.generated
-        || file.artifacts.some(item => item.locator.outputId !== this.id || (item.locator.value as { file: string }).file !== file.path))) throw new Error('Invalid generated Kotlin baseline.');
-      new KotlinProject({ outputId: this.id }, stored.files.flatMap(file => file.artifacts));
-      return success(stored);
-    } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded Kotlin text, options or associations are invalid.')], deferred: [] }; }
-  }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'A complete captured project is required.')], deferred: [] };
     if (!nativeInputs(snapshot) || !snapshot.nativeInputs?.length) return { problems: [outputProblem('native-inputs-unavailable', '', 'Supply captured Kotlin native inputs before planning.')], deferred: [] };
     const configuration = kotlinConfiguration(snapshot, 'expec.kotlin.json');
     if (!configuration.value) return { problems: configuration.problems, deferred: [] };
-    const stored = this.state(snapshot);
+    const stored = kotlinState(snapshot);
     if (stored.problems.length) return { problems: stored.problems, deferred: [] };
     const previous = stored.value;
     const missing = previous?.files.filter(file => !snapshot.files.some(current => current.path === file.path)) ?? [];
@@ -98,7 +77,7 @@ class KotlinOutput implements OutputAdapter {
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
     return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts), ...preserved?.value ? { obligations: preserved.value.obligations } : {} });
   }
-  private async delete(id: string, snapshot: ProjectSnapshot, previous?: z.infer<typeof state>): Promise<Check<OutputPlan>> {
+  private async delete(id: string, snapshot: ProjectSnapshot, previous?: KotlinOutputState): Promise<Check<OutputPlan>> {
     if (!previous || !previous.files.some(file => file.artifacts.some(item => item.specId === id)) && !previous.deleted.includes(id)) {
       return { problems: [outputProblem('output-not-found', '', 'No owned Kotlin declaration exists for ' + id)], deferred: [] };
     }
@@ -116,14 +95,14 @@ class KotlinOutput implements OutputAdapter {
       artifacts: next.files.flatMap(file => file.artifacts), obligations: preserved.value.obligations });
   }
   async read(id: string, snapshot: ProjectSnapshot): Promise<ProjectRead> {
-    const stored = this.state(snapshot);
+    const stored = kotlinState(snapshot);
     if (stored.problems.length) return { artifacts: [], problems: stored.problems, coverage: {
       scope: [], complete: false, limitations: stored.problems.map(problem => problem.message),
     } };
     return new KotlinProject({ outputId: this.id }, stored.value?.files.flatMap(file => file.artifacts) ?? []).read(id, snapshot);
   }
   async search(id: string, snapshot: ProjectSnapshot): Promise<ProjectSearch> {
-    const stored = this.state(snapshot);
+    const stored = kotlinState(snapshot);
     if (stored.problems.length) {
       const coverage = { scope: [], complete: false, limitations: stored.problems.map(problem => problem.message) };
       return { definitions: [], problems: stored.problems,

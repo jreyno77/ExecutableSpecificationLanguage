@@ -10,6 +10,7 @@ import type { TypeFact, TypeId } from './type-description.js';
 import { literal } from './project-files.js';
 import { language } from './language-text.js';
 import { identifier as specIdentifier } from './identity-baseline.js';
+import { kotlinTuple } from './kotlin-tuples.js';
 import { selectKotlinMapping } from './kotlin-mapping.js';
 
 const reserved = new Set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while'.split(' '));
@@ -319,7 +320,7 @@ export class KotlinDeclarations {
     this.problem('unsupported-native-declaration', item, 'No native declaration mapping for ' + item.kind); return '';
   }
   render(): KotlinFile[] {
-    const files: KotlinFile[] = [], prefix = 'package ' + this.options.package + '\n\n' + doc(['Number profile: finite binary64 (Kotlin Double).']);
+    const files: KotlinFile[] = [];
     for (const item of this.selected) {
       if (item.kind === 'opaque-type-declaration') {
         if (!this.mappings.has(item.id)) this.problem('missing-native-mapping', item, 'Provide a native type mapping for ' + this.authored(item) + '.');
@@ -335,9 +336,7 @@ export class KotlinDeclarations {
     }
     for (const [arity, owner] of this.tuples) {
       const path = this.options.directory + '/' + this.options.package.replaceAll('.', '/') + '/Tuple' + arity + '.kt';
-      const indices = Array.from({ length: arity }, (_, index) => index + 1);
-      files.push({ id: this.current.id(owner.id), path, text: prefix + 'data class Tuple' + arity + '<' + indices.map(index => 'T' + index).join(', ') + '>('
-        + indices.map(index => 'var item' + index + ': T' + index).join(', ') + ')\n',
+      files.push({ id: this.current.id(owner.id), path, text: kotlinTuple(this.options.package, arity),
       artifacts: [{ specId: this.current.id(owner.id), locator: { outputId: 'kotlin', format: 'kotlin-file-1', value: { file: path } } }] });
     }
     const seen = new Set<string>();

@@ -11,6 +11,7 @@ import { decimal } from './decimal.js';
 import { ExpressionChecker } from './expression-checker.js';
 import { KotlinData } from './kotlin-data.js';
 import { fromFact } from './checking.js';
+import { kotlinTuple } from './kotlin-tuples.js';
 import { selectKotlinMapping } from './kotlin-mapping.js';
 
 export interface KotlinTestOptions { testRoot: string; package: string; domain: string; names: KotlinOptions['names'] }
@@ -32,9 +33,9 @@ export class KotlinExamples {
   private readonly locals = new Map<string, TypeId>();
   private readonly names = new Map<NodeId, string>();
   constructor(private readonly current: IdentifiedSpecification, private readonly options: KotlinTestOptions,
-    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number]) {
+    private readonly targets: ReadonlyMap<NodeId, KotlinQuery['declarations'][number]>, context?: OutputContext, private readonly fixture?: KotlinQuery['declarations'][number], private readonly nativeDriver?: KotlinQuery['declarations'][number], tuples: ReadonlyMap<number, string | undefined> = new Map()) {
     this.inspection = current.specification.inspection; this.types = current.specification.types;
-    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets);
+    this.expressions = new ExpressionChecker(this.types); this.data = new KotlinData(this.types, targets, tuples, options.package + '.dsl');
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.operations = [...this.inspection.query('setup'), ...this.inspection.query('action'), ...this.inspection.query('observation'), ...this.inspection.query('check')].filter(item => this.owned(item));
     this.className = options.domain[0]!.toUpperCase() + options.domain.slice(1);
@@ -93,6 +94,7 @@ export class KotlinExamples {
       case 'grouped-expression': return '(' + this.expression(item.inner, receiver, expected) + ')';
       case 'list-expression': {
         const id = expected ?? this.valueType(item), shape = id && this.data.shape(id);
+        if (shape?.kind === 'tuple') return this.type(id!, item) + '(' + item.elements.map((element, index) => this.expression(element, receiver, shape.elements[index])).join(', ') + ')';
         if (shape?.kind !== 'builtin' || this.inspection.read(shape.declaration, 'builtin-type').name !== 'List') return this.problem('unsupported-native-data', item, 'A list needs its checked element type.');
         return 'mutableListOf<' + this.type(shape.arguments[0]!, item) + '>(' + item.elements.map(element => this.expression(element, receiver, shape.arguments[0]!)).join(', ') + ')';
       }
@@ -254,6 +256,8 @@ export class KotlinExamples {
     add(this.current.id(group.id) + ':dsl', 'dsl', this.className, 'class ' + this.className + '(private val driver: ' + this.options.package + '.driver.' + this.className + 'Driver) {\n' + [...fixtures, ...methods].join('\n') + '\n}', dslArtifacts);
     add(this.current.id(group.id) + ':fixture', 'dsl', this.className + 'Fixture', '/** JUnit creates a fresh domain and driver per test. No resource lifecycle is implied. */\nopen class ' + this.className + 'Fixture' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? '(driver: ' + this.options.package + '.driver.' + this.className + 'Driver)' : '') + ' {\n  protected val ' + this.options.domain + ' = ' + this.className + '(' + (this.nativeDriver && !this.nativeDriver.zeroArgumentConstruction ? 'driver' : this.options.package + '.driver.' + this.className + 'Driver()') + ')\n}', [artifact(group.id, 'dsl', this.className + 'Fixture')]);
     add(this.current.id(group.id) + ':comparison', 'dsl', 'ExpecChecks', this.data.source(), []);
+    for (const arity of this.data.generatedTuples) files.push({ id: this.current.id(group.id) + ':tuple:' + arity,
+      path: prefix + '/dsl/Tuple' + arity + '.kt', text: kotlinTuple(this.options.package + '.dsl', arity), artifacts: [] });
     this.problems.push(...this.data.problems);
     return files.map(file => ({ ...file, artifacts: [...file.artifacts, { specId: this.current.id(group.id), locator: { outputId: 'kotlin-acceptance', format: 'kotlin-file-1', value: { file: file.path } } }] }));
   }

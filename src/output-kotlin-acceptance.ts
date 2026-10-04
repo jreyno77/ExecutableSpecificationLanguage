@@ -15,6 +15,7 @@ import { KotlinExamples } from './kotlin-examples.js';
 import { KotlinProject } from './kotlin-project.js';
 import { checkKotlinTests } from './kotlin-test-contract.js';
 import { compatibleKotlinFixture, migrateKotlinFixture, selectedKotlinFixture } from './kotlin-fixture.js';
+import { kotlinTupleTypes } from './kotlin-output-state.js';
 import { kotlinOptions } from './kotlin-declarations.js';
 import { queryKotlin, type KotlinQuery } from './kotlin-query.js';
 
@@ -92,7 +93,8 @@ class KotlinAcceptance implements OutputAdapter {
     if (!mapped.value) return { problems: mapped.problems, deferred: mapped.deferred };
     const bindings = mapped.value;
     if (stored.value?.bindings?.some(before => !bindings.some(after => before.specId === after.specId && canonical(before.locator) === canonical(after.locator)))) return failure('output-options-changed', 'A retained native operation binding cannot silently change.');
-    const rendered = new KotlinExamples(request.current, this.settings, targets, this.context, fixture, driver), files = rendered.files();
+    const tuples = kotlinTupleTypes(snapshot, native.value); if (!tuples.value) return { problems: tuples.problems, deferred: tuples.deferred };
+    const rendered = new KotlinExamples(request.current, this.settings, targets, this.context, fixture, driver, tuples.value), files = rendered.files();
     if (rendered.problems.length) return { problems: rendered.problems, deferred: [] };
     const names = rendered.mapping();
     if (stored.value) {
