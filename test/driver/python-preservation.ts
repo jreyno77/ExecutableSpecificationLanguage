@@ -32,6 +32,13 @@ export class PythonPreservationDriver extends PythonProjectDriver {
     if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
     const diff = this.identity.compare(before, this.current); if (!diff.value) throw new Error(JSON.stringify(diff)); this.diff = diff.value;
   }
+  retireCapability(name: string, text: string): void {
+    const before = this.current.baseline, prior = [...this.current.specification.inspection.query('capability')].find(item => item.name === name);
+    if (!prior) throw new Error('Expected the explicitly named capability to retire.');
+    const identified = this.identity.associate(this.compile(text), before, [{ retire: this.current.id(prior.id) }]);
+    if (!identified.value) throw new Error(JSON.stringify(identified)); this.current = identified.value;
+    const diff = this.identity.compare(before, this.current); if (!diff.value) throw new Error(JSON.stringify(diff)); this.diff = diff.value;
+  }
   async update(): Promise<void> {
     const opened = this.outputs.open('python', { module: 'store.contracts' }, this.context, new FileProjectWriter(this.context));
     this.written = opened.value ? await opened.value.update(this.diff, this.current) : { problems: opened.problems }; this.remember();

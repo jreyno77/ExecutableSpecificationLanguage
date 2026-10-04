@@ -3,6 +3,16 @@ import { PythonEvolution } from '../dsl/python-preservation.js';
 
 afterEach(() => PythonEvolution.dispose());
 describe('Python contracts evolve around handwritten implementation', { timeout: 240_000 }, () => {
+  it('retires an unused generated capability and retains the implemented save capability', async () => {
+    const p = await PythonEvolution.create();
+    p.source('class StoreGame { public save, unused\ncapability save(title: Text) returns Nothing\ncapability unused() returns Nothing }'); await p.generate();
+    await p.implementSave('self.saved = title  # Keep this implementation.');
+    p.retireCapability('unused', 'class StoreGame { public save\ncapability save(title: Text) returns Nothing }');
+    await p.update(); p.expectApplied();
+    await p.run('from store.contracts import StoreGame\ngame = StoreGame()\ngame.save("Dune")\nprint(game.saved)\nprint(hasattr(game, "unused"))'); p.expectOutput('Dune\nFalse');
+    p.retireCapability('save', 'class StoreGame {}'); await p.update(); p.expectRefused('output-conflict');
+    await p.expectSaveImplementationKept('self.saved = title  # Keep this implementation.');
+  });
   it('adopts the explicitly mapped shared file without changing its implementation or neighbors', async () => {
     const p = await PythonEvolution.create();
     p.source('class StoreGame { public save\ncapability save(title: Text) returns Nothing }');

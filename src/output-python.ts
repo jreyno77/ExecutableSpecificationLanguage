@@ -15,7 +15,7 @@ import { readJson } from './json-data.js';
 import type { ArtifactAssociation } from './specification-identity.js';
 
 const schema = z.strictObject({ format: z.literal(1), options: z.string(), path: z.string().refine(pythonPath), generated: z.string(),
-  hash: z.string().regex(/^[a-f0-9]{64}$/), artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })) });
+  hash: z.string().regex(/^[a-f0-9]{64}$/), authored: z.array(identifier), artifacts: z.array(z.strictObject({ specId: identifier, locator: locatorSchema })) });
 type State = z.infer<typeof schema>;
 const statePath = '.expec/outputs/707974686f6e.json';
 const placement = ({ adoptExisting: _permission, ...options }: PythonOptions): string => canonical(options);
@@ -50,7 +50,8 @@ class PythonOutput implements OutputAdapter {
     const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
     try {
       const state = schema.parse(readJson(new TextDecoder('utf8', { fatal: true }).decode(file.bytes), (_code, message) => { throw Error(message); }));
-      if (hash(Buffer.from(state.generated)) !== state.hash) throw Error('Invalid generated ownership.');
+      if (hash(Buffer.from(state.generated)) !== state.hash || new Set(state.authored).size !== state.authored.length
+        || state.authored.some(id => !state.artifacts.some(item => item.specId === id))) throw Error('Invalid generated ownership.');
       new PythonProject({ outputId: this.id }, state.artifacts);
       return state.options === placement(this.options) ? success(state) : failure('output-options-changed', 'Python placement requires an explicit migration.', [statePath]);
     } catch { return failure('invalid-output-state', 'Recorded Python ownership or generated text is invalid.', [statePath]); }
@@ -92,13 +93,15 @@ class PythonOutput implements OutputAdapter {
       }
     }
     const artifacts = locate(file.artifacts, previous?.artifacts ?? adopted);
-    const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts };
+    const next: State = { format: 1, options: placement(this.options), path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)),
+      authored: previous?.authored ?? [...new Set(adopted.map(item => item.specId))], artifacts };
     const changes: FileChange[] = [];
     if (previous) {
       const known = new Set([...request.current.baseline.elements.map(item => item.id), ...request.current.baseline.retired]);
       if (previous.artifacts.some(item => !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must retain or explicitly retire earlier subjects.');
       if (request.operation === 'create' && previous.hash !== next.hash) return failure('use-update', 'Use update for changed existing Python contracts.');
-      const inspected = await inspectPython(snapshot, this.options.configFile, { before: previous.generated, after: next.generated, previous: previous.artifacts, next: next.artifacts });
+      const inspected = await inspectPython(snapshot, this.options.configFile, { before: previous.generated, after: next.generated,
+        previous: previous.artifacts, next: next.artifacts, authored: previous.authored });
       if (inspected.problems.length || !inspected.value?.rewritten) return { problems: inspected.problems.length ? inspected.problems : [outputProblem('python-preservation-unavailable', file.path, 'Native preservation returned no result.')], deferred: [] };
       for (const rewritten of inspected.value.rewritten) {
         const bytes = Buffer.from(rewritten.text), before = snapshot.files.find(item => item.path === rewritten.file);

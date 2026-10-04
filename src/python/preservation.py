@@ -96,7 +96,7 @@ def preserve(request, root, facts=None):
     wrappers = {file: MetadataWrapper(cst.parse_module((root / file).read_bytes())) for file in sorted(files)}
     modules = {file: wrapper.module for file, wrapper in wrappers.items()}
     actual = {file: declarations(module) for file, module in modules.items()}
-    replacements, additions, problems, names = {}, {}, [], {}
+    replacements, additions, problems, names, removals = {}, {}, [], {}, set()
 
     def problem(code, file, message):
         problems.append({"code": code, "file": file, "message": message})
@@ -152,7 +152,27 @@ def preserve(request, root, facts=None):
             additions.setdefault(parent, []).append(wanted)
     for identity, artifact in previous.items():
         if identity not in desired:
-            problem("unsupported-python-change", artifact["locator"]["value"]["file"], "Retirement requires native consumer and implementation checks.")
+            key, file = selector(artifact), artifact["locator"]["value"]["file"]
+            if key[-1][0] == "parameter":
+                continue
+            prior, current = before.get(key), actual[file].get(key)
+            if identity[0] in request.get("authored", []):
+                problem("output-conflict", file, "Adoption does not grant ownership of handwritten declarations."); continue
+            if not isinstance(prior, cst.FunctionDef) or not isinstance(current, cst.FunctionDef):
+                problem("unsupported-python-change", file, "This declaration needs an explicit native retirement strategy."); continue
+            code = lambda node: cst.Module([]).code_for_node(node).replace("\r\n", "\n").strip()
+            if code(current) != code(prior):
+                problem("output-conflict", file, "A handwritten implementation or comment cannot be retired."); continue
+            targets = [item["target"] for item in (facts or {}).get("declarations", []) if item["file"] == file
+                       and tuple((part["kind"], part["name"]) for part in item["declaration"]) == key]
+            if len(targets) != 1:
+                problem("incomplete-native-references", file, "Retirement requires one native declaration and its actual uses."); continue
+            target_key = lambda item: (item["file"], item["line"], item["column"])
+            incoming = [use for use in facts["uses"] if any(target_key(target) == target_key(targets[0]) for target in use["targets"])
+                        or use["member"] and use["name"] == key[-1][1] and len(use["targets"]) != 1]
+            if incoming:
+                problem("native-reference-conflict", incoming[0]["file"], "A native caller still uses, or may use, the retiring declaration."); continue
+            removals.add(current)
     if problems:
         return [], problems
 
@@ -169,6 +189,8 @@ def preserve(request, root, facts=None):
             return updated.with_changes(value=name) if name else updated
 
         def leave_FunctionDef(self, original, updated):
+            if original in removals:
+                return cst.RemoveFromParent()
             wanted = replacements.get(original)
             return signature(updated, wanted) if wanted else updated
 
