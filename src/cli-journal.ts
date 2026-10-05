@@ -10,7 +10,7 @@ import { readJson } from './json-data.js';
 import type { OutputPlan } from './output.js';
 import { checkPlan } from './output-contract.js';
 import { hash, literal } from './project-files.js';
-import type { ProjectSnapshot } from './project-connection.js';
+import type { ProjectContext, ProjectSnapshot } from './project-connection.js';
 import { FileProjectWriter, type FileChange, type WriteResult } from './project-writer.js';
 import type { IdentityBaseline } from './specification-identity.js';
 
@@ -110,29 +110,41 @@ export class BuildJournal {
   private async finish(journal: Journal, snapshot: ProjectSnapshot, prefix: number, confirmed: boolean, pendingVersion: string): Promise<CommandResult> {
     const stageContext = this.context.during(restoreGraph(journal.graph)), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],
       obligations: journal.plans.flatMap(plan => plan.obligations) as Diagnostic[] };
+    const owned = (snapshot: ProjectSnapshot) => canonical({ root: snapshot.root, excluded: [...snapshot.excluded].sort(), excludeNames: [...snapshot.excludeNames].sort(),
+      files: snapshot.files.filter(file => file.path !== '.expec/write.lock').map(file => [file.path, file.version]).sort() });
+    const incomplete = (snapshot: ProjectSnapshot): ProjectSnapshot => ({ ...snapshot, complete: false,
+      problems: [...snapshot.problems, this.problem('Project or native inputs changed while checking the completed stage; pending intent is retained.')] });
+    const completionContext: ProjectContext = { root: this.context.root, readSnapshot: async () => {
+      const captured = await stageContext.readSnapshot();
+      if (!captured.complete || captured.problems.length || facts(captured) !== journal.facts) return incomplete(captured);
+      const current = await this.context.readSnapshot();
+      return !current.complete || current.problems.length || owned(current) !== owned(captured) ? incomplete(current) : current;
+    } };
+    const completionWriter = new FileProjectWriter(completionContext);
     let receipt: WriteResult | undefined;
     const all = changes(journal), expected = new Map(versions(restoreGraph(journal.graph)));
     all.slice(0, prefix).forEach(change => advance(expected, change));
     if (confirmed) expected.set(identityPath, hash(Buffer.from(journal.ledger, 'base64')));
-    const matches = (snapshot: ProjectSnapshot): boolean => snapshot.complete && !snapshot.problems.length && facts(snapshot) === journal.facts
+    const matches = (snapshot: ProjectSnapshot): boolean => snapshot.complete && !snapshot.problems.length
       && snapshot.files.find(file => file.path === pendingPath)?.version === pendingVersion
       && sameFiles(expected, new Map(versions(snapshot)));
-    const conflict = (): CommandResult => ({ ...result, problems: [this.problem('Project or build inputs changed between stage effects; pending intent is retained.')] });
-    if (!matches(snapshot)) return conflict();
+    const conflict = (snapshot: ProjectSnapshot): CommandResult => ({ ...result, problems: snapshot.problems.some(problem => problem.code === 'recovery-conflict') ? [...snapshot.problems]
+      : [...snapshot.problems, this.problem('Project or build inputs changed between stage effects; pending intent is retained.')] });
+    if (!matches(snapshot) || facts(snapshot) !== journal.facts) return conflict(snapshot);
     if (!confirmed) {
       receipt = await writer.apply({ basedOn: snapshot, changes: changes(journal).slice(prefix) }, this.signal);
       result.stages.push({ name: journal.stage, status: receipt.status, outputs: journal.plans.map(plan => plan.outputId), receipt, resumed: prefix });
       if (receipt.status === 'stopped') return { ...result, problems: receipt.problems };
       all.slice(prefix).forEach(change => advance(expected, change));
-      const beforeConfirmation = await this.context.readSnapshot();
-      if (!matches(beforeConfirmation)) return conflict();
-      const saved = await new FileProjectWriter(this.context).apply({ basedOn: beforeConfirmation, changes: [{ kind: 'write', path: identityPath, bytes: Buffer.from(journal.ledger, 'base64') }] }, this.signal);
+      const beforeConfirmation = await completionContext.readSnapshot();
+      if (!matches(beforeConfirmation)) return conflict(beforeConfirmation);
+      const saved = await completionWriter.apply({ basedOn: beforeConfirmation, changes: [{ kind: 'write', path: identityPath, bytes: Buffer.from(journal.ledger, 'base64') }] }, this.signal);
       if (saved.status === 'stopped') return { ...result, problems: [...saved.problems, cliProblem('unconfirmed-state', 'Output applied, but identity confirmation remains pending.', this.checked.manifest)] };
     }
     expected.set(identityPath, hash(Buffer.from(journal.ledger, 'base64')));
-    const beforeCleanup = await this.context.readSnapshot();
-    if (!matches(beforeCleanup)) return conflict();
-    const cleanup = await new FileProjectWriter(this.context).apply({ basedOn: beforeCleanup, changes: [{ kind: 'remove', path: pendingPath }] }, this.signal);
+    const beforeCleanup = await completionContext.readSnapshot();
+    if (!matches(beforeCleanup)) return conflict(beforeCleanup);
+    const cleanup = await completionWriter.apply({ basedOn: beforeCleanup, changes: [{ kind: 'remove', path: pendingPath }] }, this.signal);
     if (cleanup.status === 'stopped') return { ...result, problems: cleanup.problems };
     return { ...result, status: 'built', exitCode: 0 };
   }

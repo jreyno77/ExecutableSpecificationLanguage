@@ -2,9 +2,12 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    globalSetup: ['./test/global-setup.ts'],
     environment: "node",
     include: ["test/unit/**/*.test.ts", "test/acceptance/**/*.test.ts"],
-    exclude: [...configDefaults.exclude, "test/acceptance/installed-package.test.ts", "test/acceptance/installed-readiness.test.ts", "test/acceptance/shipped-walkthrough.test.ts", "test/acceptance/exporter-author.test.ts", "test/acceptance/public-recipes.test.ts", "test/acceptance/clean-package.test.ts", "test/acceptance/shipped-*-walkthrough.test.ts", "test/acceptance/project-pilot.test.ts"],
+    exclude: [...configDefaults.exclude, "test/acceptance/installed-package*.test.ts", "test/acceptance/installed-java-package.test.ts", "test/acceptance/installed-kotlin-package.test.ts", "test/acceptance/project-pilot*.test.ts",
+      "test/acceptance/installed-readiness.test.ts", "test/acceptance/shipped-walkthrough.test.ts", "test/acceptance/exporter-author.test.ts", "test/acceptance/public-recipes.test.ts",
+      "test/acceptance/clean-package.test.ts", "test/acceptance/shipped-*-walkthrough.test.ts"],
     passWithNoTests: false,
     clearMocks: true,
     restoreMocks: true,

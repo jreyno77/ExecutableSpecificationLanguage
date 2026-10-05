@@ -267,7 +267,7 @@ describe('initialization respects the actual destination', () => {
 
   it('refuses an unsupported target', async () => {
     const project = await InitializationExamples.withUnconnectedManifest();
-    await project.prepare('../chosen-game', 'kotlin');
+    await project.prepare('../chosen-game', 'unknown-target');
     project.expectProblem('unsupported-initialization-target');
     project.expectNoPlan();
     await project.expectDestinationAbsent();

@@ -523,7 +523,16 @@ contracts and explicitly authored communication; references do not establish
 ownership, lifetime or runtime calls. Native target prerequisites are documented
 with each delivered profile. IDE support and npm publication are future work.
 
-For contributors: `npm ci`, `npm run check`, `npm run test:package`.
-`npm run build` generates the Langium model and builds the package;
+Contributors use Node 24.19.0, npm 11.20.0 and JDK 21 through `JAVA_HOME`.
+Run `npm ci`, `npm run check` and `npm run test:package`.
+`npm run build` generates the Langium model, builds the Java/Kotlin bridges,
+stages the Python resources and bundles the installed command;
 `npm run release` packs it. GitHub Actions owns versioned artifacts, releases
 and deployment records. Incidents are GitHub Issues.
+
+`npm run test:java` and `npm run test:kotlin` run the native suites;
+`npm run test:java-package` and `npm run test:kotlin-package` check installed consumers.
+For these tests, supply an ordinary JDK 21 directory as `EXPEC_TEST_JAVA_HOME`
+and the verified JUnit Console Standalone 6.1.3 fixture as `EXPEC_TEST_JUNIT_CONSOLE`
+(SHA-256 `e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec`).
+The installed CLI uses the connected project's acquired dependencies.

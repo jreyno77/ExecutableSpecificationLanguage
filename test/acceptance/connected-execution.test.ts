@@ -43,6 +43,17 @@ describe('the connected test command executes authored scenarios', () => {
     await project.run(); project.expectExit(1); project.expectProblem('generation-required');
     project.expectNoNativeAttempt(); await project.expectNoRequests();
   }, 100_000);
+  it('refuses an assertion changed during selection and reads the persistent edit on the next command', async () => {
+    await project.freshShopping();
+    await project.runWhileChangingAssertion('Dune', 1, 0);
+    project.expectExit(1); project.expectProblem('stale-project');
+    project.expectNoNativeAttempt(); await project.expectNoRequests();
+    await project.expectGeneratedQuantity('Dune', 0);
+
+    await project.run();
+    project.expectExit(1); project.expectProblem('generated-test-drift');
+    project.expectNoNativeAttempt(); await project.expectNoRequests();
+  }, 100_000);
   it('does not call an empty native collection verified', async () => {
     await project.freshShopping(); await project.configureNative({ include: ['not-generated/**/*.test.ts'], passWithNoTests: true });
     await project.run(); project.expectExit(1); project.expectProblem('generated-tests-not-executed');

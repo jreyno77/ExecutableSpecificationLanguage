@@ -4,8 +4,10 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { Compiler } from '../../src/compiler.js';
-import { readDecisions, readIdentity } from '../../src/cli-identity.js';
+import { currentTestIdentity, identityBytes, readDecisions, readIdentity } from '../../src/cli-identity.js';
 import type { CheckedManifest } from '../../src/cli-check.js';
+import { SpecificationIdentity } from '../../src/specification-identity.js';
+import type { ProjectSnapshot } from '../../src/project-connection.js';
 
 const roots: { path: string; parent: string }[] = [];
 afterEach(async () => {
@@ -26,6 +28,42 @@ async function author(text: string) {
 }
 
 describe('explicit CLI identity correspondence', () => {
+  it('retains an unchanged confirmed declaration before native execution', async () => {
+    const authored = await author('concept Book {}'), identity = new SpecificationIdentity(() => 'retained-book');
+    const baseline = identity.associate(authored.checked.specification!).value!.baseline;
+    const root = { path: '/project', identity: 'captured-root' };
+    const snapshot: ProjectSnapshot = { root, complete: true, problems: [], excluded: [], excludeNames: [],
+      files: [{ path: '.expec/identity.json', bytes: identityBytes(authored.checked, root, baseline), version: 'a'.repeat(64) }] };
+    const current = currentTestIdentity(authored.checked, snapshot);
+    expect(current.problems).toEqual([]);
+    const book = [...authored.checked.specification!.inspection.query('concept')][0]!;
+    expect(current.value!.id(book.id)).toBe('retained-book');
+  });
+  it('refuses a pending build even when no native runner has been selected', async () => {
+    const authored = await author('concept Book {}');
+    const snapshot: ProjectSnapshot = { root: { path: '/project', identity: 'captured-root' }, complete: true, problems: [], excluded: [], excludeNames: [],
+      files: [{ path: '.expec/build-pending.json', bytes: new TextEncoder().encode('{}'), version: 'a'.repeat(64) }] };
+    const current = currentTestIdentity(authored.checked, snapshot);
+    expect(current.value).toBeUndefined();
+    expect(current.problems).toMatchObject([{ code: 'generation-required', message: 'Complete the pending build before executing tests.' }]);
+  });
+  it('requires a confirmed build instead of inventing test identities', async () => {
+    const authored = await author('concept Book {}');
+    const current = currentTestIdentity(authored.checked, { root: { path: '/project', identity: 'captured-root' }, complete: true, problems: [], excluded: [], excludeNames: [], files: [] });
+    expect(current.value).toBeUndefined();
+    expect(current.problems).toMatchObject([{ code: 'generation-required', message: 'Build the current specification before executing its tests.' }]);
+  });
+  it('refuses changed checked source against the prior confirmed identity', async () => {
+    const authored = await author('concept Book {}'), baseline = new SpecificationIdentity(() => 'retained-book').associate(authored.checked.specification!).value!.baseline;
+    const root = { path: '/project', identity: 'captured-root' }, bytes = identityBytes(authored.checked, root, baseline);
+    const sourceId = authored.checked.specification!.entry;
+    authored.checked.specification = new Compiler().compile({ locator: sourceId, source: { sourceId, text: 'concept Book {}\nconcept Publisher {}' }, dependencies: { modules: [], packages: [] } }).value!;
+    expect(authored.checked.specification).toBeDefined();
+    const current = currentTestIdentity(authored.checked, { root, complete: true, problems: [], excluded: [], excludeNames: [],
+      files: [{ path: '.expec/identity.json', bytes, version: 'a'.repeat(64) }] });
+    expect(current.value).toBeUndefined();
+    expect(current.problems).toMatchObject([{ code: 'generation-required', message: 'Current source differs from its confirmed generated specification.' }]);
+  });
   it('reports corrupt UTF8 identity bytes without substituting new history or throwing', async () => {
     const authored = await author('concept Book {}');
     const snapshot = { root: { path: '/project', identity: 'captured-root' }, complete: true, problems: [], excluded: [], excludeNames: [],

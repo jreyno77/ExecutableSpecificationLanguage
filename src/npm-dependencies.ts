@@ -8,7 +8,7 @@ import type { DependencyInventory } from './dependency-planner.js';
 import { readJson } from './json-data.js';
 import { runNative } from './native-process.js';
 import { NpmProject, object } from './npm-project.js';
-import { message, problem, type ObservedFile, type ProjectFiles } from './project-files.js';
+import { fail, message, problem, type ObservedFile, type ProjectFiles } from './project-files.js';
 import { nativePath } from './source-files.js';
 
 export interface PackageObservation { readonly name: string; readonly requested: string; readonly selected?: string; readonly installed?: string }
@@ -74,7 +74,7 @@ export class NpmDependencies {
     const lock = await project.json('package-lock.json'); captures.push(['package-lock.json', lock.observation]);
     if (!lock.data) report('package-lock-unavailable', 'No native package-lock.json selection exists.', 'package-lock.json');
     else if (![2, 3].includes(lock.data.lockfileVersion as number) || !object(lock.data.packages)) report('unsupported-package-lock', 'Expected a native npm lockfile with package entries.', 'package-lock.json');
-    const views: Record<string, unknown>[] = [];
+    const views: { packages: Record<string, unknown>; locations: Record<string, unknown>[] }[] = [];
     for (const locked of [false, true]) {
       const command = await runNative(this.command, ['ls', '--json', '--long', '--depth=0', '--offline', '--package-lock=' + locked,
         ...(locked ? ['--package-lock-only'] : []), ...options], project.files.root.path);
@@ -82,10 +82,26 @@ export class NpmDependencies {
       const data = readJson(command.stdout, (_code, text) => { invalid = true; report('invalid-native-output', text); });
       if (!object(data) || data.dependencies !== undefined && !object(data.dependencies)) { invalid = true; report('invalid-native-output', 'npm ls must return a native object with a dependency map.'); }
       if (command.code !== 0 || command.error) report('native-package-read-failed', command.error ?? 'Native package listing failed.');
-      views.push(!invalid && object(data) && object(data.dependencies) ? data.dependencies : {});
+      const query = await runNative(this.command, ['query', ':root > *', '--offline', '--package-lock=' + locked,
+        ...(locked ? ['--package-lock-only'] : []), ...options], project.files.root.path);
+      const locations = readJson(query.stdout, (_code, text) => report('invalid-native-output', text));
+      const valid = Array.isArray(locations) && locations.every(item => object(item) && typeof item.path === 'string' && typeof item.location === 'string');
+      if (!valid) report('invalid-native-output', 'npm query must return native package locations.');
+      if (query.code !== 0 || query.error) report('native-package-read-failed', query.error ?? 'Native package location query failed.');
+      views.push({ packages: !invalid && object(data) && object(data.dependencies) ? data.dependencies : {}, locations: valid ? locations : [] });
     }
+    const location = (item: Record<string, unknown>, view: number): string => {
+      // Redacted absolute paths can correlate records, but never authorize filesystem access.
+      const matches = views[view]!.locations.filter(candidate => candidate.path === item.path);
+      if (typeof item.path !== 'string' || !isAbsolute(item.path) || matches.length !== 1) {
+        fail(project.files.root, 'invalid-native-output', '', 'Expected one native relative location for the listed package.');
+      }
+      const match = matches[0]!;
+      if (!fullVersion(match.version) || match.version !== item.version) report('invalid-native-output', 'Native package views disagree on the listed version.');
+      return project.location(match.location as string);
+    };
     for (const [index, request] of requests.entries()) {
-      const installed = views[0]![request.native], selected = views[1]![request.native];
+      const installed = views[0]!.packages[request.native], selected = views[1]!.packages[request.native];
       const observation: { name: string; requested: string; selected?: string; installed?: string } = { name: request.name, requested: request.requested };
       observations[index] = observation;
       try {
@@ -93,13 +109,13 @@ export class NpmDependencies {
           observation.selected = selected.version;
           if (typeof selected.path !== 'string') report('invalid-native-output', 'Selected package has no native location.');
           else {
-            const path = project.location(selected.path), record = object(lock.data?.packages) ? lock.data.packages[path] : undefined;
+            const path = location(selected, 1), record = object(lock.data?.packages) ? lock.data.packages[path] : undefined;
             if (!object(record) || record.version !== selected.version || record.link === true) report('package-selection-mismatch', 'Native lock does not agree with selected ' + request.native + '.', 'package-lock.json');
           }
           if (selected.name !== undefined && selected.name !== request.native) report('unsupported-package-alias', 'Native key ' + request.native + ' selects ' + selected.name + '.');
         } else report('package-not-selected', 'No complete native lock selection for ' + request.native + '.', 'package-lock.json');
         if (object(installed) && typeof installed.path === 'string') {
-          const path = project.location(installed.path) + '/package.json', actual = await project.json(path); captures.push([path, actual.observation]);
+          const path = location(installed, 0) + '/package.json', actual = await project.json(path); captures.push([path, actual.observation]);
           if (actual.data) {
             if (fullVersion(actual.data.version)) observation.installed = actual.data.version;
             else report('invalid-package-version', 'Installed ' + request.native + ' has no complete SemVer version.', path);

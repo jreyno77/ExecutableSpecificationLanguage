@@ -1,0 +1,15 @@
+expec Kotlin/JVM target
+
+This package contains the private expec native bridge plus unmodified Kotlin
+compiler/Analysis API and supporting runtime JARs. dependencies.json identifies
+each upstream artifact, exact version, SHA-256 and source/license locations.
+licenses/SOURCES.md explains the pinned compiler distribution and incorporated
+third-party code. The license bundles retain their original copyright,
+attribution and terms; they are not all covered by a single license label.
+The Gradle wrapper retains its embedded license and script copyright headers.
+
+Native queries require an explicitly configured JDK21. No JDK is bundled.
+Queries never install dependencies or execute the connected application.
+Explicit installation performs Gradle9.1 dependency acquisition and locking;
+it can access configured repositories and modifies native dependency state.
+Running generated native tests executes application and fixture code.

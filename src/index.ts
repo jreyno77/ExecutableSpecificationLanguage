@@ -47,6 +47,12 @@ export { NpmDependencies, type NpmOptions, type PackageRead, type PackageObserva
 export * from './project-writer.js';
 export * from './output.js';
 export * from './output-typescript.js';
+export { kotlinOutput } from './output-kotlin.js';
+export { kotlinAcceptanceOutput } from './output-kotlin-acceptance.js';
+export { KotlinContext } from './kotlin-context.js';
+export { KotlinProject } from './kotlin-project.js';
+export { KotlinDependencies } from './kotlin-dependencies.js';
+export type { KotlinContextOptions } from './kotlin-configuration.js';
 export { acceptanceOutput } from './output-acceptance.js';
 export type { ProjectRead, ProjectSearch } from './project-inspection.js';
 export { TestOperationChecker, type TestOperationChecking } from './test-operation-checker.js';
@@ -55,4 +61,12 @@ export { TypeScriptProject, type TypeScriptProjectOptions } from './typescript-p
 export { TypeScriptContext } from './typescript-context.js';
 export { markdownOutput } from './output-markdown.js';
 export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';
+export { JavaContext } from './java-context.js';
+export { JavaProject } from './java-project.js';
+export { javaOutput } from './output-java.js';
+export { javaAcceptanceOutput } from './output-java-acceptance.js';
+export { pythonOutput } from './output-python.js';
+export { pythonAcceptanceOutput } from './output-python-acceptance.js';
+export { PythonContext } from './python-context.js';
+export { PythonProject } from './python-project.js';
 export { runCli, type CliOutputs } from './cli.js';

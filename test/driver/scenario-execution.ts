@@ -15,7 +15,6 @@ export class ExecutionDriver extends AcceptanceGenerationDriver {
   private saved = new Map<string, string>();
   async initial(text: string): Promise<void> {
     await this.connect(); this.source(text); await this.nativeDependencies();
-    await this.file('vitest.config.ts', `import { defineConfig } from 'vitest/config'; export default defineConfig({ test: { include: ['test/acceptance/*.test.ts'], retry: 0 } });`);
     await this.generate({ domain: 'shopping' });
     if (this.written.problems.length || !this.written.receipt) throw Error('Default generation failed: ' + JSON.stringify(this.written));
   }

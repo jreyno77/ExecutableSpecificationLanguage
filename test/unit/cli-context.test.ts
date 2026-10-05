@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,5 +36,43 @@ describe('composing captured build evidence', () => {
     const value = await input(); Object.assign(value.snapshot, { nativeInputs: [{ ...value.fingerprint, version: 'a'.repeat(64) }] });
     const result = await value.context.readSnapshot();
     expect(result.complete).toBe(false); expect(result.problems.map(problem => problem.code)).toContain('stale-build-input');
+  });
+});
+
+describe('fresh native build evidence reads the actual files', () => {
+  it('refuses same-length changed bytes instead of trusting a retained digest', async () => {
+    const value = await input(), path = join(value.snapshot.root.path, 'library.txt');
+    await fs.writeFile(path, 'one');
+    Object.assign(value.snapshot, { nativeInputs: [{ uri: pathToFileURL(path).href, version: hash(Buffer.from('one')) }] });
+    await fs.writeFile(path, 'two');
+    const result = await value.context.readSnapshot();
+    expect(result.complete).toBe(false);
+    expect(result.problems).toContainEqual(expect.objectContaining({ code: 'stale-build-input', message: expect.stringContaining(pathToFileURL(path).href) }));
+  });
+  it('refuses a same-content file substituted during its actual read', async () => {
+    const value = await input(), path = join(value.snapshot.root.path, 'library.txt'), replacement = join(value.snapshot.root.path, 'replacement.txt');
+    await fs.writeFile(path, 'one'); await fs.writeFile(replacement, 'one');
+    Object.assign(value.snapshot, { nativeInputs: [{ uri: pathToFileURL(path).href, version: hash(Buffer.from('one')) }] });
+    const read = fs.readFile.bind(fs); let changed = false;
+    const replace = vi.spyOn(fs, 'readFile').mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+      const bytes = await read(...args);
+      if (!changed && String(args[0]) === path) { changed = true; await fs.unlink(path); await fs.rename(replacement, path); }
+      return bytes;
+    });
+    try {
+      const result = await value.context.readSnapshot(); expect(changed).toBe(true); expect(result.complete).toBe(false);
+      expect(result.problems).toContainEqual(expect.objectContaining({ code: 'stale-build-input', message: expect.stringContaining(pathToFileURL(path).href) }));
+    } finally { replace.mockRestore(); }
+  });
+  it('retains every changed input in supplied order when several files disagree', async () => {
+    const value = await input(), inputs = [];
+    for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) {
+      const path = join(value.snapshot.root.path, name + '.txt'); await fs.writeFile(path, 'one');
+      inputs.push({ uri: pathToFileURL(path).href, version: hash(Buffer.from('one')) });
+    }
+    Object.assign(value.snapshot, { nativeInputs: inputs });
+    for (const name of ['b', 'e']) await fs.writeFile(join(value.snapshot.root.path, name + '.txt'), 'two');
+    const result = await value.context.readSnapshot(); expect(result.complete).toBe(false);
+    expect(result.problems.map(problem => problem.message)).toEqual([expect.stringContaining(inputs[1]!.uri), expect.stringContaining(inputs[4]!.uri)]);
   });
 });

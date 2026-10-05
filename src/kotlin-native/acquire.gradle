@@ -1,0 +1,63 @@
+import org.gradle.internal.operations.*
+import org.gradle.configuration.ApplyScriptPluginBuildOperationType
+import org.gradle.api.internal.plugins.ApplyPluginBuildOperationType
+import groovy.json.JsonOutput
+
+// Pinned Gradle9.1 implementation detail. Configuration has effects before unsupported input can be reported.
+if (gradle.gradleVersion != '9.1.0') throw new GradleException('Expected Gradle9.1.0')
+def scripts = Collections.synchronizedList([])
+def plugins = Collections.synchronizedList([])
+def payload
+def listener = new BuildOperationListener() {
+    void started(BuildOperationDescriptor operation, OperationStartEvent event) {
+        def details = operation.details
+        if (details instanceof ApplyScriptPluginBuildOperationType.Details) scripts.add([file: details.file, uri: details.uri,
+            targetType: details.targetType, target: details.targetPath, build: details.buildPath])
+        if (details instanceof ApplyPluginBuildOperationType.Details) plugins.add([id: details.pluginId, type: details.pluginClass.name,
+            targetType: details.targetType, target: details.targetPath, build: details.buildPath])
+    }
+    void progress(OperationIdentifier id, OperationProgressEvent event) {}
+    void finished(BuildOperationDescriptor operation, OperationFinishEvent event) {}
+}
+gradle.services.get(BuildOperationListenerManager).addListener(listener)
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    if (project.allprojects.size() != 1 || !gradle.includedBuilds.empty || new File(project.projectDir, 'buildSrc').exists())
+        throw new GradleException('Only one ordinary Kotlin JVM project is supported')
+    if (new File(gradle.gradleUserHomeDir, 'gradle.properties').exists())
+        throw new GradleException('User-home Gradle properties are outside this captured native profile')
+    if (project.tasks.findByName('expecAcquireKotlin') != null) throw new GradleException('The native acquisition task name is already owned')
+    project.tasks.register('expecAcquireKotlin') {
+        doLast {
+            def plugin = project.plugins.findPlugin('org.jetbrains.kotlin.jvm')
+            if (plugin == null || plugin.pluginVersion != '2.4.10') throw new GradleException('Expected actual Kotlin JVM plugin2.4.10')
+            def compiler = project.tasks.getByName('compileKotlin'), testCompiler = project.tasks.getByName('compileTestKotlin')
+            if (compiler.compilerOptions.jvmTarget.get().target != '21' || testCompiler.compilerOptions.jvmTarget.get().target != '21')
+                throw new GradleException('Expected JVM21 for main and test')
+            def configurations = ['compileClasspath', 'runtimeClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].collectEntries { name ->
+                def configuration = project.configurations.getByName(name)
+                configuration.resolutionStrategy.activateDependencyLocking()
+                [(name): configuration]
+            }
+            def classes = configurations.collectEntries { name, configuration -> [(name): configuration.files.collect { it.canonicalPath }] }
+            def artifacts = configurations.collectMany { name, configuration -> configuration.resolvedConfiguration.resolvedArtifacts.collect { artifact ->
+                [name: 'maven:' + artifact.moduleVersion.id.group + ':' + artifact.name, version: artifact.moduleVersion.id.version,
+                    file: artifact.file.canonicalPath, phase: name.startsWith('test') ? 'test' : 'runtime']
+            } }
+            payload = [format: 1, kotlin: plugin.pluginVersion, gradle: gradle.gradleVersion, jvmTarget: '21',
+                javaHome: System.getProperty('java.home'), sourceRoots: ['main', 'test'].collectEntries { name ->
+                    [(name): project.extensions.getByName('kotlin').sourceSets.getByName(name).kotlin.srcDirs.collect { it.canonicalPath }]
+                }, javaRoots: ['main', 'test'].collectEntries { name -> [(name): project.sourceSets.getByName(name).java.srcDirs.collect { it.canonicalPath }] },
+                classPath: [main: classes.compileClasspath, test: classes.testCompileClasspath],
+                runtimeClassPath: [main: classes.runtimeClasspath, test: classes.testRuntimeClasspath], artifacts: artifacts]
+        }
+    }
+}
+gradle.buildFinished { result ->
+    gradle.services.get(BuildOperationListenerManager).removeListener(listener)
+    if (result.failure == null && payload != null) {
+        payload.scripts = scripts; payload.plugins = plugins
+        payload.init = gradle.startParameter.allInitScripts.collect { it.canonicalPath }
+        println('EXPEC_KOTLIN_ACQUISITION=' + JsonOutput.toJson(payload))
+    }
+}

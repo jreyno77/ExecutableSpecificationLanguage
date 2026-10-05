@@ -6,11 +6,12 @@ import { NativePackageDriver } from '../driver/native-packages.js';
 
 export class NativePackageExamples {
   private constructor(readonly driver: NativePackageDriver) {}
-  static async create(kind: 'project' | 'empty' | 'absent' = 'project'): Promise<NativePackageExamples> {
-    const driver = new NativePackageDriver(); await driver.initialize(kind); onTestFinished(() => driver.dispose());
+  static async create(kind: 'project' | 'empty' | 'absent' = 'project', parent = ''): Promise<NativePackageExamples> {
+    const driver = new NativePackageDriver(); await driver.initialize(kind, parent); onTestFinished(() => driver.dispose());
     return new NativePackageExamples(driver);
   }
   static withAbsentDirectory() { return this.create('absent'); }
+  static inDirectory(parent: string) { return this.create('project', parent); }
   static withEmptyDirectory() { return this.create('empty'); }
   static async withInstalled(name: string, version: string, range?: string): Promise<NativePackageExamples> {
     const project = await this.create(); await project.driver.seed(name, version, range); return project;

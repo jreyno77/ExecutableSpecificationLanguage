@@ -16,13 +16,14 @@ permissions:
 
 jobs:
   check:
-    name: Node 24 / ${{ matrix.os }}
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,20 +33,43 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Use the pinned package manager
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
-      - name: Regenerate, typecheck, test, and build
-        run: npm run check
+      - name: Regenerate the grammar
+        run: npm run grammar:generate
+      - name: Build the native Java, Kotlin and Python resources
+        run: npm run java:build && npm run kotlin:build && npm run python:build
+      - name: Check all source and test types
+        run: npm run typecheck
+      - name: Build and test the shard
+        run: npm test -- --config vitest.core.config.ts --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: core-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   project-pilot:
-    name: Project pilot / ${{ matrix.os }}
+    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 2 }
+          - { os: ubuntu-latest, shard: 2, total: 2 }
+          - { os: windows-latest, shard: 1, total: 4 }
+          - { os: windows-latest, shard: 2, total: 4 }
+          - { os: windows-latest, shard: 3, total: 4 }
+          - { os: windows-latest, shard: 4, total: 4 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,20 +79,37 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Use the pinned package manager
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
-        run: npm run test:pilot
+        env:
+          EXPEC_CLEANUP_TIMINGS: '1'
+        run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: pilot-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   installed-package:
-    name: Installed package / ${{ matrix.os }}
+    name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 1 }
+          - { os: windows-latest, shard: 1, total: 3 }
+          - { os: windows-latest, shard: 2, total: 3 }
+          - { os: windows-latest, shard: 3, total: 3 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,14 +119,25 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Use the pinned package manager
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed package consumers
-        run: npm run test:package
+        run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: installed-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Stage the artifact and bounded public consumer
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
         shell: pwsh
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
@@ -100,11 +152,190 @@ jobs:
           @{ artifact=$packed.filename; version=$packed.version; sha256=$digest; commit=(git rev-parse HEAD) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'delivery.json')
           '{"private":true,"type":"module"}' | Set-Content -LiteralPath (Join-Path $stage 'package.json')
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
         with:
           name: public-consumer
           path: ${{ runner.temp }}/expec-consumer/
           if-no-files-found: error
+  java:
+    name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}${{ matrix.suite == 'acceptance' && format(' / {0} of {1}', matrix.shard, matrix.total) || '' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, suite: unit }
+          - { os: windows-latest, suite: unit }
+          - { os: ubuntu-latest, suite: package }
+          - { os: windows-latest, suite: package }
+          - { os: ubuntu-latest, suite: acceptance, shard: 1, total: 3 }
+          - { os: ubuntu-latest, suite: acceptance, shard: 2, total: 3 }
+          - { os: ubuntu-latest, suite: acceptance, shard: 3, total: 3 }
+          - { os: windows-latest, suite: acceptance, shard: 1, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 2, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 3, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 4, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 5, total: 5 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Use the pinned package manager
+        run: npm install --global npm@11.20.0 --ignore-scripts
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: Acquire the exact native test console
+        shell: pwsh
+        run: |
+          $jdk = node --input-type=module -e 'import { cpSync, realpathSync, mkdtempSync } from "node:fs"; import { join } from "node:path"; const target=mkdtempSync(join(realpathSync(process.env.RUNNER_TEMP),"expec-java-jdk-")); cpSync(realpathSync(process.env.JAVA_HOME),target,{recursive:true,dereference:true}); console.log(target);'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare an ordinary native JDK fixture.' }
+          $jar = Join-Path $env:RUNNER_TEMP 'junit-platform-console-standalone-6.1.3.jar'
+          Invoke-WebRequest 'https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar' -OutFile $jar
+          if ((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec') { throw 'JUnit console checksum mismatch.' }
+          "EXPEC_TEST_JUNIT_CONSOLE=$jar" >> $env:GITHUB_ENV
+          "JAVA_HOME=$jdk" >> $env:GITHUB_ENV
+          "EXPEC_TEST_JAVA_HOME=$jdk" >> $env:GITHUB_ENV
+      - name: Build native and public package resources
+        if: matrix.suite != 'package'
+        run: npm run build
+      - name: Check Java native behavior
+        if: matrix.suite != 'package'
+        run: npm run test:java -- test/${{ matrix.suite }} ${{ matrix.suite == 'acceptance' && format('--shard={0}/{1}', matrix.shard, matrix.total) || '' }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Check the actual installed Java consumer
+        if: matrix.suite == 'package'
+        run: npm run test:java-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: java-${{ matrix.suite }}-${{ matrix.os }}${{ matrix.suite == 'acceptance' && format('-{0}-of-{1}', matrix.shard, matrix.total) || '' }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  kotlin:
+    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of 4', matrix.shard) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4, package]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Use the pinned package manager
+        run: npm install --global npm@11.20.0 --ignore-scripts
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Materialize an ordinary native test toolchain
+        run: node --input-type=module -e "import { appendFile, cp, mkdtemp, realpath } from 'node:fs/promises'; import { join } from 'node:path'; const home = await mkdtemp(join(await realpath(process.env.RUNNER_TEMP), 'expec-jdk-')); await cp(await realpath(process.env.JAVA_HOME), home, { recursive:true, dereference:true }); await appendFile(process.env.GITHUB_ENV, 'EXPEC_TEST_JAVA_HOME=' + home + '\n');"
+      - name: Supply the verified native JUnit test input
+        shell: pwsh
+        run: |
+          $junit = Join-Path $env:RUNNER_TEMP 'junit-platform-console-standalone-6.1.3.jar'
+          Invoke-WebRequest 'https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar' -OutFile $junit
+          if ((Get-FileHash -LiteralPath $junit -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec') { throw 'JUnit artifact checksum mismatch' }
+          "EXPEC_TEST_JUNIT_CONSOLE=$junit" >> $env:GITHUB_ENV
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: Build the actual native bridge and public package
+        if: matrix.shard != 'package'
+        run: npm run build
+      - name: Run every selected native unit and acceptance test
+        if: matrix.shard != 'package'
+        run: npm run test:kotlin -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Verify the installed Kotlin consumer
+        if: matrix.shard == 'package'
+        run: npm run test:kotlin-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-4', matrix.shard) }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  python:
+    name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4]
+        include:
+          - os: ubuntu-latest
+            python: '3.12.14'
+          - os: windows-latest
+            python: '3.12.10'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the finite Python test profile
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'expec-python-tools'
+          python -m venv --copies $tools
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $native = Join-Path $tools $(if ($IsWindows) { 'Scripts/python.exe' } else { 'bin/python' })
+          & $native -m pip install --only-binary=:all: uv==0.12.23 libcst==1.9.0 jedi==0.20.0 mypy==2.4.0 pytest==9.1.1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $interpreter = python -I -S -c 'import pathlib,sys; print(pathlib.Path(sys.executable).resolve())'
+          $sites = & $native -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))'
+          $uv = Join-Path $tools $(if ($IsWindows) { 'Scripts/uv.exe' } else { 'bin/uv' })
+          "EXPEC_TEST_PYTHON=$interpreter" >> $env:GITHUB_ENV
+          "EXPEC_TEST_PYTHON_SITE=$sites" >> $env:GITHUB_ENV
+          "EXPEC_TEST_UV=$uv" >> $env:GITHUB_ENV
+      - name: Use the pinned package manager
+        run: npm install --global npm@11.20.0 --ignore-scripts
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: Build native and public package resources
+        run: npm run build
+      - name: Run every selected Python unit and acceptance test
+        run: npm test -- --config vitest.python.config.ts --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: python-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
+
   clean-consumer:
     name: No checkout consumer / ${{ matrix.os }}
     needs: installed-package
@@ -135,3 +366,87 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
       - name: Exercise delivered commands and public declarations
         run: node node_modules/vitest/vitest.mjs run --config vitest.clean.config.js
+
+  native-consumer:
+    name: No checkout native walkthrough / ${{ matrix.target }} / ${{ matrix.os }}
+    needs: installed-package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        target: [java, kotlin, python]
+        include:
+          - os: ubuntu-latest
+            target: python
+            python: '3.12.14'
+          - os: windows-latest
+            target: python
+            python: '3.12.10'
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: public-consumer
+          path: ${{ github.workspace }}
+      - name: Install only delivered product and explicit consumer tools
+        shell: pwsh
+        run: |
+          if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git) -or (Test-Path -LiteralPath .local-docs)) { throw 'A development checkout is present.' }
+          $delivery = Get-Content -LiteralPath delivery.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -LiteralPath $delivery.artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $delivery.sha256) { throw 'Delivered package digest differs.' }
+          npm install --global npm@11.20.0 --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Package manager installation failed.' }
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./$($delivery.artifact)" vitest@5.0.2 '@types/node@24.13.6'
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
+      - name: Supply the ordinary JDK prerequisite
+        if: matrix.target != 'python'
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Materialize an ordinary JDK and isolated Gradle home
+        if: matrix.target != 'python'
+        shell: pwsh
+        run: |
+          node --input-type=module -e 'import { appendFile, cp, mkdtemp, realpath } from "node:fs/promises"; import { join } from "node:path"; const temp=await realpath(process.env.RUNNER_TEMP); const home=await mkdtemp(join(temp,"expec-consumer-jdk-")); await cp(await realpath(process.env.JAVA_HOME),home,{recursive:true,dereference:true}); const cache=await mkdtemp(join(temp,"expec-consumer-gradle-")); await appendFile(process.env.GITHUB_ENV,"JAVA_HOME="+home+"\nEXPEC_TEST_JAVA_HOME="+home+"\nGRADLE_USER_HOME="+cache+"\n");'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the ordinary native JDK prerequisite.' }
+      - name: Supply the CPython prerequisite
+        if: matrix.target == 'python'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Supply only the pinned uv executable
+        if: matrix.target == 'python'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'expec-consumer-python-tools'
+          python -m venv --copies $tools
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the ordinary uv tool environment.' }
+          $native = Join-Path $tools $(if ($IsWindows) { 'Scripts/python.exe' } else { 'bin/python' })
+          & $native -m pip install --only-binary=:all: --disable-pip-version-check uv==0.12.23
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned uv executable.' }
+          $interpreter = python -I -S -c 'import pathlib,sys; print(pathlib.Path(sys.executable).resolve())'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not locate the selected ordinary CPython executable.' }
+          $uv = Join-Path $tools $(if ($IsWindows) { 'Scripts/uv.exe' } else { 'bin/uv' })
+          if (-not (Test-Path -LiteralPath $uv -PathType Leaf)) { throw 'The pinned uv executable is absent.' }
+          "EXPEC_TEST_PYTHON=$interpreter" >> $env:GITHUB_ENV
+          "EXPEC_TEST_UV=$uv" >> $env:GITHUB_ENV
+          "UV_CACHE_DIR=$(Join-Path $env:RUNNER_TEMP 'expec-consumer-uv-cache')" >> $env:GITHUB_ENV
+      - name: Follow the installed README through a real failure and repair
+        env:
+          EXPEC_CONSUMER_TARGET: ${{ matrix.target }}
+        run: node node_modules/vitest/vitest.mjs run --config vitest.native-consumer.config.js --reporter=default --reporter=json --outputFile=native-walkthrough-results.json
+      - name: Retain actual walkthrough observations
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: native-walkthrough-${{ matrix.target }}-${{ matrix.os }}
+          path: |
+            native-walkthrough-results.json
+            delivery.json
+          if-no-files-found: warn

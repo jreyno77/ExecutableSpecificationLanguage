@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:git="https://schemas.opentest4j.org/reporting/git/0.2.0" xmlns:java="https://schemas.opentest4j.org/reporting/java/0.2.0" xmlns:junit="https://schemas.junit.org/open-test-reporting" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schemas.junit.org/open-test-reporting https://schemas.junit.org/open-test-reporting/junit-1.9.xsd">
+<e:started id="1" name="JUnit Jupiter"><metadata><junit:uniqueId>[engine:junit-jupiter]</junit:uniqueId><junit:legacyReportingName>JUnit Jupiter</junit:legacyReportingName><junit:type>CONTAINER</junit:type></metadata></e:started>
+<e:started id="2" name="Probe$Disabled" parentId="1"><metadata><junit:uniqueId>[engine:junit-jupiter]/[class:Probe$Disabled]</junit:uniqueId><junit:legacyReportingName>Probe$Disabled</junit:legacyReportingName><junit:type>CONTAINER</junit:type></metadata><sources><java:classSource className="Probe$Disabled"></java:classSource></sources></e:started>
+<e:started id="3" name="selected()" parentId="2"><metadata><junit:uniqueId>[engine:junit-jupiter]/[class:Probe$Disabled]/[method:selected()]</junit:uniqueId><junit:legacyReportingName>selected()</junit:legacyReportingName><junit:type>TEST</junit:type></metadata><sources><java:methodSource className="Probe$Disabled" methodName="selected" methodParameterTypes=""></java:methodSource></sources></e:started>
+<e:finished id="3"><result status="SKIPPED"><reason>human pending</reason></result></e:finished>
+<e:finished id="2"><result status="SUCCESSFUL"></result></e:finished>
+<e:finished id="1"><result status="SUCCESSFUL"></result></e:finished>
+</e:events>
