@@ -57,12 +57,14 @@ export class NativeWalkthrough {
     let selector: string;
     if (this.driver.target === 'python') {
       expect(execution.collected).toHaveLength(1);
-      expect(execution.collected![0]).toMatchObject({ id: test.id, file: test.file, title, nodeid: test.nodeid });
+      const collected = execution.collected![0]!;
+      expect({ ...collected, file: collected.file.replaceAll('\\', '/') }).toMatchObject({ id: test.id, file: test.file, title, nodeid: test.nodeid });
       expect(test.nodeid).toEqual(expect.any(String)); expect(test.nodeid).toContain(test.file + '::');
       expect(test.phases).toHaveLength(3);
       for (const when of ['setup', 'call', 'teardown']) {
         const phases = test.phases!.filter(phase => phase.when === when); expect(phases).toHaveLength(1);
-        expect(phases[0]).toMatchObject({ nodeid: test.nodeid, file: test.file, outcome: when === 'call' ? state : 'passed', xfail: false });
+        const phase = phases[0]!;
+        expect({ ...phase, file: phase.file.replaceAll('\\', '/') }).toMatchObject({ nodeid: test.nodeid, file: test.file, outcome: when === 'call' ? state : 'passed', xfail: false });
       }
       selector = test.nodeid!;
     } else {
