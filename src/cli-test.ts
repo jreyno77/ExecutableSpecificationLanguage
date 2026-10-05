@@ -8,15 +8,17 @@ import ts from 'typescript';
 import { nativeReport, testsPassed, type NativeReport, type SelectedTest } from './cli-test-result.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { BuildContext } from './cli-context.js';
-import { identities, pendingPath, readIdentity } from './cli-identity.js';
+import { currentTestIdentity } from './cli-identity.js';
 import type { CommandResult } from './cli-project.js';
 import type { Outputs } from './output.js';
 import type { ProjectContext, ProjectRoot } from './project-connection.js';
 import { FileProjectWriter } from './project-writer.js';
 import { testIdentities } from './acceptance-state.js';
+import { testJava } from './cli-java-test.js';
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {
+  if (checked.profile?.target === 'java') return testJava(checked, project, outputs, signal);
   const result: CommandResult = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [] };
   const fail = (code: string, message: string) => ({ ...result, problems: [cliProblem(code, message, checked.manifest)] });
   const profiles = checked.configuration!.outputs.filter(profile => profile.id === 'acceptance');
@@ -32,14 +34,8 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   } catch (error) { return fail('runner-unavailable', String(error)); }
   const context = new BuildContext(project, checked, profiles), snapshot = await context.readSnapshot();
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
-  if (snapshot.files.some(file => file.path === pendingPath)) return fail('generation-required', 'Complete the pending build before executing tests.');
-  const saved = readIdentity(snapshot, checked);
-  if (!saved.value) return { ...result, problems: saved.problems };
-  if (!saved.value.baseline) return fail('generation-required', 'Build the current specification before executing its tests.');
-  const identity = identities(), associated = identity.associate(checked.specification!, saved.value.baseline);
-  if (!associated.value) return fail('generation-required', 'Current source requires generation or explicit identity correspondence.');
-  const compared = identity.compare(saved.value.baseline, associated.value);
-  if (!compared.value || compared.value.contextChanged || compared.value.changes.length) return fail('generation-required', 'Current source differs from its confirmed generated specification.');
+  const associated = currentTestIdentity(checked, snapshot);
+  if (!associated.value) return { ...result, problems: associated.problems };
   const selection = { root: snapshot.root, readSnapshot: async () => structuredClone(snapshot) };
   const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, selection, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
   if (!opened.value) return { ...result, problems: opened.problems };

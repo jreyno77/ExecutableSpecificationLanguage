@@ -69,9 +69,9 @@ export class InitializationDriver {
     this.remembered.set('configuration', structuredClone(this.configuration));
     this.initializer = new ProjectInitializer(this.manifest, this.configuration);
   }
-  async prepare(root: string, target: string): Promise<void> {
+  async prepare(root: string, target: string, javaHome?: string): Promise<void> {
     this.destination = this.relativeToManifest(root); this.result = undefined;
-    this.prepared = await this.initializer.prepare({ root, target });
+    this.prepared = await this.initializer.prepare({ root, target, ...(javaHome ? { javaHome } : {}) });
   }
   async apply(accepted: boolean, signal?: AbortSignal): Promise<void> {
     if (!this.prepared.value) throw new Error('No initialization preview: ' + JSON.stringify(this.prepared));

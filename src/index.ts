@@ -55,4 +55,8 @@ export { TypeScriptProject, type TypeScriptProjectOptions } from './typescript-p
 export { TypeScriptContext } from './typescript-context.js';
 export { markdownOutput } from './output-markdown.js';
 export { ProjectInitializer, type InitializationPlan, type InitializationResult } from './project-initializer.js';
+export { JavaContext } from './java-context.js';
+export { JavaProject } from './java-project.js';
+export { javaOutput } from './output-java.js';
+export { javaAcceptanceOutput } from './output-java-acceptance.js';
 export { runCli, type CliOutputs } from './cli.js';

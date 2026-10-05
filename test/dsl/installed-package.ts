@@ -11,6 +11,28 @@ export class PackageExamples {
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
   checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
   buildPublicCatalog(source: string): Promise<void> { return this.driver.buildPublicCatalog(source); }
+  runJavaCommands(source: string, revised: string): Promise<void> { return this.driver.javaCommands({ source, revised }); }
+  expectInstalledJavaWorkflow(): void {
+    this.expectConsumerRan(); const observed = this.driver.report.javaCli!;
+    expect(observed.commands.map(item => item.report.status)).toEqual(['initialized', 'installed', 'built', 'tested', 'built', 'tested', 'failed']);
+    for (const item of observed.commands.filter(item => item.command === 'build' || item.command === 'test'))
+      expect(item.stderr).toContain('JAVA-CLI-GUARDS:checkout-denied,network-denied,build-tool-denied');
+    expect(observed.executable.replaceAll('\\', '/')).toContain('/node_modules/executable-specification-language/dist/cli-entry.js');
+    for (const run of [observed.first, observed.renamed]) {
+      expect(run.code).toBe(0); expect(run.report.problems).toEqual([]);
+      expect(run.report.stages.find(stage => stage.name === 'execution')?.tests).toMatchObject([{ state: 'passed', errors: [] }]);
+      expect(run.stderr).toContain('ACTUAL-BASKET:Dune:1.0');
+    }
+    expect(observed.source).toContain('public void saveGame(String title)');
+    expect(observed.source).toContain('// Handwritten basket state must survive the contract rename.');
+    expect(observed.source).toContain('basket.merge(title,1.0,Double::sum)');
+    expect(observed.caller).toContain('game.saveGame(title)');
+    for (const action of ['shopping.available("Dune")', 'shopping.add("Dune")', 'shopping.expectBookQuantity("Dune", 1.0)']) expect(observed.readable).toContain(action);
+    expect(observed.wrong.code).toBe(1); expect(observed.wrong.stderr).toContain('ACTUAL-BASKET:Dune:2.0');
+    const tests = observed.wrong.report.stages.find(stage => stage.name === 'execution')?.tests;
+    expect(tests).toHaveLength(1); expect(tests![0]?.state).toBe('failed');
+    expect(tests![0]?.errors.join('\n')).toMatch(/expected.*1\.0.*(?:but was|actual).*2\.0/s);
+  }
   expectPublicCatalog(text: string): void {
     this.expectConsumerRan(); const observed = this.driver.report.customCli!;
     expect(observed.result).toMatchObject({ status: 'built', exitCode: 0, problems: [], stages: [
@@ -131,6 +153,17 @@ export class PackageExamples {
   searchCountReport(): Promise<void> { return this.driver.searchCountReport(); }
   runPublicApiCheck(): Promise<void> { return this.check('concept StoreGame { capability saveGame(snapshot: Text) returns Nothing }'); }
 
+  preserveJava(input:{source:string;revised:string;implementation:string;caller:string}):Promise<void> { return this.driver.preserveJava(input); }
+  expectJavaNativeConsumer():void {
+    const report=this.driver.report.java!,preserved=this.driver.report.preservation!;
+    expect(report.complete).toBe(true); expect(report.problems).toEqual([]);
+    expect(report.read.problems).toEqual([]); expect(report.read.coverage.complete).toBe(true);
+    expect(report.read.artifacts).toHaveLength(1); expect(report.read.artifacts[0]!.text).toBe(preserved.source);
+    expect(report.search.problems).toEqual([]); expect(report.search.incoming.coverage.complete).toBe(true);
+    const site=preserved.caller!.indexOf('saveGame');
+    expect(report.search.incoming.uses.some(use=>{const at=use.at.value as {file:string;start:number;length:number;role:string};return at.role==='value'&&use.target.kind==='project'&&at.file==='src/main/java/Caller.java'&&at.start===site&&at.length===8;}),JSON.stringify(report.search)).toBe(true);
+    expect(report.wrong.code).not.toBe(0); expect(report.wrong.stderr).toContain('Wrong.java'); expect(report.wrong.stderr).toContain('int cannot be converted to String');
+  }
   preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     return this.driver.preserveTypeScript(input);
   }

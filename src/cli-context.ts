@@ -8,10 +8,11 @@ import type { ProjectContext, ProjectSnapshot } from './project-connection.js';
 import { hash } from './project-files.js';
 import { TypeScriptContext } from './typescript-context.js';
 import { nativeInputs } from './native-inputs.js';
+import { JavaContext } from './java-context.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {
-  private readonly native: TypeScriptContext[];
+  private readonly native: ProjectContext[];
   private readonly inputs: { uri: string; version: string }[];
   constructor(private readonly project: ProjectContext, private readonly checked: CheckedManifest,
     private readonly selected: Configuration['outputs'], inputs: readonly { uri: string; version: string }[] = [], private readonly acquisition?: ProjectSnapshot) {
@@ -22,6 +23,7 @@ export class BuildContext implements ProjectContext {
     }));
     const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) } : project;
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
+    if (checked.profile?.target === 'java') this.native.push(new JavaContext(nativeProject, { configFile: checked.profile.configFile! }));
     this.inputs = [{ uri: pathToFileURL(checked.manifest).href, version: hash(Buffer.from(checked.text!)) },
       ...checked.captures.map(capture => ({ uri: capture.source.sourceId, version: capture.version.replace(/^sha256:/, '') })), ...checked.packageInputs ?? [], ...inputs];
   }
@@ -63,4 +65,3 @@ export class BuildContext implements ProjectContext {
       nativeInputs: [...inputs.values()], complete: complete && fresh.complete && !problems.length, problems };
   }
 }
-
