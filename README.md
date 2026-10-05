@@ -285,7 +285,11 @@ node node_modules/executable-specification-language/dist/cli-entry.js check
 node node_modules/executable-specification-language/dist/cli-entry.js build
 ```
 
-The starter selects Python contracts and acceptance tests. Explicit installation creates the project environment with LibCST 1.9.0, Jedi 0.20.0, mypy 2.4.0 and pytest 9.1.1. Add **game/src/basket.py**:
+The starter selects Python contracts and acceptance tests. Explicit installation creates the project environment with LibCST 1.9.0, Jedi 0.20.0, mypy 2.4.0 and pytest 9.1.1. `expec.python.json` records source/test roots and tool paths; changes to native configuration or requirements need another explicit install. `install --offline` uses available cached packages and fails when a required package is missing. Additional requirements use `pypi:` names and exact two- or three-part release versions.
+
+Native inspection uses captured source and dependencies. Dynamic or unresolved uses limit coverage and preserving edits; compiled application extensions require compatible stubs. The public `PythonContext`, `PythonProject.read/search`, `pythonOutput` and `pythonAcceptanceOutput` APIs compose these operations.
+
+Add **game/src/basket.py**:
 
 <!-- expec-example: python-shopping/game/src/basket.py -->
 ```python
@@ -345,7 +349,7 @@ node node_modules/executable-specification-language/dist/cli-entry.js test
 
 The generated scenario must pass with one Dune in the basket. Remove only the quantity assignment in Basket.add (`contents.put`, `contents[title] =`, or `self.contents[title] =` above), keeping its availability check. The same test must fail with expected 1 and actual 0. Restore that line and test again. No build occurs between these runs: the generated assertions and DSL stay unchanged. The driver obtains quantity from the actual application state.
 
-Generated stubs remain unfinished until implemented. Native build/read/test never installs missing dependencies implicitly. This starter uses one executable target per connected project; documentation outputs can coexist. The Python command follows its controlled pytest profile, not every arbitrary plugin/configuration. A directly invoked new Unix Gradle wrapper uses `sh gradlew`, because file creation alone does not promise an executable mode; the documented CLI commands handle native invocation.
+Generated stubs remain unfinished until implemented. Build and native inspection do not execute application code. Missing, skipped, failed or unfinished current generated cases cannot establish test success. Native build/read/test never installs missing dependencies implicitly. This starter uses one executable target per connected project; documentation outputs can coexist. The Python command follows its controlled pytest profile, not every arbitrary plugin/configuration. A directly invoked new Unix Gradle wrapper uses `sh gradlew`, because file creation alone does not promise an executable mode; the documented CLI commands handle native invocation.
 
 ## Revise or connect an existing project
 
