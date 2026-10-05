@@ -128,6 +128,7 @@ export class TypeScriptCapture {
     }
     roots = [...new Set(roots)];
     const unresolved: { literal: ts.StringLiteralLike; source: ts.SourceFile }[] = [];
+    const resolutions = new Map<ts.SourceFile, (string | undefined)[]>();
     this.service = ts.createLanguageService({ ...moduleHost, getCompilationSettings: () => options,
       getCurrentDirectory: () => root, getScriptFileNames: () => roots, getScriptVersion: () => 'capture',
       getScriptSnapshot: path => { const text = read(path); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text); },
@@ -141,6 +142,7 @@ export class TypeScriptCapture {
         }
         const found = ts.resolveModuleName(literal.text, containing, settings, moduleHost, undefined, redirected, ts.getModeForUsageLocation(source, literal, settings));
         const path = found.resolvedModule?.resolvedFileName;
+        if (inputs) { const paths = resolutions.get(source) ?? []; paths.push(path); resolutions.set(source, paths); }
         if (inputs && !path) unresolved.push({ literal, source });
         if (inputs && path?.startsWith(root + '/node_modules/') && !/\.d\.[cm]?ts$/i.test(path)) this.problems.push(diagnostic('unsupported-native-input', `Native import ${literal.text} requires installed implementation rather than declarations.`, this.projectPath(containing)!, literal.getStart(source), literal.getWidth(source)));
         return found;
@@ -148,7 +150,17 @@ export class TypeScriptCapture {
     try {
       this.program = this.service.getProgram();
       if (this.program) {
-        this.problems.push(...ts.getPreEmitDiagnostics(this.program).map(error => this.nativeDiagnostic(error)));
+        // Acquisition checks sources that can report unavailable inputs; pure queries retain full diagnostics.
+        const selected = inputs ? this.program.getSourceFiles().filter(source => source.referencedFiles.length
+          || source.typeReferenceDirectives.length || source.libReferenceDirectives.length
+          || !source.fileName.startsWith(libraries + '/') && hasModuleDeclaration(source)
+          || (resolutions.get(source) ?? []).some(path => !path || /\.(?:[cm]?js|jsx)$/i.test(path) || !this.program!.getSourceFile(path))) : [];
+        const diagnostics = inputs ? ts.sortAndDeduplicateDiagnostics([
+          ...this.program.getConfigFileParsingDiagnostics(), ...this.program.getOptionsDiagnostics(),
+          ...this.program.getGlobalDiagnostics(), ...this.program.getSyntacticDiagnostics(),
+          ...selected.flatMap(source => this.program!.getSemanticDiagnostics(source)),
+        ]) : ts.getPreEmitDiagnostics(this.program);
+        this.problems.push(...diagnostics.map(error => this.nativeDiagnostic(error)));
         const checker = this.program.getTypeChecker();
         for (const { literal, source } of unresolved) if (!checker.getSymbolAtLocation(literal)) {
           const path = this.projectPath(source.fileName)!, start = literal.getStart(source);
@@ -182,6 +194,10 @@ export class TypeScriptCapture {
     const location = (item: ts.Diagnostic) => diagnostic('', '', item.file ? this.projectPath(item.file.fileName) ?? '<standard-library>' : this.configFile ?? '<default-profile>', item.start, item.length).at;
     return { code: 'typescript-' + error.code, message: ts.flattenDiagnosticMessageText(error.messageText, '\n'), at: location(error), related: error.relatedInformation?.map(location) ?? [] };
   }
+}
+
+function hasModuleDeclaration(node: ts.Node): boolean {
+  return ts.isModuleDeclaration(node) || !!ts.forEachChild(node, hasModuleDeclaration);
 }
 
 /** Native diagnostics have already run without skipLibCheck/noCheck: only an intentionally absent declaration peer qualifies. */

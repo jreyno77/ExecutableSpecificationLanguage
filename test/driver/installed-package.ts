@@ -14,12 +14,28 @@ const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
+interface KotlinCommand {
+  code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[]; stages: {
+    name: string; status: string; packages?: PackageRead; tests?: {title:string;state:string;errors:string[]}[];
+  }[] };
+}
 interface ConsumerReport {
+  kotlinCli?: { executable: string; initialized: KotlinCommand; acquired: KotlinCommand; built: KotlinCommand; passed: KotlinCommand; broken: KotlinCommand;
+    original: string; testText: string; testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[] };
+  javaCli?: { executable: string; commands: JavaCommand[]; first: JavaCommand; renamed: JavaCommand; wrong: JavaCommand; source: string; caller: string; readable: string };
+  java?: { complete:boolean; problems:unknown[]; search:ProjectSearch; read:Omit<ProjectRead,'artifacts'>&{artifacts:{at:unknown;path:string;text:string}[]}; wrong:ProcessResult };
   customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
     checkoutDenied: string; privateImportDenied: string; catalog: string; note: string };
   cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
     stderr: string; manifestBefore: string; manifestAfter: string; files: string[]; note: string };
   packageUrl: string;
+  kotlin?: {
+    initialized: string; acquired: PackageRead; created: OutputWrite; repeated: OutputWrite; tests: OutputWrite; testText: string;
+    observed: { coverage: { complete: boolean }; problems: unknown[]; files: { path: string; text: string }[] }; search: ProjectSearch;
+    caller: string; callerPath: string; before: string; after: string; passed: ProcessResult & { xml: string[] }; broken: ProcessResult & { xml: string[] };
+    testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[]; jars: number; nativeBytes: number; notice: string;
+    artifacts: { file: string; expected: string; actual: string; notices: { path: string; bytes: number }[] }[];
+  };
   lifecycle?: {
     written: OutputWrite; scenario: string; unchangedTests: boolean;
     passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[]; events: { id: string; event: string; title?: string; actual?: number; listening?: boolean }[] };
@@ -96,6 +112,8 @@ interface ConsumerReport {
     canaries: { failures: boolean[]; denied: string[] }; private: string };
 
 }
+interface JavaCommand { command: string; code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[];
+  stages: { name: string; status: string; tests?: { state: string; errors: string[] }[] }[] } }
 interface CountReport {
   write?: OutputWrite;
   counts?: { concepts: number; recordTypes: number; capabilities: number; subjects: { id: string; name: string }[] };
@@ -124,13 +142,13 @@ export class PackageDriver {
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
     if (version.stdout.trim() !== '11.20.0') throw new Error(`Expected npm 11.20.0, received ${version.stdout}`);
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }
   static async finish(): Promise<void> { if (this.directory) await cleanup(this.directory); }
 
   async install(options: { withoutFile?: string; withoutDependency?: string } = {}): Promise<void> {
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.consumer = join(this.directory, 'consumer');
     let artifact = PackageDriver.artifact;
     if (options.withoutFile || options.withoutDependency) {
@@ -163,6 +181,19 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
   }
+  async deliverKotlinCli(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-cli-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin-cli.json'), JSON.stringify({source}));
+    this.result = await run(process.execPath, ['kotlin-cli-consumer.mjs', 'kotlin-cli.json'], this.consumer, 600_000, {EXPEC_DENIED_CHECKOUT:checkout});
+    await this.readReport();
+  }
+  async deliverKotlin(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['kotlin-consumer.mjs', 'kotlin.json'], this.consumer, 600_000, { EXPEC_DENIED_CHECKOUT: checkout });
+    await this.readReport();
+  }
+  async packedBytes(): Promise<number> { return (await stat(PackageDriver.artifact)).size; }
   async checkFromInstalledCommand(): Promise<void> {
     await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
     this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
@@ -208,6 +239,19 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
     await this.readReport();
   }
+  async preserveJava(input: { source:string; revised:string; implementation:string; caller:string }): Promise<void> {
+    await cp(join(resources,'java-consumer.mjs'),join(this.consumer,'java-consumer.mjs'));
+    await cp(join(checkout,'test/resources/java-project/build.gradle'),join(this.consumer,'java-capture.gradle'));
+    await writeFile(join(this.consumer,'java-input.json'),JSON.stringify(input));
+    this.result=await run(process.execPath,['java-consumer.mjs'],this.consumer); await this.readReport();
+  }
+  async javaCommands(input: { source: string; revised: string }): Promise<void> {
+    await cp(join(resources, 'java-cli-consumer.mjs'), join(this.consumer, 'java-cli-consumer.mjs'));
+    await cp(join(resources, 'java-cli-guard.mjs'), join(this.consumer, 'java-cli-guard.mjs'));
+    const checkoutFile = join(checkout, 'src/index.ts'); await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'java-cli-input.json'), JSON.stringify({ ...input, checkoutFile }));
+    this.result = await run(process.execPath, ['java-cli-consumer.mjs'], this.consumer, 300_000); await this.readReport();
+  }
   async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
     await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
@@ -227,8 +271,8 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
     await this.readReport();
   }
-  async provideDependencies(): Promise<void> {
-    this.native = new NativePackageDriver(); await this.native.initialize();
+  async provideDependencies(parent = ''): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize('project', parent);
     await this.native.publish('example-storage', '2.1.0');
     await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
     await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
@@ -365,8 +409,8 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
-async function run(executable: string, args: string[], cwd: string, timeout = 120_000): Promise<ProcessResult> {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
+async function run(executable: string, args: string[], cwd: string, timeout = 120_000, environment: Record<string, string> = {}): Promise<ProcessResult> {
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase()))), ...environment };
   try {
     const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
@@ -387,7 +431,19 @@ function child(parent: string, path: string): string {
   return target;
 }
 async function cleanup(directory: string): Promise<void> {
-  const name = relative(resolve(tmpdir()), resolve(directory));
+  const name = relative(await realpath(tmpdir()), resolve(directory));
   if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-package-')) throw new Error('Refusing to remove an unexpected fixture directory');
-  await rm(directory, { recursive: true, force: true });
+  const trace = (status: string, elapsedMs?: number, error?: unknown): void => {
+    if (process.env.EXPEC_CLEANUP_TIMINGS !== '1') return;
+    try {
+      const failure = error as NodeJS.ErrnoException | undefined;
+      console.info('[fixture-cleanup]', JSON.stringify({ directory, pid: process.pid, at: new Date().toISOString(),
+        status, elapsedMs, code: failure?.code, syscall: failure?.syscall }));
+    } catch { /* Diagnostics must not replace the removal result. */ }
+  };
+  trace('started');
+  const start = performance.now();
+  try { await rm(directory, { recursive: true, force: true }); }
+  catch (error) { trace('rejected', performance.now() - start, error); throw error; }
+  trace('fulfilled', performance.now() - start);
 }

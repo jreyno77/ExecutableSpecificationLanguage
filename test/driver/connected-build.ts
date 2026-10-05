@@ -10,6 +10,7 @@ import ts from 'typescript';
 import { pathToFileURL } from 'node:url';
 import { NativePackageDriver } from './native-packages.js';
 import { copyInstalledPackages } from './typescript-context.js';
+import { requireCompiledCheckout } from './compiled-checkout.js';
 
 const execute = promisify(execFile);
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
@@ -29,11 +30,8 @@ export class ConnectedBuildDriver {
   afterWriterRelease?: { count: number; path: string; text: string };
   result!: { code: number; stdout: string; stderr: string };
   report: any;
-  private launcher?: string;
-  static async prepare(): Promise<void> {
-    await execute(process.execPath, [join(checkout, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
-      { cwd: checkout, timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
-  }
+  protected launcher?: string;
+  static async prepare(): Promise<void> { requireCompiledCheckout(); }
   async initialize(connected: boolean): Promise<void> {
     this.parent = await realpath(tmpdir());
     this.directory = await realpath(await mkdtemp(join(this.parent, 'expec-cli-')));
@@ -148,7 +146,6 @@ export class ConnectedBuildDriver {
     await copyInstalledPackages(this.path('project'), { vitest: '5.0.2', '@types/node': '24.13.6' });
     await this.write('project/package.json', '{"type":"module","private":true}');
     await this.write('project/tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, types: ['node'], skipLibCheck: true }, include: ['**/*.ts'] }));
-    await this.write('project/vitest.config.ts', 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { include: ["test/acceptance/*.test.ts"], retry: 0 } });');
   }
   async serveCompiler(destination: string): Promise<void> {
     this.registry = new NativePackageDriver(); await this.registry.initialize();

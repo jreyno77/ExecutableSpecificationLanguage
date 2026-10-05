@@ -6,19 +6,21 @@ import { Compiler, type Specification } from './compiler.js';
 import { DependencyPlanner } from './dependency-planner.js';
 import type { SyntaxDiagnostic } from './grammar/source.js';
 import { LibraryLoader } from './library-loader.js';
-import { checkedPythonPackages } from './cli-python.js';
-import { pythonExclusions } from './python-profile.js';
 import { readPackages } from './cli-packages.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { SourceComposer } from './source-composer.js';
 import { SourceLoader, type SourceCapture } from './source-loader.js';
 import { cliProfile } from './cli-profile.js';
+import { checkedJavaPackages, javaCliExclusions } from './cli-java.js';
+import { readKotlinPackages, kotlinExclusions } from './cli-kotlin.js';
+import { checkedPythonPackages } from './cli-python.js';
+import { pythonExclusions } from './python-profile.js';
 
 export interface CheckedManifest {
   manifest: string;
-  profile?: NonNullable<ReturnType<typeof cliProfile>['value']>;
   text?: string;
   configuration?: Configuration;
+  profile?: NonNullable<ReturnType<typeof cliProfile>['value']>;
   project?: ProjectRoot;
   specification?: Specification;
   captures: readonly SourceCapture[];
@@ -50,13 +52,17 @@ export async function checkManifest(filename: string, profiles: readonly OutputP
   const libraries = await new LibraryLoader(result.manifest).load(configuration);
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
-  if (configuration.packages.length || result.profile?.target === 'python') {
-    const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(configuration);
+  if (configuration.packages.length || result.profile?.target === 'java' || result.profile?.target === 'python') {
+    const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+      : result.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions }
+      : result.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(configuration);
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
-      const observed = result.profile?.target === 'python'
-        ? await checkedPythonPackages(connection.value.context, configuration, result.manifest, result.profile.configFile)
+      const observed = result.profile?.target === 'java'
+        ? await checkedJavaPackages(result, connection.value.context, result.profile.configFile!)
+        : result.profile?.target === 'kotlin' ? await readKotlinPackages(connection.value.context, configuration.packages)
+        : result.profile?.target === 'python' ? await checkedPythonPackages(connection.value.context, configuration, result.manifest, result.profile.configFile)
         : await readPackages(result.project, configuration.packages);
       result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];

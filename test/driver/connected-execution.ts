@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { ConnectedBuildDriver } from './connected-build.js';
 export class ConnectedExecutionDriver extends ConnectedBuildDriver {
   private generated: Record<string, string> = {};
@@ -30,6 +31,7 @@ export class ConnectedExecutionDriver extends ConnectedBuildDriver {
     options.fixture = { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file: 'test/dsl/http-shopping-test.ts', declaration: [{ kind: 'variable', name: 'test' }] } };
     await this.saveManifest(); await this.run(['build', '--config', 'spec/expec.json', '--json'], '', undefined, 120_000);
     if (this.result.code) throw Error('Real fixture connection failed: ' + this.result.stdout);
+    await this.write('project/vitest.config.ts', 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { include: ["test/acceptance/*.test.ts"], retry: 0 } });');
     this.generated = await this.capture(['node_modules']);
   }
   async restoreShopping(): Promise<void> {
@@ -39,6 +41,13 @@ export class ConnectedExecutionDriver extends ConnectedBuildDriver {
     for (const [path, data] of Object.entries(this.generated)) await this.write(path, Buffer.from(data, 'base64').toString('utf8'));
   }
   async options(value: object): Promise<void> { await this.write('project/shop-options.json', JSON.stringify(value)); }
+  async changeAfterSelection(from: string, to: string): Promise<void> {
+    this.launcher = this.path('launcher/connected-selection.mjs');
+    await this.write(this.launcher, await fs.readFile(new URL('../resources/connected-selection.mjs', import.meta.url), 'utf8'));
+    await this.write('launcher/selection.json', JSON.stringify({ library: fileURLToPath(new URL('../../dist/index.js', import.meta.url)),
+      file: this.path('project/test/acceptance/shopping.test.ts'), from, to }));
+  }
+  useDefaultLauncher(): void { delete this.launcher; }
   async edit(path: string, from: string, to: string): Promise<void> {
     const text = await fs.readFile(this.path(path), 'utf8'); if (!text.includes(from)) throw Error('Expected fixture text is absent.');
     await this.write(path, text.replace(from, to));

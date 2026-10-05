@@ -3,11 +3,15 @@ import type { Diagnostic } from './checking.js';
 import type { CheckedManifest } from './cli-check.js';
 import { cliProblem } from './cli-check.js';
 import { ConfigurationFile } from './cli-configuration.js';
-import { installPython } from './python-acquisition.js';
-import { pythonExclusions } from './python-profile.js';
 import { NpmDependencies } from './npm-dependencies.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { ProjectInitializer } from './project-initializer.js';
+import { installJava } from './java-acquisition.js';
+import { javaCliExclusions } from './cli-java.js';
+import { KotlinDependencies } from './kotlin-dependencies.js';
+import { kotlinExclusions } from './cli-kotlin.js';
+import { installPython } from './python-acquisition.js';
+import { pythonExclusions } from './python-profile.js';
 
 export interface CommandResult {
   status: string;
@@ -23,7 +27,7 @@ export async function answer(question: string, signal: AbortSignal): Promise<str
   finally { terminal.close(); }
 }
 export async function initialize(loaded: CheckedManifest, selected: string,
-  choice: { root: string; target: string; python?: string; uv?: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
+  choice: { root: string; target: string; javaHome?: string; python?: string; uv?: string } | undefined, accepted: boolean, interactive: boolean, signal: AbortSignal): Promise<CommandResult> {
   const result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [] };
   const problem = (code: string, message: string) => { result.problems = [cliProblem(code, message, loaded.manifest)]; return result; };
   const connection = await new ProjectConnector(loaded.manifest).connect(loaded.configuration!);
@@ -33,9 +37,10 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     problems: [cliProblem('initialization-required', 'Choose expec init --root <directory> --target typescript --yes explicitly.', loaded.manifest)] };
   if (!choice) {
     if (!/^y(?:es)?$/i.test(await answer('Initialize a project (yes/no)', signal))) return { ...result, status: 'declined', exitCode: 3 };
-    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript/python)', signal) };
+    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript, java, kotlin or python)', signal) };
     if (choice.target === 'python') { choice.python = await answer('Python interpreter path', signal); choice.uv = await answer('uv executable path', signal); }
   }
+  if (['java', 'kotlin'].includes(choice.target) && !choice.javaHome && interactive) choice.javaHome = await answer('Absolute JDK21 directory', signal);
   let manifest: ConfigurationFile;
   try { manifest = await ConfigurationFile.capture(selected, loaded.text!); }
   catch (error) { return problem('configuration-unsaved', String(error)); }
@@ -57,12 +62,16 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     exitCode: write.status === 'applied' ? 0 : 1, problems: write.problems };
 }
 export async function install(loaded: CheckedManifest, offline = false): Promise<CommandResult> {
-  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(loaded.configuration!);
+  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+    : loaded.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions }
+    : loaded.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(loaded.configuration!);
   if (connection.value?.status !== 'connected') return { status: 'invalid', exitCode: 1, stages: [], problems: connection.problems.length ? connection.problems
     : [cliProblem('project-required', 'Connect a project with expec init before installing declared packages.', loaded.manifest)] };
   const project = connection.value.context.root, requested = loaded.configuration!.packages;
-  if (!requested.length && loaded.profile?.target !== 'python') return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
-  const packages = loaded.profile?.target === 'python' ? await installPython(loaded.configuration!, loaded.manifest, { ...(loaded.profile.configFile ? { configFile: loaded.profile.configFile } : {}), offline })
+  if (!requested.length && loaded.profile?.target !== 'java' && loaded.profile?.target !== 'python') return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
+  const packages = loaded.profile?.target === 'java' ? await installJava(loaded.configuration!, loaded.manifest, { configFile: loaded.profile.configFile! })
+    : loaded.profile?.target === 'kotlin' ? await new KotlinDependencies(project.path).install(requested)
+    : loaded.profile?.target === 'python' ? await installPython(loaded.configuration!, loaded.manifest, { ...(loaded.profile.configFile ? { configFile: loaded.profile.configFile } : {}), offline })
     : await new NpmDependencies(project.path).install(requested);
   return { status: packages.value ? 'installed' : 'installation-failed', exitCode: packages.value ? 0 : 1, project,
     problems: packages.problems, stages: [{ name: 'installation', status: packages.value ? 'applied' : 'stopped', packages }] };

@@ -39,22 +39,32 @@ export class ProjectConnector {
     if (!configuration.project) return success({ status: 'unconnected', reason: 'not-configured' });
     if (!nativePath(configuration.project.root)) return failure('invalid-project-root', 'Provide a valid native project path without ambient drive state.');
     const selected = resolve(this.directory, configuration.project.root);
-    try {
-      let existing = selected;
-      for (;;) {
-        try { await fs.lstat(existing); break; } catch (error) {
-          if (osError(error) !== 'ENOENT' || dirname(existing) === existing) throw error;
-          existing = dirname(existing);
-        }
+    const result = await connectDirectory(selected, this.exclusions);
+    return { ...result, problems: result.problems.map(problem => ({ ...problem,
+      at: { kind: 'dependency', path: ['manifest', configuration.sourceId, 'project', 'root'] } })) };
+  }
+}
+
+/** Connects an explicit native directory; the manifest-facing connector supplies its own diagnostic location. */
+export async function connectDirectory(selected: string, exclusions: readonly string[]): Promise<Check<ProjectConnection>> {
+  if (!nativePath(selected) || !isAbsolute(selected)) throw new TypeError('Provide an absolute native project directory.');
+  const success = (value: ProjectConnection): Check<ProjectConnection> => ({ value, problems: [], deferred: [] });
+  const failure = (code: string, message: string): Check<ProjectConnection> => ({ problems: [diagnostic(code, message, ['project', selected])], deferred: [] });
+  try {
+    let existing = selected;
+    for (;;) {
+      try { await fs.lstat(existing); break; } catch (error) {
+        if (osError(error) !== 'ENOENT' || dirname(existing) === existing) throw error;
+        existing = dirname(existing);
       }
-      const path = await fs.realpath(existing), info = await fs.stat(path, { bigint: true });
-      if (!info.isDirectory()) return failure('root-not-directory', `Project root ${selected} is not a directory.`);
-      if (existing !== selected) return success({ status: 'unconnected', reason: 'missing-root', root: selected });
-      if (!usableIdentity(info)) return failure('unsupported-root', `Project root ${selected} has no usable filesystem identity.`);
-      return success({ status: 'connected', context: new ConnectedProject(selected, { path, identity: identity(path, info) }, this.exclusions) });
-    } catch (error) {
-      return failure(osError(error) === 'ENOTDIR' ? 'root-not-directory' : 'root-unavailable', `Cannot connect to project root ${selected}: ${osError(error)}.`);
     }
+    const path = await fs.realpath(existing), info = await fs.stat(path, { bigint: true });
+    if (!info.isDirectory()) return failure('root-not-directory', `Project root ${selected} is not a directory.`);
+    if (existing !== selected) return success({ status: 'unconnected', reason: 'missing-root', root: selected });
+    if (!usableIdentity(info)) return failure('unsupported-root', `Project root ${selected} has no usable filesystem identity.`);
+    return success({ status: 'connected', context: new ConnectedProject(selected, { path, identity: identity(path, info) }, [...exclusions]) });
+  } catch (error) {
+    return failure(osError(error) === 'ENOTDIR' ? 'root-not-directory' : 'root-unavailable', `Cannot connect to project root ${selected}: ${osError(error)}.`);
   }
 }
 

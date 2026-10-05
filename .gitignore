@@ -7,3 +7,10 @@ src/langium/generated/
 /AGENTS.md
 *.tsbuildinfo
 *.log
+src/java/
+src/java-native/.gradle/
+src/java-native/build/
+src/kotlin/
+src/kotlin-native/.gradle/
+src/kotlin-native/.kotlin/
+src/kotlin-native/build/

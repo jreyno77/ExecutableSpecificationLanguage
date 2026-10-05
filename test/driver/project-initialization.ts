@@ -69,9 +69,9 @@ export class InitializationDriver {
     this.remembered.set('configuration', structuredClone(this.configuration));
     this.initializer = new ProjectInitializer(this.manifest, this.configuration);
   }
-  async prepare(root: string, target: string): Promise<void> {
+  async prepare(root: string, target: string, javaHome?: string): Promise<void> {
     this.destination = this.relativeToManifest(root); this.result = undefined;
-    this.prepared = await this.initializer.prepare({ root, target });
+    this.prepared = await this.initializer.prepare({ root, target, ...(javaHome ? { javaHome } : {}) });
   }
   async preparePython(root: string, python = process.env.EXPEC_TEST_PYTHON, uv = process.env.EXPEC_TEST_UV): Promise<void> {
     if (!python || !uv) throw Error('Provide the explicitly provisioned Python and uv executables.');
