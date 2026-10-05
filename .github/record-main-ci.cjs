@@ -14,6 +14,8 @@ function isMainCi(run, repo) {
 // The caller serializes recorder runs. Only GitHub metadata is consumed; no CI artifact is executed.
 async function recordMainCiAttempt({ github, context }) {
   const repo = context.repo;
+  const commitUrl = sha => `${context.serverUrl ?? 'https://github.com'}/${repo.owner}/${repo.repo}/commit/${sha}`;
+  const runLink = record => `[Build and test run ${record.run_id}, attempt ${record.run_attempt}](${record.run_url})`;
   const source = context.payload.workflow_run;
   if (!isMainCi(source, repo) || (!failures.has(source.conclusion) && source.conclusion !== 'success')) return;
   const snapshotCache = new Map();
@@ -64,29 +66,48 @@ async function recordMainCiAttempt({ github, context }) {
       const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: issue.number, per_page: 100 });
       recordCache.set(issue.number, [issue, ...comments].filter(item => item.user?.login === 'github-actions[bot]').flatMap(item =>
         [...(item.body ?? '').matchAll(/<!-- expec-main-ci-record:\d+:\d+ -->\n```json\n([\s\S]*?)\n```/g)]
-          .map(match => JSON.parse(match[1]))));
+          .map(match => ({ ...JSON.parse(match[1]), recorded_at: timestamp(item.created_at) }))));
     }
     return recordCache.get(issue.number);
   }
-  async function append(issue, record) {
+  async function append(issue, record, explanation) {
     const previous = await records(issue);
     if (previous.some(value => value.run_id === record.run_id && value.run_attempt === record.run_attempt)) return;
-    await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body: recordBlock(record) });
-    previous.push(record);
+    const { data: comment } = await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body: `${explanation}\n\n${recordBlock(record)}` });
+    previous.push({ ...record, recorded_at: timestamp(comment.created_at) });
   }
+  async function setState(issue, state) {
+    if (issue.state === state) return;
+    await github.rest.issues.update({ ...repo, issue_number: issue.number, state,
+      ...(state === 'closed' ? { state_reason: 'completed' } : {}),
+    });
+    issue.state = state;
+  }
+  const latestFailure = previous => previous.filter(record => failures.has(record.conclusion)).sort((a, b) => b.run_attempt - a.run_attempt)[0];
+  const endsAfter = (success, failed) => failed.last_job_completed_at && success.last_job_completed_at
+    && Date.parse(success.last_job_completed_at) > Date.parse(failed.last_job_completed_at)
+    && (success.run_id !== failed.run_id || success.run_attempt > failed.run_attempt);
+  // Every failed attempt of this run has the same source commit. Retained, verified success
+  // also covers a delayed failure whose jobs ended before that success was observed.
+  const coveringRecovery = (previous, failed) => previous.find(record => record.conclusion === 'success'
+    && record.observed_after_attempt != null && endsAfter(record, failed));
   async function observeSuccess(issue, success) {
     const previous = await records(issue);
-    const failed = previous.filter(record => failures.has(record.conclusion)).sort((a, b) => b.run_attempt - a.run_attempt)[0];
-    if (!failed || previous.some(record => record.observed_after_attempt >= failed.run_attempt)) return;
-    if (!failed.last_job_completed_at || !success.last_job_completed_at
-      || Date.parse(success.last_job_completed_at) <= Date.parse(failed.last_job_completed_at)) return;
-    if (success.run_id === failed.run_id && success.run_attempt <= failed.run_attempt) return;
+    const failed = latestFailure(previous);
+    if (!failed) return;
+    if (coveringRecovery(previous, failed)) {
+      await setState(issue, 'closed');
+      return;
+    }
+    if (!endsAfter(success, failed)) return;
     if (success.head_sha !== failed.head_sha) {
       const comparison = await github.rest.repos.compareCommitsWithBasehead({ ...repo, basehead: `${failed.head_sha}...${success.head_sha}` });
       if (comparison.data.status !== 'ahead') return;
     }
     await append(issue, { ...success, observed_after_attempt: failed.run_attempt,
-      relation: success.head_sha === failed.head_sha ? 'same commit' : 'descendant commit' });
+      relation: success.head_sha === failed.head_sha ? 'same commit' : 'descendant commit' },
+    `Main CI is green in ${runLink(success)} at [${success.head_sha}](${commitUrl(success.head_sha)}).\n\nThe last job completed at ${success.last_job_completed_at}, after failed attempt ${failed.run_attempt}. Closing this CI issue as completed. This is successful CI validation, not deployment recovery; issue closure time is not a recovery timestamp.`);
+    await setState(issue, 'closed');
   }
 
   if (failures.has(source.conclusion)) {
@@ -96,10 +117,18 @@ async function recordMainCiAttempt({ github, context }) {
     if (!issue) {
       issue = (await github.rest.issues.create({ ...repo, labels: [label],
         title: `Main CI failure: Build and test run ${source.id}`,
-        body: `${issueMarker(source.id)}\nCI failure evidence, not a deployment failure. Deployment impact and causal recovery remain unknown.\n\nLater successful main observations do not automatically resolve this issue. Issue closure time is never recovery time.\n\n${recordBlock(observation)}`,
+        body: `${issueMarker(source.id)}\nCI failure evidence, not a deployment failure. Deployment impact and causal recovery remain unknown.\n\nA verified later successful retry or descendant main run adds a recovery comment and closes this CI issue. Issue closure time is never recovery time.\n\n${recordBlock(observation)}`,
       })).data;
-    } else await append(issue, observation);
-    const latestFailedAttempt = Math.max(...(await records(issue)).filter(record => failures.has(record.conclusion)).map(record => record.run_attempt));
+    } else await append(issue, observation,
+      `Main CI failed again in ${runLink(observation)} at [${observation.head_sha}](${commitUrl(observation.head_sha)}). Conclusion: ${observation.conclusion}. The original failure and prior recovery observations remain recorded below.`);
+    const previous = await records(issue);
+    const failed = latestFailure(previous);
+    if (coveringRecovery(previous, failed)) await setState(issue, 'closed');
+    // A newer failure can reopen a previous closure. A closure after its recorded comment
+    // is a later user decision; missing or equal timestamps cannot establish that order.
+    else if (previous.some(record => failures.has(record.conclusion) && record.run_attempt < failed.run_attempt)
+      && timestamp(issue.closed_at) && failed.recorded_at
+      && Date.parse(issue.closed_at) < Date.parse(failed.recorded_at)) await setState(issue, 'open');
     // A success event may have been handled before this delayed failure event.
     const successful = await github.paginate(github.rest.actions.listWorkflowRuns, {
       ...repo, workflow_id: source.workflow_id, branch: 'main', event: 'push', status: 'success', per_page: 100,
@@ -107,7 +136,7 @@ async function recordMainCiAttempt({ github, context }) {
     for (const run of successful) {
       if (!isMainCi(run, repo) || run.conclusion !== 'success') continue;
       await observeSuccess(issue, await snapshot(run));
-      if ((await records(issue)).some(record => record.observed_after_attempt >= latestFailedAttempt)) break;
+      if (coveringRecovery(await records(issue), failed)) break;
     }
   } else {
     for (const issue of issues) await observeSuccess(issue, observation);
