@@ -31,6 +31,7 @@ export class ConnectedExecutionDriver extends ConnectedBuildDriver {
     options.fixture = { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file: 'test/dsl/http-shopping-test.ts', declaration: [{ kind: 'variable', name: 'test' }] } };
     await this.saveManifest(); await this.run(['build', '--config', 'spec/expec.json', '--json'], '', undefined, 120_000);
     if (this.result.code) throw Error('Real fixture connection failed: ' + this.result.stdout);
+    await this.write('project/vitest.config.ts', 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { include: ["test/acceptance/*.test.ts"], retry: 0 } });');
     this.generated = await this.capture(['node_modules']);
   }
   async restoreShopping(): Promise<void> {

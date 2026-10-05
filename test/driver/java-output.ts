@@ -11,6 +11,10 @@ import { execFile } from 'node:child_process';
 import { Compiler, ConfigurationReader, FileProjectWriter, JavaContext, JavaProject, LangiumModel, LangiumReader, Outputs, ProjectConnector, SourceComposer,
   SpecificationIdentity, reconcileRelationships, javaOutput, type Reconciliation, type ArtifactAssociation, type IdentifiedSpecification, type OutputWrite, type ProjectChanges, type ProjectContext, type ProjectRead, type ProjectSearch, type ProjectSnapshot } from '../../src/index.js';
 
+const acquisitionInputs = ['expec.java.json', 'settings.gradle', 'build.gradle', 'gradlew', 'gradlew.bat',
+  'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties', '.expec/java/dependencies.gradle', 'gradle.lockfile'];
+const preparedProfiles = new Map<string, Promise<readonly { path: string; bytes: Buffer; mode: number }[]>>();
+
 export class JavaOutputDriver {
   readonly temporary = realpathSync.native(tmpdir());
   readonly directory = realpathSync.native(mkdtempSync(join(this.temporary, 'expec-java-')));
@@ -90,6 +94,44 @@ export class JavaOutputDriver {
   }
   async nativeProject(build = '', javaHome = process.env.JAVA_HOME): Promise<void> {
     if (!javaHome) throw new Error('Java native acceptance requires an explicit JAVA_HOME for JDK 21.');
+    const junit = process.env.EXPEC_TEST_JUNIT_CONSOLE, options = JSON.stringify(this.nativeOptions);
+    const reusable = !build && javaHome === process.env.JAVA_HOME && (Object.keys(this.nativeOptions).length === 0
+      || junit && options === JSON.stringify({ classPath: { main: [], test: [junit] } }));
+    if (reusable) {
+      const key = JSON.stringify([javaHome, options]);
+      let prepared = preparedProfiles.get(key);
+      if (!prepared) {
+        prepared = this.prepareProfile(javaHome).catch(error => { preparedProfiles.delete(key); throw error; });
+        preparedProfiles.set(key, prepared);
+      }
+      for (const file of await prepared) {
+        await fs.mkdir(dirname(join(this.root, file.path)), { recursive: true });
+        await fs.writeFile(join(this.root, file.path), Buffer.from(file.bytes));
+        await fs.chmod(join(this.root, file.path), file.mode);
+      }
+    } else await this.acquireNativeProject(build, javaHome);
+    await this.capture();
+  }
+  private async prepareProfile(javaHome: string): Promise<readonly { path: string; bytes: Buffer; mode: number }[]> {
+    const prepared = new JavaOutputDriver();
+    try {
+      prepared.nativeOptions = structuredClone(this.nativeOptions);
+      await fs.mkdir(prepared.root);
+      await prepared.acquireNativeProject('', javaHome);
+      const files = await Promise.all([...acquisitionInputs, '.expec/java/classpath.json']
+        .map(async path => ({ path, bytes: await fs.readFile(join(prepared.root, path)), mode: (await fs.stat(join(prepared.root, path))).mode })));
+      const report = JSON.parse(files.at(-1)!.bytes.toString('utf8'));
+      if (report.javaHome !== javaHome || report.release !== 21
+        || JSON.stringify(report.sourceRoots) !== JSON.stringify({ main: ['src/main/java'], test: ['src/test/java'] })
+        || JSON.stringify(report.classPath) !== JSON.stringify({ main: { compile: [], runtime: [] }, test: { compile: [], runtime: [] } })
+        || JSON.stringify(report.packages) !== '[]'
+        || JSON.stringify(report.inputs.map((input: { path: string }) => input.path)) !== JSON.stringify(acquisitionInputs)
+        || JSON.stringify(report).includes(JSON.stringify(prepared.root).slice(1, -1)))
+        throw new Error('Reusable Java preparation must contain only relative fixture inputs and no acquired dependencies.');
+      return files;
+    } finally { await prepared.dispose(); }
+  }
+  private async acquireNativeProject(build: string, javaHome: string): Promise<void> {
     await this.configure(javaHome, this.nativeOptions);
     await this.file('settings.gradle', "rootProject.name = 'java-consumer'\n");
     await this.file('build.gradle', await fs.readFile(fileURLToPath(new URL('../resources/java-project/build.gradle', import.meta.url)), 'utf8') + build);
@@ -108,10 +150,9 @@ export class JavaOutputDriver {
       child.once('error', reject); child.once('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(output)); });
     });
     const path = join(this.root, '.expec/java/classpath.json'), report = JSON.parse(await fs.readFile(path, 'utf8'));
-    report.inputs = await Promise.all(['expec.java.json', 'settings.gradle', 'build.gradle', 'gradlew', 'gradlew.bat',
-      'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties', '.expec/java/dependencies.gradle', 'gradle.lockfile']
+    report.inputs = await Promise.all(acquisitionInputs
       .map(async path => ({ path, version: createHash('sha256').update(await fs.readFile(join(this.root, path))).digest('hex') })));
-    await fs.writeFile(path, JSON.stringify(report)); await this.capture();
+    await fs.writeFile(path, JSON.stringify(report));
   }
   async inspectionCanaries(): Promise<void> {
     const marker = (name: string) => join(this.directory, name + '.executed');
@@ -215,7 +256,7 @@ export class JavaOutputDriver {
     const writer = this.nativeWriteChange ? { apply: (plan: ProjectChanges) => this.applyWhileCatalogChanges(plan) } : new FileProjectWriter(this.context);
     const opened = outputs.open('java', options, this.context, writer, this.workspaceModules ? { workspaceModules: this.workspaceModules } : undefined);
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
-    await this.capture();
+    if (!this.written.problems.length) await this.capture();
   }
   private async applyWhileCatalogChanges(plan: ProjectChanges) {
     const context = this.context, first = plan.changes[0];
