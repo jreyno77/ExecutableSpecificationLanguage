@@ -36,7 +36,8 @@ export class NativeWalkthrough {
     await this.success('install', 'installed'); await this.success('check', 'checked'); await this.success('build', 'built');
   }
   async expectReadableSteps(steps: string[]): Promise<void> {
-    const paths = Object.keys(await this.driver.generatedFiles()).filter(path => path.includes('/acceptance/'));
+    const initializer = this.driver.target === 'python' ? this.driver.testRoot + '/acceptance/__init__.py' : undefined;
+    const paths = Object.keys(await this.driver.generatedFiles()).filter(path => path.includes('/acceptance/') && path !== initializer);
     expect(paths).toHaveLength(1);
     const source = await this.driver.text(paths[0]!); for (const step of steps) expect(source).toContain(step);
     expect(await this.driver.text(this.driver.driverPath)).toContain('Not implemented');
