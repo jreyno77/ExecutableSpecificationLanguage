@@ -16,7 +16,7 @@ it('keeps an explicit JDK selection out of source checking', async () => {
 it('refuses a JDK flag for TypeScript initialization before touching a destination', async () => {
   const observed = report();
   expect(await runCli(['init', '--root', 'missing-project', '--target', 'typescript', '--java-home', '/jdk', '--yes', '--json'])).toBe(2);
-  expect(observed().problems).toMatchObject([{code:'invalid-command',message:expect.stringContaining('only for Kotlin')}]);
+  expect(observed().problems).toMatchObject([{code:'invalid-command',message:expect.stringContaining('only available for Java or Kotlin targets')}]);
 });
 it('does not choose the last of repeated explicit JDK selections', async () => {
   const observed = report();
