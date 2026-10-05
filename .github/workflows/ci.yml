@@ -4,18 +4,133 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_call:
-    inputs:
-      ref:
-        type: string
-        required: false
-        default: ''
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  plan:
+    name: Select affected checks
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.checks.outputs.core }}
+      pilot: ${{ steps.checks.outputs.pilot }}
+      package: ${{ steps.checks.outputs.package }}
+      clean: ${{ steps.checks.outputs.clean }}
+      java: ${{ steps.checks.outputs.java }}
+      kotlin: ${{ steps.checks.outputs.kotlin }}
+      python: ${{ steps.checks.outputs.python }}
+      native: ${{ steps.checks.outputs.native }}
+      pr: ${{ steps.pr.outputs.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - id: checks
+        name: Select affected suites from the complete change list
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/ci/plan.ts
+      - id: pr
+        name: Identify the package delivery
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName === 'pull_request') {
+              core.setOutput('number', context.payload.pull_request.number);
+            } else {
+              const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+                { ...context.repo, commit_sha: context.sha, per_page: 100 });
+              const merged = pulls.filter(pr => pr.merged_at && pr.merge_commit_sha === context.sha &&
+                pr.base.ref === 'main' && pr.base.repo.full_name === context.payload.repository.full_name);
+              if (merged.length > 1) throw Error('Multiple merged PRs match this commit.');
+              core.setOutput('number', merged[0]?.number ?? '');
+            }
+  build:
+    name: Build once / ${{ matrix.os }}
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install the locked build tools
+        run: |
+          npm install --global npm@11.20.0 --ignore-scripts
+          npm ci
+      - name: Set the version before building and testing
+        env:
+          PR_NUMBER: ${{ needs.plan.outputs.pr }}
+        run: node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(process.env.PR_NUMBER) { p.version=p.version.split('-')[0]+'-pr.'+process.env.PR_NUMBER; fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n'); }"
+      - name: Build every package component once
+        run: npm run build
+      - name: Check all source and test types
+        run: npm run typecheck
+      - name: Pack and capture the build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .local-docs | Out-Null
+          $packed = npm pack --ignore-scripts --pack-destination .local-docs --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or @($packed).Count -ne 1) { throw 'Expected one built package.' }
+          Copy-Item -LiteralPath (Join-Path .local-docs $packed.filename) -Destination .local-docs/package.tgz
+          node .github/ci/build-artifact.ts capture
+          if ($LASTEXITCODE -ne 0) { throw 'Build capture failed.' }
+          tar -cf .local-docs/build.tar dist src/language/langium/generated src/project/java/resources src/project/kotlin/resources package.json .local-docs/package.tgz .local-docs/build.json
+          if ($LASTEXITCODE -ne 0) { throw 'Build archive failed.' }
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: build-${{ matrix.os }}
+          overwrite: true
+          path: .local-docs/build.tar
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Stage the exact package and public consumer
+        if: matrix.os == 'ubuntu-latest'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
+          node node_modules/typescript/bin/tsc -p tsconfig.consumer.json --outDir $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer compilation failed.' }
+          $resources = Join-Path $stage 'test/resources/clean-package'
+          New-Item -ItemType Directory -Path $resources -Force | Out-Null
+          Copy-Item -LiteralPath test/resources/clean-package/consumer.ts -Destination $resources
+          $manifest = Get-Content package.json -Raw | ConvertFrom-Json
+          $name = "$($manifest.name)-$($manifest.version).tgz"
+          Copy-Item -LiteralPath .local-docs/package.tgz -Destination (Join-Path $stage $name)
+          $digest = (Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{ artifact=$name; version=$manifest.version; sha256=$digest; commit=(git rev-parse HEAD); run=[long]$env:GITHUB_RUN_ID; attempt=[int]$env:GITHUB_RUN_ATTEMPT; platform='linux' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'delivery.json')
+          '{"private":true,"type":"module"}' | Set-Content -LiteralPath (Join-Path $stage 'package.json')
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: public-consumer
+          overwrite: true
+          path: ${{ runner.temp }}/expec-consumer/
+          if-no-files-found: error
   check:
+    needs: [plan, build]
+    if: needs.plan.outputs.core == 'true'
     name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -27,7 +142,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -41,22 +156,32 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
-      - name: Regenerate the grammar
-        run: npm run grammar:generate
-      - name: Build the native Java, Kotlin and Python resources
-        run: npm run java:build && npm run kotlin:build && npm run python:build
-      - name: Check all source and test types
-        run: npm run typecheck
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
+
+
+
       - name: Build and test the shard
         run: npm test -- --config vitest.core.config.ts --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: core-${{ matrix.os }}-${{ matrix.shard }}
+          name: core-${{ matrix.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
+    needs: [plan, build]
+    if: needs.plan.outputs.pilot == 'true'
     name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -73,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -87,18 +212,31 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
       - name: Verify installed project journeys
         env:
           EXPEC_CLEANUP_TIMINGS: '1'
-        run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.pilot.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: pilot-${{ matrix.os }}-${{ matrix.shard }}
+          name: pilot-${{ matrix.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
   installed-package:
+    needs: [plan, build]
+    if: needs.plan.outputs.package == 'true'
     name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -113,7 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -127,37 +265,29 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
       - name: Verify installed package consumers
-        run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.package.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: installed-${{ matrix.os }}-${{ matrix.shard }}
+          name: installed-${{ matrix.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
-      - name: Stage the artifact and bounded public consumer
-        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
-        shell: pwsh
-        run: |
-          $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
-          node node_modules/typescript/bin/tsc -p tsconfig.consumer.json --outDir $stage
-          if ($LASTEXITCODE -ne 0) { throw 'Consumer compilation failed.' }
-          $resources = Join-Path $stage 'test/resources/clean-package'
-          New-Item -ItemType Directory -Path $resources -Force | Out-Null
-          Copy-Item -LiteralPath test/resources/clean-package/consumer.ts -Destination $resources
-          $packed = npm pack --ignore-scripts --pack-destination $stage --json | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or @($packed).Count -ne 1) { throw 'Expected one built package.' }
-          $digest = (Get-FileHash -LiteralPath (Join-Path $stage $packed.filename) -Algorithm SHA256).Hash.ToLowerInvariant()
-          @{ artifact=$packed.filename; version=$packed.version; sha256=$digest; commit=(git rev-parse HEAD) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'delivery.json')
-          '{"private":true,"type":"module"}' | Set-Content -LiteralPath (Join-Path $stage 'package.json')
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
-        with:
-          name: public-consumer
-          path: ${{ runner.temp }}/expec-consumer/
-          if-no-files-found: error
   java:
+    needs: [plan, build]
+    if: needs.plan.outputs.java == 'true'
     name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}${{ matrix.suite == 'acceptance' && format(' / {0} of {1}', matrix.shard, matrix.total) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -180,7 +310,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -194,6 +324,17 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
       - name: Acquire the exact native test console
         shell: pwsh
         run: |
@@ -205,24 +346,23 @@ jobs:
           "EXPEC_TEST_JUNIT_CONSOLE=$jar" >> $env:GITHUB_ENV
           "JAVA_HOME=$jdk" >> $env:GITHUB_ENV
           "EXPEC_TEST_JAVA_HOME=$jdk" >> $env:GITHUB_ENV
-      - name: Build native and public package resources
-        if: matrix.suite != 'package'
-        run: npm run build
       - name: Check Java native behavior
         if: matrix.suite != 'package'
         run: npm run test:java -- test/${{ matrix.suite }} ${{ matrix.suite == 'acceptance' && format('--shard={0}/{1}', matrix.shard, matrix.total) || '' }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Check the actual installed Java consumer
         if: matrix.suite == 'package'
-        run: npm run test:java-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.java-package.config.ts --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: java-${{ matrix.suite }}-${{ matrix.os }}${{ matrix.suite == 'acceptance' && format('-{0}-of-{1}', matrix.shard, matrix.total) || '' }}
+          name: java-${{ matrix.suite }}-${{ matrix.os }}${{ matrix.suite == 'acceptance' && format('-{0}-of-{1}', matrix.shard, matrix.total) || '' }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
 
   kotlin:
+    needs: [plan, build]
+    if: needs.plan.outputs.kotlin == 'true'
     name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of 4', matrix.shard) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -234,7 +374,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -258,24 +398,34 @@ jobs:
           "EXPEC_TEST_JUNIT_CONSOLE=$junit" >> $env:GITHUB_ENV
       - name: Install the locked dependencies
         run: npm ci
-      - name: Build the actual native bridge and public package
-        if: matrix.shard != 'package'
-        run: npm run build
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
       - name: Run every selected native unit and acceptance test
         if: matrix.shard != 'package'
         run: npm run test:kotlin -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Verify the installed Kotlin consumer
         if: matrix.shard == 'package'
-        run: npm run test:kotlin-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.kotlin-package.config.ts --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-4', matrix.shard) }}
+          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-4', matrix.shard) }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
 
   python:
+    needs: [plan, build]
+    if: needs.plan.outputs.python == 'true'
     name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -292,7 +442,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -324,21 +474,32 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
-      - name: Build native and public package resources
-        run: npm run build
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: build-${{ matrix.os }}
+          path: .local-docs/build-download
+      - name: Restore and verify this run's build
+        shell: pwsh
+        run: |
+          tar -xf .local-docs/build-download/build.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Build extraction failed.' }
+          node .github/ci/build-artifact.ts verify
+          if ($LASTEXITCODE -ne 0) { throw 'Build verification failed.' }
+
       - name: Run every selected Python unit and acceptance test
         run: npm test -- --config vitest.python.config.ts --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: python-${{ matrix.os }}-${{ matrix.shard }}
+          name: python-${{ matrix.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
 
   clean-consumer:
+    if: needs.plan.outputs.clean == 'true'
     name: No checkout consumer / ${{ matrix.os }}
-    needs: installed-package
+    needs: [plan, build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -368,22 +529,16 @@ jobs:
         run: node node_modules/vitest/vitest.mjs run --config vitest.clean.config.js
 
   native-consumer:
+    if: needs.plan.outputs.native != '[]'
     name: No checkout native walkthrough / ${{ matrix.target }} / ${{ matrix.os }}
-    needs: installed-package
+    needs: [plan, build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        target: [java, kotlin, python]
-        include:
-          - os: ubuntu-latest
-            target: python
-            python: '3.12.14'
-          - os: windows-latest
-            target: python
-            python: '3.12.10'
+        target: ${{ fromJSON(needs.plan.outputs.native) }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -419,7 +574,7 @@ jobs:
         if: matrix.target == 'python'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.os == 'windows-latest' && '3.12.10' || '3.12.14' }}
       - name: Supply only the pinned uv executable
         if: matrix.target == 'python'
         shell: pwsh
@@ -445,8 +600,29 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: native-walkthrough-${{ matrix.target }}-${{ matrix.os }}
+          name: native-walkthrough-${{ matrix.target }}-${{ matrix.os }}-attempt-${{ github.run_attempt }}
           path: |
             native-walkthrough-results.json
             delivery.json
           if-no-files-found: warn
+
+  required:
+    name: Required checks
+    if: always()
+    needs: [plan, build, check, project-pilot, installed-package, java, kotlin, python, clean-consumer, native-consumer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const jobs = JSON.parse(process.env.RESULTS);
+            const flags = jobs.plan.outputs;
+            const selected = ['plan', 'build'];
+            for (const [flag, job] of Object.entries({core:'check', pilot:'project-pilot', package:'installed-package',
+              java:'java', kotlin:'kotlin', python:'python', clean:'clean-consumer'}))
+              if (flags[flag] === 'true') selected.push(job);
+            if (flags.native && flags.native !== '[]') selected.push('native-consumer');
+            const failed = selected.filter(job => jobs[job]?.result !== 'success');
+            if (failed.length) throw Error('Required checks did not succeed: ' + failed.join(', '));

@@ -142,6 +142,10 @@ export class PackageDriver {
   static async prepare(): Promise<void> {
     const version = await npm(checkout, ['--version']);
     if (version.stdout.trim() !== '11.20.0') throw new Error(`Expected npm 11.20.0, received ${version.stdout}`);
+    if (process.env.EXPEC_CI_PACKAGE) {
+      this.artifact = await realpath(process.env.EXPEC_CI_PACKAGE);
+      return;
+    }
     this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }

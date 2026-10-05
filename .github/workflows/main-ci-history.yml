@@ -1,0 +1,37 @@
+name: Record main CI history
+
+on:
+  workflow_run:
+    workflows: [Build and test]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+# Failure reconciliation and success events can append to the same issue.
+# Keep pending observations instead of replacing the previous pending run.
+concurrency:
+  group: main-ci-history
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read the trusted recorder from the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Retain actual run and attempt evidence
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { recordMainCiAttempt } = require('./.github/record-main-ci.cjs');
+            await recordMainCiAttempt({ github, context });

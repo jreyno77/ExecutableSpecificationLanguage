@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -16,5 +16,9 @@ export default async function setup(project: TestProject): Promise<void> {
     project.provide('compiledCheckout', checkout);
   };
   project.onTestsRerun(async () => { await project.vitest.waitForTestRunEnd(); await compile(); });
-  await compile();
+  if (process.env.EXPEC_CI_BUILD) {
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim();
+    if (process.env.EXPEC_CI_BUILD !== commit) throw Error('Verified CI build belongs to another commit.');
+    project.provide('compiledCheckout', checkout);
+  } else await compile();
 }

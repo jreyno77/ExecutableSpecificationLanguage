@@ -1,75 +1,99 @@
 name: Release merged pull request
 
 on:
-  pull_request:
-    types: [closed]
+  workflow_run:
+    workflows: [Build and test]
+    types: [completed]
+    branches: [main]
 
 permissions:
+  actions: read
   contents: write
   deployments: write
+  pull-requests: read
 
 concurrency:
-  group: release-pr-${{ github.event.pull_request.number }}
+  group: release-commit-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
-  verify:
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
-    permissions:
-      contents: read
-    uses: ./.github/workflows/ci.yml
-    with:
-      ref: ${{ github.event.pull_request.merge_commit_sha }}
   release:
-    needs: verify
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     steps:
-      - name: Check out the exact merged commit
+      - name: Check out the trusted release verifier
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
-          fetch-depth: 1
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+          sparse-checkout: .github/scripts/release-package.ts
+          sparse-checkout-cone-mode: false
+      - name: Identify the exact verified merge
+        id: source
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          node-version-file: .node-version
-          package-manager-cache: false
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+          script: |
+            const { releasePullRequest } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-package.ts`);
+            const event = context.payload.workflow_run;
+            const { data: run } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: event.id });
+            if (run.head_sha !== event.head_sha || run.run_attempt !== event.run_attempt) {
+              throw new Error('The triggering workflow run or attempt has changed.');
+            }
+            const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+              ...context.repo, commit_sha: run.head_sha, per_page: 100,
+            });
+            const pullRequest = releasePullRequest(run, pulls, process.env.GITHUB_REPOSITORY);
+            if (!pullRequest) {
+              core.info('No merged pull request from a verified main push is eligible for release.');
+              return;
+            }
+            core.setOutput('pr', pullRequest.number);
+            core.setOutput('url', pullRequest.html_url);
+      - name: Download the exact verified run artifact
+        if: steps.source.outputs.pr != ''
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
-          distribution: temurin
-          java-version: '21'
-      - name: Install dependencies
-        run: |
-          npm install --global npm@11.20.0 --ignore-scripts
-          npm ci
-      - name: Build the verified merged source
-        run: npm run build
-      - name: Pack the built package
+          name: public-consumer
+          path: ${{ runner.temp }}/verified-delivery
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Verify source, package identity and bytes
+        if: steps.source.outputs.pr != ''
+        id: package
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/package"
-          base_version=$(node -p "require('./package.json').version.split('-')[0]")
-          npm version "${base_version}-pr.${PR_NUMBER}" --no-git-tag-version --ignore-scripts
-          npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
+        with:
+          script: |
+            const { verifyReleasePackage } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-package.ts`);
+            const run = context.payload.workflow_run;
+            const delivery = await verifyReleasePackage(`${process.env.RUNNER_TEMP}/verified-delivery`, {
+              commit: run.head_sha, run: run.id, attempt: run.run_attempt,
+              pullRequest: Number(process.env.PR_NUMBER),
+            });
+            core.setOutput('name', delivery.artifact);
       - name: Publish or verify the PR release
+        if: steps.source.outputs.pr != ''
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGE_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
+          PR_URL: ${{ steps.source.outputs.url }}
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$MERGE_SHA"
           tag="pr-$PR_NUMBER"
-          packages=("$RUNNER_TEMP/package/"*.tgz)
-          test "${#packages[@]}" -eq 1 && test -f "${packages[0]}"
-          package="${packages[0]}"
-          name="$(basename "$package")"
+          name="$PACKAGE_NAME"
+          package="$RUNNER_TEMP/verified-delivery/$name"
+          test -f "$package"
 
           if existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null); then
             test "$existing_sha" = "$MERGE_SHA" || { echo 'Existing release tag points to a different commit.' >&2; exit 1; }
@@ -96,19 +120,21 @@ jobs:
           test -n "$url"
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
       - name: Record package availability
+        if: steps.source.outputs.pr != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RELEASE_URL: ${{ steps.release.outputs.url }}
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
         with:
           script: |
             const repo = context.repo;
-            const sha = context.payload.pull_request.merge_commit_sha;
+            const sha = context.payload.workflow_run.head_sha;
             const environment = 'package-delivery';
             const existing = await github.paginate(github.rest.repos.listDeployments, { ...repo, sha, environment, per_page: 100 });
             if (existing.length > 1) throw new Error('Multiple deployment records exist for this commit; review them before retrying.');
             const deployment = existing[0] ?? (await github.rest.repos.createDeployment({
               ...repo, ref: sha, environment, auto_merge: false, required_contexts: [],
-              production_environment: true, description: `Package for PR #${context.payload.pull_request.number}`,
+              production_environment: true, description: `Package for PR #${process.env.PR_NUMBER}`,
             })).data;
             const statuses = await github.paginate(github.rest.repos.listDeploymentStatuses, { ...repo, deployment_id: deployment.id, per_page: 100 });
             if (!statuses.some(status => status.state === 'success')) {
