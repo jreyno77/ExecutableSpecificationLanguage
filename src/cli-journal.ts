@@ -124,15 +124,15 @@ export class BuildJournal {
       result.stages.push({ name: journal.stage, status: receipt.status, outputs: journal.plans.map(plan => plan.outputId), receipt, resumed: prefix });
       if (receipt.status === 'stopped') return { ...result, problems: receipt.problems };
       all.slice(prefix).forEach(change => advance(expected, change));
-      const beforeConfirmation = await this.context.readSnapshot();
+      const beforeConfirmation = await stageContext.readSnapshot();
       if (!matches(beforeConfirmation)) return conflict();
-      const saved = await new FileProjectWriter(this.context).apply({ basedOn: beforeConfirmation, changes: [{ kind: 'write', path: identityPath, bytes: Buffer.from(journal.ledger, 'base64') }] }, this.signal);
+      const saved = await writer.apply({ basedOn: beforeConfirmation, changes: [{ kind: 'write', path: identityPath, bytes: Buffer.from(journal.ledger, 'base64') }] }, this.signal);
       if (saved.status === 'stopped') return { ...result, problems: [...saved.problems, cliProblem('unconfirmed-state', 'Output applied, but identity confirmation remains pending.', this.checked.manifest)] };
     }
     expected.set(identityPath, hash(Buffer.from(journal.ledger, 'base64')));
-    const beforeCleanup = await this.context.readSnapshot();
+    const beforeCleanup = await stageContext.readSnapshot();
     if (!matches(beforeCleanup)) return conflict();
-    const cleanup = await new FileProjectWriter(this.context).apply({ basedOn: beforeCleanup, changes: [{ kind: 'remove', path: pendingPath }] }, this.signal);
+    const cleanup = await writer.apply({ basedOn: beforeCleanup, changes: [{ kind: 'remove', path: pendingPath }] }, this.signal);
     if (cleanup.status === 'stopped') return { ...result, problems: cleanup.problems };
     return { ...result, status: 'built', exitCode: 0 };
   }
