@@ -137,14 +137,25 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   java:
-    name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}
+    name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}${{ matrix.suite == 'acceptance' && format(' / {0} of {1}', matrix.shard, matrix.total) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        suite: [unit, acceptance, package]
+        include:
+          - { os: ubuntu-latest, suite: unit }
+          - { os: windows-latest, suite: unit }
+          - { os: ubuntu-latest, suite: package }
+          - { os: windows-latest, suite: package }
+          - { os: ubuntu-latest, suite: acceptance, shard: 1, total: 3 }
+          - { os: ubuntu-latest, suite: acceptance, shard: 2, total: 3 }
+          - { os: ubuntu-latest, suite: acceptance, shard: 3, total: 3 }
+          - { os: windows-latest, suite: acceptance, shard: 1, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 2, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 3, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 4, total: 5 }
+          - { os: windows-latest, suite: acceptance, shard: 5, total: 5 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,14 +189,14 @@ jobs:
         run: npm run build
       - name: Check Java native behavior
         if: matrix.suite != 'package'
-        run: npm run test:java -- test/${{ matrix.suite }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:java -- test/${{ matrix.suite }} ${{ matrix.suite == 'acceptance' && format('--shard={0}/{1}', matrix.shard, matrix.total) || '' }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Check the actual installed Java consumer
         if: matrix.suite == 'package'
         run: npm run test:java-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: java-${{ matrix.suite }}-${{ matrix.os }}
+          name: java-${{ matrix.suite }}-${{ matrix.os }}${{ matrix.suite == 'acceptance' && format('-{0}-of-{1}', matrix.shard, matrix.total) || '' }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
