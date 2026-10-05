@@ -4,10 +4,16 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DOMParser } from '@xmldom/xmldom';
-import { FileProjectWriter, Outputs, SpecificationIdentity, javaAcceptanceOutput } from '../../src/index.js';
+import { FileProjectWriter, Outputs, SpecificationIdentity, javaAcceptanceOutput, type ProjectSnapshot } from '../../src/index.js';
 import { JavaOutputDriver } from './java-output.js';
 
 export class JavaAcceptanceDriver extends JavaOutputDriver {
+  files: ProjectSnapshot['files'] = [];
+  async observeFiles(): Promise<void> {
+    const snapshot = await this.ordinary.readSnapshot();
+    if (!snapshot.complete || snapshot.problems.length) throw new Error(JSON.stringify(snapshot.problems));
+    this.files = snapshot.files;
+  }
   private readonly junit = process.env.EXPEC_TEST_JUNIT_CONSOLE!;
   private fixture: object | undefined;
   private readonly names: {id:string;name:string}[]=[];
@@ -16,12 +22,12 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
   async prepare(): Promise<void> {
     if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR to this native test.');
     this.nativeOptions = { classPath: { main: [], test: [this.junit] } };
-    await this.initialize(); await this.nativeProject();
+    await this.initialize(); await this.nativeProject(); await this.observeFiles();
   }
   async generate(options: Record<string, unknown> = {}): Promise<void> {
     const outputs = new Outputs(); outputs.register(javaAcceptanceOutput);
     const result = outputs.open('java-acceptance', { package: 'store.tests', domain: 'shopping', ...this.names.length?{names:this.names}:{}, ...this.selectedDriver ? { driver: this.selectedDriver, adoptExisting: true } : {}, ...this.fixture ? { fixture: this.fixture } : {}, ...options }, this.context, new FileProjectWriter(this.context), this.workspaceModules ? {workspaceModules:this.workspaceModules} : undefined);
-    this.written = result.value ? await result.value.create(this.current) : { problems: result.problems }; this.confirm(); await this.capture();
+    this.written = result.value ? await result.value.create(this.current) : { problems: result.problems }; this.confirm(); await this.observeFiles();
   }
   private confirm(): void {
     if(!this.written.artifacts) return;
@@ -33,7 +39,7 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
     const after=identity.associate(this.current.specification,before.baseline,ids.map(retire=>({retire}))); if(!after.value) throw new Error(JSON.stringify(after));
     const diff=identity.compare(before.baseline,after.value); if(!diff.value) throw new Error(JSON.stringify(diff));
     for(let index=this.names.length-1;index>=0;index--) if(ids.includes(this.names[index]!.id)) this.names.splice(index,1);
-    this.current=after.value; this.written=await this.acceptance().update(diff.value,this.current); this.confirm(); await this.capture();
+    this.current=after.value; this.written=await this.acceptance().update(diff.value,this.current); this.confirm(); await this.observeFiles();
   }
   async replaceText(path: string,before: string,after: string): Promise<void> {
     const source=await fs.readFile(join(this.root,path),'utf8'); if(!source.includes(before)) throw new Error('Expected authored fragment '+before);
@@ -53,10 +59,10 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
     if(!item) throw Error('Missing authored case '+title); return item;
   }
   nameScenario(title:string,name:string):void { this.names.push({id:this.current.id(this.scenario(title).id),name}); }
-  async deleteScenario(title:string):Promise<void> { this.written=await this.acceptance().delete(this.current.id(this.scenario(title).id)); this.confirm(); await this.capture(); }
+  async deleteScenario(title:string):Promise<void> { this.written=await this.acceptance().delete(this.current.id(this.scenario(title).id)); this.confirm(); await this.observeFiles(); }
   async deleteGroup(index:number):Promise<void> {
     const group=[...this.current.specification.inspection.query('examples')][index]; if(!group) throw Error('Missing authored group');
-    this.written=await this.acceptance().delete(this.current.id(group.id)); this.confirm(); await this.capture();
+    this.written=await this.acceptance().delete(this.current.id(group.id)); this.confirm(); await this.observeFiles();
   }
   nameGroup(index:number|string,name:string,scenarioName?:string):void {
     const groups=[...this.current.specification.inspection.query('examples')];
@@ -69,12 +75,12 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
       .map(artifact=>{const at=artifact.locator.value as {file:string;type:string;member:{name:string}};return {file:at.file,type:at.type,method:at.member.name,title:scenario.title.value};}));
   }
   async readScenario(title: string): Promise<void> {
-    await this.capture(); this.readResult=await this.acceptance().read(this.current.id(this.scenario(title).id));
+    await this.observeFiles(); this.readResult=await this.acceptance().read(this.current.id(this.scenario(title).id));
   }
-  async searchScenario(title:string):Promise<void> { await this.capture(); this.searchResult=await this.acceptance().search(this.current.id(this.scenario(title).id)); }
+  async searchScenario(title:string):Promise<void> { await this.observeFiles(); this.searchResult=await this.acceptance().search(this.current.id(this.scenario(title).id)); }
   async searchOperation(name: string): Promise<void> {
     const operation=this.current.baseline.elements.find(item=>item.address.name===name);
-    if(!operation) throw new Error('Missing authored operation'); await this.capture(); this.searchResult=await this.acceptance().search(operation.id);
+    if(!operation) throw new Error('Missing authored operation'); await this.observeFiles(); this.searchResult=await this.acceptance().search(operation.id);
   }
   async corruptState(): Promise<void> {
     const path='.expec/outputs/java-acceptance.json',source=await fs.readFile(join(this.root,path),'utf8');
@@ -130,7 +136,7 @@ public class ResourceFixture {
     if (!this.written.artifacts) throw new Error(JSON.stringify(this.written));
     const associated = new SpecificationIdentity(randomUUID).withArtifacts(this.current, this.written.artifacts);
     if (!associated.value) throw new Error(JSON.stringify(associated));
-    this.current = associated.value;
+    this.current = associated.value; await this.observeFiles();
   }
   async methods(source: string): Promise<void> {
     await this.file('src/test/java/store/tests/driver/ShoppingDriver.java', 'package store.tests.driver; public class ShoppingDriver { ' + source + ' }');
@@ -147,7 +153,7 @@ public class ShoppingDriver {
   }
   async barrierBasket(): Promise<void> { await this.file('src/test/java/store/tests/driver/ShoppingDriver.java',await fs.readFile(new URL('../resources/java-project/BarrierBasketDriver.java',import.meta.url),'utf8')); }
   async run(parallel=false,selectedClasses=['store.tests.acceptance.Examples']): Promise<void> {
-    await this.capture(); const classes = join(this.directory, 'junit-classes'), reports = join(this.directory, 'junit-reports');
+    await this.observeFiles(); const classes = join(this.directory, 'junit-classes'), reports = join(this.directory, 'junit-reports');
     await fs.mkdir(classes, { recursive: true }); await fs.mkdir(reports, { recursive: true });
     const execute = async (name: string, args: string[]) => {
       try { const result = await promisify(execFile)(join(process.env.JAVA_HOME!, 'bin', name + (process.platform === 'win32' ? '.exe' : '')), args,
@@ -155,7 +161,7 @@ public class ShoppingDriver {
       catch (error) { const result = error as { code?: number; stdout?: string; stderr?: string }; return { code: result.code ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? String(error) }; }
     };
     this.native = await execute('javac', ['-proc:none','--release','21','-encoding','UTF-8','-cp',this.junit,'-d',classes,
-      ...this.snapshot.files.filter(file => file.path.endsWith('.java')).map(file => join(this.root,file.path))]);
+      ...this.files.filter(file => file.path.endsWith('.java')).map(file => join(this.root,file.path))]);
     if (this.native.code) return;
     this.native = await execute('java', ['-jar',this.junit,'execute','--class-path',classes,...selectedClasses.flatMap(type=>['--select-class',type]),
       '--reports-dir',reports,'--disable-banner','--disable-ansi-colors',...parallel ? ['--config','junit.jupiter.execution.parallel.enabled=true','--config','junit.jupiter.execution.parallel.mode.default=concurrent',
