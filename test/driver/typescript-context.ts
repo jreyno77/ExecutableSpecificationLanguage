@@ -18,6 +18,7 @@ export class NativeContextDriver {
   private readonly temporaryRoot = fs.realpathSync.native(tmpdir());
   readonly directory = fs.realpathSync.native(fs.mkdtempSync(join(this.temporaryRoot, 'expec-native-')));
   readonly root = join(this.directory, 'project');
+  ordinary!: ProjectContext;
   context!: ProjectContext;
   native!: TypeScriptContext;
   snapshot!: ProjectSnapshot;
@@ -45,7 +46,7 @@ export class NativeContextDriver {
     if (!configuration.value) throw Error(JSON.stringify(configuration.problems));
     const connection = await new ProjectConnector(this.path('expec.json')).connect(configuration.value);
     if (connection.value?.status !== 'connected') throw Error(JSON.stringify(connection));
-    this.context = connection.value.context;
+    this.ordinary = connection.value.context; this.context = this.ordinary;
   }
   async file(path: string, text: string): Promise<void> { await files.mkdir(dirname(this.path(path)), { recursive: true }); await files.writeFile(this.path(path), text); }
   async package(name: string, metadata: object, entries: Record<string, string>): Promise<void> {
