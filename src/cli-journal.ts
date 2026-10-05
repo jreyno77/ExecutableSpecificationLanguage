@@ -61,7 +61,11 @@ export class BuildJournal {
     const desired = new Map(versions(basedOn)); all.forEach(change => advance(desired, change.kind === 'move' && !change.bytes
       ? { ...change, bytes: basedOn.files.find(file => file.path === change.from)!.bytes } : change));
     desired.set(identityPath, hash(ledger));
-    if (sameFiles(desired, new Map(versions(basedOn)))) return { status: 'built', exitCode: 0, problems: [], stages: [{ name: stage, status: 'unchanged', outputs: plans.map(plan => plan.outputId) }] };
+    if (sameFiles(desired, new Map(versions(basedOn)))) {
+      const problems = this.context.completionProblems(fresh);
+      return problems.length ? { status: 'invalid', exitCode: 1, problems, stages: [{ name: stage, status: 'stopped' }] }
+        : { status: 'built', exitCode: 0, problems: [], stages: [{ name: stage, status: 'unchanged', outputs: plans.map(plan => plan.outputId) }] };
+    }
     const journal: Journal = { format: 1, stage, manifest: this.checked.manifest, candidate, facts: facts(basedOn), graph: graphOf(basedOn), ledger: encode(ledger),
       plans: plans.map(plan => ({ outputId: plan.outputId, artifacts: [...plan.artifacts], obligations: [...plan.obligations ?? []], changes: plan.changes.map(change =>
         change.kind === 'remove' ? change : { ...change, bytes: encode(change.bytes ?? basedOn.files.find(file => file.path === (change as { from: string }).from)!.bytes) }) })) };
@@ -118,7 +122,9 @@ export class BuildJournal {
       const captured = await stageContext.readSnapshot();
       if (!captured.complete || captured.problems.length || facts(captured) !== journal.facts) return incomplete(captured);
       const current = await this.context.readSnapshot();
-      return !current.complete || current.problems.length || owned(current) !== owned(captured) ? incomplete(current) : current;
+      if (!current.complete || current.problems.length || owned(current) !== owned(captured)) return incomplete(current);
+      const problems = this.context.completionProblems(current);
+      return problems.length ? incomplete({ ...current, problems }) : current;
     } };
     const completionWriter = new FileProjectWriter(completionContext);
     let receipt: WriteResult | undefined;

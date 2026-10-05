@@ -215,6 +215,17 @@ export class ConnectedBuild {
       && problem.at.range.sourceId.endsWith('/' + file) && Array.from(source).slice(problem.at.range.start.offset, problem.at.range.end.offset).join('') === text);
     expect(finding, JSON.stringify(this.driver.report)).toBeDefined();
   }
+  async expectNativeProblemAt(code: string, file: string, token: string): Promise<void> {
+    const finding = this.driver.report.problems.find((problem: any) => problem.code === code && problem.at.kind === 'dependency'
+      && problem.at.path[0] === 'typescript' && problem.at.path[1] === file);
+    expect(finding, JSON.stringify(this.driver.report)).toBeDefined();
+    const [, , start, length] = finding.at.path;
+    expect(Number.isInteger(start) && start >= 0).toBe(true);
+    expect(Number.isInteger(length) && length > 0).toBe(true);
+    const source = await readFile(this.driver.path('project/' + file), 'utf8');
+    expect(source.slice(start, start + length)).toBe(token);
+  }
+
   expectSyntaxIn(file: string): void {
     expect(this.driver.report.syntax.some((finding: any) => finding.primaryRange.sourceId.endsWith('/' + file))).toBe(true);
   }

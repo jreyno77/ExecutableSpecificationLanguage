@@ -7,6 +7,8 @@ import type { Configuration } from './configuration.js';
 import type { ProjectContext, ProjectSnapshot } from './project-connection.js';
 import { hash } from './project-files.js';
 import { TypeScriptContext } from './typescript-context.js';
+import { TypeScriptCapture } from './typescript-capture.js';
+import type { Diagnostic } from './checking.js';
 import { nativeInputs } from './native-inputs.js';
 import { JavaContext } from './java-context.js';
 import { KotlinContext } from './kotlin-context.js';
@@ -35,6 +37,17 @@ export class BuildContext implements ProjectContext {
   during(original: ProjectSnapshot): BuildContext {
     return new BuildContext(this.project, this.checked, this.selected, [...this.inputs, ...original.nativeInputs ?? []], { ...original, readOnlyFiles: [] });
   }
+  completionProblems(snapshot: ProjectSnapshot): Diagnostic[] {
+    const configurations = new Set(this.selected.filter(output => output.id === 'typescript' || output.id === 'acceptance')
+      .map(output => typeof output.options.configFile === 'string' ? output.options.configFile : undefined));
+    const problems: Diagnostic[] = [];
+    for (const configFile of configurations) {
+      const capture = new TypeScriptCapture(snapshot, 'stage-completion', configFile);
+      try { problems.push(...capture.editableImportProblems); } finally { capture.service.dispose(); }
+    }
+    return problems;
+  }
+
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = await this.project.readSnapshot(), problems = [...snapshot.problems], evidence = [...snapshot.nativeInputs ?? [], ...this.inputs];
     let complete = snapshot.complete;
