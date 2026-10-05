@@ -9,7 +9,7 @@ import { canonical, failure, success } from './identity-baseline.js';
 import { JavaProject } from './java-project.js';
 import { javaAcceptanceOptions, javaProblem, optionProblems } from './java-settings.js';
 import { JavaExamples } from './java-examples.js';
-import { analyzeJava, javaSymbol } from './java-analysis.js';
+import { JavaAnalysis, javaSymbol } from './java-analysis.js';
 import { generatedJavaCorrespondence, survivingJavaBindings } from './java-bindings.js';
 import { hash } from './project-files.js';
 import { validDiff } from './output-contract.js';
@@ -49,48 +49,49 @@ class JavaAcceptanceOutput implements OutputAdapter {
     if (!snapshot.complete || snapshot.problems.length) return {problems:snapshot.problems,deferred:[]};
     const stored=readJavaOutputState(this.id,this.options,javaAcceptanceOptions,snapshot); if(stored.problems.length) return {problems:stored.problems,deferred:[]};
     const integrity=this.integrity(stored.value?.files??[],snapshot); if(integrity.length) return {problems:integrity,deferred:[]};
-    if (request.operation==='delete') return this.remove(stored.value?.files??[],request.id,snapshot,stored.value?.mappings);
+    const analysis=new JavaAnalysis(this.options.configFile??'expec.java.json');
+    if (request.operation==='delete') return this.remove(stored.value?.files??[],request.id,snapshot,analysis,stored.value?.mappings);
     if ('diff' in request && !validDiff(request.diff,request.current)) return failure('inconsistent-diff','The transition disagrees with current checked identity.');
     if(request.operation==='insert' && (request.diff.contextChanged || request.diff.changes.some(change=>change.kinds.some(kind=>kind!=='add'&&kind!=='artifacts'))))
       return failure('not-addition-only','Use update for existing test contracts.');
-    const actual=await analyzeJava(snapshot,this.options.configFile??'expec.java.json');
+    const actual=await analysis.read(snapshot);
     const prerequisites=actual.problems.filter(problem=>!problem.code.startsWith('java-'));
     if(prerequisites.length) return {problems:prerequisites,deferred:[]};
     const shared=javaTupleTypes(snapshot); if(shared.problems.length) return {problems:shared.problems,deferred:[]};
     const projection=new JavaExamples(request.current,this.options,actual.facts,shared.tuples,snapshot,this.context),files=projection.files(); projection.mappings.check(stored.value?.mappings); const problems=[...projection.problems];
-    if(stored.value) return this.update(stored.value.files,files,projection,snapshot);
+    if(stored.value) return this.update(stored.value.files,files,projection,snapshot,analysis);
     for (const file of files) if(snapshot.files.some(current=>current.path===file.path)&&!(this.options.driver&&file.path===projection.driver.path)) problems.push(javaProblem('output-conflict','Existing native test source needs preservation.',file.path));
     if(problems.length) return {problems,deferred:[]};
     const comparison=files.map(file=>({path:file.path,bytes:Buffer.from(file.path===projection.driver.path?projection.driver.comparison(file,snapshot):file.generated),version:hash(Buffer.from(file.generated))}));
-    const desired=await analyzeJava({...snapshot,files:[...snapshot.files.filter(file=>!comparison.some(item=>item.path===file.path)),...comparison]},this.options.configFile??'expec.java.json');
+    const desired=await analysis.read({...snapshot,files:[...snapshot.files.filter(file=>!comparison.some(item=>item.path===file.path)),...comparison]});
     projection.validateFixture(desired.facts);
     if(desired.problems.length||projection.problems.length) return {problems:[...projection.problems,...desired.problems],deferred:[]};
     const additions=files.map(file=>{const bytes=Buffer.from(file.path===projection.driver.path?projection.driver.adopt(file,desired.facts,snapshot):file.generated);return {path:file.path,bytes,version:hash(bytes)};});
     if(projection.driver.problems.length) return {problems:projection.driver.problems,deferred:[]};
-    const analyzed=await analyzeJava({...snapshot,files:[...snapshot.files.filter(file=>!additions.some(item=>item.path===file.path)),...additions]},this.options.configFile??'expec.java.json');
+    const analyzed=await analysis.read({...snapshot,files:[...snapshot.files.filter(file=>!additions.some(item=>item.path===file.path)),...additions]});
     if(analyzed.problems.length || projection.problems.length) return {problems:[...projection.problems,...analyzed.problems],deferred:[]};
     const baselines=files.map(file=>({...file,hash:hash(Buffer.from(file.generated)),renderedArtifacts:structuredClone(file.artifacts),adopted:file.path===projection.driver.path&&this.options.driver
       ? file.artifacts.filter(item=>request.current.baseline.artifacts.some(prior=>prior.specId===item.specId&&canonical(prior.locator)===canonical(item.locator))).map(item=>item.specId) : []}));
     return this.changed(snapshot,baselines,additions.map(file=>({kind:'write',path:file.path,bytes:file.bytes})),projection.mappings.capture(),projection.obligations);
   }
-  private async update(previous: readonly JavaBaseline[],desired: readonly JavaFile[],projection: JavaExamples,snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
+  private async update(previous: readonly JavaBaseline[],desired: readonly JavaFile[],projection: JavaExamples,snapshot: ProjectSnapshot,analysis: JavaAnalysis): Promise<Check<OutputPlan>> {
     const driver=projection.driver.path,problems=[...projection.problems];
     for(const file of desired) if(!previous.some(record=>record.path===file.path)&&snapshot.files.some(record=>record.path===file.path))
       problems.push(javaProblem('output-conflict','This native test file is not owned by the output.',file.path));
     if(problems.length) return {problems,deferred:[]};
-    const preservation=new JavaPreservation(snapshot,this.options.configFile??'expec.java.json');
+    const preservation=new JavaPreservation(snapshot,analysis);
     const retained=await preservation.update(previous.filter(file=>file.path===driver),desired.filter(file=>file.path===driver));
     if(preservation.problems.length) return {problems:preservation.problems,deferred:[]};
     const changes=new Map(retained.changes.map(change=>[change.path,change]));
     const intermediate={...snapshot,files:[...snapshot.files.filter(file=>!changes.has(file.path)),...retained.changes.flatMap(change=>change.kind==='write'
       ? [{path:change.path,bytes:change.bytes,version:hash(change.bytes)}] : [])]};
-    const before=await analyzeJava(intermediate,this.options.configFile??'expec.java.json');
+    const before=await analysis.read(intermediate);
     if(before.problems.length) return {problems:before.problems,deferred:[]};
     for(const file of previous) if(file.path!==driver&&!desired.some(next=>next.path===file.path)) changes.set(file.path,{kind:'remove',path:file.path});
     for(const file of desired) if(file.path!==driver) changes.set(file.path,{kind:'write',path:file.path,bytes:Buffer.from(file.generated)});
     const planned={...snapshot,files:[...snapshot.files.filter(file=>!changes.has(file.path)),...Array.from(changes.values()).flatMap(change=>change.kind==='write'
       ? [{path:change.path,bytes:change.bytes,version:hash(change.bytes)}] : [])]};
-    const final=await analyzeJava(planned,this.options.configFile??'expec.java.json'); projection.validateFixture(final.facts);
+    const final=await analysis.read(planned); projection.validateFixture(final.facts);
     const generated=previous.filter(file=>file.path!==driver), next=desired.filter(file=>file.path!==driver);
     const edits=new Map(generated.map(file=>[file.path,[{start:0,end:file.generated.length,content:next.find(item=>item.path===file.path)?.generated??'',name:false}]]));
     problems.push(...final.problems,...projection.problems,...survivingJavaBindings(before.facts,final.facts,edits,new Map(),[],generatedJavaCorrespondence(before.facts,final.facts,generated,next)));
@@ -98,13 +99,13 @@ class JavaAcceptanceOutput implements OutputAdapter {
     const files=desired.map(file=>file.path===driver ? retained.files.find(record=>record.path===driver)! : {...file,hash:hash(Buffer.from(file.generated)),renderedArtifacts:structuredClone(file.artifacts),adopted:[]});
     return this.changed(snapshot,files,[...changes.values()],projection.mappings.capture(),projection.obligations);
   }
-  private async remove(previous:readonly JavaBaseline[],id:string,snapshot:ProjectSnapshot,mappings?:JavaMappingState):Promise<Check<OutputPlan>> {
+  private async remove(previous:readonly JavaBaseline[],id:string,snapshot:ProjectSnapshot,analysis:JavaAnalysis,mappings?:JavaMappingState):Promise<Check<OutputPlan>> {
     const matches=previous.flatMap(file=>file.artifacts.filter(item=>item.specId===id).map(item=>({file,at:javaSymbol.parse(item.locator.value)})));
     if(!matches.length) return failure('mapping-not-found','Select an established generated Java test.');
     const selected=matches[0]!,prefix=(this.options.testRoot??'src/test/java')+'/'+this.options.package.replaceAll('.','/')+'/acceptance/';
     if(matches.length!==1||!selected.file.path.startsWith(prefix)||selected.at.parameter!==undefined)
       return failure('unsupported-native-removal','Remove operation contracts through source reconciliation; direct deletion selects a generated scenario or examples group.');
-    const {file,at}=selected,actual=await analyzeJava(snapshot,this.options.configFile??'expec.java.json'),problems=[...actual.problems];
+    const {file,at}=selected,actual=await analysis.read(snapshot),problems=[...actual.problems];
     for(const use of actual.facts.unresolved) problems.push(javaProblem('unresolved-native-reference',use.reason,use.file,use.start,use.length));
     const found=actual.facts.declarations.filter(node=>node.file===file.path&&node.type===at.type&&canonical(node.member)===canonical(at.member)&&node.parameter===undefined);
     if(found.length!==1) problems.push(javaProblem('missing-native-symbol','The owned native test no longer selects one declaration.',file.path));
@@ -117,7 +118,7 @@ class JavaAcceptanceOutput implements OutputAdapter {
     const files=at.member?previous.map(item=>item===file?{...file,generated,hash:hash(Buffer.from(generated)),artifacts,renderedArtifacts:structuredClone(artifacts)}:item):previous.filter(item=>item!==file);
     const change:FileChange=at.member?{kind:'write',path:file.path,bytes:Buffer.from(generated)}:{kind:'remove',path:file.path};
     const planned={...snapshot,files:[...snapshot.files.filter(item=>item.path!==file.path),...at.member?[{path:file.path,bytes:Buffer.from(generated),version:hash(Buffer.from(generated))}]:[]]};
-    const final=await analyzeJava(planned,this.options.configFile??'expec.java.json'); problems.push(...final.problems,
+    const final=await analysis.read(planned); problems.push(...final.problems,
       ...survivingJavaBindings(actual.facts,final.facts,new Map([[file.path,[{start,end,content:'',name:false}]]]),new Map()));
     return problems.length?{problems,deferred:[]}:this.changed(snapshot,files,[change],mappings);
   }

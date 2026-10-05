@@ -170,8 +170,13 @@ export class AcceptanceGenerationDriver extends NativeContextDriver {
     for (const [name, body] of Object.entries(bodies)) if (name !== except) await this.replaceStub(name, body);
   }
   override async dispose(): Promise<void> { for (const release of this.releases.reverse()) release(); await super.dispose(); }
-  async remember(): Promise<void> { this.rememberedFiles = (await this.context.readSnapshot()).files.map(({ path, version }) => ({ path, version })); }
-  async unchanged(): Promise<boolean> { return JSON.stringify((await this.context.readSnapshot()).files.map(({ path, version }) => ({ path, version }))) === JSON.stringify(this.rememberedFiles); }
+  async remember(): Promise<void> { this.rememberedFiles = await this.fileVersions(); }
+  async unchanged(): Promise<boolean> { return JSON.stringify(await this.fileVersions()) === JSON.stringify(this.rememberedFiles); }
+  private async fileVersions(): Promise<{ path: string; version: string }[]> {
+    const snapshot = await this.ordinary.readSnapshot();
+    if (!snapshot.complete || snapshot.problems.length) throw Error('Cannot observe incomplete project files: ' + JSON.stringify(snapshot.problems));
+    return snapshot.files.map(({ path, version }) => ({ path, version }));
+  }
   async rememberFile(path: string): Promise<void> { this.rememberedFile = { path, text: await this.text(path) }; }
   async sameFile(): Promise<boolean> { return this.rememberedFile.text === await this.text(this.rememberedFile.path); }
   async existingFixture(): Promise<void> {

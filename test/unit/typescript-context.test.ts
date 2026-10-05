@@ -1,18 +1,134 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
+import type ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileProjectWriter, TypeScriptContext, TypeScriptProject, type ProjectSnapshot, type ProjectFile } from '../../src/index.js';
 import { NativeContextDriver } from '../driver/typescript-context.js';
 
+const semanticObservation = vi.hoisted(() => ({ active: undefined as { checkedFiles: string[] } | undefined }));
+vi.mock('typescript', async importOriginal => {
+  const actual = await importOriginal<{ default: typeof ts }>(), native = actual.default;
+  return { ...actual, default: new Proxy(native, { get(target, key, receiver) {
+    if (key !== 'createLanguageService') return Reflect.get(target, key, receiver);
+    return function (this: typeof ts, ...args: Parameters<typeof native.createLanguageService>) {
+      const service = Reflect.apply(native.createLanguageService, this, args) as ts.LanguageService;
+      if (!semanticObservation.active) return service;
+      const getProgram = service.getProgram, observed = new WeakSet<ts.Program>();
+      vi.spyOn(service, 'getProgram').mockImplementation(function (this: ts.LanguageService) {
+        const program = getProgram.call(this);
+        if (!semanticObservation.active || !program || observed.has(program)) return program;
+        observed.add(program);
+        const getDiagnostics = program.getSemanticDiagnostics;
+        vi.spyOn(program, 'getSemanticDiagnostics').mockImplementation(function (this: ts.Program, ...args: Parameters<ts.Program['getSemanticDiagnostics']>) {
+          if (semanticObservation.active) semanticObservation.active.checkedFiles.push(...(args[0] ? [args[0]] : this.getSourceFiles()).map(file => file.fileName));
+          return Reflect.apply(getDiagnostics, this, args);
+        });
+        return program;
+      });
+      return service;
+    };
+  } }) };
+});
+function observeSemanticChecks(): { checkedFiles: string[] } { return semanticObservation.active = { checkedFiles: [] }; }
+
 const active: NativeContextDriver[] = [];
-afterEach(async () => { vi.restoreAllMocks(); for (const driver of active.splice(0)) await driver.dispose(); });
+afterEach(async () => { semanticObservation.active = undefined; vi.restoreAllMocks(); for (const driver of active.splice(0)) await driver.dispose(); });
 async function project(): Promise<NativeContextDriver> { const driver = new NativeContextDriver(); active.push(driver); await driver.connect(); return driver; }
 const file = (path: string, text: string): ProjectFile => { const bytes = Buffer.from(text); return { path, bytes, version: createHash('sha256').update(bytes).digest('hex') }; };
 const snapshot = (): ProjectSnapshot => ({ root: { path: process.cwd(), identity: 'supplied' }, complete: true, problems: [], excludeNames: ['node_modules'], excluded: ['node_modules'], files: [file('store.ts', 'export class Store {}')] });
 const reader = () => new TypeScriptProject({ outputId: 'typescript' }, [{ specId: 'store', locator: { outputId: 'typescript', format: 'typescript-symbol-1', value: { file: 'store.ts', declaration: [{ kind: 'class', name: 'Store' }] } } }]);
 const book = file('node_modules/catalog/index.d.ts', 'export interface Book { title: string }');
 
+function expectMissingNativeInputAt(result: ProjectSnapshot, path: string, token: string): void {
+  const source = result.files.find(file => file.path === path);
+  const problem = result.problems.find(problem => problem.code === 'native-input-unavailable'
+    && problem.at.kind === 'dependency' && problem.at.path[1] === path);
+  expect(source, `Expected captured source ${path}`).toBeDefined();
+  expect(problem, `Expected unavailable native input at ${path}`).toBeDefined();
+  if (!source || problem?.at.kind !== 'dependency') throw Error('Expected a located native-input failure.');
+  const [, , start, length] = problem.at.path;
+  expect(typeof start).toBe('number'); expect(typeof length).toBe('number');
+  expect(Buffer.from(source.bytes).toString('utf8').slice(Number(start), Number(start) + Number(length))).toBe(token);
+}
+
 describe('captured native input contracts', { timeout: 30_000 }, () => {
+  it('captures a resolved declaration without semantically checking it for unrelated errors', async () => {
+    const driver = await project();
+    await driver.package('catalog', { types: 'index.d.ts' }, {
+      'index.d.ts': 'export interface Book { title: string }',
+    });
+    await driver.file('src/use.ts', 'import type { Book } from "catalog"; export type Title = Book["title"];');
+    const semantics = observeSemanticChecks();
+
+    await driver.capture();
+
+    expect(driver.snapshot.complete).toBe(true);
+    expect(driver.snapshot.problems).toEqual([]);
+    expect(driver.snapshot.readOnlyFiles?.map(file => file.path)).toEqual([
+      'node_modules/catalog/index.d.ts', 'node_modules/catalog/package.json',
+    ]);
+    const declaration = driver.snapshot.readOnlyFiles!.find(file => file.path === 'node_modules/catalog/index.d.ts')!;
+    expect(Buffer.from(declaration.bytes).toString('utf8')).toBe('export interface Book { title: string }');
+    expect(declaration.version).toBe(driver.hash(declaration.bytes));
+    expect(driver.snapshot.files.some(file => file.path.startsWith('node_modules/'))).toBe(false);
+    expect(semantics.checkedFiles).not.toContain('/__expec_project__/node_modules/catalog/index.d.ts');
+  });
+  it('locates an unavailable import when its resolved declaration contains invalid UTF-8', async () => {
+    const driver = await project();
+    await driver.package('catalog', { types: 'index.d.ts' }, {
+      'index.d.ts': 'export interface Book { title: string }',
+    });
+    const importer = 'import type { Book } from "catalog"; export type Title = Book["title"];';
+    await driver.file('src/use.ts', importer);
+    fs.writeFileSync(driver.path('node_modules/catalog/index.d.ts'), Uint8Array.from([0xc3, 0x28]));
+
+    const result = await new TypeScriptContext(driver.context).readSnapshot();
+
+    expect(result.complete).toBe(false);
+    expect(result.problems).toContainEqual(expect.objectContaining({
+      code: 'native-read-failed',
+      at: { kind: 'dependency', path: ['typescript', 'node_modules/catalog/index.d.ts'] },
+    }));
+    expectMissingNativeInputAt(result, 'src/use.ts', '"catalog"');
+    expect(result.readOnlyFiles?.some(file => file.path === 'node_modules/catalog/index.d.ts')).toBe(false);
+    expect(result.files.some(file => file.path === 'src/use.ts')).toBe(true);
+  });
+  it('keeps a resolved but excluded declaration unavailable under noResolve', async () => {
+    const driver = await project();
+    await driver.package('catalog', { types: 'index.d.ts' }, {
+      'index.d.ts': 'export interface Book { title: string }',
+    });
+    const importer = 'import type { Book } from "catalog"; export type Title = Book["title"];';
+    await driver.file('src/use.ts', importer);
+    await driver.file('tsconfig.json', JSON.stringify({
+      compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', noResolve: true, types: [] },
+      files: ['src/use.ts'],
+    }));
+
+    const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+
+    expect(result.complete).toBe(false);
+    expectMissingNativeInputAt(result, 'src/use.ts', '"catalog"');
+    expect(result.files.some(file => file.path === 'src/use.ts')).toBe(true);
+  });
+  it('keeps a missing import inside an augmentation of an available project module visible', async () => {
+    const driver = await project();
+    await driver.file('src/store.ts', 'export interface Store {}');
+    const extension = `import "./store.js";
+  declare module "./store.js" {
+    import type { Missing } from "missing-types";
+    interface Store { extra: Missing; }
+  }
+  export {};`;
+    await driver.file('src/extension.ts', extension);
+
+    const result = await new TypeScriptContext(driver.context).readSnapshot();
+
+    expect(result.complete).toBe(false);
+    expectMissingNativeInputAt(result, 'src/extension.ts', '"missing-types"');
+    const store = result.files.find(file => file.path === 'src/store.ts')!;
+    expect(Buffer.from(store.bytes).toString('utf8')).toBe('export interface Store {}');
+  });
   it('keeps a missing triple-slash path visible when declaration checking is skipped', async () => {
     const driver = await project();
     await driver.package('catalog', { types: 'index.d.ts' }, { 'index.d.ts': '/// <reference path="./missing.d.ts" />\nexport interface Book {}' });

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { canonical, identifier, jsonData, locatorSchema } from './identity-baseline.js';
 import { literal } from './project-files.js';
 import { callerOptions, javaProblem, javaQueryOptions, requireJava } from './java-settings.js';
-import { analyzeJava, javaSymbol, type JavaFacts } from './java-analysis.js';
+import { JavaAnalysis, javaSymbol, type JavaFacts } from './java-analysis.js';
 
 /** Native Java queries over one supplied project capture. */
 export class JavaProject {
@@ -25,7 +25,7 @@ export class JavaProject {
   }
   private async query(id: SpecIdentifier, supplied: ProjectSnapshot) {
     requireJava(identifier.safeParse(id).success && supplied && Array.isArray(supplied.files), 'Provide a subject and captured project.');
-    const snapshot = structuredClone(supplied), { facts, problems, scope: sourceScope } = await analyzeJava(snapshot, this.options.configFile ?? 'expec.java.json');
+    const snapshot = structuredClone(supplied), { facts, problems, scope: sourceScope } = await new JavaAnalysis(this.options.configFile ?? 'expec.java.json').read(snapshot);
     const claimed = new Map<string, string>(), definitions = new Map<string, JavaFacts['declarations']>();
     for (const association of this.associations) {
       if (association.locator.format !== 'java-symbol-1') continue;

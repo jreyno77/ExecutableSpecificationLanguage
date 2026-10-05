@@ -4,7 +4,7 @@ import type { ProjectSnapshot } from './project-connection.js';
 import type { FileChange } from './project-writer.js';
 import type { JavaFile } from './java-declarations.js';
 import type { z } from 'zod';
-import { analyzeJava, javaSymbol, type JavaFacts } from './java-analysis.js';
+import { javaSymbol, type JavaAnalysis, type JavaFacts } from './java-analysis.js';
 import { canonical, type JsonValue } from './identity-baseline.js';
 import { javaProblem } from './java-settings.js';
 import { hash } from './project-files.js';
@@ -25,9 +25,9 @@ const replaceFiles = (snapshot: ProjectSnapshot, values: ReadonlyMap<string, str
 export class JavaPreservation {
   readonly problems: Diagnostic[] = [];
   readonly obligations: Diagnostic[] = [];
-  constructor(private readonly snapshot: ProjectSnapshot, private readonly configFile: string) {}
+  constructor(private readonly snapshot: ProjectSnapshot, private readonly analysis: JavaAnalysis) {}
   async adopt(desired: readonly JavaFile[], mappings: readonly ArtifactAssociation[]): Promise<JavaBaseline[]> {
-    const actual = await analyzeJava(this.snapshot, this.configFile);
+    const actual = await this.analysis.read(this.snapshot);
     this.problems.push(...actual.problems);
     if (this.problems.length) return [];
     const { facts: expected, placements, comparisons } = await this.nativeView(desired, mappings, actual.facts);
@@ -63,14 +63,14 @@ export class JavaPreservation {
     const found = previous.filter(file => file.artifacts.some(item => item.specId === id));
     if (found.length !== 1) { this.problems.push(javaProblem('mapping-not-found', 'Select one owned generated Java artifact.', '<associations>')); return { files: [], changes: [] }; }
     const file = found[0]!, root = file.artifacts.find(item => item.specId === id && item.locator.format === 'java-symbol-1' && !address(item).member);
-    const actual = await analyzeJava(this.snapshot, this.configFile); this.problems.push(...actual.problems);
+    const actual = await this.analysis.read(this.snapshot); this.problems.push(...actual.problems);
     for (const use of actual.facts.unresolved) this.problems.push(javaProblem('unresolved-native-reference', use.reason, use.file, use.start, use.length));
     const node = root && selected(actual.facts, root)[0], current = this.snapshot.files.find(item => item.path === file.path);
     if (!root || !node || !current) this.problems.push(javaProblem('unsupported-native-removal', 'Removal needs an exact owned native root.', file.path));
     else if (file.adopted?.length || hash(current.bytes) !== file.hash)
       this.problems.push(javaProblem('implemented-removal', 'The artifact contains adopted or handwritten source; preserve it explicitly.', file.path, node.start, node.length));
     if (current && hash(current.bytes) !== file.hash) {
-      const baseline = await analyzeJava(replaceFiles(this.snapshot, new Map([[file.path, file.generated]])), this.configFile);
+      const baseline = await this.analysis.read(replaceFiles(this.snapshot, new Map([[file.path, file.generated]])));
       const commentText = (source: string, at: { start: number; length: number }) => source.slice(at.start, at.start + at.length).replace(/\n[ \t]*/g, '\n');
       const generated = baseline.facts.comments.filter(item => item.file === file.path).map(item => commentText(file.generated, item));
       const comments = actual.facts.comments.filter(item => item.file === file.path), source = text(this.snapshot, file.path);
@@ -87,7 +87,7 @@ export class JavaPreservation {
       : { files: previous.filter(item => item !== file), changes: [{ kind: 'remove', path: file.path }] };
   }
   async update(previous: readonly JavaBaseline[], desired: readonly JavaFile[]): Promise<{ files: JavaBaseline[]; changes: Extract<FileChange, { kind: 'write' | 'remove' }>[] }> {
-    const actual = await analyzeJava(this.snapshot, this.configFile), mappings = previous.flatMap(file => file.artifacts);
+    const actual = await this.analysis.read(this.snapshot), mappings = previous.flatMap(file => file.artifacts);
     this.problems.push(...actual.problems);
     const empty = { files: [], changes: [] };
     if (this.problems.length) return empty;
@@ -184,7 +184,7 @@ export class JavaPreservation {
     if (this.problems.length) return empty;
     for (const file of files) if (!this.snapshot.files.some(current => current.path === file.path)) values.set(file.path, file.generated);
     for (const [from, to] of moves) { values.set(to, values.get(from) ?? text(this.snapshot, from)); values.delete(from); }
-    const final = await analyzeJava(replaceFiles({ ...this.snapshot, files: this.snapshot.files.filter(file => !moves.has(file.path)) }, values), this.configFile);
+    const final = await this.analysis.read(replaceFiles({ ...this.snapshot, files: this.snapshot.files.filter(file => !moves.has(file.path)) }, values));
     const bodies = signatureChanges.flatMap(item => selected(final.facts,item)).flatMap(node => node.syntax?.body ? [{file:node.file,...node.syntax.body}] : []);
     const contains = (problem: Diagnostic,body: typeof bodies[number]) => problem.at.kind==='dependency'&&problem.at.path[1]===body.file
       &&typeof problem.at.path[2]==='number'&&problem.at.path[2]>=body.start&&problem.at.path[2]<body.start+body.length;
@@ -266,7 +266,7 @@ export class JavaPreservation {
     }
   }
   private async nativeView(desired: readonly JavaFile[], mappings: readonly ArtifactAssociation[], actual: JavaFacts, owned: readonly JavaBaseline[] = []) {
-    const rendered = await analyzeJava(replaceFiles(this.snapshot, new Map(desired.map(file => [file.path, file.generated]))), this.configFile);
+    const rendered = await this.analysis.read(replaceFiles(this.snapshot, new Map(desired.map(file => [file.path, file.generated]))));
     this.problems.push(...rendered.problems.filter(problem => !problem.code.startsWith('java-')));
     const comparisons = new Map<string, string>(), edits = new Map<string, { node: Declaration; content: string }[]>();
     const placements = new Map<string, string>(), removed = new Set<string>();
@@ -306,7 +306,7 @@ export class JavaPreservation {
       comparisons.set(file, source);
     }
     if (this.problems.length) return { facts: rendered.facts, placements, comparisons };
-    const expected = await analyzeJava(replaceFiles({ ...this.snapshot, files: this.snapshot.files.filter(file => !removed.has(file.path)) }, comparisons), this.configFile);
+    const expected = await this.analysis.read(replaceFiles({ ...this.snapshot, files: this.snapshot.files.filter(file => !removed.has(file.path)) }, comparisons));
     const declarations = expected.facts.declarations.filter(node => desired.some(file => file.artifacts.some(item => item.locator.format === 'java-symbol-1' && address(item).type === node.type)));
     this.problems.push(...expected.problems.filter(problem => !problem.code.startsWith('java-') || problem.at.kind === 'dependency'
       && declarations.some(node => problem.at.kind === 'dependency' && problem.at.path[1] === node.file && typeof problem.at.path[2] === 'number'
