@@ -91,6 +91,9 @@ public final class ExpecJava {
                             if (name.getParent() instanceof RecordDeclaration record && record.getName() == name) return true;
                             if (name.getParent() instanceof SingleVariableDeclaration variable && variable.getParent() instanceof RecordDeclaration) return true;
                             IBinding binding = original(name.resolveBinding());
+                            if (binding == null && name.getParent() instanceof QualifiedName qualified
+                                && qualified.getQualifier() == name && qualified.resolveBinding() instanceof IPackageBinding namespace
+                                && !namespace.isRecovered()) binding = namespace;
                             if (binding == null || binding.isRecovered()) {
                                 if (!name.isDeclaration()) {
                                     ASTNode context = name.getParent();

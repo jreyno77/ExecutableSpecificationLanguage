@@ -20,6 +20,22 @@ describe('explicit Java native prerequisites', () => {
 });
 
 describe('native Java questions over captured source', { timeout: 90_000 }, () => {
+  it('keeps native query coverage complete for ordinary imported collection types', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    const file = 'src/main/java/store/Basket.java';
+    await p.file(file, 'package store;\nimport java.util.Map;\nimport java.util.HashMap;\nclass Basket { private final Map<String, Double> contents = new HashMap<>(); double quantity(String title) { return contents.getOrDefault(title, 0.0); } }');
+    p.mapType('basket', file, 'store.Basket');
+    await p.search('basket'); p.expectCoverageComplete();
+  });
+
+  it('keeps an unavailable imported type unresolved inside a real package', async () => {
+    const p = await JavaExamples.connect(); await p.installNativeProfile();
+    const file = 'src/main/java/store/Basket.java';
+    await p.file(file, 'package store;\nimport java.util.Missing;\nclass Basket { Missing contents; }');
+    p.mapType('basket', file, 'store.Basket');
+    await p.search('basket'); p.expectUnresolvedAt('Missing'); p.expectQueryIncomplete();
+  });
+
   it('reports real missing and extra relationships instead of matching native names', async () => {
     const p = await JavaExamples.connect(); await p.installNativeProfile();
     p.source('class A {}\nclass B {}\nclass C {}\nclass D {}\nclass Use {}');
