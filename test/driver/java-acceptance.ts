@@ -12,7 +12,7 @@ export class JavaAcceptanceDriver extends JavaOutputDriver {
   async observeFiles(): Promise<void> {
     const snapshot = await this.ordinary.readSnapshot();
     if (!snapshot.complete || snapshot.problems.length) throw new Error(JSON.stringify(snapshot.problems));
-    this.files = snapshot.files;
+    this.files = structuredClone(snapshot.files);
   }
   private readonly junit = process.env.EXPEC_TEST_JUNIT_CONSOLE!;
   private fixture: object | undefined;
