@@ -8,13 +8,11 @@ import { vi } from 'vitest';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ConfigurationReader, ProjectConnector, FileProjectWriter,
   type FileChange, type ProjectContext, type ProjectSnapshot, type WriteResult } from '../../src/index.js';
+import { requireCompiledCheckout } from './compiled-checkout.js';
 
 /** Owns real temporary files and public writer calls; never simulates their effects. */
 export class WritingDriver {
-  static async prepare(): Promise<void> {
-    await promisify(execFile)(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
-      { windowsHide: true, timeout: 25000 });
-  }
+  static async prepare(): Promise<void> { requireCompiledCheckout(); }
   readonly directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'expec-writes-')));
   readonly root = join(this.directory, 'project');
   context!: ProjectContext;

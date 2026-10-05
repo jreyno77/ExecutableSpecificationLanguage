@@ -148,7 +148,15 @@ export class TypeScriptCapture {
     try {
       this.program = this.service.getProgram();
       if (this.program) {
-        this.problems.push(...ts.getPreEmitDiagnostics(this.program).map(error => this.nativeDiagnostic(error)));
+        // Acquisition checks every project/package source and any bundled library that can report a missing input.
+        // Pure queries retain whole-program diagnostics; no checking option or freshness guard is weakened.
+        const selected = inputs ? this.program.getSourceFiles().filter(source => !source.fileName.startsWith(libraries + '/')
+          || source.referencedFiles.length || source.typeReferenceDirectives.length || source.libReferenceDirectives.length
+          || unresolved.some(item => item.source === source)) : [];
+        const diagnostics = selected.length ? ts.sortAndDeduplicateDiagnostics([
+          ...this.program.getSyntacticDiagnostics(), ...selected.flatMap(source => ts.getPreEmitDiagnostics(this.program!, source)),
+        ]) : ts.getPreEmitDiagnostics(this.program);
+        this.problems.push(...diagnostics.map(error => this.nativeDiagnostic(error)));
         const checker = this.program.getTypeChecker();
         for (const { literal, source } of unresolved) if (!checker.getSymbolAtLocation(literal)) {
           const path = this.projectPath(source.fileName)!, start = literal.getStart(source);

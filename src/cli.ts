@@ -12,10 +12,13 @@ import { Outputs, contractListOutput, structureListOutput, type OutputRegistrati
 import { acceptanceOutput } from './output-acceptance.js';
 import { markdownOutput } from './output-markdown.js';
 import { typescriptOutput } from './output-typescript.js';
+import { umlOutput } from './uml-output.js';
+import { javaOutput } from './output-java.js';
+import { javaAcceptanceOutput } from './output-java-acceptance.js';
+import { javaCliExclusions } from './cli-java.js';
 import { kotlinOutput } from './output-kotlin.js';
 import { kotlinAcceptanceOutput } from './output-kotlin-acceptance.js';
 import { kotlinExclusions } from './cli-kotlin.js';
-import { umlOutput } from './uml-output.js';
 
 export interface CliOutputs {
   readonly contracts?: readonly OutputRegistration[];
@@ -23,7 +26,7 @@ export interface CliOutputs {
 }
 const commands = ['check', 'build', 'test', 'init', 'install'];
 const help = 'expec check|build|test|install [--config expec.json] [--json]\n'
-  + 'expec build [--decisions changes.json]\nexpec init --root directory --target typescript|kotlin [--java-home JDK21] [--yes] [--config expec.json] [--json]\n'
+  + 'expec build [--decisions changes.json]\nexpec init --root directory --target typescript|java|kotlin [--java-home path] [--yes] [--config expec.json] [--json]\n'
   + 'expec --help\nexpec --version\n';
 type Report = { format: 1; command: string; status: string; exitCode: number; manifest: string;
   project?: { path: string; identity: string }; version?: string; problems: readonly Diagnostic[]; syntax: readonly unknown[];
@@ -61,7 +64,8 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
   try {
     const parsed = parseArgs({ args, allowPositionals: true, tokens: true, strict: true, options: {
       config: { type: 'string' }, json: { type: 'boolean' }, decisions: { type: 'string' },
-      root: { type: 'string' }, target: { type: 'string' }, 'java-home': { type: 'string' }, yes: { type: 'boolean' },
+      root: { type: 'string' }, target: { type: 'string' }, yes: { type: 'boolean' },
+      'java-home': { type: 'string' },
       help: { type: 'boolean' }, version: { type: 'boolean' },
     } });
     const seen = new Set<string>();
@@ -82,8 +86,8 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     command = parsed.positionals[0] ?? '';
     if (parsed.positionals.length !== 1 || !commands.includes(command)) throw Error('Choose check, build, test, init or install.');
     if (values.decisions !== undefined && command !== 'build') throw Error('--decisions is only available for build.');
-    if (['root', 'target', 'yes', 'java-home'].some(key => values[key] !== undefined) && command !== 'init') throw Error('--root, --target and --yes are only available for init.');
-    if (values['java-home'] !== undefined && values.target !== 'kotlin') throw Error('--java-home is available only for Kotlin initialization.');
+    if (['root', 'target', 'yes', 'java-home'].some(key => values[key] !== undefined) && command !== 'init') throw Error('--root, --target, --java-home and --yes are only available for init.');
+    if (values['java-home'] !== undefined && !['java', 'kotlin'].includes(values.target as string)) throw Error('--java-home is only available for Java or Kotlin targets.');
     if (command === 'init' && (!values.root || !values.target)) throw Error('init requires --root and --target.');
     if (values.config !== undefined) manifest = resolve(cwd, values.config as string);
   } catch (error) { return report('usage-error', 2, { problems: [cliProblem('invalid-command', String(error), manifest)] }); }
@@ -92,13 +96,14 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
   try {
     const outputs = new Outputs();
     for (const registration of [typescriptOutput, markdownOutput, umlOutput, contractListOutput, structureListOutput,
-      acceptanceOutput, kotlinOutput, kotlinAcceptanceOutput, ...supplied.contracts, ...supplied.tests]) outputs.register(registration);
+      acceptanceOutput, javaOutput, javaAcceptanceOutput, kotlinOutput, kotlinAcceptanceOutput, ...supplied.contracts, ...supplied.tests]) outputs.register(registration);
     const selected = manifest;
     let checked = await (command === 'init' || command === 'install' ? readManifest : checkManifest)(manifest, outputs.profiles);
     manifest = checked.manifest;
     const interactive = !json && !!process.stdin.isTTY && !!process.stderr.isTTY;
     if (checked.configuration && (command === 'init' || command === 'install')) {
-      const result = command === 'init' ? await initialize(checked, selected, { root: values.root as string, target: values.target as string, ...(typeof values['java-home'] === 'string' ? { javaHome: values['java-home'] } : {}) }, values.yes === true, interactive, controller.signal)
+      const result = command === 'init' ? await initialize(checked, selected, { root: values.root as string, target: values.target as string,
+        ...(typeof values['java-home'] === 'string' ? { javaHome: values['java-home'] } : {}) }, values.yes === true, interactive, controller.signal)
         : await install(checked);
       return report(controller.signal.aborted ? 'cancelled' : result.status, controller.signal.aborted ? 130 : result.exitCode,
         { version: checked.configuration.version, ...result, ...(controller.signal.aborted ? { exitCode: 130, status: 'cancelled' } : {}) });
@@ -112,14 +117,16 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     }
     if (command === 'check') return report('checked', 0, details);
     if (command === 'test') {
-      const connection = await new ProjectConnector(manifest, checked.configuration!.outputs.some(output => output.id === 'kotlin' || output.id === 'kotlin-acceptance') ? { excludeNames: kotlinExclusions } : {}).connect(checked.configuration!);
+      const connection = await new ProjectConnector(manifest, checked.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+        : checked.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(checked.configuration!);
       if (connection.value?.status !== 'connected') return report('invalid', 1, { ...details, problems: [...connection.problems, cliProblem('project-required', 'Connect a generated project before executing tests.', manifest)] });
       const result = await testProject(checked, connection.value.context, outputs, controller.signal);
       return report(result.status, result.exitCode, { ...details, ...result });
     }
     if (command === 'build') {
       if (!checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
-      let connection = await new ProjectConnector(manifest, checked.configuration!.outputs.some(output => output.id === 'kotlin' || output.id === 'kotlin-acceptance') ? { excludeNames: kotlinExclusions } : {}).connect(checked.configuration!);
+      let connection = await new ProjectConnector(manifest, checked.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+        : checked.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(checked.configuration!);
       if (!connection.value) return report('invalid', 1, { ...details, problems: connection.problems });
       if (connection.value.status === 'unconnected') {
         const initialized = await initialize(checked, selected, undefined, false, interactive, controller.signal);
@@ -128,10 +135,11 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
         if (!checked.specification) return report('invalid', 1, { ...(checked.configuration ? { version: checked.configuration.version } : {}), ...(initialized.project ? { project: initialized.project } : {}),
           stages: [...initialized.stages, { name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }], syntax: checked.syntax,
           deferred: checked.deferred, problems: [...checked.problems, cliProblem('installation-required', 'Run expec install explicitly before continuing this build.', manifest)] });
-        connection = await new ProjectConnector(manifest, checked.configuration!.outputs.some(output => output.id === 'kotlin' || output.id === 'kotlin-acceptance') ? { excludeNames: kotlinExclusions } : {}).connect(checked.configuration!);
+        connection = await new ProjectConnector(manifest, checked.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+        : checked.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(checked.configuration!);
       }
       if (connection.value?.status === 'connected') {
-        const result = await build(checked, connection.value.context, outputs, new Set(['acceptance', 'kotlin-acceptance', ...supplied.tests.map(output => output.id)]), controller.signal, typeof values.decisions === 'string' ? resolve(cwd, values.decisions) : undefined);
+        const result = await build(checked, connection.value.context, outputs, new Set(['acceptance', 'java-acceptance', 'kotlin-acceptance', ...supplied.tests.map(output => output.id)]), controller.signal, typeof values.decisions === 'string' ? resolve(cwd, values.decisions) : undefined);
         return report(result.status, result.exitCode, { ...details, ...result });
       }
     }

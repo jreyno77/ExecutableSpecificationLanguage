@@ -7,6 +7,13 @@ export class ConnectedExecution {
   prepareShopping(): Promise<void> { return this.driver.prepareShopping(); }
   freshShopping(): Promise<void> { return this.driver.restoreShopping(); }
   run(): Promise<void> { return this.driver.run(['test', '--config', 'spec/expec.json', '--json'], '', undefined, 90_000); }
+  async runWhileChangingAssertion(title: string, before: number, after: number): Promise<void> {
+    await this.driver.changeAfterSelection(`expectBookQuantity(${JSON.stringify(title)}, ${before})`, `expectBookQuantity(${JSON.stringify(title)}, ${after})`);
+    try { await this.run(); } finally { this.driver.useDefaultLauncher(); }
+  }
+  async expectGeneratedQuantity(title: string, quantity: number): Promise<void> {
+    expect(await this.nativeText('test/acceptance/shopping.test.ts')).toContain(`expectBookQuantity(${JSON.stringify(title)}, ${quantity})`);
+  }
   expectExit(code: number): void { expect(this.driver.result, this.driver.result.stdout + this.driver.result.stderr).toMatchObject({ code }); }
   expectNativePassed(title: string): void {
     const stage = this.driver.report.stages.find((stage: any) => stage.name === 'execution');

@@ -6,17 +6,19 @@ import { Compiler, type Specification } from './compiler.js';
 import { DependencyPlanner } from './dependency-planner.js';
 import type { SyntaxDiagnostic } from './grammar/source.js';
 import { LibraryLoader } from './library-loader.js';
-import { cliProfile } from './cli-profile.js';
-import { readKotlinPackages, kotlinExclusions } from './cli-kotlin.js';
 import { readPackages } from './cli-packages.js';
 import { ProjectConnector, type ProjectRoot } from './project-connection.js';
 import { SourceComposer } from './source-composer.js';
 import { SourceLoader, type SourceCapture } from './source-loader.js';
+import { cliProfile } from './cli-profile.js';
+import { checkedJavaPackages, javaCliExclusions } from './cli-java.js';
+import { readKotlinPackages, kotlinExclusions } from './cli-kotlin.js';
 
 export interface CheckedManifest {
   manifest: string;
   text?: string;
   configuration?: Configuration;
+  profile?: NonNullable<ReturnType<typeof cliProfile>['value']>;
   project?: ProjectRoot;
   specification?: Specification;
   captures: readonly SourceCapture[];
@@ -36,23 +38,27 @@ export async function readManifest(filename: string, profiles: readonly OutputPr
   const read = new ConfigurationReader(profiles).read({ sourceId: pathToFileURL(result.manifest).href, text });
   result.problems = read.problems;
   if (!read.value) return result;
-  result.configuration = read.value; result.text = text; return result;
+  const profile = cliProfile(read.value);
+  result.problems = profile.problems;
+  if (!profile.value) return result;
+  result.configuration = read.value; result.profile = profile.value; result.text = text; return result;
 }
 export async function checkManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
   const result = await readManifest(filename, profiles);
   if (!result.configuration) return result;
-  const configuration = result.configuration, profile = cliProfile(configuration);
-  if (!profile.value) { result.problems = profile.problems; return result; }
+  const configuration = result.configuration;
   const libraries = await new LibraryLoader(result.manifest).load(configuration);
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
-  if (configuration.packages.length) {
-    const connection = await new ProjectConnector(result.manifest, profile.value.target === 'kotlin' ? { excludeNames: kotlinExclusions } : {}).connect(configuration);
+  if (configuration.packages.length || result.profile?.target === 'java') {
+    const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+      : result.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(configuration);
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
-      const observed = profile.value.target === 'kotlin'
-        ? await readKotlinPackages(connection.value.context, configuration.packages)
+      const observed = result.profile?.target === 'java'
+        ? await checkedJavaPackages(result, connection.value.context, result.profile.configFile!)
+        : result.profile?.target === 'kotlin' ? await readKotlinPackages(connection.value.context, configuration.packages)
         : await readPackages(result.project, configuration.packages);
       result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];

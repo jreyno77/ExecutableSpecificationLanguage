@@ -44,9 +44,9 @@ export class NativePackageDriver {
   fixtureValue: unknown;
   client!: NpmDependencies;
 
-  async initialize(kind: 'project' | 'empty' | 'absent' = 'project'): Promise<void> {
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-native-')); this.root = join(this.directory, 'project');
-    if (kind !== 'absent') await mkdir(this.root);
+  async initialize(kind: 'project' | 'empty' | 'absent' = 'project', parent = ''): Promise<void> {
+    this.directory = await mkdtemp(join(tmpdir(), 'expec-native-')); this.root = join(this.directory, parent, 'project');
+    if (kind !== 'absent') await mkdir(this.root, { recursive: true });
     if (kind === 'project') {
       await new Promise<void>(resolve => this.server.listen(0, '127.0.0.1', resolve));
       this.registry = 'http://127.0.0.1:' + (this.server.address() as { port: number }).port;

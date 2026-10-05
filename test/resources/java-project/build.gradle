@@ -1,0 +1,16 @@
+plugins { id 'java' }
+dependencyLocking { lockAllConfigurations() }
+tasks.register('captureClasspaths') {
+    doLast {
+        def digest = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+        def config = new groovy.json.JsonSlurper().parse(file('expec.java.json'))
+        def paths = { configuration -> configuration.files.collect { it.canonicalPath } }
+        def report = [format: 1, release: 21, javaHome: config.javaHome, sourceRoots: config.sourceRoots,
+            classPath: [main: [compile: paths(configurations.compileClasspath), runtime: paths(configurations.runtimeClasspath)],
+                       test: [compile: paths(configurations.testCompileClasspath), runtime: paths(configurations.testRuntimeClasspath)]],
+            packages: [], inputs: ['build.gradle', 'settings.gradle', 'expec.java.json'].collect { [path: it, version: digest(file(it))] }]
+        def destination = file('.expec/java/classpath.json')
+        destination.parentFile.mkdirs()
+        destination.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(report)) + '\n'
+    }
+}

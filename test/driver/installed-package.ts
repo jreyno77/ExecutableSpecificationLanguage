@@ -22,6 +22,8 @@ interface KotlinCommand {
 interface ConsumerReport {
   kotlinCli?: { executable: string; initialized: KotlinCommand; acquired: KotlinCommand; built: KotlinCommand; passed: KotlinCommand; broken: KotlinCommand;
     original: string; testText: string; testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[] };
+  javaCli?: { executable: string; commands: JavaCommand[]; first: JavaCommand; renamed: JavaCommand; wrong: JavaCommand; source: string; caller: string; readable: string };
+  java?: { complete:boolean; problems:unknown[]; search:ProjectSearch; read:Omit<ProjectRead,'artifacts'>&{artifacts:{at:unknown;path:string;text:string}[]}; wrong:ProcessResult };
   customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
     checkoutDenied: string; privateImportDenied: string; catalog: string; note: string };
   cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
@@ -110,6 +112,8 @@ interface ConsumerReport {
     canaries: { failures: boolean[]; denied: string[] }; private: string };
 
 }
+interface JavaCommand { command: string; code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[];
+  stages: { name: string; status: string; tests?: { state: string; errors: string[] }[] }[] } }
 interface CountReport {
   write?: OutputWrite;
   counts?: { concepts: number; recordTypes: number; capabilities: number; subjects: { id: string; name: string }[] };
@@ -224,6 +228,19 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-input-consumer.mjs', 'native-input.json'], this.consumer);
     await this.readReport();
   }
+  async preserveJava(input: { source:string; revised:string; implementation:string; caller:string }): Promise<void> {
+    await cp(join(resources,'java-consumer.mjs'),join(this.consumer,'java-consumer.mjs'));
+    await cp(join(checkout,'test/resources/java-project/build.gradle'),join(this.consumer,'java-capture.gradle'));
+    await writeFile(join(this.consumer,'java-input.json'),JSON.stringify(input));
+    this.result=await run(process.execPath,['java-consumer.mjs'],this.consumer); await this.readReport();
+  }
+  async javaCommands(input: { source: string; revised: string }): Promise<void> {
+    await cp(join(resources, 'java-cli-consumer.mjs'), join(this.consumer, 'java-cli-consumer.mjs'));
+    await cp(join(resources, 'java-cli-guard.mjs'), join(this.consumer, 'java-cli-guard.mjs'));
+    const checkoutFile = join(checkout, 'src/index.ts'); await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'java-cli-input.json'), JSON.stringify({ ...input, checkoutFile }));
+    this.result = await run(process.execPath, ['java-cli-consumer.mjs'], this.consumer, 300_000); await this.readReport();
+  }
   async preserveTypeScript(input: { source: string; revised: string; implementation: string; caller: string }): Promise<void> {
     await cp(join(resources, 'preservation-consumer.mjs'), join(this.consumer, 'preservation-consumer.mjs'));
     await writeFile(join(this.consumer, 'preservation.json'), JSON.stringify(input));
@@ -243,8 +260,8 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
     await this.readReport();
   }
-  async provideDependencies(): Promise<void> {
-    this.native = new NativePackageDriver(); await this.native.initialize();
+  async provideDependencies(parent = ''): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize('project', parent);
     await this.native.publish('example-storage', '2.1.0');
     await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
     await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
@@ -403,7 +420,19 @@ function child(parent: string, path: string): string {
   return target;
 }
 async function cleanup(directory: string): Promise<void> {
-  const name = relative(await realpath(tmpdir()), await realpath(directory));
+  const name = relative(await realpath(tmpdir()), resolve(directory));
   if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-package-')) throw new Error('Refusing to remove an unexpected fixture directory');
-  await rm(directory, { recursive: true, force: true });
+  const trace = (status: string, elapsedMs?: number, error?: unknown): void => {
+    if (process.env.EXPEC_CLEANUP_TIMINGS !== '1') return;
+    try {
+      const failure = error as NodeJS.ErrnoException | undefined;
+      console.info('[fixture-cleanup]', JSON.stringify({ directory, pid: process.pid, at: new Date().toISOString(),
+        status, elapsedMs, code: failure?.code, syscall: failure?.syscall }));
+    } catch { /* Diagnostics must not replace the removal result. */ }
+  };
+  trace('started');
+  const start = performance.now();
+  try { await rm(directory, { recursive: true, force: true }); }
+  catch (error) { trace('rejected', performance.now() - start, error); throw error; }
+  trace('fulfilled', performance.now() - start);
 }

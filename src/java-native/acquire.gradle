@@ -1,0 +1,59 @@
+import org.gradle.internal.operations.*
+import org.gradle.configuration.ApplyScriptPluginBuildOperationType
+import org.gradle.api.internal.plugins.ApplyPluginBuildOperationType
+import groovy.json.JsonOutput
+
+// Isolate the pinned Gradle 9.1 provenance hook; build configuration is deliberately executable during install.
+if (gradle.gradleVersion != '9.1.0') throw new GradleException('Expected Gradle 9.1.0')
+def scripts = Collections.synchronizedList([]), plugins = Collections.synchronizedList([])
+def payload
+ def listener = new BuildOperationListener() {
+    void started(BuildOperationDescriptor operation, OperationStartEvent event) {
+        def d = operation.details
+        if (d instanceof ApplyScriptPluginBuildOperationType.Details) scripts.add(d.file)
+        if (d instanceof ApplyPluginBuildOperationType.Details) plugins.add(d.pluginClass.name)
+    }
+    void progress(OperationIdentifier id, OperationProgressEvent event) {}
+    void finished(BuildOperationDescriptor operation, OperationFinishEvent event) {}
+}
+gradle.services.get(BuildOperationListenerManager).addListener(listener)
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    if (project.allprojects.size() != 1 || !gradle.includedBuilds.empty || new File(project.projectDir, 'buildSrc').exists()
+        || new File(gradle.gradleUserHomeDir, 'gradle.properties').exists()) throw new GradleException('Unsupported native build configuration')
+    if (!project.plugins.hasPlugin('java') || project.sourceSets*.name.sort() != ['main', 'test'])
+        throw new GradleException('Expected one ordinary Java project with main and test source sets')
+    if (project.tasks.findByName('expecAcquireJava') != null) throw new GradleException('Native acquisition task name is already owned')
+    project.tasks.register('expecAcquireJava') {
+        doLast {
+            for (name in ['compileJava', 'compileTestJava']) {
+                def compiler = project.tasks.getByName(name)
+                if (compiler.options.release.getOrNull() != 21 || compiler.javaCompiler.get().metadata.languageVersion.asInt() != 21)
+                    throw new GradleException('Expected explicit Java 21 compilation for main and test')
+                if (!compiler.options.annotationProcessorPath.files.empty || !compiler.options.compilerArgs.empty)
+                    throw new GradleException('Annotation processors and custom compiler arguments are unsupported')
+            }
+            def configurations = ['compileClasspath','runtimeClasspath','testCompileClasspath','testRuntimeClasspath'].collectEntries { name ->
+                def c = project.configurations.getByName(name); c.resolutionStrategy.activateDependencyLocking(); [(name): c]
+            }
+            def paths = configurations.collectEntries { name, c -> [(name): c.files.collect { it.canonicalPath }] }
+            def artifacts = configurations.collectMany { name, c -> c.resolvedConfiguration.resolvedArtifacts.collect { a ->
+                if (a.classifier != null || a.extension != 'jar') throw new GradleException('Only ordinary unclassified Maven JARs are supported')
+                [name: 'maven:' + a.moduleVersion.id.group + ':' + a.moduleVersion.id.name,
+                    version: a.moduleVersion.id.version, path: a.file.canonicalPath]
+            } }.unique { it.path }
+            payload = [format:1, release:21, javaHome:System.getProperty('java.home'),
+                sourceRoots:['main','test'].collectEntries { name -> [(name): project.sourceSets.getByName(name).java.srcDirs.collect { it.canonicalPath }] },
+                classPath:[main:[compile:paths.compileClasspath,runtime:paths.runtimeClasspath],
+                    test:[compile:paths.testCompileClasspath,runtime:paths.testRuntimeClasspath]], packages:artifacts]
+        }
+    }
+}
+gradle.buildFinished { result ->
+    gradle.services.get(BuildOperationListenerManager).removeListener(listener)
+    if (result.failure == null && payload != null) {
+        payload.scripts = scripts.unique(); payload.plugins = plugins.unique()
+        payload.init = gradle.startParameter.allInitScripts.collect { it.canonicalPath }
+        println('EXPEC_JAVA_ACQUISITION=' + JsonOutput.toJson(payload))
+    }
+}

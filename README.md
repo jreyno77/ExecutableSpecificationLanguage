@@ -721,6 +721,14 @@ expec test --config spec/expec.json
 
 Initialization and installation are explicit. Build checks the supplied source, preserves confirmed identities, applies selected contracts, then reads the actual project before generating acceptance tests. It reports unfinished implementations; it does not run them. Test requires current generated evidence and project-installed Vitest 5.0.2, selects the actual generated callbacks, and retains assertion and cleanup failures. Handwritten implementation edits may be tested without rebuilding; changed generated assertions require repair or generation.
 
+For Java, initialize with `--target java --java-home /absolute/path/to/jdk21`.
+The same install/build/test commands acquire the locked native dependencies,
+generate Java contracts and JUnit examples, then compile captured source and run
+the exact generated methods with the acquired JUnit 6.1.3 Console. Read, search
+and generation do not run Gradle or install packages. The starter uses
+`sh gradlew` on Unix; generated file writes do not grant executable permissions.
+Cancellation reports native termination separately from application cleanup.
+
 Use `--json` for one format-1 report on stdout; native application logs go to stderr. Exit codes are 0 for success, 1 for failed/invalid work, 2 for command usage, 3 for a required author decision, and 130 for cancellation. Failed writes retain actual receipts and recognized pending intent; a later build resumes only a verified unchanged prefix. Identity rename/retirement decisions use `build --decisions changes.json`.
 
 A deliberate custom launcher can import `runCli` and pass `{ contracts: [registration], tests: [registration] }` using ordinary `OutputRegistration` implementations. It receives the same checked specification and guarded project boundaries. Configuration does not load executable plugins.
@@ -728,6 +736,15 @@ A deliberate custom launcher can import `runCli` and pass `{ contracts: [registr
 ## Development and delivery
 
 Use Node 24.19.0, npm 11.20.0 and JDK21 (JAVA_HOME) to build the native bridge.
+
+The Java target is in progress. Native builds require JDK 21 through `JAVA_HOME`;
+the checked-in Gradle wrapper acquires the locked JDT bridge. Java tests also
+require `EXPEC_TEST_JUNIT_CONSOLE` pointing to JUnit Console Standalone 6.1.3
+(SHA-256 `e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec`).
+`npm run test:java` runs the Java unit and acceptance suites;
+`npm run test:java-package` checks the installed public Java consumer.
+CI runs these suites on Windows and Linux separately from `check:core`.
+The ordinary `check` command retains all local unit and acceptance tests.
 
 ```sh
 npm ci
