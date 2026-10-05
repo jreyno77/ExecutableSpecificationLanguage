@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity } from '../../src/index.js';
-import { PythonDeclarations, pythonOptions } from '../../src/python-declarations.js';
+import { PythonDeclarations, pythonOptions } from '../../src/project/python/python-declarations.js';
 
 function contracts(source: string, names: Record<string, string> = {}) {
     const read = new LangiumReader().read({ sourceId: 'game.expec', text: source });

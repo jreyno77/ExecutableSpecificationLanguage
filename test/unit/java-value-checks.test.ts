@@ -5,8 +5,8 @@ import { join, relative, isAbsolute, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { Compiler } from '../../src/index.js';
-import { JavaTypes } from '../../src/java-types.js';
-import { JavaValueChecks } from '../../src/java-value-checks.js';
+import { JavaTypes } from '../../src/project/java/java-types.js';
+import { JavaValueChecks } from '../../src/project/java/acceptance/java-value-checks.js';
 
 const roots:{parent:string;path:string}[]=[],execute=promisify(execFile);
 async function admitted(body:string):Promise<string> {

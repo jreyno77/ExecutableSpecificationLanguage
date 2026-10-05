@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { FileProjectWriter, type SpecDiff } from '../../src/index.js';
-import type { Diagnostic } from '../../src/checking.js';
+import type { Diagnostic } from '../../src/compiler/checking.js';
 import { PythonProjectDriver } from './python-project.js';
 
 /** Native implementation setup surrounds actual identity transitions and preserving output calls. */

@@ -3,11 +3,11 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { Compiler } from '../../src/compiler.js';
-import { currentTestIdentity, identityBytes, readDecisions, readIdentity } from '../../src/cli-identity.js';
-import type { CheckedManifest } from '../../src/cli-check.js';
-import { SpecificationIdentity } from '../../src/specification-identity.js';
-import type { ProjectSnapshot } from '../../src/project-connection.js';
+import { Compiler } from '../../src/compiler/compiler.js';
+import { currentTestIdentity, identityBytes, readDecisions, readIdentity } from '../../src/cli/cli-identity.js';
+import type { CheckedManifest } from '../../src/cli/cli-check.js';
+import { SpecificationIdentity } from '../../src/model/specification-identity.js';
+import type { ProjectSnapshot } from '../../src/project/connection/project-connection.js';
 
 const roots: { path: string; parent: string }[] = [];
 afterEach(async () => {

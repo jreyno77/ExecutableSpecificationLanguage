@@ -44,7 +44,7 @@ describe('Kotlin dependency observations', () => {
     const driver = await fixture(); await driver.configureNative();
     const path = join(driver.root, '.expec/kotlin/classpath.json');
     const report = JSON.parse(await fs.readFile(path, 'utf8'));
-    report.classPath.main.push(resolve('src/kotlin/lib/annotations-23.0.0.jar'));
+    report.classPath.main.push(resolve('src/project/kotlin/resources/lib/annotations-23.0.0.jar'));
     report.runtimeClassPath = report.classPath;
     report.artifacts = [{ path: report.classPath.main[0], version: createHash('sha256').update(await fs.readFile(report.classPath.main[0])).digest('hex') }];
     report.packages = [{ name: 'maven:org.jetbrains.kotlin:kotlin-stdlib', version: '2.4.10', phases: ['runtime'] }];

@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { javaInputs } from '../../src/java-inputs.js';
-import { hash } from '../../src/project-files.js';
+import { javaInputs } from '../../src/project/java/java-inputs.js';
+import { hash } from '../../src/project/connection/project-files.js';
 import { JavaContext, type ProjectSnapshot } from '../../src/index.js';
 import { pathToFileURL } from 'node:url';
 

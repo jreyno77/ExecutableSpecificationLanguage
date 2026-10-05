@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PythonProjectDriver } from '../driver/python-project.js';
-import { pythonConfiguration, type PythonProfile } from '../../src/python-profile.js';
-import { pythonEnvironment, type PythonEnvironment } from '../../src/python-inputs.js';
-import { runPytest } from '../../src/cli-pytest.js';
-import { pythonPackagePhases } from '../../src/cli-python-phases.js';
-import type { ProjectSnapshot } from '../../src/project-connection.js';
+import { pythonConfiguration, type PythonProfile } from '../../src/project/python/python-profile.js';
+import { pythonEnvironment, type PythonEnvironment } from '../../src/project/python/python-inputs.js';
+import { runPytest } from '../../src/cli/cli-pytest.js';
+import { pythonPackagePhases } from '../../src/cli/cli-python-phases.js';
+import type { ProjectSnapshot } from '../../src/project/connection/project-connection.js';
 
 const fixture = new PythonProjectDriver();
 const selected = [{ id: 'quantity', file: 'test/test_quantity.py', name: 'test_quantity', title: 'one copy' }];

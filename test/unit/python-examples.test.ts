@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity } from '../../src/index.js';
-import { PythonExamples } from '../../src/python-examples.js';
+import { PythonExamples } from '../../src/project/python/acceptance/python-examples.js';
 
 function examples(source: string, domain = 'numbers') {
   const read = new LangiumReader().read({ sourceId: 'numbers.expec', text: source });

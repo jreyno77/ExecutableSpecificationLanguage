@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler, SpecificationIdentity, type IdentifiedSpecification } from '../../src/index.js';
-import { JavaExamples } from '../../src/java-examples.js';
-import { javaAcceptanceOptions } from '../../src/java-settings.js';
+import { JavaExamples } from '../../src/project/java/acceptance/java-examples.js';
+import { javaAcceptanceOptions } from '../../src/project/java/java-settings.js';
 
 function examples(source: string, options: (current: IdentifiedSpecification) => Record<string,unknown> = () => ({})) {
   const checked=new Compiler().compile({locator:'main',source:{sourceId:'main.expec',text:source},dependencies:{modules:[],packages:[]}});

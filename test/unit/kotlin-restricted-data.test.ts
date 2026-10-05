@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
 import { Compiler, SpecificationIdentity, type ProjectSnapshot } from '../../src/index.js';
-import { KotlinDeclarations, kotlinOptions } from '../../src/kotlin-declarations.js';
-import { kotlinGeneratedFiles, kotlinStatePath } from '../../src/kotlin-output-state.js';
-import { canonical } from '../../src/identity-baseline.js';
-import { hash } from '../../src/project-files.js';
+import { KotlinDeclarations, kotlinOptions } from '../../src/project/kotlin/kotlin-declarations.js';
+import { kotlinGeneratedFiles, kotlinStatePath } from '../../src/project/kotlin/kotlin-output-state.js';
+import { canonical } from '../../src/model/identity-baseline.js';
+import { hash } from '../../src/project/connection/project-files.js';
 
 function generatedRestriction() {
   const compiled = new Compiler().compile({ source: { sourceId: 'main.expec', text: 'type OS = "windows" | "linux"' },

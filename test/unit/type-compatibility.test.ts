@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LangiumReader, LangiumModel, Resolver, TypeDescriber, type Item, type TypeId } from '../../src/index.js';
-import { TypeCompatibility } from '../../src/type-compatibility.js';
+import { TypeCompatibility } from '../../src/compiler/type-compatibility.js';
 
 describe('an expression checker compares described types', () => {
   it('accepts a transparent Number alias without confusing Number with Text', () => {

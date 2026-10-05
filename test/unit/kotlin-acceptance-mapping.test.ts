@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity } from '../../src/index.js';
-import { KotlinExamples } from '../../src/kotlin-examples.js';
+import { KotlinExamples } from '../../src/project/kotlin/acceptance/kotlin-examples.js';
 
 function checked(source: string) {
   const read = new LangiumReader().read({ sourceId: 'main', text: source });

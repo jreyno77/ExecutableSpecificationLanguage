@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testsPassed, type NativeReport, type SelectedTest } from '../../src/cli-test-result.js';
+import { testsPassed, type NativeReport, type SelectedTest } from '../../src/cli/cli-test-result.js';
 const selected: SelectedTest[] = [{ id: 'dune', file: 'test/shopping.test.ts', title: 'add Dune', line: 4, column: 1, version: 'captured' }];
 function passing(): NativeReport { return { collected: [{ ...selected[0]! }], tests: [{ ...selected[0]!, state: 'passed', errors: [], retryCount: 0, repeatCount: 0 }], errors: [], problems: [], cancelled: false }; }
 describe('confirming the exact native execution', () => {

@@ -8,11 +8,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { copyInstalledPackages } from '../driver/typescript-context.js';
 import { ConnectedBuildDriver } from '../driver/connected-build.js';
-import type { NativeReport } from '../../src/cli-test-result.js';
+import type { NativeReport } from '../../src/cli/cli-test-result.js';
 
 describe('the private native invocation preserves exact execution evidence', () => {
   let root: string, parent: string, runner: string;
-  const entry = fileURLToPath(new URL('../../dist/cli-vitest.js', import.meta.url));
+  const entry = fileURLToPath(new URL('../../dist/cli/cli-vitest.js', import.meta.url));
   beforeAll(async () => {
     await ConnectedBuildDriver.prepare(); parent = await realpath(tmpdir()); root = await realpath(await mkdtemp(join(parent, 'expec-native-run-')));
     await writeFile(join(root, 'package.json'), '{"type":"module"}'); await copyInstalledPackages(root, { vitest: '5.0.2' });
@@ -78,7 +78,7 @@ describe('the private native invocation preserves exact execution evidence', () 
       return (write as (...args: unknown[]) => boolean)(chunk, ...args);
     }) as typeof process.stderr.write);
     try {
-      const { runSelectedTests } = await import(new URL('../../dist/cli-test.js', import.meta.url).href) as typeof import('../../src/cli-test.js');
+      const { runSelectedTests } = await import(new URL('../../dist/cli/cli-test.js', import.meta.url).href) as typeof import('../../src/cli/cli-test.js');
       const result = await runSelectedTests({ path: root, identity: 'native-fixture' }, join(root, 'expec.json'), runner,
         [{ id: 'selected', file: 'case.test.ts', title: 'selected', line: 2, column: 1, version: createHash('sha256').update(source).digest('hex') }], controller.signal);
       expect(controller.signal.aborted).toBe(true);

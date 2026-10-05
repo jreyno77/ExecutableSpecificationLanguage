@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runNative } from '../../src/native-process.js';
+import { runNative } from '../../src/project/connection/native-process.js';
 
 describe('native process text', () => {
   it('preserves a UTF-8 character whose bytes arrive in separate stdout chunks', async () => {

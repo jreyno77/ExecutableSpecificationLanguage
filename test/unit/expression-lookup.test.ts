@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LangiumReader, LangiumModel, Resolver, TypeDescriber, ExternalModel, type ModuleModel, type TypeCatalog } from '../../src/index.js';
-import { ExpressionLookup } from '../../src/expression-lookup.js';
+import { ExpressionLookup } from '../../src/compiler/expression-lookup.js';
 
 describe('expression lookup respects actual availability and the resolved source', () => {
   it('keeps missing members incomplete when source composition can add them', () => {

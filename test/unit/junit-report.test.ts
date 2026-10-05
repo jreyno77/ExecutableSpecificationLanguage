@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { junitReport } from '../../src/junit-report.js';
+import { junitReport } from '../../src/cli/junit-report.js';
 
 const nativeReport = (name: string) => readFile(new URL('../resources/junit-reports/'+name+'.xml',import.meta.url),'utf8');
 const selected = (name: string, methodName='selected') => ({id:'case-'+name,file:'Probe.java',title:'selected()',className:'Probe$'+name,methodName,parameters:[]});

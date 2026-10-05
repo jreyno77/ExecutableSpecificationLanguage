@@ -94,7 +94,7 @@ export class KotlinDeliveryDriver {
     await this.file('expec.kotlin.json', JSON.stringify({ javaHome, sourceRoots }));
     await this.file('build.gradle.kts', 'plugins { kotlin("jvm") version "2.4.10" }\n');
     await this.file('settings.gradle.kts', 'rootProject.name = "kotlin-acceptance"\n');
-    const library = resolve('src/kotlin/lib/kotlin-stdlib-2.4.10.jar');
+    const library = resolve('src/project/kotlin/resources/lib/kotlin-stdlib-2.4.10.jar');
     const inputs = (await this.context.readSnapshot()).files.map(file => ({ path: file.path, version: file.version }));
     await this.file('.expec/kotlin/classpath.json', JSON.stringify({ format: 1, kotlin: '2.4.10', gradle: '9.1.0', jvmTarget: '21', javaHome, sourceRoots,
       classPath: { main: [library], test: [library, ...testLibraries] }, runtimeClassPath: { main: [library], test: [library, ...testLibraries] }, packages: [], inputs }));
@@ -196,7 +196,7 @@ export class KotlinDeliveryDriver {
   protected async native(): Promise<{ java: string; jars: string[]; stdlib: string }> {
     const javaHome = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME;
     if (!javaHome || !isAbsolute(javaHome)) throw new Error('Kotlin acceptance requires explicit EXPEC_TEST_JAVA_HOME or JAVA_HOME (JDK21).');
-    const libraries = process.env.EXPEC_TEST_KOTLIN_LIB ?? resolve('src/kotlin/lib');
+    const libraries = process.env.EXPEC_TEST_KOTLIN_LIB ?? resolve('src/project/kotlin/resources/lib');
     const jars = (await fs.readdir(libraries)).filter(name => name.endsWith('.jar')).map(name => join(libraries, name));
     const stdlib = jars.find(path => /[\\/]kotlin-stdlib-2\.4\.10\.jar$/.test(path));
     if (!stdlib) throw new Error('Build the pinned Kotlin bridge before native acceptance.');

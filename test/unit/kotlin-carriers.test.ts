@@ -1,8 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { KotlinAcceptanceDriver } from '../driver/kotlin-acceptance.js';
-import { kotlinDataCarriers, kotlinStatePath } from '../../src/kotlin-output-state.js';
-import { queryKotlin } from '../../src/kotlin-query.js';
-import { hash } from '../../src/project-files.js';
+import { kotlinDataCarriers, kotlinStatePath } from '../../src/project/kotlin/kotlin-output-state.js';
+import { queryKotlin } from '../../src/project/kotlin/kotlin-query.js';
+import { hash } from '../../src/project/connection/project-files.js';
 
 const projects: KotlinAcceptanceDriver[] = [];
 afterEach(async () => { for (const project of projects.splice(0)) await project.dispose(); });

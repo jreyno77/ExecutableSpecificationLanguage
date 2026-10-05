@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PackageAvailability, type DependencyPackage } from '../../src/resolution/package-availability.js';
+import { PackageAvailability, type DependencyPackage } from '../../src/compiler/resolution/package-availability.js';
 
 describe('configured package availability', () => {
   it('checks supplied aliases and authored phases without claiming installation', () => {

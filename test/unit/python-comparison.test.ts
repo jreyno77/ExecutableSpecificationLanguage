@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 async function compare(example: string): Promise<void> {
   const python = process.env.EXPEC_TEST_PYTHON;
   if (!python) throw Error('Provide the explicit Python 3.12 interpreter.');
-  const runtime = fileURLToPath(new URL('../../src/python/comparison.py', import.meta.url));
+  const runtime = fileURLToPath(new URL('../../src/project/python/runtime/comparison.py', import.meta.url));
   const result = await promisify(execFile)(python, ['-I', '-S', '-B', '-c',
     'import runpy, sys\nglobals().update(runpy.run_path(sys.argv[1]))\n' + example, runtime], { windowsHide: true, timeout: 10_000 });
   expect(result.stderr).toBe('');

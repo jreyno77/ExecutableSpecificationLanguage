@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runPython } from '../../src/python-process.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -24,7 +24,7 @@ async function preserve(before: string, current: string, after: string, { added 
   const request = { before, after, authored, previous: owners.map(association), next: [...owners, ...added].filter(id => !retired.includes(id)).map(association), facts };
   await fs.writeFile(join(root, 'request.json'), JSON.stringify(request));
   const run = await runPython(python, ['-c', 'import sys,json,pathlib,importlib.util; sys.path.insert(0,sys.argv[1]); spec=importlib.util.spec_from_file_location("expec_preservation",pathlib.Path(sys.argv[2])/"preservation.py"); module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); root=pathlib.Path(sys.argv[3]); request=json.loads((root/"request.json").read_text()); print(json.dumps(module.preserve(request,root,request["facts"])))',
-    sites, dirname(fileURLToPath(new URL('../../src/python/preservation.py', import.meta.url))), root], root);
+    sites, dirname(fileURLToPath(new URL('../../src/project/python/runtime/preservation.py', import.meta.url))), root], root);
   expect(run.code, run.error).toBe(0);
   const [files, problems] = JSON.parse(run.text) as [{ file: string; text: string }[], { code: string }[]]; return { files, problems };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigurationReader, type OutputProfile } from '../../src/configuration.js';
-import type { Check } from '../../src/checking.js';
+import { ConfigurationReader, type OutputProfile } from '../../src/project/connection/configuration.js';
+import type { Check } from '../../src/compiler/checking.js';
 
 const manifest = (settings: Record<string, unknown> = {}) => ({
   sourceId: 'expec.json', text: JSON.stringify({ formatVersion: 1, version: '0.2.0',

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { javaAssets } from '../../src/java-inputs.js';
+import { javaAssets } from '../../src/project/java/java-inputs.js';
 
 it('ships exact upstream source coordinates and notice bytes beside every native library', async () => {
   const manifest = JSON.parse(await fs.readFile(join(javaAssets, 'artifacts.json'), 'utf8')) as {

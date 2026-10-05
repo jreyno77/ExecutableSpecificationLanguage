@@ -1,5 +1,5 @@
 import { expect, onTestFinished } from 'vitest';
-import type { JavaAnalysis } from '../../src/java-analysis.js';
+import type { JavaAnalysis } from '../../src/project/java/java-analysis.js';
 import { JavaAnalysisDriver } from '../driver/java-analysis.js';
 
 type Answer = Awaited<ReturnType<JavaAnalysis['read']>>;

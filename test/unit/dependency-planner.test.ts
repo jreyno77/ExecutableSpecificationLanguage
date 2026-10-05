@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Configuration } from '../../src/configuration.js';
-import { DependencyPlanner } from '../../src/dependency-planner.js';
-import { ExternalModel } from '../../src/external-model.js';
-import type { Check } from '../../src/checking.js';
+import type { Configuration } from '../../src/project/connection/configuration.js';
+import { DependencyPlanner } from '../../src/project/dependencies/dependency-planner.js';
+import { ExternalModel } from '../../src/model/external-model.js';
+import type { Check } from '../../src/compiler/checking.js';
 
 const configuration = (requirements: Partial<Pick<Configuration, 'libraries' | 'packages'>> = {}): Configuration => ({
   sourceId: 'expec.json', formatVersion: 1, version: '0.2.0', build: { entries: ['store.expec'] },

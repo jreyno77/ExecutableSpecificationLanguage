@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runPython } from '../../src/python-process.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -23,7 +23,7 @@ async function reconcile(before: string, after: string | undefined, current: str
   if (caller) await fs.writeFile(join(root, 'src/caller.py'), caller);
   await fs.writeFile(join(temporary, 'request.json'), JSON.stringify({ files: ['src/store.py', ...caller ? ['src/caller.py'] : []], rewrite: { before, after, previous, next, move } }));
   const result = await runPython(python, [fileURLToPath(new URL('../resources/python/preserve_contract.py', import.meta.url)), sites, root,
-    fileURLToPath(new URL('../../src/python/inspect.py', import.meta.url))], temporary);
+    fileURLToPath(new URL('../../src/project/python/runtime/inspect.py', import.meta.url))], temporary);
   expect(result.code, result.error ?? result.text).toBe(0);
   return JSON.parse(result.text) as { generated?: string; rewritten: { file: string; text: string }[]; problems: { code: string; file: string; start?: number }[] };
 }

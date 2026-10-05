@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runPython } from '../../src/python-process.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -13,7 +13,7 @@ async function move(source: string, from = 'store.contracts', to = 'store.api'):
   const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-python-relocation-')); roots.push(root);
   await fs.writeFile(join(root, 'source.py'), source);
   const run = await runPython(python, ['-c', 'import sys,pathlib,importlib.util; sys.path.insert(0,sys.argv[1]); import libcst; spec=importlib.util.spec_from_file_location("relocation",pathlib.Path(sys.argv[2])/"relocation.py"); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); source=libcst.parse_module(pathlib.Path(sys.argv[3]).read_bytes()); sys.stdout.buffer.write(m.relocate(source,sys.argv[4],sys.argv[5],"store").bytes)', sites,
-    dirname(fileURLToPath(new URL('../../src/python/relocation.py', import.meta.url))), join(root, 'source.py'), from, to], root);
+    dirname(fileURLToPath(new URL('../../src/project/python/runtime/relocation.py', import.meta.url))), join(root, 'source.py'), from, to], root);
   expect(run.code, run.error).toBe(0); return run.text;
 }
 describe('Python module import relocation', () => {

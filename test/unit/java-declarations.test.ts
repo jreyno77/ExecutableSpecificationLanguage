@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler, SpecificationIdentity } from '../../src/index.js';
-import { JavaDeclarations } from '../../src/java-declarations.js';
-import { javaOptions } from '../../src/java-settings.js';
+import { JavaDeclarations } from '../../src/project/java/java-declarations.js';
+import { javaOptions } from '../../src/project/java/java-settings.js';
 
 function project(text: string, options: Record<string, unknown> = {}) {
   const checked = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text }, dependencies: { modules: [], packages: [] } });

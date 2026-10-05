@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { LangiumReader } from '../../src/langium/reader.js';
+import { LangiumReader } from '../../src/language/langium/reader.js';
 import { LangiumModel, ExternalModel, type ModuleModel } from '../../src/index.js';
-import { builtinModel } from '../../src/resolution.js';
-import { ScopeGraph, type Lookup } from '../../src/resolution/scopes.js';
-import { SourceIndex } from '../../src/resolution/source-index.js';
+import { builtinModel } from '../../src/compiler/resolution.js';
+import { ScopeGraph, type Lookup } from '../../src/compiler/resolution/scopes.js';
+import { SourceIndex } from '../../src/compiler/resolution/source-index.js';
 
 function source(locator: string, text: string): SourceIndex {
   const read = new LangiumReader().read({ sourceId: locator + '.expec', text });

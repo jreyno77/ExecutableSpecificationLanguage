@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { jvmCommand, runJUnit } from '../../src/cli-junit.js';
+import { jvmCommand, runJUnit } from '../../src/cli/cli-junit.js';
 
 let directory: string;
 const home = process.env.EXPEC_TEST_JAVA_HOME ?? process.env.JAVA_HOME!, consoleJar = process.env.EXPEC_TEST_JUNIT_CONSOLE!;

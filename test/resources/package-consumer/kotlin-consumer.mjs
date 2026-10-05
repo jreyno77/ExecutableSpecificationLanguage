@@ -14,7 +14,7 @@ for (const action of [() => fs.readFile(join(process.env.EXPEC_DENIED_CHECKOUT, 
 const denialCount = denied.length;
 const { Compiler, ConfigurationReader, FileProjectWriter, KotlinContext, KotlinDependencies, kotlinAcceptanceOutput, kotlinOutput,
   Outputs, ProjectConnector, ProjectInitializer, SpecificationIdentity } = await import('executable-specification-language');
-const packageUrl = import.meta.resolve('executable-specification-language'), resource = fileURLToPath(new URL('./kotlin/', packageUrl));
+const packageUrl = import.meta.resolve('executable-specification-language'), resource = fileURLToPath(new URL('./project/kotlin/resources/', packageUrl));
 const javaHome = process.env.EXPEC_TEST_JAVA_HOME;
 assert(javaHome, 'Supply an explicit ordinary JDK21');
 const java = join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { NativeDiagrams } from '../../src/uml-native.js';
-import { DiagramDocuments } from '../../src/uml-documents.js';
+import { NativeDiagrams } from '../../src/project/output/specification/uml-native.js';
+import { DiagramDocuments } from '../../src/project/output/specification/uml-documents.js';
 import { createHash } from 'node:crypto';
 
 const metadata = (value: object) => '# expec-uml: ' + Buffer.from(JSON.stringify({ format: 1, outputId: 'uml', ...value })).toString('base64url') + '\n';

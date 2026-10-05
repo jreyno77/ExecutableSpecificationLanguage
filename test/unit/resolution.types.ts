@@ -1,5 +1,5 @@
 import type { ModelNode, NodeId, SourceNodeId } from '../../src/index.js';
-import type { ResolutionDependencies, Resolution } from '../../src/resolution.js';
+import type { ResolutionDependencies, Resolution } from '../../src/compiler/resolution.js';
 
 // Compile-time consumers: one structural representation carries readonly resolution facts.
 function readonlyContracts(resolution: Resolution, declaration: ModelNode<'record-type-declaration'>,

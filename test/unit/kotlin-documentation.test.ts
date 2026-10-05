@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { kotlinDocumentation } from '../../src/kotlin-documentation.js';
+import { kotlinDocumentation } from '../../src/project/kotlin/kotlin-documentation.js';
 
 const before = '/**\n * Generated promise.\n */';
 const after = '/**\n * Changed promise.\n */';

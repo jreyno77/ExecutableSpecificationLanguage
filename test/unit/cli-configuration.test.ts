@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { ConfigurationReader } from '../../src/configuration.js';
-import { ConfigurationFile } from '../../src/cli-configuration.js';
+import { ConfigurationReader } from '../../src/project/connection/configuration.js';
+import { ConfigurationFile } from '../../src/cli/cli-configuration.js';
 
 const roots: { path: string; parent: string }[] = [];
 afterEach(async () => {

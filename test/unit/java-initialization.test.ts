@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigurationReader, type Configuration } from '../../src/configuration.js';
-import { javaStarter } from '../../src/java-initialization.js';
+import { ConfigurationReader, type Configuration } from '../../src/project/connection/configuration.js';
+import { javaStarter } from '../../src/project/java/java-initialization.js';
 
 function configuration(packages: Configuration['packages'] = []): Configuration {
   const read = new ConfigurationReader([]).read({ sourceId: 'expec.json', text: JSON.stringify({

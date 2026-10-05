@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createNodeId, type ModelNode, type NodeId, type Origin } from '../../src/index.js';
-import { IndexedModel } from '../../src/model-index.js';
+import { IndexedModel } from '../../src/model/model-index.js';
 
 const origin: Origin = { kind: 'external', module: 'supplied', path: [] };
 

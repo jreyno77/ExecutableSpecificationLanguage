@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { ListDocuments } from '../../src/output-documents.js';
+import { ListDocuments } from '../../src/project/output/specification/output-documents.js';
 import type { ProjectSnapshot } from '../../src/index.js';
 
 const marker = (kind: string, id: string, outputId = 'markdown') => '<!-- expec-' + kind + ':' + Buffer.from(JSON.stringify({ outputId, specId: id })).toString('hex') + ' -->\n\n';

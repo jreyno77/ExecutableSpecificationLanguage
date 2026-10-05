@@ -33,7 +33,7 @@ export class CleanPackageDriver {
   async installedPaths(): Promise<{ entry: string; within: string; version: string; grammar: string }> {
     const entry = await realpath(this.entry);
     const version = JSON.parse(await readFile(join(this.packageRoot, 'package.json'), 'utf8')).version;
-    const grammar = await realpath(join(this.packageRoot, 'dist/langium/generated/grammar.js'));
+    const grammar = await realpath(join(this.packageRoot, 'dist/language/langium/generated/grammar.js'));
     return { entry, within: relative(await realpath(join(this.root, 'node_modules')), entry), version, grammar };
   }
   get consumerDirectory(): string { return this.directory; }

@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { JavaCliDriver } from '../driver/java-cli.js';
-import { checkManifest, type CheckedManifest } from '../../src/cli-check.js';
-import { testJava } from '../../src/cli-java-test.js';
-import { javaCliExclusions } from '../../src/cli-java.js';
+import { checkManifest, type CheckedManifest } from '../../src/cli/cli-check.js';
+import { testJava } from '../../src/cli/cli-java-test.js';
+import { javaCliExclusions } from '../../src/cli/cli-java.js';
 import { Outputs, javaOutput, javaAcceptanceOutput, ProjectConnector, type ProjectContext } from '../../src/index.js';
 
 const fixture = new JavaCliDriver(), outputs = new Outputs();

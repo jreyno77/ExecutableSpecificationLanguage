@@ -3,9 +3,9 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { BuildContext } from '../../src/cli-context.js';
-import { hash } from '../../src/project-files.js';
-import type { ProjectSnapshot } from '../../src/project-connection.js';
+import { BuildContext } from '../../src/cli/cli-context.js';
+import { hash } from '../../src/project/connection/project-files.js';
+import type { ProjectSnapshot } from '../../src/project/connection/project-connection.js';
 
 const roots: { path: string; parent: string }[] = [];
 afterEach(async () => { for (const { path, parent } of roots.splice(0)) {

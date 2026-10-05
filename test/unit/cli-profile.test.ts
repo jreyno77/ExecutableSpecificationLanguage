@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cliProfile } from '../../src/cli-profile.js';
-import type { Configuration } from '../../src/configuration.js';
+import { cliProfile } from '../../src/cli/cli-profile.js';
+import type { Configuration } from '../../src/project/connection/configuration.js';
 
 function configured(outputs: Configuration['outputs'], names: readonly string[] = []): Configuration {
   return { sourceId: 'file:///workspace/expec.json', formatVersion: 1, version: '1.0.0', build: { entries: ['main.expec'] },

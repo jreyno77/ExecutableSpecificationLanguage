@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
-import { queryKotlin } from '../../src/kotlin-query.js';
-import { kotlinTupleTypes } from '../../src/kotlin-output-state.js';
+import { queryKotlin } from '../../src/project/kotlin/kotlin-query.js';
+import { kotlinTupleTypes } from '../../src/project/kotlin/kotlin-output-state.js';
 
 const instances: KotlinDeliveryDriver[] = [];
 afterEach(async () => { for (const driver of instances.splice(0)) await driver.dispose(); });

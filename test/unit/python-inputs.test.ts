@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PythonInputs, type PythonEnvironment } from '../../src/python-inputs.js';
-import type { PythonProfile } from '../../src/python-profile.js';
+import { PythonInputs, type PythonEnvironment } from '../../src/project/python/python-inputs.js';
+import type { PythonProfile } from '../../src/project/python/python-profile.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });

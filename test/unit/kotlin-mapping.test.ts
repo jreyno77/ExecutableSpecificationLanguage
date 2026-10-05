@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity, kotlinOutput } from '../../src/index.js';
-import { KotlinDeclarations, kotlinOptions } from '../../src/kotlin-declarations.js';
+import { KotlinDeclarations, kotlinOptions } from '../../src/project/kotlin/kotlin-declarations.js';
 
 function declarations(source: string, options: object = {}, providers: Record<string, string> = {}) {
   const model = (module: string, text: string) => {

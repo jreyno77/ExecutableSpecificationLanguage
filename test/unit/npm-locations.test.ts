@@ -1,7 +1,7 @@
 import { it, expect, onTestFinished, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import * as native from '../../src/native-process.js';
+import * as native from '../../src/project/connection/native-process.js';
 import { NativePackageDriver } from '../driver/native-packages.js';
 
 async function readWithQuery(change: (items: Record<string, unknown>[]) => unknown, code = 0, opaquePath?: string) {

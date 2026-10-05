@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createNodeId } from '../../src/model.js';
-import { Types } from '../../src/types.js';
-import type { TypeId } from '../../src/type-description.js';
+import { createNodeId } from '../../src/model/model.js';
+import { Types } from '../../src/compiler/types.js';
+import type { TypeId } from '../../src/compiler/type-description.js';
 
 describe('a shared type space describes authored and inferred types', () => {
   it('reuses the identity of an identical type description', () => {

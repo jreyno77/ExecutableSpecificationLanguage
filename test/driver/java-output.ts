@@ -137,10 +137,10 @@ export class JavaOutputDriver {
     await this.file('build.gradle', await fs.readFile(fileURLToPath(new URL('../resources/java-project/build.gradle', import.meta.url)), 'utf8') + build);
     for (const path of ['gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties']) {
       await fs.mkdir(dirname(join(this.root, path)), { recursive: true });
-      await fs.copyFile(fileURLToPath(new URL('../../src/java/wrapper/' + path, import.meta.url)), join(this.root, path));
+      await fs.copyFile(fileURLToPath(new URL('../../src/project/java/resources/wrapper/' + path, import.meta.url)), join(this.root, path));
     }
     await this.file('.expec/java/dependencies.gradle', '// No fixture dependencies.\n');
-    const gradle = process.env.EXPEC_TEST_GRADLE ?? fileURLToPath(new URL('../../src/java-native/' + (process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'), import.meta.url));
+    const gradle = process.env.EXPEC_TEST_GRADLE ?? fileURLToPath(new URL('../../src/project/java/native/' + (process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'), import.meta.url));
     // cross-spawn is the production package's existing portable native command boundary.
     const { default: spawn } = await import('cross-spawn');
     await new Promise<void>((resolve, reject) => {

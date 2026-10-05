@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JavaAnalysis } from '../../src/java-analysis.js';
+import { JavaAnalysis } from '../../src/project/java/java-analysis.js';
 import { nativeJava, expectFields, expectFieldUse, expectRefusedAnalysis } from '../dsl/java-analysis.js';
 
 describe('Java analysis owned by one caller operation', { timeout: 90_000 }, () => {

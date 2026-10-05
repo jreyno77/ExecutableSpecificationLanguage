@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigurationReader, type Configuration } from '../../src/index.js';
-import { pythonStarter } from '../../src/python-initialization.js';
+import { pythonStarter } from '../../src/project/python/python-initialization.js';
 
 function configuration(packages: Configuration['packages'] = []): Configuration {
   const read = new ConfigurationReader([]).read({ sourceId: 'settings', text: JSON.stringify({

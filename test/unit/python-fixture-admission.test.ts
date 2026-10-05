@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Compiler, LangiumModel, LangiumReader, SourceComposer, SpecificationIdentity } from '../../src/index.js';
-import { PythonExamples } from '../../src/python-examples.js';
-import { runPython } from '../../src/python-process.js';
+import { PythonExamples } from '../../src/project/python/acceptance/python-examples.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -26,7 +26,7 @@ async function observe(code: string) {
   const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-fixture-admission-')); roots.push(root);
   const output = generated(); expect(output.problems).toEqual([]);
   for (const file of output.files) { const path = join(root, file.path); await fs.mkdir(join(path, '..'), { recursive: true }); await fs.writeFile(path, file.text); }
-  await fs.copyFile(new URL('../../src/python/comparison.py', import.meta.url), join(root, 'test/dsl/comparison.py'));
+  await fs.copyFile(new URL('../../src/project/python/runtime/comparison.py', import.meta.url), join(root, 'test/dsl/comparison.py'));
   return runPython(python, ['-c', 'import sys\nsys.path.insert(0, sys.argv[1])\nfrom dsl.numbers import Numbers, _expec_fixture\nfrom driver.numbers_driver import NumbersDriver\nreceiver = Numbers(NumbersDriver())\n' + code, join(root, 'test')], root);
 }
 describe('admitting the actual generated fixture receiver', () => {

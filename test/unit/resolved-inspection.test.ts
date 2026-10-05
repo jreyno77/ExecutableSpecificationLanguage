@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { name, written } from '../driver/resolution-model.js';
-import { LangiumReader } from '../../src/langium/reader.js';
+import { LangiumReader } from '../../src/language/langium/reader.js';
 import { LangiumModel, QueryError, type ModuleModel, type ModelNode } from '../../src/index.js';
-import { Resolver } from '../../src/resolution.js';
+import { Resolver } from '../../src/compiler/resolution.js';
 
 function module(locator: string, text: string): ModuleModel {
   const read = new LangiumReader().read({ sourceId: `${locator}.expec`, text });

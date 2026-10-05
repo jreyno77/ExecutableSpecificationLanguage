@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { kotlinState, kotlinStatePath } from '../../src/kotlin-output-state.js';
-import type { ProjectSnapshot } from '../../src/project-connection.js';
+import { kotlinState, kotlinStatePath } from '../../src/project/kotlin/kotlin-output-state.js';
+import type { ProjectSnapshot } from '../../src/project/connection/project-connection.js';
 
 function snapshot(documentation?: string[], adopted = true): ProjectSnapshot {
   const generated = 'package store\nfun save(): String = "Dune"\n';

@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
-const distribution = new URL('../../src/kotlin/', import.meta.url);
+const distribution = new URL('../../src/project/kotlin/resources/', import.meta.url);
 const text = (path: string) => readFile(new URL(path, distribution), 'utf8');
 
 describe('staged Kotlin native notices', () => {

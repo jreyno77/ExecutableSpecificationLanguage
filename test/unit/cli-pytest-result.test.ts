@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pytestOutcome, type PytestReport } from '../../src/cli-pytest-result.js';
+import { pytestOutcome, type PytestReport } from '../../src/cli/cli-pytest-result.js';
 
 const selected = [{ id: 'dune', file: 'test/acceptance/test_shopping.py', name: 'test_add_book', title: 'a shopper adds Dune' }];
 function completed(): PytestReport {

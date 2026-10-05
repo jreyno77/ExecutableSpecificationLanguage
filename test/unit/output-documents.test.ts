@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
-import { ListDocuments, renderList } from '../../src/output-documents.js';
-import type { ListedDeclaration } from '../../src/output-projection.js';
+import { ListDocuments, renderList } from '../../src/project/output/specification/output-documents.js';
+import type { ListedDeclaration } from '../../src/project/output/specification/output-projection.js';
 import type { ProjectSnapshot } from '../../src/index.js';
 function snapshot(files: Record<string, string | Uint8Array>): ProjectSnapshot {
   return { root: { path: '/fixture', identity: 'fixture' }, complete: true, excludeNames: [], excluded: [], problems: [], files: Object.entries(files).map(([path, contents]) => {

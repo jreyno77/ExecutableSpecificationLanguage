@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runPython } from '../../src/python-process.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -14,7 +14,7 @@ async function changed(before: string, current: string, driver = false): Promise
   await fs.writeFile(join(root, 'case.py'), current);
   await fs.writeFile(join(root, 'request.json'), JSON.stringify([{ file: 'case.py', text: before, driver }]));
   const result = await runPython(python, ['-c', 'import sys,pathlib,json,importlib.util; sys.path.insert(0,sys.argv[1]); spec=importlib.util.spec_from_file_location("integrity",sys.argv[2]); module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); root=pathlib.Path(sys.argv[3]); print(json.dumps(module.check(json.loads((root/"request.json").read_text()),root)))',
-    sites, fileURLToPath(new URL('../../src/python/integrity.py', import.meta.url)), root], root);
+    sites, fileURLToPath(new URL('../../src/project/python/runtime/integrity.py', import.meta.url)), root], root);
   expect(result.code, result.error ?? result.text).toBe(0);
   const problems = JSON.parse(result.text) as { code: string }[];
   expect(problems.every(problem => problem.code === 'generated-tests-changed')).toBe(true);

@@ -3,8 +3,8 @@ import { promises as fs } from 'node:fs';
 import { parse, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { FileProjectWriter, type FileChange, type ProjectSnapshot } from '../../src/index.js';
-import { nativeInputs, protectsNativeInput, sameNativeInputs } from '../../src/native-inputs.js';
-import { checkPlan, checkRead, checkSearch } from '../../src/output-contract.js';
+import { nativeInputs, protectsNativeInput, sameNativeInputs } from '../../src/project/connection/native-inputs.js';
+import { checkPlan, checkRead, checkSearch } from '../../src/project/output/output-contract.js';
 import { NativeInputDriver } from '../driver/native-inputs.js';
 
 const uri = pathToFileURL(resolve('catalog.jar')).href, version = 'a'.repeat(64);

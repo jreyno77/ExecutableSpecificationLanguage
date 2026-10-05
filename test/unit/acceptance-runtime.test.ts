@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { acceptanceRuntime } from '../../src/acceptance-runtime.js';
+import { acceptanceRuntime } from '../../src/project/typescript/acceptance/acceptance-runtime.js';
 
 const code = ts.transpileModule(acceptanceRuntime, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { comparisonData, comparisonEqual, finiteNumber } = new Function('require', 'exports', code

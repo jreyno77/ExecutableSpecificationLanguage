@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { javaTupleTypes } from '../../src/java-output-state.js';
-import { javaData } from '../../src/java-types.js';
+import { javaTupleTypes } from '../../src/project/java/java-output-state.js';
+import { javaData } from '../../src/project/java/java-types.js';
 import { Compiler, SpecificationIdentity, javaOutput, type ProjectSnapshot } from '../../src/index.js';
 
 const generated = 'package store; public class Store {}\n';

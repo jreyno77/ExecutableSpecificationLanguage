@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { queryKotlin } from '../../src/kotlin-query.js';
+import { queryKotlin } from '../../src/project/kotlin/kotlin-query.js';
 import { KotlinDeliveryDriver } from '../driver/kotlin-delivery.js';
 
 const instances: KotlinDeliveryDriver[] = [];

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runPython } from '../../src/python-process.js';
+import { runPython } from '../../src/project/python/python-process.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -14,7 +14,7 @@ async function preserve(before: string, desired: string, current: string, driver
   await fs.writeFile(join(root, 'case.py'), current);
   await fs.writeFile(join(root, 'request.json'), JSON.stringify({ before, desired, driver }));
   const result = await runPython(python, [fileURLToPath(new URL('../resources/python/preserve_acceptance.py', import.meta.url)),
-    sites, fileURLToPath(new URL('../../src/python/integrity.py', import.meta.url)), root], root);
+    sites, fileURLToPath(new URL('../../src/project/python/runtime/integrity.py', import.meta.url)), root], root);
   expect(result.code, result.error ?? result.text).toBe(0);
   return JSON.parse(result.text) as { rewritten: { file: string; text: string }[]; problems: { code: string; message: string }[] };
 }

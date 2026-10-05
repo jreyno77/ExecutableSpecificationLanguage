@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { vi } from 'vitest';
-import * as inputs from '../../src/java-inputs.js';
+import * as inputs from '../../src/project/java/java-inputs.js';
 import { JavaOutputDriver } from './java-output.js';
 
 export class JavaAnalysisDriver extends JavaOutputDriver {

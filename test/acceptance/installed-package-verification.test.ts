@@ -31,7 +31,7 @@ describe('Installed package consumers', () => {
 
   it('detects a missing implementation file in a packed artifact', async () => {
     const consumer = new PackageExamples();
-    await consumer.installPackageWithoutFile('dist/compiler.js');
+    await consumer.installPackageWithoutFile('dist/compiler/compiler.js');
     await consumer.runPublicApiCheck();
     consumer.expectConsumerFailedFor('compiler.js');
   });

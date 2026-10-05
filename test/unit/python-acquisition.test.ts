@@ -3,8 +3,8 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ConfigurationReader, ProjectInitializer, type Configuration } from '../../src/index.js';
-import { installPython, readPythonPackages } from '../../src/python-acquisition.js';
-import { ProjectFiles } from '../../src/project-files.js';
+import { installPython, readPythonPackages } from '../../src/project/python/python-acquisition.js';
+import { ProjectFiles } from '../../src/project/connection/project-files.js';
 
 const temporary: string[] = [];
 async function initialized(): Promise<{ root: string; manifest: string; configuration: Configuration }> {

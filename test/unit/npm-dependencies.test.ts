@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import os from 'node:os';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { NpmDependencies, type Configuration, type PackageRead } from '../../src/index.js';
-import * as native from '../../src/native-process.js';
+import * as native from '../../src/project/connection/native-process.js';
 import { NativePackageDriver } from '../driver/native-packages.js';
 
 async function project(installed = false) {

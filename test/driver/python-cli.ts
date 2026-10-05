@@ -11,7 +11,7 @@ import { ConnectedBuildDriver } from './connected-build.js';
 export class PythonCliDriver extends ConnectedBuildDriver {
   static override async prepare(): Promise<void> {
     await super.prepare();
-    await promisify(execFile)(process.execPath, [fileURLToPath(new URL('../../src/python-build.mjs', import.meta.url))]);
+    await promisify(execFile)(process.execPath, [fileURLToPath(new URL('../../src/project/python/build.mjs', import.meta.url))]);
   }
   async implementBasket(copies: number): Promise<void> {
     const source = await readFile(new URL('../resources/python/basket.py', import.meta.url), 'utf8');

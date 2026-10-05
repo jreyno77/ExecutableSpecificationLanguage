@@ -540,3 +540,14 @@ For these tests, supply an ordinary JDK 21 directory as `EXPEC_TEST_JAVA_HOME`
 and the verified JUnit Console Standalone 6.1.3 fixture as `EXPEC_TEST_JUNIT_CONSOLE`
 (SHA-256 `e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec`).
 The installed CLI uses the connected project's acquired dependencies.
+
+## Source layout
+
+- `language/` reads `.expec`; `model/` exposes its shared representation and inspection.
+- `compiler/` composes, resolves and checks supplied models.
+- `project/connection/`, `project/output/` and `project/dependencies/` hold the shared project contracts and operations.
+- `project/java/`, `kotlin/`, `python/` and `typescript/` own each target's connection, generation and preservation. Their `acceptance/` folders generate target tests; native tooling stays with its target.
+- `project/output/specification/` renders Markdown, structural lists and UML.
+- `cli/` assembles commands. `index.ts` is the public API; `resources.ts` locates packaged assets.
+
+Repository tests remain in `test/unit`, `test/acceptance`, `test/dsl` and `test/driver`.

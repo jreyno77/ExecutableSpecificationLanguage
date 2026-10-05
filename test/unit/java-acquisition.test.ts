@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { ConfigurationReader, type Configuration } from '../../src/configuration.js';
-import { javaStarter, javaContribution } from '../../src/java-initialization.js';
-import { installJava, readJavaPackages } from '../../src/java-acquisition.js';
+import { ConfigurationReader, type Configuration } from '../../src/project/connection/configuration.js';
+import { javaStarter, javaContribution } from '../../src/project/java/java-initialization.js';
+import { installJava, readJavaPackages } from '../../src/project/java/java-acquisition.js';
 
 const execute = promisify(execFile), temporary: string[] = [], jdk = process.env.JAVA_HOME!;
 const native = (name: string) => join(jdk, 'bin', name + (process.platform === 'win32' ? '.exe' : ''));

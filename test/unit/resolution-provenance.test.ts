@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
-import { LangiumReader } from '../../src/langium/reader.js';
+import { LangiumReader } from '../../src/language/langium/reader.js';
 import { LangiumModel, ExternalModel } from '../../src/index.js';
-import { Resolver } from '../../src/resolution.js';
+import { Resolver } from '../../src/compiler/resolution.js';
 
 it('keeps external provenance relative to its definition input when module inventory order changes', () => {
   const shopping = new ExternalModel('shopping', [{ kind: 'record-type', name: 'Cart', fields: [

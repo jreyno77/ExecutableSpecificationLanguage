@@ -2,8 +2,8 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runPython } from '../../src/python-process.js';
-import type { PythonFacts } from '../../src/python-inspection.js';
+import { runPython } from '../../src/project/python/python-process.js';
+import type { PythonFacts } from '../../src/project/python/python-inspection.js';
 
 /** The real shipped lookup bridge over explicit small source files, without a full project capture. */
 export class PythonCallableDriver {
@@ -27,7 +27,7 @@ export class PythonCallableDriver {
     const bootstrap = 'import json,pathlib,runpy,sys,sysconfig; path=pathlib.Path(sys.argv[2]); request=json.loads(path.read_text()); '
       + 'request["stdlib"]=[sysconfig.get_path("stdlib")]; request["paths"]=request["sites"]+request["stdlib"]; '
       + 'path.write_text(json.dumps(request),encoding="utf8"); sys.argv=[sys.argv[1],str(path)]; runpy.run_path(sys.argv[0],run_name="__main__")';
-    const result = await runPython(python, ['-c', bootstrap, fileURLToPath(new URL('../../src/python/inspect.py', import.meta.url)), input], this.root);
+    const result = await runPython(python, ['-c', bootstrap, fileURLToPath(new URL('../../src/project/python/runtime/inspect.py', import.meta.url)), input], this.root);
     this.stderr = result.error ?? '';
     if (result.code !== 0 || result.error) throw Error('Actual native lookup failed: ' + JSON.stringify(result));
     this.facts = JSON.parse(result.text) as PythonFacts;

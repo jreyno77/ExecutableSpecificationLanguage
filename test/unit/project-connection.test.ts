@@ -4,9 +4,9 @@ import { appendFile, mkdir, mkdtemp, lstat, readFile, realpath, rename, rm, syml
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Check } from '../../src/checking.js';
-import { ConfigurationReader } from '../../src/configuration.js';
-import { ProjectConnector, type ProjectConnection, type ProjectContext } from '../../src/project-connection.js';
+import type { Check } from '../../src/compiler/checking.js';
+import { ConfigurationReader } from '../../src/project/connection/configuration.js';
+import { ProjectConnector, type ProjectConnection, type ProjectContext } from '../../src/project/connection/project-connection.js';
 
 let directory: string;
 beforeEach(async () => { directory = await realpath(await mkdtemp(join(tmpdir(), 'expec-connection-'))); });

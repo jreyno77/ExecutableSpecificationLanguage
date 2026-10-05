@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { NativeEdits } from '../../src/typescript-edits.js';
+import { NativeEdits } from '../../src/project/typescript/typescript-edits.js';
 import { Compiler, LangiumReader, LangiumModel, SpecificationIdentity, typescriptOutput, type ArtifactAssociation, type IdentifiedSpecification,
   type OutputPlan, type ProjectSnapshot } from '../../src/index.js';
 

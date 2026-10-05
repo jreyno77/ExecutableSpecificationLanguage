@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, relative, isAbsolute, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { javaComparison } from '../../src/java-comparison.js';
+import { javaComparison } from '../../src/project/java/acceptance/java-comparison.js';
 
 const execute = promisify(execFile), roots: { parent: string; path: string }[] = [];
 async function compare(body: string): Promise<string> {
