@@ -15,16 +15,18 @@ describe('a selected fixture cannot replace the generated assertions', { timeout
   it('rejects an instance replacement of a generated assertion', async () => {
     const p = await PythonFixtures.shopping();
     await p.useResourceFixture({ copies: 2 });
+    await p.generateTests();
     await p.replaceQuantityCheckOnReturnedInstance();
-    await p.generateTests(); await p.runTests();
+    await p.runTests();
     p.expectFixtureAdmissionFailed('expectBookQuantity');
     await p.expectFixtureUnchanged(); await p.expectSocketClosedAndRebindable();
   });
   it('rejects a class operation replaced during fixture setup', async () => {
     const p = await PythonFixtures.shopping();
     await p.useResourceFixture({ copies: 2 });
+    await p.generateTests();
     await p.replaceQuantityCheckOnGeneratedClassDuringSetup();
-    await p.generateTests(); await p.runTests();
+    await p.runTests();
     p.expectFixtureAdmissionFailed('expectBookQuantity');
     await p.expectFixtureUnchanged(); await p.expectSocketClosedAndRebindable();
   });
