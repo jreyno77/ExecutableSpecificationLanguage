@@ -24,7 +24,7 @@
   "scripts": {
     "grammar:generate": "langium generate",
     "java:build": "node src/java-build.mjs",
-    "build": "npm run grammar:generate && npm run java:build && tsc -p tsconfig.build.json",
+    "build": "npm run grammar:generate && npm run java:build && tsc -p tsconfig.build.json && rolldown -c",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
@@ -35,8 +35,8 @@
     "test:pilot": "npm run build && vitest run --config vitest.pilot.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
-    "check": "npm run grammar:generate && npm run java:build && npm run typecheck && npm run test:unit && npm run test:acceptance && tsc -p tsconfig.build.json",
-    "check:core": "npm run grammar:generate && npm run java:build && npm run typecheck && vitest run --config vitest.core.config.ts test/unit && vitest run --config vitest.core.config.ts test/acceptance --maxWorkers=2 && tsc -p tsconfig.build.json",
+    "check": "npm run grammar:generate && npm run java:build && npm run typecheck && npm run test:unit && npm run test:acceptance && npm run build",
+    "check:core": "npm run grammar:generate && npm run java:build && npm run typecheck && vitest run --config vitest.core.config.ts test/unit && vitest run --config vitest.core.config.ts test/acceptance --maxWorkers=2 && npm run build",
     "release": "npm pack"
   },
   "dependencies": {
@@ -55,6 +55,8 @@
     "@types/node": "24.13.6",
     "@types/semver": "7.8.0",
     "langium-cli": "4.4.0",
+    "rolldown": "1.2.11",
+    "rollup-plugin-license": "3.7.1",
     "vitest": "5.0.2"
   },
   "bin": {

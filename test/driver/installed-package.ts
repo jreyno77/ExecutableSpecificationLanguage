@@ -233,8 +233,8 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['native-context.mjs'], this.consumer);
     await this.readReport();
   }
-  async provideDependencies(): Promise<void> {
-    this.native = new NativePackageDriver(); await this.native.initialize();
+  async provideDependencies(parent = ''): Promise<void> {
+    this.native = new NativePackageDriver(); await this.native.initialize('project', parent);
     await this.native.publish('example-storage', '2.1.0');
     await this.native.file('libraries/books/package.json', JSON.stringify({ name: 'book-contracts', version: '1.2.0', expec: { entry: './index.expec' } }));
     await this.native.file('libraries/books/index.expec', 'use Title from "./types.expec"\ntype Book { title: Title }');
@@ -395,5 +395,17 @@ function child(parent: string, path: string): string {
 async function cleanup(directory: string): Promise<void> {
   const name = relative(resolve(tmpdir()), resolve(directory));
   if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-package-')) throw new Error('Refusing to remove an unexpected fixture directory');
-  await rm(directory, { recursive: true, force: true });
+  const trace = (status: string, elapsedMs?: number, error?: unknown): void => {
+    if (process.env.EXPEC_CLEANUP_TIMINGS !== '1') return;
+    try {
+      const failure = error as NodeJS.ErrnoException | undefined;
+      console.info('[fixture-cleanup]', JSON.stringify({ directory, pid: process.pid, at: new Date().toISOString(),
+        status, elapsedMs, code: failure?.code, syscall: failure?.syscall }));
+    } catch { /* Diagnostics must not replace the removal result. */ }
+  };
+  trace('started');
+  const start = performance.now();
+  try { await rm(directory, { recursive: true, force: true }); }
+  catch (error) { trace('rejected', performance.now() - start, error); throw error; }
+  trace('fulfilled', performance.now() - start);
 }

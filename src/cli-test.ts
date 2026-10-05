@@ -36,7 +36,8 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const associated = currentTestIdentity(checked, snapshot);
   if (!associated.value) return { ...result, problems: associated.problems };
-  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, context, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
+  const selection = { root: snapshot.root, readSnapshot: async () => structuredClone(snapshot) };
+  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, selection, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
   if (!opened.value) return { ...result, problems: opened.problems };
   const selections: SelectedTest[] = [];
   for (const association of associated.value.baseline.artifacts.filter(item => item.locator.outputId === 'acceptance' && item.locator.format === 'vitest-test-1')) {

@@ -9,7 +9,7 @@ describe('direct removal owns only generated tests', () => {
     project.expectWriteStatus('applied'); project.expectNoConfirmedScenarioAssociation('one'); await project.expectRememberedFileUnchanged();
     await project.runGeneratedVitest(); project.expectTestsPassed(['two']);
     await project.deleteScenario('one'); project.expectWriteStatus('unchanged');
-  }, 120_000);
+  }, 60_000);
   it('refuses to delete a generated callback containing handwritten work', async () => {
     const project = await AcceptanceGenerationExamples.generatedShoppingWithRealDriver();
     await project.addScenarioComment('a shopper can add an available book', 'Keep my explanation of the shopper action.');

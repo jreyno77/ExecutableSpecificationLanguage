@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    globalSetup: ['./test/global-setup.ts'],
     environment: 'node',
     include: ['test/unit/java-*.test.ts', 'test/acceptance/java-*.test.ts'],
     passWithNoTests: false,

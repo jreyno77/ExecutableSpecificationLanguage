@@ -16,13 +16,14 @@ permissions:
 
 jobs:
   check:
-    name: Node 24 / ${{ matrix.os }}
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,16 +41,35 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
-      - name: Regenerate, typecheck, test, and build
-        run: npm run check:core
+      - name: Regenerate the grammar
+        run: npm run grammar:generate
+      - name: Build the native Java resources
+        run: npm run java:build
+      - name: Check all source and test types
+        run: npm run typecheck
+      - name: Build and test the shard
+        run: npm test -- --config vitest.core.config.ts --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: core-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   project-pilot:
-    name: Project pilot / ${{ matrix.os }}
+    name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 2 }
+          - { os: ubuntu-latest, shard: 2, total: 2 }
+          - { os: windows-latest, shard: 1, total: 4 }
+          - { os: windows-latest, shard: 2, total: 4 }
+          - { os: windows-latest, shard: 3, total: 4 }
+          - { os: windows-latest, shard: 4, total: 4 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,15 +88,28 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed project journeys
-        run: npm run test:pilot
+        env:
+          EXPEC_CLEANUP_TIMINGS: '1'
+        run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: pilot-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   installed-package:
-    name: Installed package / ${{ matrix.os }}
+    name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 1 }
+          - { os: windows-latest, shard: 1, total: 3 }
+          - { os: windows-latest, shard: 2, total: 3 }
+          - { os: windows-latest, shard: 3, total: 3 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +128,14 @@ jobs:
       - name: Install the locked dependencies
         run: npm ci
       - name: Verify installed package consumers
-        run: npm run test:package
+        run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: installed-${{ matrix.os }}-${{ matrix.shard }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
   java:
     name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -138,7 +178,14 @@ jobs:
         run: npm run build
       - name: Check Java native behavior
         if: matrix.suite != 'package'
-        run: npm run test:java -- test/${{ matrix.suite }}
+        run: npm run test:java -- test/${{ matrix.suite }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Check the actual installed Java consumer
         if: matrix.suite == 'package'
-        run: npm run test:java-package
+        run: npm run test:java-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: java-${{ matrix.suite }}-${{ matrix.os }}
+          path: .local-docs/test-results.json
+          include-hidden-files: true
+          if-no-files-found: error
