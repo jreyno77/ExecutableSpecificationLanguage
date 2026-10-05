@@ -222,12 +222,8 @@ class StoreGame {
     const project = await KotlinDelivery.create();
     project.source('class StoreGame { public save\ncapability save(title: Text) returns Text }');
     await project.buildContracts();
-    await project.file('src/main/kotlin/store/StoreGame.kt', `package store
-class StoreGame {
-    fun save(title: String): String { // Dune
-        return "saved:$title"
-    }
-}`);
+    await project.implement('StoreGame.save', 'return "saved:$title"');
+    await project.replaceContractText('StoreGame.save', 'fun save(title: String): String {', 'fun save(title: String): String { // Dune');
     await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch(game: StoreGame) = game.save("Dune")');
     await project.file('src/main/kotlin/store/Other.kt', 'package store\nclass Other { fun save() = "other" }');
     project.change('class StoreGame { public saveGame\ncapability saveGame(title: Text) returns Text }', { 'StoreGame.save': 'StoreGame.saveGame' });
@@ -243,7 +239,7 @@ class StoreGame {
     const project = await KotlinDelivery.create();
     project.source('class StoreGame { public save\ncapability save() returns Text }');
     await project.buildContracts();
-    await project.file('src/main/kotlin/store/StoreGame.kt', 'package store\nclass StoreGame { fun save(): String { /* retained */ return "saved" } }');
+    await project.implement('StoreGame.save', '/* retained */ return "saved"');
     await project.file('src/main/kotlin/store/Launcher.kt', 'package store\nfun launch() = StoreGame().save()');
     project.change('class SavedGame { public save\ncapability save() returns Text }', { StoreGame: 'SavedGame' });
     await project.updateContracts();
