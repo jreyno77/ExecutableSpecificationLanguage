@@ -256,7 +256,7 @@ export class JavaOutputDriver {
     const writer = this.nativeWriteChange ? { apply: (plan: ProjectChanges) => this.applyWhileCatalogChanges(plan) } : new FileProjectWriter(this.context);
     const opened = outputs.open('java', options, this.context, writer, this.workspaceModules ? { workspaceModules: this.workspaceModules } : undefined);
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
-    await this.capture();
+    if (!this.written.problems.length) await this.capture();
   }
   private async applyWhileCatalogChanges(plan: ProjectChanges) {
     const context = this.context, first = plan.changes[0];

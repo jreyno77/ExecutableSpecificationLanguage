@@ -146,7 +146,6 @@ export class ConnectedBuildDriver {
     await copyInstalledPackages(this.path('project'), { vitest: '5.0.2', '@types/node': '24.13.6' });
     await this.write('project/package.json', '{"type":"module","private":true}');
     await this.write('project/tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, types: ['node'], skipLibCheck: true }, include: ['**/*.ts'] }));
-    await this.write('project/vitest.config.ts', 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { include: ["test/acceptance/*.test.ts"], retry: 0 } });');
   }
   async serveCompiler(destination: string): Promise<void> {
     this.registry = new NativePackageDriver(); await this.registry.initialize();
