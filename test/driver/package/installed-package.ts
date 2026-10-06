@@ -422,12 +422,19 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
 }
 async function run(executable: string, args: string[], cwd: string, timeout = 120_000, environment: Record<string, string> = {}): Promise<ProcessResult> {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase()))), ...environment };
+  const started = performance.now();
   try {
     const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
   } catch (error) {
-    const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
-    if (typeof failure.code !== 'number' || failure.killed) throw error;
+    const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean; signal?: string | null };
+    if (typeof failure.code !== 'number' || failure.killed) {
+      try {
+        console.error('[package-process-failure]', JSON.stringify({ cwd, elapsedMs: performance.now() - started, timeout,
+          code: failure.code, signal: failure.signal, killed: failure.killed, stderr: typeof failure.stderr === 'string' ? failure.stderr.slice(-2000) : '' }));
+      } catch { /* Diagnostics must not replace the process failure. */ }
+      throw error;
+    }
     return { code: failure.code, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
   }
 }
