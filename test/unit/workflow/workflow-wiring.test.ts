@@ -118,6 +118,8 @@ describe('workflow selection boundary', () => {
       ['kotlin', 'Verify the installed Kotlin consumer'],
       ['python', 'Run the ordinary Python unit and acceptance tests'],
       ['project-pilot', 'Verify installed project journeys'],
+      ['clean-consumer', 'Install only delivered product and explicit consumer tools'],
+      ['native-consumer', 'Install only delivered product and explicit consumer tools'],
     ];
     for (const [setting, value] of [
       ['npm_config_logs_dir', '${{ runner.temp }}/expec-package-npm-logs'],
@@ -136,6 +138,8 @@ describe('workflow selection boundary', () => {
       ['kotlin', 'npm-kotlin-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard == 'package'"],
       ['python', 'npm-python-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard != 'cli'"],
       ['project-pilot', 'npm-pilot-${{ matrix.os }}-${{ matrix.shard }}', 'failure()'],
+      ['clean-consumer', 'npm-clean-${{ matrix.os }}', 'failure()'],
+      ['native-consumer', 'npm-native-${{ matrix.target }}-${{ matrix.os }}', 'failure()'],
     ]) {
       const npmEvidence = job(owner!).split('\n      - name: Retain npm installation evidence\n')[1]?.split('\n      - ')[0] ?? '';
       expect(npmEvidence).toContain('if: ' + condition + '\n');
@@ -144,10 +148,12 @@ describe('workflow selection boundary', () => {
       expect(npmEvidence).toContain('path: ${{ runner.temp }}/expec-package-npm-logs');
       expect(npmEvidence).toContain('include-hidden-files: true');
       expect(npmEvidence).toContain('if-no-files-found: warn');
-      const report = job(owner!).split('\n      - ').find(step => step.includes('path: .local-docs/test-results.json')) ?? '';
-      expect(report).toContain('if: always()');
-      expect(report).toContain('include-hidden-files: true');
-      expect(report).toContain('if-no-files-found: error');
+      if (owner !== 'clean-consumer' && owner !== 'native-consumer') {
+        const report = job(owner!).split('\n      - ').find(step => step.includes('path: .local-docs/test-results.json')) ?? '';
+        expect(report).toContain('if: always()');
+        expect(report).toContain('include-hidden-files: true');
+        expect(report).toContain('if-no-files-found: error');
+      }
     }
     const report = installed.split('\n      - ').find(step => step.includes('name: installed-${{ matrix.os }}-${{ matrix.shard }}')) ?? '';
     expect(report).toContain('if: always()');

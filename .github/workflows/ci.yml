@@ -611,6 +611,10 @@ jobs:
           name: public-consumer
           path: ${{ github.workspace }}
       - name: Install only delivered product and explicit consumer tools
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         shell: pwsh
         run: |
           if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git)) { throw 'A development checkout is present.' }
@@ -622,6 +626,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
       - name: Exercise delivered commands and public declarations
         run: node node_modules/vitest/vitest.mjs run --config vitest.clean.config.js
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-clean-${{ matrix.os }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
 
   native-consumer:
     name: No checkout native walkthrough / ${{ matrix.target }} / ${{ matrix.os }}
@@ -644,6 +656,10 @@ jobs:
           name: public-consumer
           path: ${{ github.workspace }}
       - name: Install only delivered product and explicit consumer tools
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         shell: pwsh
         run: |
           if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git) -or (Test-Path -LiteralPath .local-docs)) { throw 'A development checkout is present.' }
@@ -699,4 +715,12 @@ jobs:
           path: |
             native-walkthrough-results.json
             delivery.json
+          if-no-files-found: warn
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-native-${{ matrix.target }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
           if-no-files-found: warn
