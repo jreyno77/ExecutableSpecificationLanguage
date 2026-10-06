@@ -674,6 +674,39 @@ own resources. Compilation/generation never starts them. Invoke native Vitest
 explicitly for runtime results; type compatibility and generation do not establish
 a pass. Source `.expec` fixtures remain data-only.
 
+## Kotlin/JVM projects
+
+Choose an ordinary installed JDK21 explicitly. The Kotlin profile uses Kotlin2.4.10,
+Gradle9.1.0 and JUnit6.1.3 in one main/test source-set project:
+
+```sh
+expec init --config spec/expec.json --root ../store-game --target kotlin --java-home /absolute/jdk21 --yes
+expec install --config spec/expec.json
+expec build --config spec/expec.json
+expec test --config spec/expec.json
+```
+
+Initialization saves the selected project, Kotlin output and exact package requirements.
+It creates a Gradle starter; installation separately acquires and records the native
+classpath. Add this output to the manifest to generate the acceptance layer:
+
+```json
+{ "id": "kotlin-acceptance", "options": { "package": "generated.tests", "domain": "shopping" } }
+```
+
+Build creates contracts and readable tests under `src/main/kotlin` and
+`src/test/kotlin`. Implement the throwing application/driver methods, then test.
+The CLI compiles captured sources and selects the actual generated JUnit methods;
+failed, disabled, uncollected or unfinished selected tests cannot establish success.
+A native fixture owns application resources and their cleanup.
+
+Library callers can compose `KotlinContext`, `FileProjectWriter` and the
+`kotlinOutput`/`kotlinAcceptanceOutput` registrations through `Outputs`.
+`KotlinProject.read/search` use actual K2 symbols from the supplied capture;
+`KotlinDependencies.read/install` keep dependency observation and acquisition
+explicit. Changed build configuration requires installation before native capture.
+The installed package includes the pinned K2 bridge and its upstream notices.
+
 ## Connected commands
 
 The installed package provides the `expec` command. Start with an `expec.json` manifest and authored source entries. Paths in the manifest stay relative to that file, including when commands run from another directory.
@@ -702,7 +735,7 @@ A deliberate custom launcher can import `runCli` and pass `{ contracts: [registr
 
 ## Development and delivery
 
-Use Node 24.19.0 and npm 11.20.0.
+Use Node 24.19.0, npm 11.20.0 and JDK21 (JAVA_HOME) to build the native bridge.
 
 The Java target is in progress. Native builds require JDK 21 through `JAVA_HOME`;
 the checked-in Gradle wrapper acquires the locked JDT bridge. Java tests also
@@ -721,6 +754,8 @@ npm run dev
 ```
 
 `check` generates the AST/parser services, checks types, runs unit and acceptance tests, and builds. `dev` generates once and starts Vitest watch. After editing `src/language/langium/Expec.langium`, run `npm run grammar:generate`; generated files are ignored. Tests use `test/acceptance`, `test/dsl`, `test/driver`, `test/unit`, and fixtures in `test/resources`.
+
+`test:kotlin` runs the native Kotlin slice; `test:kotlin-package` builds, packs and exercises its installed consumers. Supply `EXPEC_TEST_JAVA_HOME` as an ordinary JDK21 directory and `EXPEC_TEST_JUNIT_CONSOLE` as the verified JUnit6.1.3 standalone test fixture. Windows/Linux CI provisions both explicitly. The production CLI instead uses the project’s acquired Console/reporting dependencies.
 
 `test/acceptance` contains domain scenarios; `test/unit` checks focused component contracts.
 `test/dsl` provides domain actions and expectations; `test/driver` invokes the real APIs

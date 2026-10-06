@@ -24,7 +24,8 @@
   "scripts": {
     "grammar:generate": "langium generate",
     "java:build": "node src/project/java/java-build.mjs",
-    "build": "npm run grammar:generate && npm run java:build && tsc -p tsconfig.build.json && rolldown -c",
+    "kotlin:build": "node src/project/kotlin/kotlin-build.mjs",
+    "build": "npm run grammar:generate && npm run java:build && npm run kotlin:build && tsc -p tsconfig.build.json && rolldown -c",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
@@ -32,11 +33,13 @@
     "test:package": "npm run build && vitest run --config vitest.package.config.ts",
     "test:java": "vitest run --config vitest.java.config.ts",
     "test:java-package": "npm run build && vitest run --config vitest.java-package.config.ts",
+    "test:kotlin": "vitest run --config vitest.kotlin.config.ts",
+    "test:kotlin-package": "npm run build && vitest run --config vitest.kotlin-package.config.ts",
     "test:pilot": "npm run build && vitest run --config vitest.pilot.config.ts",
     "test:watch": "vitest --watch",
     "dev": "npm run grammar:generate && npm run test:watch",
-    "check": "npm run grammar:generate && npm run java:build && npm run typecheck && npm run test:unit && npm run test:acceptance && npm run build",
-    "check:core": "npm run grammar:generate && npm run java:build && npm run typecheck && vitest run --config vitest.core.config.ts test/unit && vitest run --config vitest.core.config.ts test/acceptance --maxWorkers=2 && npm run build",
+    "check": "npm run grammar:generate && npm run java:build && npm run kotlin:build && npm run typecheck && npm run test:unit && npm run test:acceptance && npm run build",
+    "check:core": "npm run grammar:generate && npm run java:build && npm run kotlin:build && npm run typecheck && vitest run --config vitest.core.config.ts test/unit && vitest run --config vitest.core.config.ts test/acceptance --maxWorkers=2 && npm run build",
     "release": "npm pack"
   },
   "dependencies": {

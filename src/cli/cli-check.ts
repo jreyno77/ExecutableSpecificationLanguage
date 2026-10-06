@@ -12,6 +12,7 @@ import { SourceComposer } from '../compiler/source-composer.js';
 import { SourceLoader, type SourceCapture } from '../project/connection/source-loader.js';
 import { cliProfile } from './cli-profile.js';
 import { checkedJavaPackages, javaCliExclusions } from '../project/java/cli-java.js';
+import { readKotlinPackages, kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
 
 export interface CheckedManifest {
   manifest: string;
@@ -50,12 +51,14 @@ export async function checkManifest(filename: string, profiles: readonly OutputP
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
   if (configuration.packages.length || result.profile?.target === 'java') {
-    const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'java' ? { excludeNames: javaCliExclusions } : undefined).connect(configuration);
+    const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+      : result.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(configuration);
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
       const observed = result.profile?.target === 'java'
         ? await checkedJavaPackages(result, connection.value.context, result.profile.configFile!)
+        : result.profile?.target === 'kotlin' ? await readKotlinPackages(connection.value.context, configuration.packages)
         : await readPackages(result.project, configuration.packages);
       result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];

@@ -16,10 +16,12 @@ import type { ProjectContext, ProjectRoot } from '../project/connection/project-
 import { FileProjectWriter } from '../project/connection/project-writer.js';
 import { testIdentities } from '../project/typescript/acceptance-state.js';
 import { testJava } from '../project/java/cli-java-test.js';
+import { testKotlinProject } from '../project/kotlin/cli-kotlin-test.js';
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {
   if (checked.profile?.target === 'java') return testJava(checked, project, outputs, signal);
+  if (checked.profile?.target === 'kotlin') return testKotlinProject(checked, project, outputs, signal);
   const result: CommandResult = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [] };
   const fail = (code: string, message: string) => ({ ...result, problems: [cliProblem(code, message, checked.manifest)] });
   const profiles = checked.configuration!.outputs.filter(profile => profile.id === 'acceptance');

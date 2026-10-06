@@ -14,7 +14,14 @@ const checkout = fileURLToPath(new URL('../../../', import.meta.url));
 const resources = join(checkout, 'test/resources/package-consumer');
 const packageName = 'executable-specification-language';
 type ProcessResult = { code: number; stdout: string; stderr: string };
+interface KotlinCommand {
+  code: number; stderr: string; report: { status: string; exitCode: number; problems: unknown[]; stages: {
+    name: string; status: string; packages?: PackageRead; tests?: {title:string;state:string;errors:string[]}[];
+  }[] };
+}
 interface ConsumerReport {
+  kotlinCli?: { executable: string; initialized: KotlinCommand; acquired: KotlinCommand; built: KotlinCommand; passed: KotlinCommand; broken: KotlinCommand;
+    original: string; testText: string; testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[] };
   javaCli?: { executable: string; commands: JavaCommand[]; first: JavaCommand; renamed: JavaCommand; wrong: JavaCommand; source: string; caller: string; readable: string };
   java?: { complete:boolean; problems:unknown[]; search:ProjectSearch; read:Omit<ProjectRead,'artifacts'>&{artifacts:{at:unknown;path:string;text:string}[]}; wrong:ProcessResult };
   customCli?: { result: { status: string; exitCode: number; problems: unknown[]; stages: unknown[] };
@@ -22,6 +29,13 @@ interface ConsumerReport {
   cli?: { executable: string; result: { format: number; status: string; exitCode: number; version: string; problems: unknown[]; syntax: unknown[]; stages: unknown[] };
     stderr: string; manifestBefore: string; manifestAfter: string; files: string[]; note: string };
   packageUrl: string;
+  kotlin?: {
+    initialized: string; acquired: PackageRead; created: OutputWrite; repeated: OutputWrite; tests: OutputWrite; testText: string;
+    observed: { coverage: { complete: boolean }; problems: unknown[]; files: { path: string; text: string }[] }; search: ProjectSearch;
+    caller: string; callerPath: string; before: string; after: string; passed: ProcessResult & { xml: string[] }; broken: ProcessResult & { xml: string[] };
+    testUnchanged: boolean; canaries: boolean[]; unexpectedDenials: string[]; jars: number; nativeBytes: number; notice: string;
+    artifacts: { file: string; expected: string; actual: string; notices: { path: string; bytes: number }[] }[];
+  };
   lifecycle?: {
     written: OutputWrite; scenario: string; unchangedTests: boolean;
     passed: { code: number; success: boolean; assertions: { title: string; status: string; failureMessages: string[] }[]; events: { id: string; event: string; title?: string; actual?: number; listening?: boolean }[] };
@@ -135,7 +149,7 @@ export class PackageDriver {
     }
     const version = await npm(checkout, ['--version']);
     if (version.stdout.trim() !== '11.20.0') throw new Error(`Expected npm 11.20.0, received ${version.stdout}`);
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }
   static async finish(): Promise<void> {
@@ -145,7 +159,7 @@ export class PackageDriver {
   }
 
   async install(options: { withoutFile?: string; withoutDependency?: string } = {}): Promise<void> {
-    this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
+    this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.consumer = join(this.directory, 'consumer');
     let artifact = PackageDriver.artifact;
     if (options.withoutFile || options.withoutDependency) {
@@ -178,6 +192,19 @@ export class PackageDriver {
     this.result = await run(process.execPath, ['consumer.mjs', source], this.consumer);
     await this.readReport();
   }
+  async deliverKotlinCli(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-cli-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin-cli.json'), JSON.stringify({source}));
+    this.result = await run(process.execPath, ['kotlin-cli-consumer.mjs', 'kotlin-cli.json'], this.consumer, 600_000, {EXPEC_DENIED_CHECKOUT:checkout});
+    await this.readReport();
+  }
+  async deliverKotlin(source: string): Promise<void> {
+    for (const name of ['checkout-guard.mjs', 'kotlin-consumer.mjs']) await cp(join(resources, name), join(this.consumer, name));
+    await writeFile(join(this.consumer, 'kotlin.json'), JSON.stringify({ source }));
+    this.result = await run(process.execPath, ['kotlin-consumer.mjs', 'kotlin.json'], this.consumer, 600_000, { EXPEC_DENIED_CHECKOUT: checkout });
+    await this.readReport();
+  }
+  async packedBytes(): Promise<number> { return (await stat(PackageDriver.artifact)).size; }
   async checkFromInstalledCommand(): Promise<void> {
     await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
     this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
@@ -382,8 +409,8 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
-async function run(executable: string, args: string[], cwd: string, timeout = 120_000): Promise<ProcessResult> {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
+async function run(executable: string, args: string[], cwd: string, timeout = 120_000, environment: Record<string, string> = {}): Promise<ProcessResult> {
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase()))), ...environment };
   try {
     const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
@@ -404,7 +431,7 @@ function child(parent: string, path: string): string {
   return target;
 }
 async function cleanup(directory: string): Promise<void> {
-  const name = relative(resolve(tmpdir()), resolve(directory));
+  const name = relative(await realpath(tmpdir()), resolve(directory));
   if (isAbsolute(name) || name.includes(sep) || !name.startsWith('expec-package-')) throw new Error('Refusing to remove an unexpected fixture directory');
   const trace = (status: string, elapsedMs?: number, error?: unknown): void => {
     if (process.env.EXPEC_CLEANUP_TIMINGS !== '1') return;

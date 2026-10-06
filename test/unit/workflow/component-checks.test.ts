@@ -4,13 +4,27 @@ import { checksFor } from '../../../.github/ci/select-tests.js';
 describe('checks for directly changed components', () => {
   it('checks Java alone for a Java change', () => {
     expect(checksFor('pull_request', ['src/project/java/java-inputs.ts']))
-      .toEqual({ core: [], java: true, package: false, pilot: false, workflow: false, shards: [1] });
+      .toEqual({ core: [], java: true, kotlin: false, package: false, pilot: false, workflow: false, shards: [1] });
+  });
+
+  it('checks Kotlin alone for Kotlin source and every Kotlin test layer', () => {
+    for (const path of ['src/project/kotlin/kotlin-context.ts', 'src/project/kotlin/native/build.gradle.kts',
+      ...['unit', 'acceptance', 'dsl', 'driver'].map(layer => 'test/' + layer + '/project/kotlin/example.ts')]) {
+      expect(checksFor('pull_request', [path]))
+        .toEqual({ core: [], java: false, kotlin: true, package: false, pilot: false, workflow: false, shards: [1] });
+    }
+  });
+
+  it('keeps installed Kotlin fixtures with the Kotlin owner', () => {
+    for (const fixture of ['kotlin-consumer.mjs', 'kotlin-cli-consumer.mjs', 'checkout-guard.mjs'])
+      expect(checksFor('pull_request', ['test/resources/package-consumer/' + fixture]))
+        .toEqual({ core: [], java: false, kotlin: true, package: false, pilot: false, workflow: false, shards: [1] });
   });
 
   it('checks compiler folders without consumers', () => {
     expect(checksFor('pull_request', ['src/compiler/compiler.ts']))
       .toEqual({ core: ['test/unit/compiler', 'test/acceptance/compiler'],
-        java: false, package: false, pilot: false, workflow: false, shards: [1] });
+        java: false, kotlin: false, package: false, pilot: false, workflow: false, shards: [1] });
   });
 
   it('combines only directly changed owners, once', () => {
@@ -20,7 +34,7 @@ describe('checks for directly changed components', () => {
     expect(checks.core).toEqual([
       'test/unit/model', 'test/acceptance/model', 'test/unit/compiler', 'test/acceptance/compiler',
     ]);
-    expect(checks.java || checks.package || checks.pilot || checks.workflow).toBe(false);
+    expect(checks.java || checks.kotlin || checks.package || checks.pilot || checks.workflow).toBe(false);
   });
 
   it('checks both sides of a rename', () => {
@@ -34,7 +48,7 @@ describe('checks for directly changed components', () => {
   });
 
   it('does not build the product for documentation or an empty diff', () => {
-    const none = { core: [], java: false, package: false, pilot: false, workflow: false, shards: [1] };
+    const none = { core: [], java: false, kotlin: false, package: false, pilot: false, workflow: false, shards: [1] };
     expect(checksFor('pull_request', ['README.md', '.agents/skills/example/SKILL.md', '.github/pull_request_template.md']))
       .toEqual(none);
     expect(checksFor('pull_request', [])).toEqual(none);
@@ -60,7 +74,7 @@ describe('checks for directly changed components', () => {
     const checks = checksFor('pull_request', ['src/cli-entry.ts']);
     expect(checks.core).toEqual(['test/unit/cli', 'test/acceptance/cli']);
     expect(checks.pilot).toBe(true);
-    expect(checks.java || checks.package).toBe(false);
+    expect(checks.java || checks.kotlin || checks.package).toBe(false);
   });
 
   it('assigns each test layer to its component', () => {
@@ -74,7 +88,7 @@ describe('checks for directly changed components', () => {
       '.node-version', '.npmrc', 'tsconfig.json', 'tsconfig.build.json', 'rolldown.config.mjs']) {
       expect(checksFor('pull_request', [path]))
         .toEqual({ core: ['test/unit/package', 'test/acceptance/package'],
-          java: false, package: true, pilot: false, workflow: false, shards: [1] });
+          java: false, kotlin: false, package: true, pilot: false, workflow: false, shards: [1] });
     }
   });
 
@@ -82,7 +96,7 @@ describe('checks for directly changed components', () => {
     for (const path of ['.github/workflows/ci.yml', '.github/ci/select-tests.ts', 'vitest.core.config.ts',
       'test/global-setup.ts', 'test/driver/compiled-checkout.ts', 'test/driver/unreadable-file.ts', '.gitignore', '.gitattributes']) {
       expect(checksFor('pull_request', [path]))
-        .toEqual({ core: [], java: false, package: false, pilot: false, workflow: true, shards: [1] });
+        .toEqual({ core: [], java: false, kotlin: false, package: false, pilot: false, workflow: true, shards: [1] });
     }
   });
 
@@ -103,7 +117,7 @@ describe('checks for directly changed components', () => {
 
   it('runs all partitions on main and for a release merge with an inherited PR event', () => {
     for (const checks of [checksFor('push', []), checksFor('pull_request', ['README.md'], 'merge-sha')]) {
-      expect(checks.java && checks.package && checks.pilot && checks.workflow).toBe(true);
+      expect(checks.java && checks.kotlin && checks.package && checks.pilot && checks.workflow).toBe(true);
       expect(checks.shards).toEqual([1, 2, 3, 4, 5]);
       expect(checks.core).toEqual([
         'test/unit/language', 'test/acceptance/language', 'test/unit/model', 'test/acceptance/model',

@@ -9,6 +9,7 @@ import { hash } from '../project/connection/project-files.js';
 import { TypeScriptContext } from '../project/typescript/typescript-context.js';
 import { nativeInputs } from '../project/connection/native-inputs.js';
 import { JavaContext } from '../project/java/java-context.js';
+import { KotlinContext } from '../project/kotlin/kotlin-context.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {
@@ -24,6 +25,7 @@ export class BuildContext implements ProjectContext {
     const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) } : project;
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
     if (checked.profile?.target === 'java') this.native.push(new JavaContext(nativeProject, { configFile: checked.profile.configFile! }));
+    if (checked.profile?.target === 'kotlin') this.native.push(new KotlinContext(nativeProject));
     this.inputs = [{ uri: pathToFileURL(checked.manifest).href, version: hash(Buffer.from(checked.text!)) },
       ...checked.captures.map(capture => ({ uri: capture.source.sourceId, version: capture.version.replace(/^sha256:/, '') })), ...checked.packageInputs ?? [], ...inputs];
   }

@@ -8,6 +8,8 @@ import { ProjectConnector, type ProjectRoot } from '../project/connection/projec
 import { ProjectInitializer } from '../project/connection/project-initializer.js';
 import { installJava } from '../project/java/java-acquisition.js';
 import { javaCliExclusions } from '../project/java/cli-java.js';
+import { KotlinDependencies } from '../project/kotlin/kotlin-dependencies.js';
+import { kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
 
 export interface CommandResult {
   status: string;
@@ -33,8 +35,9 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     problems: [cliProblem('initialization-required', 'Choose expec init --root <directory> --target typescript --yes explicitly.', loaded.manifest)] };
   if (!choice) {
     if (!/^y(?:es)?$/i.test(await answer('Initialize a project (yes/no)', signal))) return { ...result, status: 'declined', exitCode: 3 };
-    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript)', signal) };
+    choice = { root: await answer('Destination relative to the manifest', signal), target: await answer('Target (typescript, java or kotlin)', signal) };
   }
+  if (['java', 'kotlin'].includes(choice.target) && !choice.javaHome && interactive) choice.javaHome = await answer('Absolute JDK21 directory', signal);
   let manifest: ConfigurationFile;
   try { manifest = await ConfigurationFile.capture(selected, loaded.text!); }
   catch (error) { return problem('configuration-unsaved', String(error)); }
@@ -56,12 +59,14 @@ export async function initialize(loaded: CheckedManifest, selected: string,
     exitCode: write.status === 'applied' ? 0 : 1, problems: write.problems };
 }
 export async function install(loaded: CheckedManifest): Promise<CommandResult> {
-  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'java' ? { excludeNames: javaCliExclusions } : undefined).connect(loaded.configuration!);
+  const connection = await new ProjectConnector(loaded.manifest, loaded.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
+    : loaded.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(loaded.configuration!);
   if (connection.value?.status !== 'connected') return { status: 'invalid', exitCode: 1, stages: [], problems: connection.problems.length ? connection.problems
     : [cliProblem('project-required', 'Connect a project with expec init before installing declared packages.', loaded.manifest)] };
   const project = connection.value.context.root, requested = loaded.configuration!.packages;
   if (!requested.length && loaded.profile?.target !== 'java') return { status: 'nothing-to-install', exitCode: 0, project, problems: [], stages: [{ name: 'installation', status: 'not-run' }] };
   const packages = loaded.profile?.target === 'java' ? await installJava(loaded.configuration!, loaded.manifest, { configFile: loaded.profile.configFile! })
+    : loaded.profile?.target === 'kotlin' ? await new KotlinDependencies(project.path).install(requested)
     : await new NpmDependencies(project.path).install(requested);
   return { status: packages.value ? 'installed' : 'installation-failed', exitCode: packages.value ? 0 : 1, project,
     problems: packages.problems, stages: [{ name: 'installation', status: packages.value ? 'applied' : 'stopped', packages }] };

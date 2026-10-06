@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const components = ['language', 'model', 'compiler', 'cli', 'project/connection',
-  'project/dependencies', 'project/output', 'project/java', 'project/typescript', 'package', 'workflow'];
+  'project/dependencies', 'project/output', 'project/java', 'project/kotlin', 'project/typescript', 'package', 'workflow'];
 const ownership: [RegExp, string][] = [
   [/^(README\.md|AGENTS\.md|\.github\/pull_request_template\.md|\.agents\/.*)$/, 'docs'],
   [/^src\/cli-entry\.ts$/, 'cli'],
@@ -12,6 +12,7 @@ const ownership: [RegExp, string][] = [
   [/^langium-config\.json$/, 'language'],
   [/^(\.github\/(workflows|ci)\/|vitest(\.[\w-]+)?\.config\.ts$|test\/global-setup\.ts$|test\/driver\/(compiled-checkout|unreadable-file)\.ts$|\.git(ignore|attributes)$)/, 'workflow'],
   [/^test\/resources\/package-consumer\/java-(consumer|cli-consumer|cli-guard)\.mjs$/, 'project/java'],
+  [/^test\/resources\/package-consumer\/(kotlin-(consumer|cli-consumer)|checkout-guard)\.mjs$/, 'project/kotlin'],
   [/^test\/resources\/grammar\//, 'language'],
   [/^test\/resources\/(domain-failures|workspace-compilation)\//, 'compiler'],
   [/^test\/resources\/diagrams\//, 'project/output'],
@@ -33,9 +34,10 @@ export function checksFor(event: string, paths: readonly string[], ref = '') {
   const full = event !== 'pull_request' || Boolean(ref);
   const owners = new Set(full ? components : paths.map(componentFor));
   return {
-    core: components.filter(owner => owners.has(owner) && owner !== 'project/java' && owner !== 'workflow')
+    core: components.filter(owner => owners.has(owner) && owner !== 'project/java' && owner !== 'project/kotlin' && owner !== 'workflow')
       .flatMap(owner => ['test/unit/' + owner, 'test/acceptance/' + owner]),
     java: owners.has('project/java'),
+    kotlin: owners.has('project/kotlin'),
     package: owners.has('package'),
     pilot: owners.has('cli'),
     workflow: owners.has('workflow'),
