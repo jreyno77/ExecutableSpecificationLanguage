@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 
 describe('readable Python tests can use an existing application driver', { timeout: 240_000 }, () => {
   it('uses an explicitly selected driver without generating a duplicate', async () => {

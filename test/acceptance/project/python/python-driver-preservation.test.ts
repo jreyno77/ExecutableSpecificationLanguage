@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 
 describe('handwritten Python drivers stay separate from generated expectations', { timeout: 240_000 }, () => {
   it('updates a quantity while retaining the explicitly selected driver', async () => {

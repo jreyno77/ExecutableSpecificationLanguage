@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 
 describe('a driver uses only its captured native typing environment', { timeout: 240_000 }, () => {
   it('uses a captured typed dependency without running its site startup file', async () => {

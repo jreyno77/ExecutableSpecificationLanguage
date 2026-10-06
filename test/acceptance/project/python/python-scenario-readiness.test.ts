@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 describe('current Python scenario verification', { timeout: 240_000 }, () => {
   it('refuses an empty generated scenario even when its function and identity remain', async () => {
     const shopping = await PythonAcceptance.create();
