@@ -46,6 +46,8 @@ export function pythonEnvironment(snapshot: ProjectSnapshot, profile: PythonProf
   } catch { return { problems: [outputProblem('invalid-python-environment', pythonReportPath, 'The installed report must be valid UTF-8 JSON.')] }; }
 }
 
+type FileObservation = { path: string; identity: string; stamp: string; version: string } | { problem: Diagnostic };
+
 /** Hashes the exact selected native files and inventories; never grants them write ownership. */
 export class PythonInputs {
   readonly problems: Diagnostic[] = [];
@@ -79,32 +81,50 @@ export class PythonInputs {
   private async walk(path: string, standardLibrary = false, cache = false): Promise<void> {
     path = resolve(path);
     if (this.directories.has(path)) return;
+    const pending: Promise<FileObservation>[] = [];
+    const drain = async (): Promise<void> => { for (const observation of await Promise.all(pending.splice(0))) this.accept(observation); };
     try {
       await this.path(path);
       const before = await this.ordinary(path, true), names = (await fs.readdir(path)).sort();
       this.directories.set(path, { names, stamp: this.fingerprint(before), cache });
       for (const name of names) {
         const child = join(path, name), info = await fs.lstat(child, { bigint: true });
+        if (cache || (standardLibrary && name === 'site-packages') || info.isDirectory() || name.endsWith('.pyc')) await drain();
         if (cache) { if (!name.endsWith('.pyc')) throw new Error('A bytecode cache contains hidden source or an unknown entry: ' + child); await this.ordinary(child, false); }
         else if (standardLibrary && name === 'site-packages') this.parents.set(child, this.identity(await this.ordinary(child, true))); // -S excludes only this native site directory.
         else if (info.isDirectory()) await this.walk(child, false, name === '__pycache__');
         else if (name.endsWith('.pyc')) throw new Error('Legacy bytecode outside an ordinary cache is unsupported: ' + child);
-        else await this.file(child);
+        else if (!this.inputs.has(pathToFileURL(child).href)) {
+          try { await this.path(child); pending.push(this.observe(child)); }
+          catch (error) { pending.push(Promise.resolve({ problem: outputProblem('native-input-unavailable', child, String(error)) })); }
+          if (pending.length === 4) await drain();
+        }
       }
+      await drain();
+    } catch (error) { await drain(); this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
+  }
+  private async observe(path: string): Promise<FileObservation> {
+    try {
+      const before = await this.ordinary(path, false), bytes = await fs.readFile(path), after = await this.ordinary(path, false);
+      if (this.fingerprint(before) !== this.fingerprint(after)) throw new Error('Native input changed during capture.');
+      return { path, identity: this.identity(after), stamp: this.fingerprint(after), version: hash(bytes) };
+    } catch (error) { return { problem: outputProblem('native-input-unavailable', path, String(error)) }; }
+  }
+  private accept(observation: FileObservation): void {
+    if ('problem' in observation) { this.problems.push(observation.problem); return; }
+    const { path, identity, stamp, version } = observation;
+    try {
+      const previous = this.identities.get(identity);
+      if (previous && previous !== path) throw new Error('Distinct native paths alias the same physical file: ' + previous);
+      this.identities.set(identity, path);
+      this.inputs.set(pathToFileURL(path).href, version); this.fingerprints.set(path, stamp);
     } catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
   }
   private async file(path: string): Promise<void> {
     path = resolve(path);
-    const uri = pathToFileURL(resolve(path)).href; if (this.inputs.has(uri)) return;
-    try {
-      await this.path(path);
-      const before = await this.ordinary(path, false), bytes = await fs.readFile(path), after = await this.ordinary(path, false);
-      if (this.fingerprint(before) !== this.fingerprint(after)) throw new Error('Native input changed during capture.');
-      const identity = this.identity(after), previous = this.identities.get(identity);
-      if (previous && previous !== path) throw new Error('Distinct native paths alias the same physical file: ' + previous);
-      this.identities.set(identity, path);
-      this.inputs.set(uri, hash(bytes)); this.fingerprints.set(path, this.fingerprint(after));
-    } catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
+    if (this.inputs.has(pathToFileURL(path).href)) return;
+    try { await this.path(path); this.accept(await this.observe(path)); }
+    catch (error) { this.problems.push(outputProblem('native-input-unavailable', path, String(error))); }
   }
   async verify(): Promise<Diagnostic[]> {
     const problems: Diagnostic[] = [];
