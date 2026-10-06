@@ -8,22 +8,74 @@ on:
     inputs:
       ref:
         type: string
-        required: false
-        default: ''
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Select component checks
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.select.outputs.core }}
+      java: ${{ steps.select.outputs.java }}
+      kotlin: ${{ steps.select.outputs.kotlin }}
+      package: ${{ steps.select.outputs.package }}
+      pilot: ${{ steps.select.outputs.pilot }}
+      workflow: ${{ steps.select.outputs.workflow }}
+      shards: ${{ steps.select.outputs.shards }}
+      total: ${{ steps.select.outputs.total }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - id: select
+        env:
+          CHECK_REF: ${{ inputs.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/ci/select-tests.ts
+  workflow:
+    name: Workflow policy / ${{ matrix.os }}
+    needs: scope
+    if: needs.scope.outputs.workflow == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install the locked dependencies
+        run: |
+          npm install --global npm@11.20.0 --ignore-scripts
+          npm ci
+      - name: Check workflow behavior
+        run: npx vitest run --config vitest.ci.config.ts
   check:
-    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
+    needs: scope
+    if: needs.scope.outputs.core != '[]'
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ needs.scope.outputs.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4, 5]
+        shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,7 +100,7 @@ jobs:
       - name: Check all source and test types
         run: npm run typecheck
       - name: Build and test the shard
-        run: npm test -- --config vitest.core.config.ts --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.core.config.ts ${{ join(fromJSON(needs.scope.outputs.core), ' ') }} --shard=${{ matrix.shard }}/${{ needs.scope.outputs.total }} --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -57,6 +109,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
+    needs: scope
+    if: needs.scope.outputs.pilot == 'true'
     name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -99,6 +153,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   installed-package:
+    needs: scope
+    if: needs.scope.outputs.package == 'true'
     name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -137,6 +193,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   java:
+    needs: scope
+    if: needs.scope.outputs.java == 'true'
     name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}${{ matrix.suite == 'acceptance' && format(' / {0} of {1}', matrix.shard, matrix.total) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -202,6 +260,8 @@ jobs:
           if-no-files-found: error
 
   kotlin:
+    needs: scope
+    if: needs.scope.outputs.kotlin == 'true'
     name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of {1}', matrix.shard, matrix.total) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
