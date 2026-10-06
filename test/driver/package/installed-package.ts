@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Check, InitializationPlan, InitializationResult, OutputWrite, ProjectRead, ProjectSearch } from '../../../src/index.js';
@@ -129,6 +130,8 @@ export class PackageDriver {
   get root(): string { return this.consumer; }
   private static directory: string | undefined;
   private static artifact = '';
+  private static seed: Promise<string> | undefined;
+  private static seedDirectory: string | undefined;
   private directory?: string;
   private consumer!: string;
   result!: ProcessResult;
@@ -153,7 +156,11 @@ export class PackageDriver {
     this.artifact = await pack(checkout, this.directory, true);
   }
   static async finish(): Promise<void> {
+    await this.seed?.catch(() => undefined);
+    if (this.seedDirectory) await cleanup(this.seedDirectory);
     if (this.directory) await cleanup(this.directory);
+    this.seed = undefined;
+    this.seedDirectory = undefined;
     this.directory = undefined;
     this.artifact = '';
   }
@@ -176,10 +183,20 @@ export class PackageDriver {
         await writeFile(manifestPath, JSON.stringify(manifest));
       }
       artifact = await pack(copy, join(this.directory, 'altered-artifact'));
+      await this.installInto(this.consumer, artifact);
+    } else {
+      PackageDriver.seed ??= this.createSeed(artifact);
+      await cp(await PackageDriver.seed, this.consumer, { recursive: true, verbatimSymlinks: true });
     }
-    await this.installInto(this.consumer, artifact);
     await cp(join(resources, 'consumer.mjs'), join(this.consumer, 'consumer.mjs'));
     if (options.withoutDependency) await this.verifyDependencyAbsent(options.withoutDependency);
+  }
+  private async createSeed(artifact: string): Promise<string> {
+    PackageDriver.seedDirectory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
+    const root = join(PackageDriver.seedDirectory, 'consumer');
+    await this.installInto(root, artifact);
+    await verifyPackageLinks(join(root, 'node_modules'));
+    return root;
   }
   private async installInto(directory: string, artifact: string): Promise<void> {
     await mkdir(directory, { recursive: true });
@@ -405,6 +422,21 @@ export async function packageLocation(consumer: string, entry: string) {
   return { expected: join(installed, 'dist/index.js'), real, insidePackage: contained(installed, real) };
 }
 
+async function verifyPackageLinks(root: string, directory = root): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) await verifyPackageLinks(root, path);
+    else if (entry.isSymbolicLink()) {
+      const target = await readlink(path);
+      if (isAbsolute(target) || !contained(root, resolve(dirname(path), target)))
+        throw new Error('Package fixture link must stay inside its installation: ' + path);
+      const actual = await realpath(path);
+      if (!contained(root, actual) || !(await stat(actual)).isFile())
+        throw new Error('Package fixture link must resolve to an installed file: ' + path);
+    } else if (!entry.isFile()) throw new Error('Unexpected package fixture entry: ' + path);
+  }
+}
+
 async function pack(directory: string, destination: string, release = false): Promise<string> {
   await mkdir(destination, { recursive: true });
   await npm(directory, [...(release ? ['run', 'release', '--'] : ['pack']), '--ignore-scripts', '--pack-destination', destination]);
@@ -418,7 +450,9 @@ function npmExecutable(): string {
   return executable;
 }
 async function npm(directory: string, args: string[]): Promise<ProcessResult> {
-  const result = await run(process.execPath, [npmExecutable(), ...args], directory);
+  const logs = process.env.npm_config_logs_dir;
+  const environment = logs ? { npm_config_logs_dir: join(logs, `package-${randomUUID()}`) } : {};
+  const result = await run(process.execPath, [npmExecutable(), ...args], directory, undefined, environment);
   if (result.code !== 0) throw new Error(`npm ${args[0]} failed. ${output(result)}`);
   return result;
 }
