@@ -4,7 +4,7 @@ import { PythonQueryDriver } from '../../../driver/project/python/python-query.j
 export class PythonQueries {
   private constructor(private readonly driver: PythonQueryDriver) {}
   static async connect(): Promise<PythonQueries> {
-    const driver = new PythonQueryDriver(); onTestFinished(() => driver.dispose());
+    const driver = new PythonQueryDriver(); onTestFinished(() => driver.dispose(), 30_000);
     await driver.initialize(); await driver.installFixture(); return new PythonQueries(driver);
   }
   file(path: string, text: string) { return this.driver.file(path, text); }

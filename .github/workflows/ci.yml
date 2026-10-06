@@ -112,8 +112,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
-    needs: scope
-    if: needs.scope.outputs.pilot == 'true'
+    needs: [scope, installed-package, prepare-consumer]
+    if: ${{ !cancelled() && needs.scope.outputs.pilot == 'true' && (needs.installed-package.result == 'success' || needs.prepare-consumer.result == 'success') }}
     name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -144,10 +144,28 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: public-consumer
+          path: ${{ runner.temp }}/expec-consumer
+      - name: Verify the current package for pilots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
+          $delivery = Get-Content -LiteralPath (Join-Path $stage 'delivery.json') -Raw | ConvertFrom-Json
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $delivery.commit -cne $commit) { throw 'Delivered package commit differs.' }
+          if ($delivery.artifact -isnot [string] -or $delivery.artifact -notmatch '^executable-specification-language-[^\\/]+\.tgz$') { throw 'Delivered package filename is not local.' }
+          $archive = Join-Path $stage $delivery.artifact
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $delivery.sha256) { throw 'Delivered package digest differs.' }
+          "EXPEC_TEST_PACKAGE=$archive" >> $env:GITHUB_ENV
+      - name: Generate the checkout grammar for independent regressions
+        run: npm run grammar:generate
       - name: Verify installed project journeys
         env:
           EXPEC_CLEANUP_TIMINGS: '1'
-        run: npm run test:pilot -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.pilot.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -269,7 +287,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   prepare-consumer:
-    name: Prepare selected native consumers
+    name: Prepare selected public consumers
     needs: scope
     if: needs.scope.outputs.prepareConsumer == 'true'
     runs-on: ubuntu-latest

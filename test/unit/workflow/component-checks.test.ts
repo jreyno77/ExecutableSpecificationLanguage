@@ -14,6 +14,40 @@ describe('checks for directly changed components', () => {
         pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
   });
 
+  it('prepares an archive for a pilot-only change without selecting package tests', () => {
+    const selected = checksFor('pull_request', ['src/cli/cli.ts']);
+    expect(selected.pilot).toBe(true);
+    expect(selected.package).toBe(false);
+    expect(selected.prepareConsumer).toBe(true);
+  });
+
+  it('uses the selected package producer for every main push', () => {
+    const selected = checksFor('push', []);
+    expect(selected.package).toBe(true);
+    expect(selected.pilot).toBe(true);
+    expect(selected.prepareConsumer).toBe(false);
+  });
+
+  it('uses the package producer when CLI and package both change', () => {
+    expect(checksFor('pull_request', ['src/cli/cli.ts', 'package.json']))
+      .toMatchObject({ pilot: true, package: true, prepareConsumer: false });
+  });
+
+  it('prepares the Python walkthrough without selecting pilots or package tests', () => {
+    expect(checksFor('pull_request', ['src/project/python/python-context.ts']))
+      .toMatchObject({ python: true, pilot: false, package: false, consumers: ['python'], prepareConsumer: true });
+  });
+
+  it('does not prepare an unused pilot archive for a workflow-only change', () => {
+    expect(checksFor('pull_request', ['.github/workflows/ci.yml']))
+      .toMatchObject({ workflow: true, pilot: false, package: false, prepareConsumer: false });
+  });
+
+  it('does not prepare an unused pilot archive for a documentation-only change', () => {
+    expect(checksFor('pull_request', ['README.md']))
+      .toMatchObject({ pilot: false, package: false, prepareConsumer: false });
+  });
+
   it('checks Java alone for a Java change', () => {
     expect(checksFor('pull_request', ['src/project/java/java-inputs.ts']))
       .toEqual({ core: [], java: true, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: ['java'], prepareConsumer: true, shards: [1] });

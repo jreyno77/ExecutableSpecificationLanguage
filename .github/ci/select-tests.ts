@@ -40,7 +40,7 @@ export function checksFor(event: string, paths: readonly string[], ref = '') {
       ? ['project/java', 'project/kotlin'] : [componentFor(path)]));
   const consumers = ['java', 'kotlin', 'python'].filter(target => owners.has('project/' + target));
   return {
-    consumers, prepareConsumer: consumers.length > 0 && !owners.has('package'),
+    consumers, prepareConsumer: (consumers.length > 0 || owners.has('cli')) && !owners.has('package'),
     core: components.filter(owner => owners.has(owner) && owner !== 'project/java' && owner !== 'project/kotlin' && owner !== 'project/python' && owner !== 'workflow')
       .flatMap(owner => ['test/unit/' + owner, 'test/acceptance/' + owner]),
     java: owners.has('project/java'),
