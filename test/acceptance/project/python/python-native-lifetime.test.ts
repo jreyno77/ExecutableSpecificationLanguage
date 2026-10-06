@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonNativeLifetime } from '../../../dsl/project/python/python-native-lifetime.js';
 
-afterEach(() => PythonNativeLifetime.dispose());
+afterEach(() => PythonNativeLifetime.dispose(), 30_000);
 describe('Python native evidence belongs to the actual query and write', { timeout: 240_000 }, () => {
   it('rejects changed selected environment bytes before a planned rename', async () => {
     const p = await PythonNativeLifetime.connect(); await p.installCatalog(); await p.planRename();

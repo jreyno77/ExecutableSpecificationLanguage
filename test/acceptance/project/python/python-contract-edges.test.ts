@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonContractEdges } from '../../../dsl/project/python/python-contract-edges.js';
 
-afterEach(() => PythonContractEdges.dispose());
+afterEach(() => PythonContractEdges.dispose(), 30_000);
 describe('Python contracts retain explicit names, identities and native limitations', { timeout: 240_000 }, () => {
   it('requires explicit readable names and actual opaque imports', async () => {
     const p = await PythonContractEdges.create();

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runPython } from '../../../../src/project/python/python-process.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 async function preserve(before: string, current: string, after: string, { added = [], retired = [], authored = [], caller = false, topLevel = false }: {
   added?: string[]; retired?: string[]; authored?: string[]; caller?: boolean; topLevel?: boolean;
 } = {}) {

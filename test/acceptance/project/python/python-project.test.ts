@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonInspection } from '../../../dsl/project/python/python-project.js';
 
-afterEach(() => PythonInspection.dispose());
+afterEach(() => PythonInspection.dispose(), 30_000);
 
 describe('a Python project answers actual native questions', { timeout: 120_000 }, () => {
   it('reads the whole associated file including private state and handwritten code', async () => {

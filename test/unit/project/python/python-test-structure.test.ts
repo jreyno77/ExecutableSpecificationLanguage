@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runPython } from '../../../../src/project/python/python-process.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 const association = (id: string, name: string, owner?: string) => ({ specId: id, locator: { outputId: 'python-acceptance', format: 'python-symbol-1',
   value: { file: 'case.py', declaration: [...owner ? [{ kind: 'class', name: owner }] : [], { kind: owner ? 'method' : 'function', name }] } } });
 async function reconcile(before: string, desired: string | undefined, current: string,

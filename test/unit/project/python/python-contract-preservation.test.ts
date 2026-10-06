@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runPython } from '../../../../src/project/python/python-process.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 const association = (id: string, name: string, member?: string) => ({ specId: id, locator: { outputId: 'python', format: 'python-symbol-1',
   value: { file: 'src/store.py', declaration: [{ kind: 'class', name }, ...member ? [{ kind: 'method', name: member }] : []] } } });
 const game = 'class StoreGame:\n    def save(self, title: str) -> None:\n        raise NotImplementedError()\n';

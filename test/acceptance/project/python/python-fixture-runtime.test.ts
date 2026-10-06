@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonFixtures } from '../../../dsl/project/python/python-fixture.js';
 
-afterEach(() => PythonFixtures.dispose());
+afterEach(() => PythonFixtures.dispose(), 30_000);
 
 describe('a selected fixture cannot replace the generated assertions', { timeout: 240_000 }, () => {
   it('rejects a derived receiver with a no-op quantity assertion', async () => {

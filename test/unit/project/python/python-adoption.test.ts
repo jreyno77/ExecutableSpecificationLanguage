@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 
 const projects: PythonOutputDriver[] = [];
-afterEach(async () => { for (const project of projects.splice(0)) await project.dispose(); });
+afterEach(async () => { for (const project of projects.splice(0)) await project.dispose(); }, 30_000);
 async function adoption(value: ArtifactLocator['value'], format = 'python-symbol-1') {
   const project = new PythonOutputDriver(); projects.push(project); await project.initialize(); project.source('class StoreGame {}');
   const store = [...project.current.specification.inspection.query('class')][0]!;

@@ -49,7 +49,7 @@ afterEach(async () => {
     if (dirname(path) !== parent || !path.slice(parent.length + 1).startsWith('expec-python-acquisition-')) throw Error('Unexpected cleanup root.');
     await observeCleanup('rm', path, () => fs.rm(path, { recursive: true, force: true }));
   }
-});
+}, 30_000);
 describe('explicit Python dependency acquisition', { timeout: 180_000 }, () => {
   it('installs the actual exact request and preserves its compatible native lock offline', async () => {
     const p = await initialized(), configuration = requirePackage(p.configuration);

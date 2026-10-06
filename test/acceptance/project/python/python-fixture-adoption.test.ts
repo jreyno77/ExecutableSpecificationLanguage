@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonFixtures } from '../../../dsl/project/python/python-fixture.js';
 
-afterEach(() => PythonFixtures.dispose());
+afterEach(() => PythonFixtures.dispose(), 30_000);
 
 describe('pytest owns the real selected resource fixture', { timeout: 240_000 }, () => {
   it('adopts a native resource fixture and releases its real socket', async () => {

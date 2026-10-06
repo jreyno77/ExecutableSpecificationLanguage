@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-output.js';
 
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 
 describe('Python contracts a real caller can use', { timeout: 30_000 }, () => {
   it('retains legal integer spelling for integral literal types', async () => {

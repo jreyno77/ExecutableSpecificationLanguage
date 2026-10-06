@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonFixtures } from '../../../dsl/project/python/python-fixture.js';
 
-afterEach(() => PythonFixtures.dispose());
+afterEach(() => PythonFixtures.dispose(), 30_000);
 
 describe('a selected pytest fixture reaches the actual generated DSL', { timeout: 240_000 }, () => {
   it('refuses a project module that hides the generated assertions', async () => {

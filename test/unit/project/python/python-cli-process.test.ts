@@ -22,7 +22,7 @@ beforeAll(async () => {
   const installed = pythonEnvironment(captured, profile); if (!installed.value) throw Error(JSON.stringify(installed.problems));
   environment = installed.value;
 }, 120_000);
-afterAll(async () => { vi.restoreAllMocks(); await fixture.dispose(); });
+afterAll(async () => { vi.restoreAllMocks(); await fixture.dispose(); }, 30_000);
 const execute = (selectedProfile = profile) => runPytest(fixture.context.root, join(fixture.directory, 'expec.json'), selectedProfile, environment, selected, new AbortController().signal);
 
 describe('the controlled pytest process preserves native outcomes', () => {

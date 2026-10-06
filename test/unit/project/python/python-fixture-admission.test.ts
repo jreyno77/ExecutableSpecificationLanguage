@@ -7,7 +7,7 @@ import { PythonExamples } from '../../../../src/project/python/python-examples.j
 import { runPython } from '../../../../src/project/python/python-process.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 function generated(fixtureName = 'provide_numbers') {
   const read = new LangiumReader().read({ sourceId: 'numbers.expec', text: 'examples { check verify() { assert false }\nexample "one": 1 => 1 }' });
   if (read.status !== 'accepted') throw Error(JSON.stringify(read));

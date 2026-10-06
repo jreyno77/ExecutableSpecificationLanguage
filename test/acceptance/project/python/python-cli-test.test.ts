@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-cli.js';
 
 beforeAll(() => PythonDelivery.prepare(), 90_000);
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 const dune = `examples {
   setup bookIsAvailable(title: Text) returns Nothing
   setup startWithEmptyBasket() returns Nothing

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-cli.js';
 
 beforeAll(() => PythonDelivery.prepare(), 90_000);
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 describe('the Python CLI keeps native package phases explicit', () => {
   it('refuses a main source importing the actual test-only pytest distribution', async () => {
     const p = await PythonDelivery.initialized(); await p.install();

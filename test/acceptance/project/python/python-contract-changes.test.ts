@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonContractChanges } from '../../../dsl/project/python/python-contract-changes.js';
 
-afterEach(() => PythonContractChanges.dispose());
+afterEach(() => PythonContractChanges.dispose(), 30_000);
 describe('evolving complete Python contracts', { timeout: 240_000 }, () => {
   it('requires update when recreating a deleted contract whose promise changed', async () => {
     const p = await PythonContractChanges.fromSource('class StoreGame {}\nclass Receipt { public save\ncapability save() returns Nothing { promises "Saved to disk" } }');

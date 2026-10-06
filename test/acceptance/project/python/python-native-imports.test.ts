@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonNativeImports } from '../../../dsl/project/python/python-native-imports.js';
 
-afterEach(() => PythonNativeImports.dispose());
+afterEach(() => PythonNativeImports.dispose(), 30_000);
 describe('Python contract imports require actual native type evidence', { timeout: 240_000 }, () => {
   it('refuses a provided native import whose member is unavailable', async () => {
     const p = await PythonNativeImports.create();
