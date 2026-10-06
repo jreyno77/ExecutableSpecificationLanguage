@@ -1,0 +1,221 @@
+import { promises as fs } from 'node:fs';
+import { delimiter, join } from 'node:path';
+import { DOMParser } from '@xmldom/xmldom';
+import { Compiler, FileProjectWriter, SourceComposer, kotlinAcceptanceOutput, type IdentifiedSpecification } from '../../../../src/index.js';
+import { KotlinDeliveryDriver } from './kotlin-delivery.js';
+
+/** Compiles captured main/test source separately and observes the actual JUnit engine. */
+export class KotlinAcceptanceDriver extends KotlinDeliveryDriver {
+  private readonly junit = process.env.EXPEC_TEST_JUNIT_CONSOLE;
+  private readonly implementations = new Map<string, string>();
+  failureContext = '';
+  readonly acceptanceOptions: Record<string, unknown> = {};
+  private readonly remembered = new Map<string, string>();
+  private readonly names = new Map<string, string>();
+  private readonly groups = new Map<string, string>();
+  private readonly comparisons = new Map<string, string>();
+  readonly outcomes: { title: string; status: string; failure: string }[] = [];
+  async prepare(): Promise<void> {
+    if (!this.junit) throw new Error('Supply the actual pinned JUnit 6.1.3 console JAR.');
+    await this.initialize(); this.outputs.register(kotlinAcceptanceOutput); await this.configureNative([this.junit]);
+    await this.file('src/main/kotlin/Empty.kt', '// An ordinary empty main source set.\n');
+  }
+  importType(selector: { id: string } | { declaration: string[]; module?: string }, name: string, as?: string): void {
+    const imports = (this.acceptanceOptions.imports ?? []) as ({ id?: string; declaration?: string[]; module?: string; name: string; as?: string })[];
+    const key = (item: typeof imports[number]) => JSON.stringify('id' in item ? { id: item.id } : { declaration: item.declaration, module: item.module });
+    const selected = { ...selector, name, ...as ? { as } : {} };
+    this.acceptanceOptions.imports = [...imports.filter(item => key(item) !== key(selected)), selected];
+  }
+  async contracts(): Promise<void> {
+    await this.build();
+    if (!this.written.artifacts) throw new Error(JSON.stringify(this.written));
+    const confirmed = this.identity.withArtifacts(this.current, this.written.artifacts);
+    if (!confirmed.value) throw new Error(JSON.stringify(confirmed)); this.current = confirmed.value;
+  }
+  nameOperation(name: string, native: string): void {
+    this.names.set(this.subject(this.current, 'examples.' + name), native); this.namedOptions();
+  }
+  nameExample(title: string, native: string): void {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.names.set(this.current.id(matches[0]!.id), native); this.namedOptions();
+  }
+  private groupFor(title: string, current: IdentifiedSpecification = this.current) {
+    const inspection = current.specification.inspection;
+    const examples = [...inspection.query('example'), ...inspection.query('scenario')].filter(item => item.title.value === title);
+    if (examples.length !== 1) throw Error('Select one actual example title: ' + title);
+    const group = inspection.parent(examples[0]!.id);
+    if (group?.kind !== 'examples') throw Error('The selected example has no examples group.');
+    return group;
+  }
+  nameGroupFor(title: string, native: string): void {
+    const id = this.current.id(this.groupFor(title).id); this.groups.set(title, id); this.names.set(id, native); this.namedOptions();
+  }
+  changeGroups(text: string, retained: readonly string[], retired: readonly string[] = []): void {
+    const compiled = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: [], packages: [] }) });
+    if (!compiled.value) throw Error(JSON.stringify(compiled));
+    const proposed = this.identity.associate(compiled.value); if (!proposed.value) throw Error(JSON.stringify(proposed));
+    const decisions = [...retained.map(title => ({ id: this.current.id(this.groupFor(title).id), to: this.groupFor(title, proposed.value!).id })),
+      ...retired.map(title => ({ retire: this.current.id(this.groupFor(title).id) }))];
+    this.identify(compiled.value, {}, [], decisions);
+    for (const id of this.names.keys()) if (this.current.baseline.retired.includes(id)) this.names.delete(id);
+    this.namedOptions();
+  }
+  retireExamples(text: string, titles: readonly string[]): void {
+    const examples = [...this.current.specification.inspection.query('example')];
+    const decisions = titles.map(title => {
+      const selected = examples.filter(item => item.title.value === title);
+      if (selected.length !== 1) throw Error('Select one actual example title: ' + title);
+      return { retire: this.current.id(selected[0]!.id) };
+    });
+    const compiled = new Compiler().compile({ resolution: new SourceComposer().compose(this.model('main', text), { modules: [], packages: [] }) });
+    if (!compiled.value) throw Error(JSON.stringify(compiled));
+    this.identify(compiled.value, {}, [], decisions);
+  }
+  async addComparisonNeighbor(text: string): Promise<void> {
+    const path = 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt';
+    await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\n' + text + '\n');
+  }
+  async comparisonText(): Promise<string> { return fs.readFile(join(this.root, 'src/test/kotlin/store/tests/dsl/ExpecChecks.kt'), 'utf8'); }
+  async comparisonCall(title: string): Promise<{ file: string; name: string; callee: string; text: string }> {
+    const examples = [...this.current.specification.inspection.query('example')].filter(item => item.title.value === title);
+    if (examples.length !== 1) throw Error('Select one actual example: ' + title);
+    const result = await this.output.search(this.current.id(examples[0]!.id));
+    if (result.problems.length || !result.outgoing.coverage.complete) throw Error(JSON.stringify(result));
+    const calls = result.outgoing.uses.flatMap(use => {
+      if (use.target.kind !== 'project' || !use.target.id.startsWith('{')) return [];
+      const target = JSON.parse(use.target.id) as { file: string; declaration: { kind: string; name: string }[] };
+      const declaration = target.declaration.at(-1), at = use.at.value as { file: string; start: number; end: number; role: string };
+      return target.file.endsWith('/dsl/ExpecChecks.kt') && declaration?.kind === 'function' && declaration.name.startsWith('expectData') && at.role === 'call'
+        ? [{ name: declaration.name, at }] : [];
+    });
+    if (calls.length !== 1) throw Error('Select one actual generated comparison call: ' + JSON.stringify(calls));
+    const { name, at } = calls[0]!, source = await fs.readFile(join(this.root, at.file), 'utf8');
+    if (source.slice(at.start, at.end) !== name) throw Error('The actual comparison token changed.');
+    const start = source.lastIndexOf('\n', at.start) + 1, next = source.indexOf('\n', at.end);
+    const text = source.slice(start, next < 0 ? source.length : next).trim();
+    const callee = source.slice(start, at.end).trim();
+    if (!text.startsWith(callee + '(') || source.split(text).length !== 2) throw Error('Select one complete generated assertion statement.');
+    return { file: at.file, name, callee, text };
+  }
+  async rememberComparison(title: string): Promise<void> { this.comparisons.set(title, (await this.comparisonCall(title)).name); }
+  async hasRememberedComparison(title: string): Promise<boolean> {
+    const name = this.comparisons.get(title); if (!name) throw Error('Remember the actual comparison first: ' + title);
+    return (await this.comparisonText()).includes('internal fun ' + name + '(');
+  }
+  async callComparisonFrom(title: string, file: string, name: string, arguments_: string): Promise<void> {
+    const comparison = await this.comparisonCall(title);
+    await this.file(file, 'package store\nfun ' + name + '() { ' + comparison.callee + '(' + arguments_ + ') }\n');
+  }
+  async eraseExpectation(title: string): Promise<void> {
+    const comparison = await this.comparisonCall(title);
+    await this.replace(comparison.file, comparison.text, 'println("The authored assertion was removed")');
+  }
+  async deleteGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.written = await this.output.delete(id); this.files = await this.capturedFiles();
+  }
+  async searchGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.searchResult = await this.output.search(id);
+  }
+  async readGroupFor(title: string): Promise<void> {
+    const id = this.groups.get(title); if (!id) throw Error('No remembered group identity for ' + title);
+    this.readResult = await this.output.read(id);
+  }
+  private namedOptions(): void { this.acceptanceOptions.names = [...this.names].map(([id, name]) => ({ id, name })); }
+  async implement(name: string, body: string): Promise<void> {
+    const previous = this.implementations.get(name) ?? 'throw NotImplementedError("Not implemented: ' + name + '")';
+    await this.replace('src/main/kotlin/store/' + name.split('.')[0] + '.kt', previous, body); this.implementations.set(name, body);
+  }
+  async implementDriverOperation(name: string, body: string): Promise<void> {
+    const key = 'driver.' + name, previous = this.implementations.get(key) ?? 'throw NotImplementedError("Not implemented: ' + name + '")';
+    await this.replace('src/test/kotlin/store/tests/driver/ShoppingDriver.kt', previous, body); this.implementations.set(key, body);
+  }
+  async driver(text: string): Promise<void> { await this.file('src/test/kotlin/store/tests/driver/ShoppingDriver.kt', text); }
+  async resourceFixture(setupFailure?: string, cleanupFailure?: string): Promise<void> {
+    const file = 'src/test/kotlin/store/tests/dsl/ResourceShopping.kt';
+    await this.file(file, 'package store.tests.dsl\nopen class ResourceShopping {\n'
+      + '  private var server: java.net.ServerSocket? = null\n  protected lateinit var shopping: Shopping\n'
+      + '  @org.junit.jupiter.api.BeforeEach fun connect() {\n'
+      + '    server = java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())\n'
+      + (setupFailure ? '    error(' + JSON.stringify(setupFailure) + ')\n' : '    shopping = Shopping(store.tests.driver.ShoppingDriver())\n')
+      + '  }\n  @org.junit.jupiter.api.AfterEach fun disconnect() {\n'
+      + '    server!!.close()\n    println("RESOURCE_CLOSED=" + server!!.isClosed)\n'
+      + (cleanupFailure ? '    error(' + JSON.stringify(cleanupFailure) + ')\n' : '') + '  }\n}\n');
+    this.selectFixture(file, 'ResourceShopping');
+  }
+  async addTestMember(text: string): Promise<void> {
+    const path = 'src/test/kotlin/store/tests/acceptance/ShoppingAcceptance.kt', source = await fs.readFile(join(this.root, path), 'utf8');
+    const end = source.lastIndexOf('}'); if (end < 0) throw new Error('Missing arranged native test class.');
+    await this.file(path, source.slice(0, end) + text + '\n' + source.slice(end));
+  }
+  selectFixture(file: string, name: string): void { this.acceptanceOptions.fixture = { outputId: 'kotlin-acceptance', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
+  selectDriver(file: string, name: string): void { this.acceptanceOptions.driver = { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
+  mapOperation(name: string, file: string, owner: string, method: string, parameters: string[]): void {
+    const operation = [...this.current.specification.inspection.query('setup'), ...this.current.specification.inspection.query('action'), ...this.current.specification.inspection.query('observation'), ...this.current.specification.inspection.query('check')].find(item => item.name === name);
+    if (!operation) throw Error('Missing authored operation ' + name);
+    const linked = this.identity.withArtifacts(this.current, [...this.current.baseline.artifacts, { specId: this.current.id(operation.id), locator: { outputId: 'kotlin', format: 'kotlin-symbol-1', value: { file, declaration: [{ kind: 'class', name: owner }, { kind: 'function', name: method, parameters }] } } }]);
+    if (!linked.value) throw Error(JSON.stringify(linked)); this.current = linked.value;
+  }
+  async rememberFile(path: string): Promise<void> { this.remembered.set(path, await fs.readFile(join(this.root, path), 'utf8')); }
+  async unchangedFile(path: string): Promise<boolean> { return this.remembered.has(path) && this.remembered.get(path) === await fs.readFile(join(this.root, path), 'utf8'); }
+  async generate(operation: 'create' | 'update' | 'insert' = 'create'): Promise<void> {
+    const output = this.outputs.open('kotlin-acceptance', { package: 'store.tests', domain: 'shopping', ...this.acceptanceOptions }, this.context, new FileProjectWriter(this.context));
+    if (output.value) this.output = output.value;
+    const compared = this.identity.compare(this.current.baseline, this.current);
+    if (!compared.value) throw new Error(JSON.stringify(compared));
+    this.written = output.value ? await (operation === 'create' ? output.value.create(this.current) : output.value[operation](this.diff ?? compared.value, this.current)) : { problems: output.problems }; this.files = await this.capturedFiles();
+    if (this.written.problems.length) this.failureContext = JSON.stringify({ result: this.written, capture: (await this.context.readSnapshot()).problems });
+  }
+  async readOperation(name: string): Promise<void> {
+    const operation = [...this.current.specification.inspection.query('setup'), ...this.current.specification.inspection.query('action'), ...this.current.specification.inspection.query('observation'), ...this.current.specification.inspection.query('check')].find(item => item.name === name);
+    if (!operation) throw new Error('Missing authored operation ' + name);
+    this.readResult = await this.output.read(this.current.id(operation.id));
+  }
+  async removeFile(path: string): Promise<void> { await fs.unlink(join(this.root, path)); }
+  async readExample(title: string): Promise<void> {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.readResult = await this.output.read(this.current.id(matches[0]!.id));
+  }
+  async deleteExample(title: string): Promise<void> {
+    const matches = [...this.current.specification.inspection.query('example'), ...this.current.specification.inspection.query('scenario')].filter(item => item.title.value === title);
+    if (matches.length !== 1) throw Error('Select exactly one authored example: ' + title);
+    this.written = await this.output.delete(this.current.id(matches[0]!.id)); this.files = await this.capturedFiles();
+  }
+  async deleteGroup(): Promise<void> {
+    const groups = [...this.current.specification.inspection.query('examples')];
+    if (groups.length !== 1) throw Error('Select exactly one authored examples group.');
+    this.written = await this.output.delete(this.current.id(groups[0]!.id)); this.files = await this.capturedFiles();
+  }
+  async readGroup(): Promise<void> {
+    const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
+    this.readResult = await this.output.read(this.current.id(group[0]!.id));
+  }
+  async searchGroup(): Promise<void> {
+    const group = [...this.current.specification.inspection.query('examples')]; if (group.length !== 1) throw new Error('Select exactly one arranged group.');
+    this.searchResult = await this.output.search(this.current.id(group[0]!.id));
+  }
+  async runTests(concurrent = false, classes: readonly string[] = ['store.tests.acceptance.ShoppingAcceptance']): Promise<void> {
+    this.files = await this.capturedFiles(); this.outcomes.length = 0;
+    const native = await this.native(), report = JSON.parse(this.files.get('.expec/kotlin/classpath.json')!);
+    const directory = await fs.mkdtemp(join(this.directory, 'native-tests-')), main = join(directory, 'main'), test = join(directory, 'test'), reports = join(directory, 'reports');
+    for (const path of [main, test, reports]) await fs.mkdir(path);
+    const compile = (scope: 'main' | 'test', output: string, classpath: string[]) => this.run(native.java, ['-cp', native.jars.join(delimiter), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+      '-no-stdlib', '-no-reflect', '-classpath', classpath.join(delimiter), '-jvm-target', '21', ...scope === 'test' ? ['-Xfriend-paths=' + main] : [], '-d', output,
+      ...[...this.files.keys()].filter(path => path.endsWith('.kt') && report.sourceRoots[scope].some((root: string) => path.startsWith(root + '/'))).map(path => join(this.root, path))]);
+    this.compiled = await compile('main', main, report.classPath.main); if (this.compiled.code) return;
+    this.compiled = await compile('test', test, [main, ...report.classPath.test]); if (this.compiled.code) return;
+    this.execution = await this.run(native.java, ['-jar', this.junit!, 'execute', '--class-path', [main, test, ...report.runtimeClassPath.test].join(delimiter),
+      ...classes.flatMap(name => ['--select-class', name]), '--reports-dir', reports, '--disable-banner', '--disable-ansi-colors',
+      ...concurrent ? ['--config=junit.jupiter.execution.parallel.enabled=true', '--config=junit.jupiter.execution.parallel.config.strategy=fixed', '--config=junit.jupiter.execution.parallel.config.fixed.parallelism=2', '--config=junit.jupiter.execution.parallel.mode.default=concurrent'] : []]);
+    for (const path of await fs.readdir(reports)) if (path.endsWith('.xml')) {
+      const document = new DOMParser().parseFromString(await fs.readFile(join(reports, path), 'utf8'), 'text/xml');
+      for (const item of Array.from(document.getElementsByTagName('testcase'))) {
+        const failures = [...Array.from(item.getElementsByTagName('failure')), ...Array.from(item.getElementsByTagName('error'))];
+        this.outcomes.push({ title: item.getAttribute('name') ?? '', status: failures.length ? 'failed' : item.getElementsByTagName('skipped').length ? 'skipped' : 'passed', failure: failures.map(item => item.textContent).join('\n') });
+      }
+    }
+  }
+}

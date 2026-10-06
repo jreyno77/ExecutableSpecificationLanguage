@@ -540,3 +540,6 @@ For these tests, supply an ordinary JDK 21 directory as `EXPEC_TEST_JAVA_HOME`
 and the verified JUnit Console Standalone 6.1.3 fixture as `EXPEC_TEST_JUNIT_CONSOLE`
 (SHA-256 `e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec`).
 The installed CLI uses the connected project's acquired dependencies.
+
+After editing `src/language/langium/Expec.langium`, run `npm run grammar:generate`;
+generated files are ignored.
