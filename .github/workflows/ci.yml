@@ -434,6 +434,8 @@ jobs:
         run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Run the Python CLI acceptance tests
         if: matrix.shard == 'cli'
+        env:
+          EXPEC_PYTHON_PHASE_TIMINGS: '1'
         run: npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts --reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()

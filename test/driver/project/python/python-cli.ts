@@ -9,6 +9,26 @@ import { ConnectedBuildDriver } from '../../cli/connected-build.js';
 
 /** The ordinary compiled CLI, with explicit native tool paths and real starter files. */
 export class PythonCliDriver extends ConnectedBuildDriver {
+  private phaseOrdinal = 0;
+  private async observe<T>(phase: string, action: () => Promise<T>, deadline?: number): Promise<T> {
+    if (process.env.EXPEC_PYTHON_PHASE_TIMINGS !== '1') return action();
+    const ordinal = ++this.phaseOrdinal, started = performance.now();
+    const emit = (status: 'started' | 'fulfilled' | 'rejected', error?: unknown) => {
+      try {
+        const failure = error as { name?: unknown; code?: unknown; syscall?: unknown } | undefined;
+        console.log('[python-phase] ' + JSON.stringify({ phase, ordinal, path: this.directory, observerPid: process.pid,
+          at: new Date().toISOString(), elapsedMs: performance.now() - started, deadline, status,
+          ...(status === 'rejected' ? { errorName: failure?.name, code: failure?.code, syscall: failure?.syscall } : {}) }));
+      } catch { /* Observation must not replace the operation's value or error. */ }
+    };
+    emit('started');
+    try { const value = await action(); emit('fulfilled'); return value; }
+    catch (error) { emit('rejected', error); throw error; }
+  }
+  override run(...args: Parameters<ConnectedBuildDriver['run']>): Promise<void> {
+    const command = args[0][0], phase = ['init', 'install', 'check', 'build', 'test'].includes(command ?? '') ? 'cli-' + command : 'cli';
+    return this.observe(phase, () => super.run(...args), args[2] ? 30_000 : args[3] ?? 30_000);
+  }
   static override async prepare(): Promise<void> {
     await super.prepare();
     await promisify(execFile)(process.execPath, [fileURLToPath(new URL('../../../../src/project/python/python-build.mjs', import.meta.url))]);
@@ -46,13 +66,15 @@ class ShoppingDriver:
   }
   nativeSnapshot?: ProjectSnapshot;
   async captureNativeProject(): Promise<void> {
-    const outputs = new Outputs(); outputs.register(pythonOutput); outputs.register(pythonAcceptanceOutput);
-    const manifest = this.path('spec/expec.json');
-    const configured = new ConfigurationReader(outputs.profiles).read({ sourceId: pathToFileURL(manifest).href, text: await readFile(manifest, 'utf8') });
-    if (!configured.value) throw Error(JSON.stringify(configured.problems));
-    const connected = await new ProjectConnector(manifest, { excludeNames: ['.git', 'node_modules', '.venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.uv-cache'] }).connect(configured.value);
-    if (connected.value?.status !== 'connected') throw Error(JSON.stringify(connected));
-    this.nativeSnapshot = await new PythonContext(connected.value.context).readSnapshot();
+    return this.observe('capture-native-project', async () => {
+      const outputs = new Outputs(); outputs.register(pythonOutput); outputs.register(pythonAcceptanceOutput);
+      const manifest = this.path('spec/expec.json');
+      const configured = new ConfigurationReader(outputs.profiles).read({ sourceId: pathToFileURL(manifest).href, text: await readFile(manifest, 'utf8') });
+      if (!configured.value) throw Error(JSON.stringify(configured.problems));
+      const connected = await new ProjectConnector(manifest, { excludeNames: ['.git', 'node_modules', '.venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.uv-cache'] }).connect(configured.value);
+      if (connected.value?.status !== 'connected') throw Error(JSON.stringify(connected));
+      this.nativeSnapshot = await new PythonContext(connected.value.context).readSnapshot();
+    });
   }
   cachedQuantity?: number;
   async cacheCurrentBasket(): Promise<void> {

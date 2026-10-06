@@ -82,6 +82,7 @@ describe('workflow selection boundary', () => {
     expect(ordinary).toContain('--reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
     const cli = pythonStep('Run the Python CLI acceptance tests');
     expect(cli).toContain("if: matrix.shard == 'cli'");
+    expect(cli).toContain("EXPEC_PYTHON_PHASE_TIMINGS: '1'");
     expect(cli).toContain('npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts');
     expect(cli).toContain('--reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json');
     expect(cli).not.toMatch(/--shard|--exclude/);
