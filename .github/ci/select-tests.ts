@@ -43,6 +43,7 @@ export function checksFor(event: string, paths: readonly string[], ref = '') {
     python: owners.has('project/python'),
     package: owners.has('package'),
     pilot: owners.has('cli'),
+    prepareConsumer: owners.has('cli') && !owners.has('package'),
     workflow: owners.has('workflow'),
     shards: full ? [1, 2, 3, 4, 5] : [1],
   };

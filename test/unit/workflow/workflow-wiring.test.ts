@@ -31,7 +31,7 @@ describe('workflow selection boundary', () => {
       }));
       expect(values).toEqual({ core: ['test/unit/language', 'test/acceptance/language',
         'test/unit/model', 'test/acceptance/model'], java: false, kotlin: false, python: false, package: false,
-        pilot: false, workflow: false, shards: [1], total: 1 });
+        pilot: false, workflow: false, prepareConsumer: false, shards: [1], total: 1 });
     } finally { rmSync(repository, { recursive: true, force: true }); }
   });
 
@@ -50,17 +50,51 @@ describe('workflow selection boundary', () => {
     expect(job('scope')).toContain('fetch-depth: 0');
     expect(job('scope')).toContain('BASE_SHA: ${{ github.event.pull_request.base.sha }}');
     expect(job('scope')).toContain('HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
-    for (const output of ['core', 'java', 'kotlin', 'python', 'package', 'pilot', 'workflow', 'shards', 'total'])
+    for (const output of ['core', 'java', 'kotlin', 'python', 'package', 'pilot', 'prepareConsumer', 'workflow', 'shards', 'total'])
       expect(job('scope')).toContain(output + ': ${{ steps.select.outputs.' + output + ' }}');
     expect(job('check')).toContain("if: needs.scope.outputs.core != '[]'");
     expect(job('check')).toContain("join(fromJSON(needs.scope.outputs.core), ' ')");
     expect(job('check')).toContain('shard: ${{ fromJSON(needs.scope.outputs.shards) }}');
     expect(job('check')).toContain('--shard=${{ matrix.shard }}/${{ needs.scope.outputs.total }}');
     expect(job('check')).toContain('of ${{ needs.scope.outputs.total }}');
-    for (const [name, output] of [['java', 'java'], ['kotlin', 'kotlin'], ['python', 'python'], ['installed-package', 'package'], ['project-pilot', 'pilot'], ['workflow', 'workflow']]) {
+    for (const [name, output] of [['java', 'java'], ['kotlin', 'kotlin'], ['python', 'python'], ['installed-package', 'package'], ['workflow', 'workflow']]) {
       expect(job(name!)).toContain('needs: scope');
       expect(job(name!)).toContain("if: needs.scope.outputs." + output + " == 'true'");
     }
+    const pilot = job('project-pilot');
+    expect(pilot).toContain('needs: [scope, installed-package, prepare-consumer]');
+    expect(pilot).toContain("if: ${{ !cancelled() && needs.scope.outputs.pilot == 'true' && (needs.installed-package.result == 'success' || needs.prepare-consumer.result == 'success') }}");
+    expect(pilot).toContain('name: public-consumer');
+    expect(pilot).toContain('path: ${{ runner.temp }}/expec-consumer');
+    expect(pilot).not.toContain('run-id:');
+    expect(pilot).toContain('run: npm run grammar:generate');
+    expect(pilot).toContain('npm test -- --config vitest.pilot.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
+    expect(pilot).toContain("EXPEC_CLEANUP_TIMINGS: '1'");
+    expect(pilot).toContain('timeout-minutes: 45');
+    expect(pilot).not.toMatch(/npm run build|npm run test:pilot/);
+    const verify = pilot.split('\n      - name: Verify the current package for pilots\n')[1]?.split('\n      - ')[0] ?? '';
+    const commit = "if ($LASTEXITCODE -ne 0 -or $delivery.commit -cne $commit) { throw 'Delivered package commit differs.' }";
+    const digest = "if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $delivery.sha256) { throw 'Delivered package digest differs.' }";
+    const exported = '"EXPEC_TEST_PACKAGE=$archive" >> $env:GITHUB_ENV';
+    expect(verify).toContain('$commit = git rev-parse HEAD');
+    expect(verify).toContain(commit);
+    expect(verify).toContain(digest);
+    expect(verify).toContain(exported);
+    expect(verify.indexOf(commit)).toBeLessThan(verify.indexOf(exported));
+    expect(verify.indexOf(digest)).toBeLessThan(verify.indexOf(exported));
+    const preparation = job('prepare-consumer');
+    expect(preparation).toContain('needs: scope');
+    expect(preparation).toContain("if: needs.scope.outputs.prepareConsumer == 'true'");
+    expect(preparation).toContain('run: *stage-consumer');
+    expect(preparation).not.toContain('vitest');
+    expect(preparation).toContain('npm run build');
+    expect(job('installed-package')).toContain("if: matrix.os == 'ubuntu-latest' && matrix.shard == 1");
+    const stage = job('installed-package').split('run: &stage-consumer |')[1]?.split('\n      - uses:')[0] ?? '';
+    expect(stage).toContain('if ($env:EXPEC_TEST_PACKAGE)');
+    expect(stage).toContain('Copy-Item -LiteralPath $env:EXPEC_TEST_PACKAGE -Destination $stage');
+    expect(stage).toContain("'provenance.json'");
+    expect(stage).toContain('} else {\n            $packed = npm pack --ignore-scripts');
+    expect(stage).toContain('commit=(git rev-parse HEAD)');
     expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/unit/project/kotlin/**');
     expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/acceptance/project/kotlin/**');
     expect(readFileSync(join(root, 'vitest.kotlin.config.ts'), 'utf8')).toContain('test/unit/project/kotlin/kotlin-*.test.ts');
