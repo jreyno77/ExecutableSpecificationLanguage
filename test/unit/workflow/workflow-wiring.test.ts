@@ -30,7 +30,7 @@ describe('workflow selection boundary', () => {
         const [name, value] = line.split('='); return [name, JSON.parse(value!)];
       }));
       expect(values).toEqual({ core: ['test/unit/language', 'test/acceptance/language',
-        'test/unit/model', 'test/acceptance/model'], java: false, kotlin: false, package: false,
+        'test/unit/model', 'test/acceptance/model'], java: false, kotlin: false, python: false, package: false,
         pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1], total: 1 });
     } finally { rmSync(repository, { recursive: true, force: true }); }
   });
@@ -50,14 +50,14 @@ describe('workflow selection boundary', () => {
     expect(job('scope')).toContain('fetch-depth: 0');
     expect(job('scope')).toContain('BASE_SHA: ${{ github.event.pull_request.base.sha }}');
     expect(job('scope')).toContain('HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
-    for (const output of ['core', 'java', 'kotlin', 'package', 'pilot', 'workflow', 'consumers', 'prepareConsumer', 'shards', 'total'])
+    for (const output of ['core', 'java', 'kotlin', 'python', 'package', 'pilot', 'workflow', 'consumers', 'prepareConsumer', 'shards', 'total'])
       expect(job('scope')).toContain(output + ': ${{ steps.select.outputs.' + output + ' }}');
     expect(job('check')).toContain("if: needs.scope.outputs.core != '[]'");
     expect(job('check')).toContain("join(fromJSON(needs.scope.outputs.core), ' ')");
     expect(job('check')).toContain('shard: ${{ fromJSON(needs.scope.outputs.shards) }}');
     expect(job('check')).toContain('--shard=${{ matrix.shard }}/${{ needs.scope.outputs.total }}');
     expect(job('check')).toContain('of ${{ needs.scope.outputs.total }}');
-    for (const [name, output] of [['java', 'java'], ['kotlin', 'kotlin'], ['installed-package', 'package'], ['project-pilot', 'pilot'], ['workflow', 'workflow']]) {
+    for (const [name, output] of [['java', 'java'], ['kotlin', 'kotlin'], ['python', 'python'], ['installed-package', 'package'], ['project-pilot', 'pilot'], ['workflow', 'workflow']]) {
       expect(job(name!)).toContain('needs: scope');
       expect(job(name!)).toContain("if: needs.scope.outputs." + output + " == 'true'");
     }
@@ -66,6 +66,14 @@ describe('workflow selection boundary', () => {
     expect(readFileSync(join(root, 'vitest.kotlin.config.ts'), 'utf8')).toContain('test/unit/project/kotlin/kotlin-*.test.ts');
     expect(readFileSync(join(root, 'vitest.kotlin.config.ts'), 'utf8')).toContain('test/acceptance/project/kotlin/kotlin-*.test.ts');
     expect(readFileSync(join(root, 'vitest.kotlin-package.config.ts'), 'utf8')).toContain('test/acceptance/project/kotlin/installed-kotlin-package.test.ts');
+    expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/unit/project/python/**');
+    expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/acceptance/project/python/**');
+    expect(readFileSync(join(root, 'vitest.python.config.ts'), 'utf8')).toContain('test/{unit,acceptance}/project/python/**/*.test.ts');
+    expect(job('python')).toContain('EXPEC_TEST_PACKAGE=');
+    expect(job('python')).toContain('npm run release -- --ignore-scripts --pack-destination');
+    expect(job('python').match(/npm run build/g)).toHaveLength(1);
+    expect(job('python')).toContain('shard: [1, 2, 3, 4]');
+    expect(job('python')).toContain('timeout-minutes: 90');
     expect(job('workflow')).toContain('--config vitest.ci.config.ts');
     expect(job('workflow')).not.toMatch(/setup-java|npm run build|grammar:generate|java:build/);
     expect(readFileSync(join(root, 'vitest.ci.config.ts'), 'utf8')).not.toContain('globalSetup');

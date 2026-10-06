@@ -12,7 +12,7 @@ const packageRoot = dirname(dirname(fileURLToPath(packageUrl)));
 const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
 const executable = resolve(packageRoot, metadata.bin.expec), input = JSON.parse(await readFile('python-cli-input.json', 'utf8'));
 let privateImportDenied;
-try { await import('executable-specification-language/dist/python-context.js'); } catch (error) { privateImportDenied = error.code; }
+try { await import('executable-specification-language/dist/project/python/python-context.js'); } catch (error) { privateImportDenied = error.code; }
 assert.equal(privateImportDenied, 'ERR_PACKAGE_PATH_NOT_EXPORTED');
 const temporary = await realpath(tmpdir());
 const env = { ...process.env, NODE_PATH: '', NODE_OPTIONS: '', TMP: temporary, TEMP: temporary, TMPDIR: temporary,

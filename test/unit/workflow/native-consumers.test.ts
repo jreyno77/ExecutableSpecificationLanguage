@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { createVitest } from 'vitest/node';
 import { checksFor } from '../../../.github/ci/select-tests.js';
 
 const workflow = readFileSync(new URL('../../../.github/workflows/ci.yml', import.meta.url), 'utf8');
@@ -55,4 +56,14 @@ it('copies the tested main archive into the bounded consumer artifact', () => {
   expect(stage).toContain('} else {\n            $packed = npm pack --ignore-scripts');
   expect(workflow).toContain('run: *stage-consumer');
   expect(workflow).toContain('name: public-consumer\n          path: ${{ runner.temp }}/expec-consumer/\n          overwrite: true');
+});
+
+it('keeps the installed Python walkthrough out of the ordinary Python partition', async () => {
+  const runner = await createVitest({ config: 'vitest.python.config.ts', watch: false });
+  try {
+    const files = (await runner.globTestSpecifications()).map(test => test.moduleId.replaceAll('\\', '/').split('/test/')[1]);
+    expect(files).not.toContain('acceptance/project/python/shipped-python-walkthrough.test.ts');
+    expect(files).toContain('acceptance/project/python/python-installed-package.test.ts');
+    expect(files).toContain('unit/project/python/cli-pytest-result.test.ts');
+  } finally { await runner.close(); }
 });

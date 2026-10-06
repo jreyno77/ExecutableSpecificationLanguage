@@ -28,7 +28,7 @@
     "grammar:generate": "langium generate",
     "java:build": "node src/project/java/java-build.mjs",
     "kotlin:build": "node src/project/kotlin/kotlin-build.mjs",
-    "python:build": "node src/python-build.mjs",
+    "python:build": "node src/project/python/python-build.mjs",
     "build": "npm run grammar:generate && npm run java:build && npm run kotlin:build && npm run python:build && tsc -p tsconfig.build.json && rolldown -c",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

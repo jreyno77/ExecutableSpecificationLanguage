@@ -11,8 +11,8 @@ import { initialConfiguration, starter } from '../typescript/initialization-prof
 import { javaStarter } from '../java/java-initialization.js';
 import { kotlinStarter } from '../kotlin/kotlin-initialization.js';
 import { kotlinExclusions } from '../kotlin/cli-kotlin.js';
-import { pythonStarter } from '../../python-initialization.js';
-import { pythonExclusions } from '../../python-profile.js';
+import { pythonStarter } from '../python/python-initialization.js';
+import { pythonExclusions } from '../python/python-profile.js';
 
 export interface InitializationPlan {
   readonly root: string;

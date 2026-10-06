@@ -23,6 +23,7 @@ jobs:
       core: ${{ steps.select.outputs.core }}
       java: ${{ steps.select.outputs.java }}
       kotlin: ${{ steps.select.outputs.kotlin }}
+      python: ${{ steps.select.outputs.python }}
       package: ${{ steps.select.outputs.package }}
       pilot: ${{ steps.select.outputs.pilot }}
       workflow: ${{ steps.select.outputs.workflow }}
@@ -434,6 +435,8 @@ jobs:
           if-no-files-found: error
 
   python:
+    needs: scope
+    if: needs.scope.outputs.python == 'true'
     name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -484,6 +487,13 @@ jobs:
         run: npm ci
       - name: Build native and public package resources
         run: npm run build
+      - name: Supply the built archive to the installed Python consumer
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/python-package"
+          npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/python-package"
+          version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/python-package/executable-specification-language-$version.tgz" >> "$GITHUB_ENV"
       - name: Run every selected Python unit and acceptance test
         run: npm test -- --config vitest.python.config.ts --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

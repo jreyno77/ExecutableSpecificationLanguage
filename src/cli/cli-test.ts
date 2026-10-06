@@ -17,7 +17,7 @@ import { FileProjectWriter } from '../project/connection/project-writer.js';
 import { testIdentities } from '../project/typescript/acceptance-state.js';
 import { testJava } from '../project/java/cli-java-test.js';
 import { testKotlinProject } from '../project/kotlin/cli-kotlin-test.js';
-import { testPythonProject } from '../cli-python-test.js';
+import { testPythonProject } from '../project/python/cli-python-test.js';
 
 /** Confirms current generated meaning, then delegates exact native cases to the local runner. */
 export async function testProject(checked: CheckedManifest, project: ProjectContext, outputs: Outputs, signal: AbortSignal): Promise<CommandResult> {

@@ -20,9 +20,9 @@ import { javaCliExclusions } from '../project/java/cli-java.js';
 import { kotlinOutput } from '../project/kotlin/output-kotlin.js';
 import { kotlinAcceptanceOutput } from '../project/kotlin/output-kotlin-acceptance.js';
 import { kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
-import { pythonOutput } from '../output-python.js';
-import { pythonAcceptanceOutput } from '../output-python-acceptance.js';
-import { pythonExclusions } from '../python-profile.js';
+import { pythonOutput } from '../project/python/output-python.js';
+import { pythonAcceptanceOutput } from '../project/python/output-python-acceptance.js';
+import { pythonExclusions } from '../project/python/python-profile.js';
 import { cliProfile } from './cli-profile.js';
 
 export interface CliOutputs {

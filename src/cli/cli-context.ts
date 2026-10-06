@@ -12,7 +12,7 @@ import type { Diagnostic } from '../compiler/checking.js';
 import { nativeInputs } from '../project/connection/native-inputs.js';
 import { JavaContext } from '../project/java/java-context.js';
 import { KotlinContext } from '../project/kotlin/kotlin-context.js';
-import { PythonContext } from '../python-context.js';
+import { PythonContext } from '../project/python/python-context.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {

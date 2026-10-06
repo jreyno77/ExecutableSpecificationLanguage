@@ -13,8 +13,8 @@ import { SourceLoader, type SourceCapture } from '../project/connection/source-l
 import { cliProfile } from './cli-profile.js';
 import { checkedJavaPackages, javaCliExclusions } from '../project/java/cli-java.js';
 import { readKotlinPackages, kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
-import { checkedPythonPackages } from '../cli-python.js';
-import { pythonExclusions } from '../python-profile.js';
+import { checkedPythonPackages } from '../project/python/cli-python.js';
+import { pythonExclusions } from '../project/python/python-profile.js';
 
 export interface CheckedManifest {
   manifest: string;

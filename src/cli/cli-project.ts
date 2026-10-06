@@ -10,8 +10,8 @@ import { installJava } from '../project/java/java-acquisition.js';
 import { javaCliExclusions } from '../project/java/cli-java.js';
 import { KotlinDependencies } from '../project/kotlin/kotlin-dependencies.js';
 import { kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
-import { installPython } from '../python-acquisition.js';
-import { pythonExclusions } from '../python-profile.js';
+import { installPython } from '../project/python/python-acquisition.js';
+import { pythonExclusions } from '../project/python/python-profile.js';
 
 export interface CommandResult {
   status: string;
