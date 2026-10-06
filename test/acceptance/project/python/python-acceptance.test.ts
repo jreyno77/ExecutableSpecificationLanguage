@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 describe('readable Python acceptance tests that reach the application', { timeout: 240_000 }, () => {
   it('keeps negative remainders consistent with the authored arithmetic', async () => {
     const p = await PythonAcceptance.create();

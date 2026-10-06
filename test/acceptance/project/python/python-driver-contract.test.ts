@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonAcceptance } from '../../../dsl/project/python/python-acceptance.js';
 
-afterEach(() => PythonAcceptance.dispose());
+afterEach(() => PythonAcceptance.dispose(), 30_000);
 
 describe('a selected Python driver fulfills its actual contract', { timeout: 240_000 }, () => {
   it('does not reject unrelated Any helpers on an otherwise known driver', async () => {
