@@ -4,7 +4,7 @@ import { ShoppingPilotDriver } from '../../driver/cli/shopping-pilot.js';
 export class ShoppingPilot {
   private constructor(private readonly driver: ShoppingPilotDriver) {}
   static async create(title: string, expectedQuantity: number): Promise<ShoppingPilot> {
-    const driver = new ShoppingPilotDriver(); onTestFinished(() => driver.dispose());
+    const driver = new ShoppingPilotDriver(); onTestFinished(() => driver.dispose(), 30_000);
     await driver.author(title, expectedQuantity); return new ShoppingPilot(driver);
   }
   async initializeAndInstall(): Promise<void> {

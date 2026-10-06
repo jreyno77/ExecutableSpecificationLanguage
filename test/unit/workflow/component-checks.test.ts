@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { checksFor } from '../../../.github/ci/select-tests.js';
 
 describe('checks for directly changed components', () => {
+  it('checks both native targets for their shared JUnit input', () => {
+    expect(checksFor('pull_request', ['test/resources/jvm/junit-platform-console-standalone-6.1.3.jar']))
+      .toEqual({ core: [], java: true, kotlin: true, python: false, package: false,
+        pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
+  });
+
+  it('checks both native targets for their shared JUnit notice', () => {
+    expect(checksFor('pull_request', ['test/resources/jvm/JUNIT-NOTICE.txt']))
+      .toEqual({ core: [], java: true, kotlin: true, python: false, package: false,
+        pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
+  });
+
   it('checks Java alone for a Java change', () => {
     expect(checksFor('pull_request', ['src/project/java/java-inputs.ts']))
       .toEqual({ core: [], java: true, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: ['java'], prepareConsumer: true, shards: [1] });
@@ -58,6 +70,7 @@ describe('checks for directly changed components', () => {
     expect(() => checksFor('pull_request', ['src/surprise/new.ts'])).toThrow('src/surprise/new.ts');
     expect(() => checksFor('pull_request', ['new-config.json'])).toThrow('new-config.json');
     expect(() => checksFor('pull_request', ['src/workflow/new.ts'])).toThrow('src/workflow/new.ts');
+    expect(() => checksFor('pull_request', ['test/resources/jvm/another.jar'])).toThrow('test/resources/jvm/another.jar');
     expect(() => checksFor('pull_request', ['src/package/new.ts'])).toThrow('src/package/new.ts');
   });
 

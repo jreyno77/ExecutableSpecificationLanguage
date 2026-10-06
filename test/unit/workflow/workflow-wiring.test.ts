@@ -61,6 +61,22 @@ describe('workflow selection boundary', () => {
       expect(job(name!)).toContain('needs: scope');
       expect(job(name!)).toContain("if: needs.scope.outputs." + output + " == 'true'");
     }
+    for (const [name, title, variable] of [
+      ['java', 'Acquire the exact native test console', 'jar'],
+      ['kotlin', 'Supply the verified native JUnit test input', 'junit'],
+    ]) {
+      const acquisition = job(name!).split('\n      - name: ' + title + '\n')[1]?.split('\n      - ')[0] ?? '';
+      const copy = "Copy-Item -LiteralPath 'test/resources/jvm/junit-platform-console-standalone-6.1.3.jar' -Destination $" + variable;
+      const checksum = "if ((Get-FileHash -LiteralPath $" + variable + " -Algorithm SHA256).Hash.ToLowerInvariant() -ne "
+        + "'e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec') { throw ";
+      const exported = '"EXPEC_TEST_JUNIT_CONSOLE=$' + variable + '" >> $env:GITHUB_ENV';
+      expect(acquisition).toContain(copy);
+      expect(acquisition).toContain(checksum);
+      expect(acquisition).toContain(exported);
+      expect(acquisition.indexOf(copy)).toBeLessThan(acquisition.indexOf(checksum));
+      expect(acquisition.indexOf(checksum)).toBeLessThan(acquisition.indexOf(exported));
+      expect(acquisition).not.toContain('Invoke-WebRequest');
+    }
     expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/unit/project/kotlin/**');
     expect(readFileSync(join(root, 'vitest.core.config.ts'), 'utf8')).toContain('test/acceptance/project/kotlin/**');
     expect(readFileSync(join(root, 'vitest.kotlin.config.ts'), 'utf8')).toContain('test/unit/project/kotlin/kotlin-*.test.ts');

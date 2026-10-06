@@ -34,7 +34,10 @@ function componentFor(path: string): string {
 
 export function checksFor(event: string, paths: readonly string[], ref = '') {
   const full = event !== 'pull_request' || Boolean(ref);
-  const owners = new Set(full ? components : paths.map(componentFor));
+  const owners = new Set(full ? components : paths.flatMap(path =>
+    path === 'test/resources/jvm/junit-platform-console-standalone-6.1.3.jar'
+      || path === 'test/resources/jvm/JUNIT-NOTICE.txt'
+      ? ['project/java', 'project/kotlin'] : [componentFor(path)]));
   const consumers = ['java', 'kotlin', 'python'].filter(target => owners.has('project/' + target));
   return {
     consumers, prepareConsumer: consumers.length > 0 && !owners.has('package'),
