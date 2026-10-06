@@ -184,7 +184,9 @@ export class PackageDriver {
   private async installInto(directory: string, artifact: string): Promise<void> {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'expec-package-consumer', private: true, type: 'module' }));
-    await npm(directory, ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock', artifact]);
+    await npm(directory, ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock', `${packageName}@file:${artifact}`]);
+    const installed = JSON.parse(await readFile(join(directory, 'node_modules', packageName, 'package.json'), 'utf8'));
+    if (installed.name !== packageName) throw new Error(`Expected installed package ${packageName}, received ${installed.name}`);
   }
   async check(text: string): Promise<void> {
     const source = join(this.consumer, 'source.expec');
