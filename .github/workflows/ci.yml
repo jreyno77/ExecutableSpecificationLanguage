@@ -202,14 +202,25 @@ jobs:
           if-no-files-found: error
 
   kotlin:
-    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of 4', matrix.shard) }}
+    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of {1}', matrix.shard, matrix.total) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4, package]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 4 }
+          - { os: ubuntu-latest, shard: 2, total: 4 }
+          - { os: ubuntu-latest, shard: 3, total: 4 }
+          - { os: ubuntu-latest, shard: 4, total: 4 }
+          - { os: ubuntu-latest, shard: package, total: 4 }
+          - { os: windows-latest, shard: 1, total: 6 }
+          - { os: windows-latest, shard: 2, total: 6 }
+          - { os: windows-latest, shard: 3, total: 6 }
+          - { os: windows-latest, shard: 4, total: 6 }
+          - { os: windows-latest, shard: 5, total: 6 }
+          - { os: windows-latest, shard: 6, total: 6 }
+          - { os: windows-latest, shard: package, total: 6 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,14 +253,14 @@ jobs:
         run: npm run build
       - name: Run every selected native unit and acceptance test
         if: matrix.shard != 'package'
-        run: npm run test:kotlin -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:kotlin -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Verify the installed Kotlin consumer
         if: matrix.shard == 'package'
         run: npm run test:kotlin-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-4', matrix.shard) }}
+          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-{1}', matrix.shard, matrix.total) }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
