@@ -26,12 +26,28 @@ async function initialized(): Promise<{ root: string; manifest: string; configur
 function requirePackage(configuration: Configuration, version = '26.0'): Configuration {
   return { ...configuration, packages: [...configuration.packages, { alias: 'packaging', name: 'pypi:packaging', version, phases: ['runtime'] }] };
 }
+let cleanupId = 0;
+async function observeCleanup<T>(phase: string, path: string, operation: () => Promise<T>): Promise<T> {
+  if (process.env.EXPEC_CLEANUP_TIMINGS !== '1') return operation();
+  const id = ++cleanupId, start = performance.now();
+  const trace = (status: string, error?: unknown): void => {
+    try {
+      const failure = error as NodeJS.ErrnoException | undefined;
+      console.info('[fixture-cleanup]', JSON.stringify({ id, phase, path, pid: process.pid,
+        at: new Date().toISOString(), status, elapsedMs: performance.now() - start,
+        code: failure?.code, syscall: failure?.syscall, errorPath: failure?.path }));
+    } catch { /* Observation must not replace the filesystem result. */ }
+  };
+  trace('started');
+  try { const value = await operation(); trace('fulfilled'); return value; }
+  catch (error) { trace('rejected', error); throw error; }
+}
 afterEach(async () => {
   vi.restoreAllMocks();
-  const parent = await fs.realpath(tmpdir());
+  const directory = tmpdir(), parent = await observeCleanup('realpath', directory, () => fs.realpath(directory));
   for (const path of temporary.splice(0)) {
     if (dirname(path) !== parent || !path.slice(parent.length + 1).startsWith('expec-python-acquisition-')) throw Error('Unexpected cleanup root.');
-    await fs.rm(path, { recursive: true, force: true });
+    await observeCleanup('rm', path, () => fs.rm(path, { recursive: true, force: true }));
   }
 });
 describe('explicit Python dependency acquisition', { timeout: 180_000 }, () => {

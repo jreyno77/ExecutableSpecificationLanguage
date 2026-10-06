@@ -79,6 +79,7 @@ describe('workflow selection boundary', () => {
     expect(ordinary).toContain("if: matrix.shard != 'cli'");
     expect(ordinary).toContain('--exclude=test/acceptance/project/python/python-cli-test.test.ts');
     expect(ordinary).toContain('--shard=${{ matrix.shard }}/5');
+    expect(ordinary).toContain("EXPEC_CLEANUP_TIMINGS: '1'");
     expect(ordinary).toContain('--reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
     const cli = pythonStep('Run the Python CLI acceptance tests');
     expect(cli).toContain("if: matrix.shard == 'cli'");
