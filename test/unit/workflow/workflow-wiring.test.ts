@@ -105,6 +105,32 @@ describe('workflow selection boundary', () => {
     expect(preparation).not.toContain('vitest');
     expect(preparation).toContain('npm run build');
     expect(job('installed-package')).toContain("if: matrix.os == 'ubuntu-latest' && matrix.shard == 1");
+    const installed = job('installed-package');
+    const installedStep = (name: string) => installed
+      .split('\n      - name: ' + name + '\n')[1]?.split('\n      - ')[0] ?? '';
+    const consumers = installedStep('Verify installed package consumers');
+    expect(consumers).toContain("if: steps.candidate.outputs.pr == ''");
+    expect(consumers).toContain('npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
+    for (const [setting, value] of [
+      ['npm_config_logs_dir', '${{ runner.temp }}/expec-package-npm-logs'],
+      ['npm_config_logs_max', "'100'"],
+      ['npm_config_timing', "'true'"],
+    ]) {
+      expect(consumers).toContain(setting + ': ' + value);
+      expect(workflow.match(new RegExp(setting + ':', 'g'))).toHaveLength(1);
+    }
+    const npmEvidence = installedStep('Retain npm installation evidence');
+    expect(npmEvidence).toContain('if: failure()');
+    expect(npmEvidence).toContain('uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f');
+    expect(npmEvidence).toContain('name: npm-installed-${{ matrix.os }}-${{ matrix.shard }}');
+    expect(npmEvidence).toContain('path: ${{ runner.temp }}/expec-package-npm-logs');
+    expect(npmEvidence).toContain('include-hidden-files: true');
+    expect(npmEvidence).toContain('if-no-files-found: warn');
+    const report = installed.split('\n      - ').find(step => step.includes('name: installed-${{ matrix.os }}-${{ matrix.shard }}')) ?? '';
+    expect(report).toContain('if: always()');
+    expect(report).toContain('path: .local-docs/test-results.json');
+    expect(report).toContain('include-hidden-files: true');
+    expect(report).toContain('if-no-files-found: error');
     const stage = job('installed-package').split('run: &stage-consumer |')[1]?.split('\n      - uses:')[0] ?? '';
     expect(stage).toContain('if ($env:EXPEC_TEST_PACKAGE)');
     expect(stage).toContain('Copy-Item -LiteralPath $env:EXPEC_TEST_PACKAGE -Destination $stage');

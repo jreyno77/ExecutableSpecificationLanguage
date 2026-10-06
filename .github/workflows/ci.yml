@@ -248,7 +248,19 @@ jobs:
           overwrite: true
       - name: Verify installed package consumers
         if: steps.candidate.outputs.pr == ''
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-installed-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
