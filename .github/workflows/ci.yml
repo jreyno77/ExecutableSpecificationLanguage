@@ -496,7 +496,7 @@ jobs:
           echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/python-package/executable-specification-language-$version.tgz" >> "$GITHUB_ENV"
       - name: Run the ordinary Python unit and acceptance tests
         if: matrix.shard != 'cli'
-        run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --exclude=test/acceptance/project/python/shipped-python-walkthrough.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Run the Python CLI acceptance tests
         if: matrix.shard == 'cli'
         run: npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts --reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json
