@@ -1,0 +1,79 @@
+name: Main build incidents
+
+on:
+  workflow_run:
+    workflows: [Build and test]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Managed main-build incident issue number
+        type: string
+        required: true
+      failed_attempt:
+        description: Highest recorded failed attempt explicitly covered by this review
+        type: string
+        required: true
+      fix_sha:
+        description: Distinct code fix commit reviewed for this incident
+        type: string
+        required: true
+      recovery_run:
+        description: Successful full main build containing the fix
+        type: string
+        required: true
+      rationale:
+        description: Reviewed cause and how this code change fixes it
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: main-build-incidents
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  record:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require trusted main dispatch
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0 / Node 24
+        with:
+          script: |
+            if (context.eventName === 'workflow_dispatch' && context.ref !== 'refs/heads/main')
+              throw new Error('Incident resolution must be dispatched from main.');
+      - name: Check out the trusted recorder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Record failure or reviewed recovery
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0 / Node 24
+        env:
+          INCIDENT_ISSUE: ${{ inputs.issue }}
+          FAILED_ATTEMPT: ${{ inputs.failed_attempt }}
+          FIX_SHA: ${{ inputs.fix_sha }}
+          RECOVERY_RUN: ${{ inputs.recovery_run }}
+          RATIONALE: ${{ inputs.rationale }}
+        with:
+          script: |
+            const { recordMainFailure, resolveMainFailure } = await import(
+              require('node:url').pathToFileURL(process.env.GITHUB_WORKSPACE + '/.github/ci/main-build-incidents.ts').href);
+            const repository = context.repo.owner + '/' + context.repo.repo;
+            if (context.eventName === 'workflow_dispatch') {
+              await resolveMainFailure(github, {
+                repository, issueNumber: Number(process.env.INCIDENT_ISSUE), failedAttempt: Number(process.env.FAILED_ATTEMPT),
+                fixSha: process.env.FIX_SHA, recoveryRunId: Number(process.env.RECOVERY_RUN),
+                rationale: process.env.RATIONALE, actor: context.actor
+              });
+            } else {
+              await recordMainFailure(github, { repository, workflowRun: context.payload.workflow_run });
+            }
