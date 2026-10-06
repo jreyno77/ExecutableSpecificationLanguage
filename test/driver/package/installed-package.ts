@@ -113,8 +113,8 @@ interface CountReport {
 export class PackageDriver {
   static get packedArtifact(): string { return PackageDriver.artifact; }
   get root(): string { return this.consumer; }
-  private static directory: string;
-  private static artifact: string;
+  private static directory: string | undefined;
+  private static artifact = '';
   private directory?: string;
   private consumer!: string;
   result!: ProcessResult;
@@ -125,13 +125,24 @@ export class PackageDriver {
   private countInput: Record<string, unknown> = {};
   private native: NativePackageDriver | undefined;
 
-  static async prepare(): Promise<void> {
+  static async prepare(archive = process.env.EXPEC_TEST_PACKAGE): Promise<void> {
+    await this.finish();
+    if (archive !== undefined) {
+      if (!isAbsolute(archive)) throw new Error('Supplied package archive must be an absolute path: ' + archive);
+      if (!(await stat(archive)).isFile()) throw new Error('Supplied package archive must be a regular file: ' + archive);
+      this.artifact = archive;
+      return;
+    }
     const version = await npm(checkout, ['--version']);
     if (version.stdout.trim() !== '11.20.0') throw new Error(`Expected npm 11.20.0, received ${version.stdout}`);
     this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }
-  static async finish(): Promise<void> { if (this.directory) await cleanup(this.directory); }
+  static async finish(): Promise<void> {
+    if (this.directory) await cleanup(this.directory);
+    this.directory = undefined;
+    this.artifact = '';
+  }
 
   async install(options: { withoutFile?: string; withoutDependency?: string } = {}): Promise<void> {
     this.directory = await mkdtemp(join(tmpdir(), 'expec-package-'));
