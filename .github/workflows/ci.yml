@@ -8,22 +8,75 @@ on:
     inputs:
       ref:
         type: string
-        required: false
-        default: ''
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Select component checks
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.select.outputs.core }}
+      java: ${{ steps.select.outputs.java }}
+      kotlin: ${{ steps.select.outputs.kotlin }}
+      python: ${{ steps.select.outputs.python }}
+      package: ${{ steps.select.outputs.package }}
+      pilot: ${{ steps.select.outputs.pilot }}
+      workflow: ${{ steps.select.outputs.workflow }}
+      shards: ${{ steps.select.outputs.shards }}
+      total: ${{ steps.select.outputs.total }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - id: select
+        env:
+          CHECK_REF: ${{ inputs.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/ci/select-tests.ts
+  workflow:
+    name: Workflow policy / ${{ matrix.os }}
+    needs: scope
+    if: needs.scope.outputs.workflow == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install the locked dependencies
+        run: |
+          npm install --global npm@11.20.0 --ignore-scripts
+          npm ci
+      - name: Check workflow behavior
+        run: npx vitest run --config vitest.ci.config.ts
   check:
-    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of 5
+    needs: scope
+    if: needs.scope.outputs.core != '[]'
+    name: Node 24 / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ needs.scope.outputs.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4, 5]
+        shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,7 +101,7 @@ jobs:
       - name: Check all source and test types
         run: npm run typecheck
       - name: Build and test the shard
-        run: npm test -- --config vitest.core.config.ts --shard=${{ matrix.shard }}/5 --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.core.config.ts ${{ join(fromJSON(needs.scope.outputs.core), ' ') }} --shard=${{ matrix.shard }}/${{ needs.scope.outputs.total }} --maxWorkers=2 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -57,6 +110,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   project-pilot:
+    needs: scope
+    if: needs.scope.outputs.pilot == 'true'
     name: Project pilot / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -99,6 +154,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   installed-package:
+    needs: scope
+    if: needs.scope.outputs.package == 'true'
     name: Installed package / ${{ matrix.os }} / ${{ matrix.shard }} of ${{ matrix.total }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -127,7 +184,50 @@ jobs:
         run: npm install --global npm@11.20.0 --ignore-scripts
       - name: Install the locked dependencies
         run: npm ci
+      - name: Identify a merged main package
+        id: candidate
+        if: github.event_name == 'push' && matrix.os == 'ubuntu-latest'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+              ...context.repo, commit_sha: context.sha, per_page: 100,
+            });
+            const matching = pulls.filter(pr => pr.merged_at && pr.merge_commit_sha === context.sha && pr.base.ref === 'main');
+            if (matching.length > 1) throw new Error('Multiple merged pull requests match the commit.');
+            if (!matching.length) return;
+            const pr = matching[0].number;
+            const base = JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version.split('-')[0];
+            core.setOutput('pr', pr);
+            for (const [name, value] of Object.entries({ PR_NUMBER: pr, PACKAGE_VERSION: base + '-pr.' + pr,
+              MERGE_SHA: context.sha, BUILD_RUN: context.runId, BUILD_ATTEMPT: Number(process.env.GITHUB_RUN_ATTEMPT) })) core.exportVariable(name, value);
+      - name: Build and retain the release candidate
+        if: steps.candidate.outputs.pr != ''
+        shell: bash
+        run: |
+          npm version "$PACKAGE_VERSION" --no-git-tag-version --ignore-scripts
+          npm run build
+          mkdir -p "$RUNNER_TEMP/package"
+          npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
+          node .github/ci/package-delivery.ts record "$RUNNER_TEMP/package"
+          echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/package/executable-specification-language-$PACKAGE_VERSION.tgz" >> "$GITHUB_ENV"
+      - name: Verify retained release package
+        if: steps.candidate.outputs.pr != ''
+        run: npm exec -- vitest run --config vitest.package.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Verify the tested bytes are unchanged
+        if: steps.candidate.outputs.pr != ''
+        shell: bash
+        run: node .github/ci/package-delivery.ts verify "$RUNNER_TEMP/package"
+      - name: Upload the tested package
+        if: steps.candidate.outputs.pr != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: tested-package
+          path: ${{ runner.temp }}/package/
+          if-no-files-found: error
+          overwrite: true
       - name: Verify installed package consumers
+        if: steps.candidate.outputs.pr == ''
         run: npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
@@ -137,6 +237,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   java:
+    needs: scope
+    if: needs.scope.outputs.java == 'true'
     name: Java 21 ${{ matrix.suite }} / ${{ matrix.os }}${{ matrix.suite == 'acceptance' && format(' / {0} of {1}', matrix.shard, matrix.total) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -202,14 +304,27 @@ jobs:
           if-no-files-found: error
 
   kotlin:
-    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of 4', matrix.shard) }}
+    needs: scope
+    if: needs.scope.outputs.kotlin == 'true'
+    name: Kotlin native / ${{ matrix.os }} / ${{ matrix.shard == 'package' && 'installed package' || format('shard {0} of {1}', matrix.shard, matrix.total) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4, package]
+        include:
+          - { os: ubuntu-latest, shard: 1, total: 4 }
+          - { os: ubuntu-latest, shard: 2, total: 4 }
+          - { os: ubuntu-latest, shard: 3, total: 4 }
+          - { os: ubuntu-latest, shard: 4, total: 4 }
+          - { os: ubuntu-latest, shard: package, total: 4 }
+          - { os: windows-latest, shard: 1, total: 6 }
+          - { os: windows-latest, shard: 2, total: 6 }
+          - { os: windows-latest, shard: 3, total: 6 }
+          - { os: windows-latest, shard: 4, total: 6 }
+          - { os: windows-latest, shard: 5, total: 6 }
+          - { os: windows-latest, shard: 6, total: 6 }
+          - { os: windows-latest, shard: package, total: 6 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,19 +357,21 @@ jobs:
         run: npm run build
       - name: Run every selected native unit and acceptance test
         if: matrix.shard != 'package'
-        run: npm run test:kotlin -- --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm run test:kotlin -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Verify the installed Kotlin consumer
         if: matrix.shard == 'package'
         run: npm run test:kotlin-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-4', matrix.shard) }}
+          name: kotlin-${{ matrix.os }}-${{ matrix.shard == 'package' && 'package' || format('{0}-of-{1}', matrix.shard, matrix.total) }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
 
   python:
+    needs: scope
+    if: needs.scope.outputs.python == 'true'
     name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -305,6 +422,13 @@ jobs:
         run: npm ci
       - name: Build native and public package resources
         run: npm run build
+      - name: Supply the built archive to the installed Python consumer
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/python-package"
+          npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/python-package"
+          version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/python-package/executable-specification-language-$version.tgz" >> "$GITHUB_ENV"
       - name: Run every selected Python unit and acceptance test
         run: npm test -- --config vitest.python.config.ts --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

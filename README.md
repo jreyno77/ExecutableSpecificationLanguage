@@ -794,7 +794,7 @@ npm run test:package
 npm run dev
 ```
 
-`check` generates the AST/parser services, checks types, runs unit and acceptance tests, and builds. `dev` generates once and starts Vitest watch. After editing `src/langium/Expec.langium`, run `npm run grammar:generate`; generated files are ignored. Tests use `test/acceptance`, `test/dsl`, `test/driver`, `test/unit`, and fixtures in `test/resources`.
+`check` generates the AST/parser services, checks types, runs unit and acceptance tests, and builds. `dev` generates once and starts Vitest watch. After editing `src/language/langium/Expec.langium`, run `npm run grammar:generate`; generated files are ignored. Tests use `test/acceptance`, `test/dsl`, `test/driver`, `test/unit`, and fixtures in `test/resources`.
 
 `test:kotlin` runs the native Kotlin slice; `test:kotlin-package` builds, packs and exercises its installed consumers. Supply `EXPEC_TEST_JAVA_HOME` as an ordinary JDK21 directory and `EXPEC_TEST_JUNIT_CONSOLE` as the verified JUnit6.1.3 standalone test fixture. Windows/Linux CI provisions both explicitly. The production CLI instead uses the project’s acquired Console/reporting dependencies.
 
