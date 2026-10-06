@@ -2,11 +2,11 @@ node_modules/
 dist/
 coverage/
 .vitest/
-src/langium/generated/
+src/language/langium/generated/
 .local-docs/
 /AGENTS.md
 *.tsbuildinfo
 *.log
-src/java/
-src/java-native/.gradle/
-src/java-native/build/
+src/project/java/resources/
+src/project/java/native/.gradle/
+src/project/java/native/build/
