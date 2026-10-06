@@ -2,7 +2,7 @@ import { afterAll, beforeAll, it } from 'vitest';
 import { InstalledPython } from '../../../dsl/project/python/python-installed-package.js';
 
 beforeAll(() => InstalledPython.prepare(), 240_000);
-afterAll(() => InstalledPython.finish());
+afterAll(() => InstalledPython.finish(), 30_000);
 
 it('runs the packed Python command against a real Dune basket and detects two copies instead of one', async () => {
   const consumer = await InstalledPython.installPackedProduct();

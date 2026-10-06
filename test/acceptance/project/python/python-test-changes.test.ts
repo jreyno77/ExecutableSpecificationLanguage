@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonTestChanges } from '../../../dsl/project/python/python-test-changes.js';
 
-afterEach(() => PythonTestChanges.dispose());
+afterEach(() => PythonTestChanges.dispose(), 30_000);
 describe('preserving the shape of Python acceptance tests', { timeout: 240_000 }, () => {
   it('keeps an unowned neighbor when retiring the last generated scenario', async () => {
     const p = await PythonTestChanges.fromSource('examples { example "one": 1 => 1 }');

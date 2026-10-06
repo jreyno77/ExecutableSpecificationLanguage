@@ -5,7 +5,7 @@ import { PythonQueryDriver } from '../../../driver/project/python/python-query.j
 export class PythonNativeLookup {
   private constructor(private readonly driver: PythonCallableDriver) {}
   static async fromFiles(files: Record<string, string>): Promise<PythonNativeLookup> {
-    const driver = new PythonCallableDriver(files); onTestFinished(() => driver.dispose());
+    const driver = new PythonCallableDriver(files); onTestFinished(() => driver.dispose(), 30_000);
     await driver.initialize(); return new PythonNativeLookup(driver);
   }
   inspect() { return this.driver.inspect(); }
@@ -43,7 +43,7 @@ export class PythonNativeLookup {
 export class PythonCallableQueries {
   private constructor(private readonly driver: PythonQueryDriver) {}
   static async connect(): Promise<PythonCallableQueries> {
-    const driver = new PythonQueryDriver(); onTestFinished(() => driver.dispose());
+    const driver = new PythonQueryDriver(); onTestFinished(() => driver.dispose(), 30_000);
     await driver.initialize(); await driver.installFixture(); return new PythonCallableQueries(driver);
   }
   file(path: string, text: string) { return this.driver.file(path, text); }

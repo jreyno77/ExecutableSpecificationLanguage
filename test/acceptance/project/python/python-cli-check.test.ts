@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-cli.js';
 
 beforeAll(() => PythonDelivery.prepare(), 90_000);
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 describe('the Python CLI checks actual native availability', { timeout: 360_000 }, () => {
   it('accepts the actual two-part Python version through the ordinary checked build entry', async () => {
     const p = await PythonDelivery.initialized();

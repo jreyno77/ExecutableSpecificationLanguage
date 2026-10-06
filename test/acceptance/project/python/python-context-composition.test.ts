@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonInspection } from '../../../dsl/project/python/python-project.js';
 
-afterEach(() => PythonInspection.dispose());
+afterEach(() => PythonInspection.dispose(), 30_000);
 describe('Python composes with another project context', { timeout: 120_000 }, () => {
   it('retains upstream evidence without treating it as Python source', async () => {
     const p = await PythonInspection.connect(); await p.upstreamFile();

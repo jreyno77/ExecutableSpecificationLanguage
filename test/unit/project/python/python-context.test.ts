@@ -13,7 +13,7 @@ function project(files: Record<string, string> = {}, excluded: string[] = []): P
 }
 const config = { format: 1, python: process.execPath, uv: process.execPath, sourceRoots: { main: ['src'], test: ['test'] }, environment: '.venv' };
 const roots: string[] = [], digest = (text: string): string => createHash('sha256').update(text).digest('hex');
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 async function nativeProject() {
   const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-python-context-')); roots.push(root);
   const sites = join(root, '.venv', 'sites'), standard = join(root, 'stdlib');

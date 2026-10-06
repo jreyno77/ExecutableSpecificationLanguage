@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runPython } from '../../../../src/project/python/python-process.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 async function changed(before: string, current: string, driver = false): Promise<boolean> {
   const python = process.env.EXPEC_TEST_PYTHON, sites = process.env.EXPEC_TEST_PYTHON_SITE;
   if (!python || !sites) throw Error('Provide the explicit Python interpreter and pinned LibCST.');

@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonRuntimeValues } from '../../../dsl/project/python/python-runtime-values.js';
 
-afterEach(() => PythonRuntimeValues.dispose());
+afterEach(() => PythonRuntimeValues.dispose(), 30_000);
 describe('Python acceptance observes actual returned values and independent application state', { timeout: 240_000 }, () => {
   it('returns the actual operation result rather than reconstructing it from basket quantity', async () => {
     const p = await PythonRuntimeValues.create();

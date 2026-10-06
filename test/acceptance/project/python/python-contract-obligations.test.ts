@@ -2,7 +2,7 @@ import { afterEach, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-output.js';
 import { PythonEvolution } from '../../../dsl/project/python/python-preservation.js';
 
-afterEach(async () => { await PythonDelivery.dispose(); await PythonEvolution.dispose(); });
+afterEach(async () => { await PythonDelivery.dispose(); await PythonEvolution.dispose(); }, 30_000);
 describe('Python preserves authored callable obligations', { timeout: 240_000 }, () => {
   it('retains authored conditions and prose in plans, writes and documentation', async () => {
     const p = await PythonDelivery.create();

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-cli.js';
 
 beforeAll(() => PythonDelivery.prepare(), 90_000);
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 describe('explicit Python installation through the CLI', { timeout: 240_000 }, () => {
   it('installs exact native requirements and retains a compatible lock offline', async () => {
     const p = await PythonDelivery.initialized();

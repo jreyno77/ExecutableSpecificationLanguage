@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonDelivery } from '../../../dsl/project/python/python-output.js';
 
-afterEach(() => PythonDelivery.dispose());
+afterEach(() => PythonDelivery.dispose(), 30_000);
 describe('Python names belong to their native lexical scope', { timeout: 30_000 }, () => {
   it('refuses a capability that replaces declared construction', async () => {
     const p = await PythonDelivery.create();

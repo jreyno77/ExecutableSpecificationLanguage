@@ -7,7 +7,7 @@ import { PythonInputs, type PythonEnvironment } from '../../../../src/project/py
 import type { PythonProfile } from '../../../../src/project/python/python-profile.js';
 
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); }, 30_000);
 async function nativeFiles(): Promise<{ root: string; profile: PythonProfile; environment: PythonEnvironment; inputs: PythonInputs }> {
   const root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'expec-python-inputs-')); roots.push(root);
   for (const name of ['stdlib', 'sites', 'readonly']) await fs.mkdir(join(root, name));

@@ -3,7 +3,7 @@ import { PythonInstalledDriver } from '../../../driver/project/python/python-ins
 
 export class InstalledPython {
   private generated?: Record<string, string>;
-  private constructor(private readonly driver: PythonInstalledDriver) { onTestFinished(() => driver.dispose()); }
+  private constructor(private readonly driver: PythonInstalledDriver) { onTestFinished(() => driver.dispose(), 30_000); }
   static prepare = PythonInstalledDriver.prepare;
   static finish = PythonInstalledDriver.finish;
   static async installPackedProduct(): Promise<InstalledPython> {

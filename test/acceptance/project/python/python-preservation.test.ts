@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'vitest';
 import { PythonEvolution } from '../../../dsl/project/python/python-preservation.js';
 
-afterEach(() => PythonEvolution.dispose());
+afterEach(() => PythonEvolution.dispose(), 30_000);
 describe('Python contracts evolve around handwritten implementation', { timeout: 240_000 }, () => {
   it('keeps an implemented default unverified without claiming it is missing', async () => {
     const p = await PythonEvolution.create();
