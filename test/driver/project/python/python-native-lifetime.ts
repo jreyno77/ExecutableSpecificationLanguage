@@ -69,7 +69,7 @@ export class PythonNativeLifetimeDriver extends PythonPreservationDriver {
   async observeQuery(id: string, change = false, audit = false): Promise<void> {
     const original = childProcess.execFile, trace = this.process;
     const invoke = (...args: unknown[]) => {
-      const nativeArgs = args[1] as string[], at = Array.isArray(nativeArgs) ? nativeArgs.findIndex(value => /[/\\]python[/\\]inspect\.py$/.test(value)) : -1;
+      const nativeArgs = args[1] as string[], at = Array.isArray(nativeArgs) ? nativeArgs.findIndex(value => /[/\\]python[/\\]resources[/\\]inspect\.py$/.test(value)) : -1;
       if (at >= 0 && audit) {
         const bootstrap = 'import sys, pathlib, runpy\nmarker = pathlib.Path(' + JSON.stringify(this.nestedMarker) + ')\n'
           + 'def observe(event, args):\n    if event == "subprocess.Popen" and pathlib.Path(str(args[0])).name.lower().startswith("python"):\n        marker.write_text(str(args), encoding="utf-8")\n'
