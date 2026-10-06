@@ -23,7 +23,7 @@
   "packageManager": "npm@11.20.0",
   "scripts": {
     "grammar:generate": "langium generate",
-    "java:build": "node src/java-build.mjs",
+    "java:build": "node src/project/java/java-build.mjs",
     "build": "npm run grammar:generate && npm run java:build && tsc -p tsconfig.build.json && rolldown -c",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
