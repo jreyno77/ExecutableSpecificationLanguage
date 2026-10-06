@@ -164,8 +164,19 @@ jobs:
         run: npm run grammar:generate
       - name: Verify installed project journeys
         env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
           EXPEC_CLEANUP_TIMINGS: '1'
         run: npm test -- --config vitest.pilot.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-pilot-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -233,6 +244,10 @@ jobs:
           echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/package/executable-specification-language-$PACKAGE_VERSION.tgz" >> "$GITHUB_ENV"
       - name: Verify retained release package
         if: steps.candidate.outputs.pr != ''
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         run: npm exec -- vitest run --config vitest.package.config.ts --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Verify the tested bytes are unchanged
         if: steps.candidate.outputs.pr != ''
@@ -389,7 +404,19 @@ jobs:
         run: npm run test:java -- test/${{ matrix.suite }} ${{ matrix.suite == 'acceptance' && format('--shard={0}/{1}', matrix.shard, matrix.total) || '' }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Check the actual installed Java consumer
         if: matrix.suite == 'package'
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         run: npm run test:java-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Retain npm installation evidence
+        if: failure() && matrix.suite == 'package'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-java-${{ matrix.os }}-${{ matrix.suite }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -455,7 +482,19 @@ jobs:
         run: npm run test:kotlin -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Verify the installed Kotlin consumer
         if: matrix.shard == 'package'
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         run: npm run test:kotlin-package -- --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Retain npm installation evidence
+        if: failure() && matrix.shard == 'package'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-kotlin-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
@@ -528,7 +567,18 @@ jobs:
         if: matrix.shard != 'cli'
         env:
           EXPEC_CLEANUP_TIMINGS: '1'
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
         run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --exclude=test/acceptance/project/python/shipped-python-walkthrough.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Retain npm installation evidence
+        if: failure() && matrix.shard != 'cli'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-python-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
       - name: Run the Python CLI acceptance tests
         if: matrix.shard == 'cli'
         env:
