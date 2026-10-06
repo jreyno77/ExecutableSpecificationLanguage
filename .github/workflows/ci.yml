@@ -385,7 +385,7 @@ jobs:
           $jdk = node --input-type=module -e 'import { cpSync, realpathSync, mkdtempSync } from "node:fs"; import { join } from "node:path"; const target=mkdtempSync(join(realpathSync(process.env.RUNNER_TEMP),"expec-java-jdk-")); cpSync(realpathSync(process.env.JAVA_HOME),target,{recursive:true,dereference:true}); console.log(target);'
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare an ordinary native JDK fixture.' }
           $jar = Join-Path $env:RUNNER_TEMP 'junit-platform-console-standalone-6.1.3.jar'
-          Invoke-WebRequest 'https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar' -OutFile $jar
+          Copy-Item -LiteralPath 'test/resources/jvm/junit-platform-console-standalone-6.1.3.jar' -Destination $jar
           if ((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec') { throw 'JUnit console checksum mismatch.' }
           "EXPEC_TEST_JUNIT_CONSOLE=$jar" >> $env:GITHUB_ENV
           "JAVA_HOME=$jdk" >> $env:GITHUB_ENV
@@ -463,7 +463,7 @@ jobs:
         shell: pwsh
         run: |
           $junit = Join-Path $env:RUNNER_TEMP 'junit-platform-console-standalone-6.1.3.jar'
-          Invoke-WebRequest 'https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar' -OutFile $junit
+          Copy-Item -LiteralPath 'test/resources/jvm/junit-platform-console-standalone-6.1.3.jar' -Destination $junit
           if ((Get-FileHash -LiteralPath $junit -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec') { throw 'JUnit artifact checksum mismatch' }
           "EXPEC_TEST_JUNIT_CONSOLE=$junit" >> $env:GITHUB_ENV
       - name: Install the locked dependencies

@@ -9,7 +9,7 @@ export class CompilerPilot {
   private original?: CompilerPilotDriver;
   private constructor(private driver: CompilerPilotDriver) {}
   static async fromExamples(examples: string): Promise<CompilerPilot> {
-    const driver = new CompilerPilotDriver(); onTestFinished(() => driver.dispose());
+    const driver = new CompilerPilotDriver(); onTestFinished(() => driver.dispose(), 30_000);
     await driver.author(`opaque type CompilationInput
 opaque type Compilation
 concept Compiler {
@@ -94,7 +94,7 @@ ${examples}
     expect(this.driver.result.stdout).toContain('test/dsl/compiler.ts'); expect(this.driver.result.stdout).toContain('error TS');
   }
   async bootstrapFreshCopy(): Promise<void> {
-    this.original = this.driver; const fresh = new CompilerPilotDriver(); onTestFinished(() => fresh.dispose());
+    this.original = this.driver; const fresh = new CompilerPilotDriver(); onTestFinished(() => fresh.dispose(), 30_000);
     await fresh.restoreInputs(this.original.bootstrapInputs); this.driver = fresh;
     for (const [path, text] of Object.entries(this.original.bootstrapInputs)) expect(await fresh.text(fresh.bootstrapPath(path)), 'Trusted bootstrap input: ' + path).toBe(text);
     await fresh.cli(['install']); this.expectExit(0);
