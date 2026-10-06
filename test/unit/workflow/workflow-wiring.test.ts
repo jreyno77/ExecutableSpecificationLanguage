@@ -95,21 +95,44 @@ describe('workflow selection boundary', () => {
     const consumers = installedStep('Verify installed package consumers');
     expect(consumers).toContain("if: steps.candidate.outputs.pr == ''");
     expect(consumers).toContain('npm run test:package -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
+    const npmConsumers = [
+      ['installed-package', 'Verify installed package consumers'],
+      ['installed-package', 'Verify retained release package'],
+      ['java', 'Check the actual installed Java consumer'],
+      ['kotlin', 'Verify the installed Kotlin consumer'],
+      ['python', 'Run the ordinary Python unit and acceptance tests'],
+      ['project-pilot', 'Verify installed project journeys'],
+    ];
     for (const [setting, value] of [
       ['npm_config_logs_dir', '${{ runner.temp }}/expec-package-npm-logs'],
       ['npm_config_logs_max', "'100'"],
       ['npm_config_timing', "'true'"],
     ]) {
-      expect(consumers).toContain(setting + ': ' + value);
-      expect(workflow.match(new RegExp(setting + ':', 'g'))).toHaveLength(1);
+      for (const [owner, name] of npmConsumers) {
+        const consumer = job(owner!).split('\n      - name: ' + name + '\n')[1]?.split('\n      - ')[0] ?? '';
+        expect(consumer, owner + '/' + name).toContain(setting + ': ' + value);
+      }
+      expect(workflow.match(new RegExp(setting + ':', 'g'))).toHaveLength(npmConsumers.length);
     }
-    const npmEvidence = installedStep('Retain npm installation evidence');
-    expect(npmEvidence).toContain('if: failure()');
-    expect(npmEvidence).toContain('uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f');
-    expect(npmEvidence).toContain('name: npm-installed-${{ matrix.os }}-${{ matrix.shard }}');
-    expect(npmEvidence).toContain('path: ${{ runner.temp }}/expec-package-npm-logs');
-    expect(npmEvidence).toContain('include-hidden-files: true');
-    expect(npmEvidence).toContain('if-no-files-found: warn');
+    for (const [owner, name, condition] of [
+      ['installed-package', 'npm-installed-${{ matrix.os }}-${{ matrix.shard }}', 'failure()'],
+      ['java', 'npm-java-${{ matrix.os }}-${{ matrix.suite }}', "failure() && matrix.suite == 'package'"],
+      ['kotlin', 'npm-kotlin-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard == 'package'"],
+      ['python', 'npm-python-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard != 'cli'"],
+      ['project-pilot', 'npm-pilot-${{ matrix.os }}-${{ matrix.shard }}', 'failure()'],
+    ]) {
+      const npmEvidence = job(owner!).split('\n      - name: Retain npm installation evidence\n')[1]?.split('\n      - ')[0] ?? '';
+      expect(npmEvidence).toContain('if: ' + condition + '\n');
+      expect(npmEvidence).toContain('uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f');
+      expect(npmEvidence).toContain('name: ' + name);
+      expect(npmEvidence).toContain('path: ${{ runner.temp }}/expec-package-npm-logs');
+      expect(npmEvidence).toContain('include-hidden-files: true');
+      expect(npmEvidence).toContain('if-no-files-found: warn');
+      const report = job(owner!).split('\n      - ').find(step => step.includes('path: .local-docs/test-results.json')) ?? '';
+      expect(report).toContain('if: always()');
+      expect(report).toContain('include-hidden-files: true');
+      expect(report).toContain('if-no-files-found: error');
+    }
     const report = installed.split('\n      - ').find(step => step.includes('name: installed-${{ matrix.os }}-${{ matrix.shard }}')) ?? '';
     expect(report).toContain('if: always()');
     expect(report).toContain('path: .local-docs/test-results.json');
