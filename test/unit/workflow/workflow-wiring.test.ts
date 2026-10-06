@@ -72,7 +72,20 @@ describe('workflow selection boundary', () => {
     expect(job('python')).toContain('EXPEC_TEST_PACKAGE=');
     expect(job('python')).toContain('npm run release -- --ignore-scripts --pack-destination');
     expect(job('python').match(/npm run build/g)).toHaveLength(1);
-    expect(job('python')).toContain('shard: [1, 2, 3, 4]');
+    const pythonStep = (name: string) => job('python')
+      .split('\n      - name: ' + name + '\n')[1]?.split('\n      - ')[0] ?? '';
+    expect(job('python')).toContain('shard: [1, 2, 3, 4, 5, cli]');
+    const ordinary = pythonStep('Run the ordinary Python unit and acceptance tests');
+    expect(ordinary).toContain("if: matrix.shard != 'cli'");
+    expect(ordinary).toContain('--exclude=test/acceptance/project/python/python-cli-test.test.ts');
+    expect(ordinary).toContain('--shard=${{ matrix.shard }}/5');
+    expect(ordinary).toContain('--reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
+    const cli = pythonStep('Run the Python CLI acceptance tests');
+    expect(cli).toContain("if: matrix.shard == 'cli'");
+    expect(cli).toContain('npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts');
+    expect(cli).toContain('--reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json');
+    expect(cli).not.toMatch(/--shard|--exclude/);
+    expect(readFileSync(join(root, 'vitest.python.config.ts'), 'utf8')).toContain('maxWorkers: 1');
     expect(job('python')).toContain('timeout-minutes: 90');
     expect(job('workflow')).toContain('--config vitest.ci.config.ts');
     expect(job('workflow')).not.toMatch(/setup-java|npm run build|grammar:generate|java:build/);
