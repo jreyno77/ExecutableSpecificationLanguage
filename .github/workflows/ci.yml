@@ -444,7 +444,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, cli]
         include:
           - os: ubuntu-latest
             python: '3.12.14'
@@ -494,8 +494,12 @@ jobs:
           npm run release -- --ignore-scripts --pack-destination "$RUNNER_TEMP/python-package"
           version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
           echo "EXPEC_TEST_PACKAGE=$RUNNER_TEMP/python-package/executable-specification-language-$version.tgz" >> "$GITHUB_ENV"
-      - name: Run every selected Python unit and acceptance test
-        run: npm test -- --config vitest.python.config.ts --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Run the ordinary Python unit and acceptance tests
+        if: matrix.shard != 'cli'
+        run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+      - name: Run the Python CLI acceptance tests
+        if: matrix.shard == 'cli'
+        run: npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts --reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
