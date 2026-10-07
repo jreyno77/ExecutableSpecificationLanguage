@@ -71,11 +71,17 @@ export class BuildContext implements ProjectContext {
       }
       inputs.set(key, input);
     }
-    for (const input of inputs.values()) try {
-      const path = fileURLToPath(input.uri), before = await fs.lstat(path, { bigint: true }), bytes = await fs.readFile(path), after = await fs.lstat(path, { bigint: true });
-      if (!before.isFile() || before.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino || before.mtimeNs !== after.mtimeNs
-        || hash(bytes) !== input.version) throw Error('Source bytes or route changed.');
-    } catch (error) { problems.push(cliProblem('stale-build-input', input.uri + ': ' + String(error), this.checked.manifest)); }
+    const observations = [...inputs.values()];
+    for (let index = 0; index < observations.length; index += 4) {
+      const failures = await Promise.all(observations.slice(index, index + 4).map(async input => {
+        try {
+          const path = fileURLToPath(input.uri), before = await fs.lstat(path, { bigint: true }), bytes = await fs.readFile(path), after = await fs.lstat(path, { bigint: true });
+          if (!before.isFile() || before.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino || before.mtimeNs !== after.mtimeNs
+            || hash(bytes) !== input.version) throw Error('Source bytes or route changed.');
+        } catch (error) { return cliProblem('stale-build-input', input.uri + ': ' + String(error), this.checked.manifest); }
+      }));
+      problems.push(...failures.filter((problem): problem is Diagnostic => problem !== undefined));
+    }
     const fresh = await this.project.readSnapshot();
     if (!isDeepStrictEqual(snapshot, fresh)) problems.push(cliProblem('stale-project', 'The project changed while collecting build evidence.', this.checked.manifest));
     return { ...snapshot, readOnlyFiles: [...native.values()].sort((a, b) => a.path.localeCompare(b.path)),
