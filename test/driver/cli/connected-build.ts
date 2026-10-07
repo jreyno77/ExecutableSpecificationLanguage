@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TestRunner } from 'vitest';
 
 import ts from 'typescript';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,9 @@ import { requireCompiledCheckout } from '../compiled-checkout.js';
 const execute = promisify(execFile);
 const checkout = fileURLToPath(new URL('../../../', import.meta.url));
 export class ConnectedBuildDriver {
+  private readonly commands = new Set<OwnedCommand>();
+  private disposed = false;
+  constructor(private readonly owner = TestRunner.getCurrentTest()?.context.signal) {}
   directory!: string;
   private parent!: string;
   manifest: Record<string, unknown> = { formatVersion: 1, version: '1.0.0', project: { root: '../project' },
@@ -63,6 +67,8 @@ export class ConnectedBuildDriver {
     await walk(this.directory); return found;
   }
   async run(args: string[], cwd = '', answers?: string[], deadline = 30_000): Promise<void> {
+    this.owner?.throwIfAborted();
+    if (this.disposed) throw Error('The connected CLI fixture was disposed.');
     const prelude = [];
     if (answers) prelude.push('Object.defineProperty(process.stdin, "isTTY", { value: true }); Object.defineProperty(process.stderr, "isTTY", { value: true });');
     if (this.manifestChange) prelude.push(      'import { promises as fs } from "node:fs"; const open = fs.open; let changed = false; fs.open = async (...args) => {' +
@@ -84,33 +90,12 @@ export class ConnectedBuildDriver {
       'const close = handle.close.bind(handle); handle.close = async () => { await close(); if (!outputChanged) { outputChanged = true; await outputFs.writeFile(outputMutation.path, outputMutation.text); } }; } return handle; };');
     const command = [...(prelude.length ? ['--import', 'data:text/javascript,' + encodeURIComponent(prelude.join('\n'))] : []),
       this.launcher ?? join(checkout, 'dist/cli-entry.js'), ...args];
-    if (answers) {
-      this.result = await new Promise((resolveResult, reject) => {
-        const child = spawn(process.execPath, command, { cwd: this.path(cwd), env: { ...process.env, NODE_PATH: '' }, stdio: 'pipe' });
-        let stdout = '', stderr = ''; const queue = [...answers];
-        const timer = setTimeout(() => { child.kill(); reject(Error('Interactive CLI exceeded its bounded fixture deadline.')); }, 30_000);
-        child.stdout.on('data', chunk => { stdout += String(chunk); });
-        child.stderr.on('data', chunk => {
-          const value = String(chunk); stderr += value;
-          if (value.endsWith('? ') && queue.length) child.stdin.write(queue.shift()! + '\n');
-        });
-        child.on('error', reject);
-        child.on('close', code => { clearTimeout(timer); resolveResult({ code: code ?? 130, stdout, stderr }); });
-      });
-      this.report = undefined; return;
-    }
+    const running = new OwnedCommand(command, this.path(cwd), this.owner, answers, answers ? 30_000 : deadline);
+    this.commands.add(running);
     try {
-      const result = await execute(process.execPath, command,
-        { cwd: this.path(cwd), timeout: deadline, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, NODE_PATH: '' } });
-      this.result = { ...result, code: 0 };
-    } catch (error) {
-      const result = error as { code: number | string; stdout: string; stderr: string; killed?: boolean; signal?: string };
-      if (typeof result.code !== 'number') throw new Error('Connected CLI process failed: ' + JSON.stringify({
-        deadline, code: result.code, killed: result.killed, signal: result.signal, stdout: result.stdout, stderr: result.stderr,
-      }), { cause: error });
-      this.result = { code: result.code, stdout: result.stdout, stderr: result.stderr };
-    }
-    this.report = args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
+      this.result = await running.finished;
+      this.report = !answers && args.includes('--json') ? JSON.parse(this.result.stdout) : undefined;
+    } finally { if (running.safeToRemove) this.commands.delete(running); }
   }
   async registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; malformedPlan?: boolean; readFailure?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> {
     this.launcher = this.path('launcher/connected-output.mjs');
@@ -164,9 +149,89 @@ export class ConnectedBuildDriver {
     await this.write('project/.npmrc', 'registry=' + this.registry.registry + '\ncache=' + this.path('cache').replaceAll('\\', '/') + '\nfetch-retries=0\n');
   }
   async dispose(): Promise<void> {
+    this.disposed = true;
+    const stopped = await Promise.allSettled([...this.commands].map(command => command.stop(Error('The connected CLI fixture was disposed.'))));
+    const failed = stopped.find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
     await this.registry?.dispose();
     if (dirname(this.directory) !== this.parent || !(await realpath(this.directory)).startsWith(this.parent)
       || !this.directory.split(/[\\/]/).at(-1)!.startsWith('expec-cli-')) throw Error('Unexpected fixture cleanup.');
     await rm(this.directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
+/** A fixture owns its ordinary process tree until termination and output closure are confirmed. */
+class OwnedCommand {
+  readonly finished: Promise<{ code: number; stdout: string; stderr: string }>;
+  private readonly child: ReturnType<typeof spawn>;
+  private readonly closed: Promise<void>;
+  private stopping?: Promise<void>;
+  private didClose = false;
+  private stopped = false;
+  private failure?: unknown;
+  private reject!: (error: unknown) => Error;
+  get safeToRemove(): boolean { return this.didClose && (!this.stopping || this.stopped); }
+  constructor(command: string[], cwd: string, owner: AbortSignal | undefined, answers: string[] | undefined, deadline: number) {
+    this.child = spawn(process.execPath, command, { cwd, env: { ...process.env, NODE_PATH: '' },
+      stdio: 'pipe', windowsHide: true, detached: process.platform !== 'win32' });
+    let close!: () => void;
+    this.closed = new Promise(resolveClosed => { close = resolveClosed; });
+    this.finished = new Promise((resolveResult, reject) => {
+      let stdout = '', stderr = '', stdoutBytes = 0, stderrBytes = 0;
+      this.reject = error => {
+        const detail = error instanceof Error ? error : Error(String(error));
+        const failure = Object.assign(Error(detail.message + '\nCaptured CLI output: ' + JSON.stringify({ stdout, stderr }), { cause: error }),
+          { code: (detail as NodeJS.ErrnoException).code, stdout, stderr });
+        reject(failure); return failure;
+      };
+      const queue = [...answers ?? []];
+      const cancel = () => { void this.stop(owner?.reason).catch(() => {}); };
+      const timer = setTimeout(() => { void this.stop(Error(`Connected CLI exceeded its ${deadline}ms fixture deadline.`)).catch(() => {}); }, deadline);
+      this.child.stdout!.setEncoding('utf8'); this.child.stderr!.setEncoding('utf8');
+      this.child.stdout!.on('data', (text: string) => {
+        stdoutBytes += Buffer.byteLength(text);
+        if (stdoutBytes > 4 * 1024 * 1024) { void this.stop(Error('Connected CLI stdout exceeded four MiB.')).catch(() => {}); return; }
+        stdout += text;
+      });
+      this.child.stderr!.on('data', (text: string) => {
+        stderrBytes += Buffer.byteLength(text);
+        if (stderrBytes > 4 * 1024 * 1024) { void this.stop(Error('Connected CLI stderr exceeded four MiB.')).catch(() => {}); return; }
+        stderr += text;
+        if (answers && text.endsWith('? ') && queue.length) this.child.stdin!.write(queue.shift()! + '\n');
+      });
+      this.child.stdin!.on('error', error => { this.failure ??= error; });
+      this.child.once('error', error => { this.failure ??= error; });
+      this.child.once('close', (code, signal) => {
+        this.didClose = true; close(); clearTimeout(timer); owner?.removeEventListener('abort', cancel);
+        const finish = () => this.failure ? this.reject(this.failure) : typeof code === 'number'
+          ? resolveResult({ code, stdout, stderr }) : this.reject(Error('Connected CLI terminated with signal ' + signal + '.'));
+        if (this.stopping) void this.stopping.then(finish, this.reject); else finish();
+      });
+      owner?.addEventListener('abort', cancel, { once: true });
+      if (owner?.aborted) cancel();
+    });
+  }
+  stop(reason: unknown = Error('Connected CLI cancelled.')): Promise<void> {
+    if (this.stopping) return this.stopping;
+    if (this.didClose) return Promise.resolve();
+    this.failure ??= reason;
+    let timer: NodeJS.Timeout;
+    const termination = async () => {
+      const pid = this.child.pid;
+      if (pid !== undefined) {
+        if (this.child.exitCode !== null || this.child.signalCode !== null) throw Error('CLI exited before its owned tree could be stopped.');
+        if (process.platform === 'win32') await execute(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
+          ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 5_000 });
+        else { try { process.kill(-pid, 'SIGKILL'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; } }
+      }
+      await this.closed;
+    };
+    this.stopping = Promise.race([termination(), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Error('Owned CLI closure was not confirmed within five seconds.')), 5_000);
+    })]).then(() => { this.stopped = true; }, error => {
+      const failure = Error('Owned CLI termination or closure was not confirmed; fixture retained.', { cause: error });
+      throw this.reject(failure);
+    }).finally(() => clearTimeout(timer));
+    return this.stopping;
   }
 }
