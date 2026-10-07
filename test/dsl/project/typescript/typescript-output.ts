@@ -22,6 +22,14 @@ export class TypeScriptExamples {
   }
   availablePackage(alias: string, phase: 'build' | 'runtime' | 'test'): void { this.driver.packages.push({ alias, phases: [phase] }); }
   workspace(files: Record<string, string>): Promise<void> { return this.driver.workspace(files); }
+  changeWorkspace(files: Record<string, string>, retained: (string | readonly [string, string])[] = []): Promise<void> { return this.driver.workspace(files, true, retained); }
+  mapClass(name: string, file: string, nativeName = name): void {
+    const result = this.driver.identity.withArtifacts(this.driver.current, [{ specId: this.driver.subject(name),
+      locator: { outputId: 'typescript', format: 'typescript-symbol-1', value: { file, declaration: [{ kind: 'class', name: nativeName }] } } }]);
+    expect(result.problems).toEqual([]); this.driver.current = result.value!;
+  }
+  declarationIdentity(name: string): string { return this.driver.subject(name); }
+  expectDeclarationIdentity(name: string, id: string): void { expect(this.driver.subject(name)).toBe(id); }
   create(options: Record<string, unknown>): Promise<void> { return this.driver.create(options); }
   open(options: Record<string, unknown>, context?: OutputContext): void { this.driver.open(options, context); }
   async openWithInvalidContext(context: unknown): Promise<void> { this.driver.open({ directory: 'src' }, context as OutputContext); }

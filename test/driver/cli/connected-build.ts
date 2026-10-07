@@ -130,7 +130,8 @@ export class ConnectedBuildDriver {
   async nativeAcceptance(): Promise<void> {
     await copyInstalledPackages(this.path('project'), { vitest: '5.0.2', '@types/node': '24.13.6' });
     await this.write('project/package.json', '{"type":"module","private":true}');
-    await this.write('project/tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, types: ['node'], skipLibCheck: true }, include: ['**/*.ts'] }));
+    await this.write('project/tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2022', lib: ['ES2022'], module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, types: ['node'], skipLibCheck: true }, include: ['**/*.ts'] }));
+    await this.write('project/tsconfig.source.json', JSON.stringify({ extends: './tsconfig.json', compilerOptions: { types: [] }, include: ['src/**/*.ts'] }));
   }
   async serveCompiler(destination: string): Promise<void> {
     this.registry = new NativePackageDriver(); await this.registry.initialize();

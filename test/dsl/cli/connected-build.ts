@@ -28,6 +28,12 @@ export class ConnectedBuild {
     expect(calls.filter(call => call.expression.getText() === name).map(call => call.arguments.map(arg => arg.getText()))).toEqual([args.map(String)]);
     expect(calls.filter(call => call.expression.getText() === 'expectData').map(call => call.arguments[1]?.getText())).toEqual([String(expected)]);
   }
+  async expectGeneratedImport(directory: string, from: string): Promise<void> {
+    const files = await this.driver.filesUnder('project/' + directory);
+    const imports = files.flatMap(file => [...ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true).statements]
+      .filter(ts.isImportDeclaration).map(item => (item.moduleSpecifier as ts.StringLiteral).text));
+    expect(imports).toContain(from);
+  }
   async expectLayerDirectories(names: string[]): Promise<void> { for (const name of names) expect((await stat(this.driver.path('project/' + name))).isDirectory()).toBe(true); }
   servePinnedCompiler(destination: string): Promise<void> { return this.driver.serveCompiler(destination); }
   expectNativeBuild(destination: string): Promise<void> { return this.driver.nativeBuild(destination); }
