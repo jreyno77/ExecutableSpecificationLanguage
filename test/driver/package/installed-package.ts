@@ -155,6 +155,11 @@ export class PackageDriver {
     this.directory = await mkdtemp(join(await realpath(tmpdir()), 'expec-package-'));
     this.artifact = await pack(checkout, this.directory, true);
   }
+  static async prepareInstalled(archive = process.env.EXPEC_TEST_PACKAGE): Promise<void> {
+    await this.prepare(archive);
+    this.seed = new PackageDriver().createSeed(this.artifact);
+    await this.seed;
+  }
   static async finish(): Promise<void> {
     await this.seed?.catch(() => undefined);
     if (this.seedDirectory) await cleanup(this.seedDirectory);

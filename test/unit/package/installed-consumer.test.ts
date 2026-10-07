@@ -143,3 +143,48 @@ describe('installed package consumers have private files', () => {
     expect(await readFile(supplied, 'utf8')).toBe('external caller-owned bytes');
   });
 });
+describe('installed product readiness is an explicit fixture prerequisite', () => {
+  it('finishes installing the shared product before examples begin', async () => {
+    let release!: () => void, started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const installationStarted = new Promise<void>(resolve => { started = resolve; });
+    const install = vi.spyOn(installer, 'installInto').mockImplementation(async (directory, artifact) => {
+      await installedTree(directory, artifact); started(); await held;
+    });
+    const supplied = await archive('original product'); let prepared = false;
+    const preparing = PackageDriver.prepareInstalled(supplied).then(() => { prepared = true; });
+    try {
+      expect(await Promise.race([installationStarted.then(() => 'installing'), preparing.then(() => 'prepared')])).toBe('installing');
+      expect(prepared).toBe(false);
+      expect(await readFile(join(product(install.mock.calls[0]![0]), 'note.txt'), 'utf8')).toBe('original product');
+    } finally { release(); await preparing; }
+
+    const first = consumer(), second = consumer();
+    await first.install(); await second.install();
+    await writeFile(join(product(first.root), 'note.txt'), 'changed by the first consumer');
+    expect(await readFile(join(product(second.root), 'note.txt'), 'utf8')).toBe('original product');
+    expect(await readFile(join(product(install.mock.calls[0]![0]), 'note.txt'), 'utf8')).toBe('original product');
+    expect((await lstat(join(product(first.root), 'note.txt'))).ino).not.toBe((await lstat(join(product(second.root), 'note.txt'))).ino);
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(await readFile(supplied, 'utf8')).toBe('original product');
+  });
+
+  it('retains a failed prepared installation until its fixture is finished', async () => {
+    const failure = new Error('The prepared installation failed.');
+    const install = vi.spyOn(installer, 'installInto').mockImplementation(async (directory, artifact) => {
+      await installedTree(directory, artifact); throw failure;
+    });
+    const supplied = await archive('caller-owned archive');
+    await expect(PackageDriver.prepareInstalled(supplied)).rejects.toBe(failure);
+    const first = consumer();
+    await expect(first.install()).rejects.toBe(failure);
+    expect(install).toHaveBeenCalledTimes(1);
+    const seed = dirname(install.mock.calls[0]![0]);
+    expect((await lstat(seed)).isDirectory()).toBe(true);
+
+    await PackageDriver.finish();
+
+    await expect(lstat(seed)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(supplied, 'utf8')).toBe('caller-owned archive');
+  });
+});

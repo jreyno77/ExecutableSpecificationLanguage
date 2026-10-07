@@ -7,6 +7,7 @@ export class PackageExamples {
   private readonly driver = new PackageDriver();
   constructor() { onTestFinished(() => this.driver.dispose()); }
   static prepare(): Promise<void> { return PackageDriver.prepare(); }
+  static prepareInstalled(): Promise<void> { return PackageDriver.prepareInstalled(); }
   static finish(): Promise<void> { return PackageDriver.finish(); }
   installCurrentPackage(): Promise<void> { return this.driver.install(); }
   checkFromInstalledCommand(): Promise<void> { return this.driver.checkFromInstalledCommand(); }
