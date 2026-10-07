@@ -31,7 +31,7 @@ describe('workflow selection boundary', () => {
       }));
       expect(values).toEqual({ core: ['test/unit/language', 'test/acceptance/language',
         'test/unit/model', 'test/acceptance/model'], java: false, kotlin: false, python: false, package: false,
-        pilot: false, workflow: false, prepareConsumer: false, shards: [1], total: 1 });
+        pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1], total: 1 });
     } finally { rmSync(repository, { recursive: true, force: true }); }
   });
 
@@ -50,7 +50,7 @@ describe('workflow selection boundary', () => {
     expect(job('scope')).toContain('fetch-depth: 0');
     expect(job('scope')).toContain('BASE_SHA: ${{ github.event.pull_request.base.sha }}');
     expect(job('scope')).toContain('HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
-    for (const output of ['core', 'java', 'kotlin', 'python', 'package', 'pilot', 'prepareConsumer', 'workflow', 'shards', 'total'])
+    for (const output of ['core', 'java', 'kotlin', 'python', 'package', 'pilot', 'workflow', 'consumers', 'prepareConsumer', 'shards', 'total'])
       expect(job('scope')).toContain(output + ': ${{ steps.select.outputs.' + output + ' }}');
     expect(job('check')).toContain("if: needs.scope.outputs.core != '[]'");
     expect(job('check')).toContain("join(fromJSON(needs.scope.outputs.core), ' ')");
@@ -118,6 +118,8 @@ describe('workflow selection boundary', () => {
       ['kotlin', 'Verify the installed Kotlin consumer'],
       ['python', 'Run the ordinary Python unit and acceptance tests'],
       ['project-pilot', 'Verify installed project journeys'],
+      ['clean-consumer', 'Install only delivered product and explicit consumer tools'],
+      ['native-consumer', 'Install only delivered product and explicit consumer tools'],
     ];
     for (const [setting, value] of [
       ['npm_config_logs_dir', '${{ runner.temp }}/expec-package-npm-logs'],
@@ -136,6 +138,8 @@ describe('workflow selection boundary', () => {
       ['kotlin', 'npm-kotlin-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard == 'package'"],
       ['python', 'npm-python-${{ matrix.os }}-${{ matrix.shard }}', "failure() && matrix.shard != 'cli'"],
       ['project-pilot', 'npm-pilot-${{ matrix.os }}-${{ matrix.shard }}', 'failure()'],
+      ['clean-consumer', 'npm-clean-${{ matrix.os }}', 'failure()'],
+      ['native-consumer', 'npm-native-${{ matrix.target }}-${{ matrix.os }}', 'failure()'],
     ]) {
       const npmEvidence = job(owner!).split('\n      - name: Retain npm installation evidence\n')[1]?.split('\n      - ')[0] ?? '';
       expect(npmEvidence).toContain('if: ' + condition + '\n');
@@ -144,10 +148,12 @@ describe('workflow selection boundary', () => {
       expect(npmEvidence).toContain('path: ${{ runner.temp }}/expec-package-npm-logs');
       expect(npmEvidence).toContain('include-hidden-files: true');
       expect(npmEvidence).toContain('if-no-files-found: warn');
-      const report = job(owner!).split('\n      - ').find(step => step.includes('path: .local-docs/test-results.json')) ?? '';
-      expect(report).toContain('if: always()');
-      expect(report).toContain('include-hidden-files: true');
-      expect(report).toContain('if-no-files-found: error');
+      if (owner !== 'clean-consumer' && owner !== 'native-consumer') {
+        const report = job(owner!).split('\n      - ').find(step => step.includes('path: .local-docs/test-results.json')) ?? '';
+        expect(report).toContain('if: always()');
+        expect(report).toContain('include-hidden-files: true');
+        expect(report).toContain('if-no-files-found: error');
+      }
     }
     const report = installed.split('\n      - ').find(step => step.includes('name: installed-${{ matrix.os }}-${{ matrix.shard }}')) ?? '';
     expect(report).toContain('if: always()');
@@ -178,6 +184,7 @@ describe('workflow selection boundary', () => {
     expect(ordinary).toContain("if: matrix.shard != 'cli'");
     expect(ordinary).toContain('--exclude=test/acceptance/project/python/python-cli-test.test.ts');
     expect(ordinary).toContain('--shard=${{ matrix.shard }}/5');
+    expect(ordinary).toContain("EXPEC_CLEANUP_TIMINGS: '1'");
     expect(ordinary).toContain('--reporter=default --reporter=json --outputFile=.local-docs/test-results.json');
     const cli = pythonStep('Run the Python CLI acceptance tests');
     expect(cli).toContain("if: matrix.shard == 'cli'");

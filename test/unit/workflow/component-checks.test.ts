@@ -5,13 +5,13 @@ describe('checks for directly changed components', () => {
   it('checks both native targets for their shared JUnit input', () => {
     expect(checksFor('pull_request', ['test/resources/jvm/junit-platform-console-standalone-6.1.3.jar']))
       .toEqual({ core: [], java: true, kotlin: true, python: false, package: false,
-        pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
   });
 
   it('checks both native targets for their shared JUnit notice', () => {
     expect(checksFor('pull_request', ['test/resources/jvm/JUNIT-NOTICE.txt']))
       .toEqual({ core: [], java: true, kotlin: true, python: false, package: false,
-        pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
   });
 
   it('prepares an archive for a pilot-only change without selecting package tests', () => {
@@ -33,9 +33,9 @@ describe('checks for directly changed components', () => {
       .toMatchObject({ pilot: true, package: true, prepareConsumer: false });
   });
 
-  it('does not prepare an unused pilot archive for a Python-only change', () => {
+  it('prepares the Python walkthrough without selecting pilots or package tests', () => {
     expect(checksFor('pull_request', ['src/project/python/python-context.ts']))
-      .toMatchObject({ python: true, pilot: false, package: false, prepareConsumer: false });
+      .toMatchObject({ python: true, pilot: false, package: false, consumers: ['python'], prepareConsumer: true });
   });
 
   it('does not prepare an unused pilot archive for a workflow-only change', () => {
@@ -50,27 +50,27 @@ describe('checks for directly changed components', () => {
 
   it('checks Java alone for a Java change', () => {
     expect(checksFor('pull_request', ['src/project/java/java-inputs.ts']))
-      .toEqual({ core: [], java: true, kotlin: false, python: false, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+      .toEqual({ core: [], java: true, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: ['java'], prepareConsumer: true, shards: [1] });
   });
 
   it('checks Kotlin alone for Kotlin source and every Kotlin test layer', () => {
     for (const path of ['src/project/kotlin/kotlin-context.ts', 'src/project/kotlin/native/build.gradle.kts',
       ...['unit', 'acceptance', 'dsl', 'driver'].map(layer => 'test/' + layer + '/project/kotlin/example.ts')]) {
       expect(checksFor('pull_request', [path]))
-        .toEqual({ core: [], java: false, kotlin: true, python: false, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        .toEqual({ core: [], java: false, kotlin: true, python: false, package: false, pilot: false, workflow: false, consumers: ['kotlin'], prepareConsumer: true, shards: [1] });
     }
   });
 
   it('keeps installed Kotlin fixtures with the Kotlin owner', () => {
     for (const fixture of ['kotlin-consumer.mjs', 'kotlin-cli-consumer.mjs', 'checkout-guard.mjs'])
       expect(checksFor('pull_request', ['test/resources/package-consumer/' + fixture]))
-        .toEqual({ core: [], java: false, kotlin: true, python: false, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        .toEqual({ core: [], java: false, kotlin: true, python: false, package: false, pilot: false, workflow: false, consumers: ['kotlin'], prepareConsumer: true, shards: [1] });
   });
 
   it('checks compiler folders without consumers', () => {
     expect(checksFor('pull_request', ['src/compiler/compiler.ts']))
       .toEqual({ core: ['test/unit/compiler', 'test/acceptance/compiler'],
-        java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1] });
   });
 
   it('combines only directly changed owners, once', () => {
@@ -94,7 +94,7 @@ describe('checks for directly changed components', () => {
   });
 
   it('does not build the product for documentation or an empty diff', () => {
-    const none = { core: [], java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] };
+    const none = { core: [], java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1] };
     expect(checksFor('pull_request', ['README.md', '.agents/skills/example/SKILL.md', '.github/pull_request_template.md']))
       .toEqual(none);
     expect(checksFor('pull_request', [])).toEqual(none);
@@ -135,7 +135,7 @@ describe('checks for directly changed components', () => {
       '.node-version', '.npmrc', 'tsconfig.json', 'tsconfig.build.json', 'rolldown.config.mjs']) {
       expect(checksFor('pull_request', [path]))
         .toEqual({ core: ['test/unit/package', 'test/acceptance/package'],
-          java: false, kotlin: false, python: false, package: true, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+          java: false, kotlin: false, python: false, package: true, pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1] });
     }
   });
 
@@ -143,7 +143,7 @@ describe('checks for directly changed components', () => {
     for (const path of ['.github/workflows/ci.yml', '.github/ci/select-tests.ts', 'vitest.core.config.ts',
       'test/global-setup.ts', 'test/driver/compiled-checkout.ts', 'test/driver/unreadable-file.ts', '.gitignore', '.gitattributes']) {
       expect(checksFor('pull_request', [path]))
-        .toEqual({ core: [], java: false, kotlin: false, python: false, package: false, pilot: false, workflow: true, prepareConsumer: false, shards: [1] });
+        .toEqual({ core: [], java: false, kotlin: false, python: false, package: false, pilot: false, workflow: true, consumers: [], prepareConsumer: false, shards: [1] });
     }
   });
 
@@ -201,7 +201,7 @@ describe('checks for the Python owner', () => {
       'test/dsl/project/python/python-project.ts', 'test/driver/project/python/python-project.ts',
       'test/resources/python/basket.py']) {
       expect(checksFor('pull_request', [path]))
-        .toEqual({ core: [], java: false, kotlin: false, python: true, package: false, pilot: false, workflow: false, prepareConsumer: false, shards: [1] });
+        .toEqual({ core: [], java: false, kotlin: false, python: true, package: false, pilot: false, workflow: false, consumers: ['python'], prepareConsumer: true, shards: [1] });
     }
   });
   it('keeps the installed Python fixtures with Python', () => {

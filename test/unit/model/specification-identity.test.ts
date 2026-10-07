@@ -158,6 +158,28 @@ describe('saved identity baselines are strict data, not trusted compiler output'
 });
 
 describe('identity queries and decisions preserve exact ownership', () => {
+  it('gives separate copyable IDs and prior locations for same-named declarations needing decisions', () => {
+    let next = 0;
+    const identity = new SpecificationIdentity(() => `subject "${++next}"\ncopy`);
+    const before = 'class Store { public save\ncapability save() returns Nothing }\nclass Archive { public save\ncapability save() returns Nothing }';
+    const prior = accepted(identity.associate(compile(before))), saved = JSON.stringify(prior.baseline);
+    const ids = prior.baseline.elements.filter(record => record.address.name === 'save').map(record => record.id);
+
+    const report = identity.associate(compile(before.replaceAll('save', 'saveGame')), prior.baseline);
+
+    rejected(report, 'identity-correspondence'); expect(report.problems).toHaveLength(2);
+    expect(report.problems.map(problem => problem.at)).toEqual([2, 4].map(line => expect.objectContaining({
+      kind: 'source', range: expect.objectContaining({ sourceId: 'game.expec', start: expect.objectContaining({ line, column: 1 }) }),
+    })));
+    expect(report.problems.map(problem => {
+      expect(problem.message).toContain('previous declaration');
+      const id = /\(id: ("(?:\\.|[^"\\])*")\)/.exec(problem.message)?.[1];
+      expect(id, 'The diagnostic must include one JSON string usable in an identity decision.').toBeDefined();
+      return JSON.parse(id!);
+    })).toEqual(ids);
+    expect(JSON.stringify(prior.baseline)).toBe(saved);
+  });
+
   it('rejects foreign and ineligible node handles without inventing persistent identities', () => {
     const identity = identities(), spec = compile('opaque type Token'), current = accepted(identity.associate(spec));
     const foreign = compile('opaque type Token'), builtin = [...spec.inspection.query('builtin-type')][0]!;

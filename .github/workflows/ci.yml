@@ -18,13 +18,14 @@ jobs:
     name: Select component checks
     runs-on: ubuntu-latest
     outputs:
+      consumers: ${{ steps.select.outputs.consumers }}
+      prepareConsumer: ${{ steps.select.outputs.prepareConsumer }}
       core: ${{ steps.select.outputs.core }}
       java: ${{ steps.select.outputs.java }}
       kotlin: ${{ steps.select.outputs.kotlin }}
       python: ${{ steps.select.outputs.python }}
       package: ${{ steps.select.outputs.package }}
       pilot: ${{ steps.select.outputs.pilot }}
-      prepareConsumer: ${{ steps.select.outputs.prepareConsumer }}
       workflow: ${{ steps.select.outputs.workflow }}
       shards: ${{ steps.select.outputs.shards }}
       total: ${{ steps.select.outputs.total }}
@@ -282,12 +283,16 @@ jobs:
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
-      - name: Stage the artifact for public consumers
+      - name: Stage the artifact and bounded public consumer
         if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
         shell: pwsh
         run: &stage-consumer |
           $stage = Join-Path $env:RUNNER_TEMP 'expec-consumer'
-          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          node node_modules/typescript/bin/tsc -p tsconfig.consumer.json --outDir $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer compilation failed.' }
+          $resources = Join-Path $stage 'test/resources/clean-package'
+          New-Item -ItemType Directory -Path $resources -Force | Out-Null
+          Copy-Item -LiteralPath test/resources/clean-package/consumer.ts -Destination $resources
           if ($env:EXPEC_TEST_PACKAGE) {
             Copy-Item -LiteralPath $env:EXPEC_TEST_PACKAGE -Destination $stage
             $manifest = tar -xzOf $env:EXPEC_TEST_PACKAGE package/package.json | ConvertFrom-Json
@@ -300,6 +305,7 @@ jobs:
           }
           $digest = (Get-FileHash -LiteralPath (Join-Path $stage $packed.filename) -Algorithm SHA256).Hash.ToLowerInvariant()
           @{ artifact=$packed.filename; version=$packed.version; sha256=$digest; commit=(git rev-parse HEAD) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'delivery.json')
+          '{"private":true,"type":"module"}' | Set-Content -LiteralPath (Join-Path $stage 'package.json')
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
         with:
@@ -308,7 +314,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   prepare-consumer:
-    name: Prepare selected pilot consumers
+    name: Prepare selected public consumers
     needs: scope
     if: needs.scope.outputs.prepareConsumer == 'true'
     runs-on: ubuntu-latest
@@ -331,7 +337,7 @@ jobs:
           npm install --global npm@11.20.0 --ignore-scripts
           npm ci
           npm run build
-      - name: Stage the artifact for public consumers
+      - name: Stage the artifact and bounded public consumer
         shell: pwsh
         run: *stage-consumer
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -500,7 +506,7 @@ jobs:
   python:
     needs: scope
     if: needs.scope.outputs.python == 'true'
-    name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}
+    name: Python 3.12 / ${{ matrix.os }} / ${{ matrix.shard }}${{ matrix.shard == 'cli' && format('-{0}', matrix.group) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -508,10 +514,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         shard: [1, 2, 3, 4, 5, cli]
+        group: [remaining]
         include:
           - os: ubuntu-latest
             python: '3.12.14'
           - os: windows-latest
+            python: '3.12.10'
+          - os: ubuntu-latest
+            shard: cli
+            group: selected
+            python: '3.12.14'
+          - os: windows-latest
+            shard: cli
+            group: selected
             python: '3.12.10'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -560,10 +575,11 @@ jobs:
       - name: Run the ordinary Python unit and acceptance tests
         if: matrix.shard != 'cli'
         env:
+          EXPEC_CLEANUP_TIMINGS: '1'
           npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
           npm_config_logs_max: '100'
           npm_config_timing: 'true'
-        run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
+        run: npm test -- --config vitest.python.config.ts --exclude=test/acceptance/project/python/python-cli-test.test.ts --exclude=test/acceptance/project/python/shipped-python-walkthrough.test.ts --shard=${{ matrix.shard }}/5 --reporter=default --reporter=json --outputFile=.local-docs/test-results.json
       - name: Retain npm installation evidence
         if: failure() && matrix.shard != 'cli'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -576,11 +592,145 @@ jobs:
         if: matrix.shard == 'cli'
         env:
           EXPEC_PYTHON_PHASE_TIMINGS: '1'
+          EXPEC_PYTHON_CLI_GROUP: ${{ matrix.group }}
         run: npm test -- --config vitest.python.config.ts test/acceptance/project/python/python-cli-test.test.ts --reporter=verbose --reporter=json --outputFile=.local-docs/test-results.json
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
-          name: python-${{ matrix.os }}-${{ matrix.shard }}
+          name: python-${{ matrix.os }}-${{ matrix.shard }}${{ matrix.shard == 'cli' && format('-{0}', matrix.group) || '' }}
           path: .local-docs/test-results.json
           include-hidden-files: true
           if-no-files-found: error
+
+  clean-consumer:
+    name: No checkout consumer / ${{ matrix.os }}
+    needs: installed-package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: public-consumer
+          path: ${{ github.workspace }}
+      - name: Install only delivered product and explicit consumer tools
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
+        shell: pwsh
+        run: |
+          if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git)) { throw 'A development checkout is present.' }
+          $delivery = Get-Content -LiteralPath delivery.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -LiteralPath $delivery.artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $delivery.sha256) { throw 'Delivered package digest differs.' }
+          npm install --global npm@11.20.0 --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Package manager installation failed.' }
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./$($delivery.artifact)" vitest@5.0.2 '@types/node@24.13.6'
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
+      - name: Exercise delivered commands and public declarations
+        run: node node_modules/vitest/vitest.mjs run --config vitest.clean.config.js
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-clean-${{ matrix.os }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  native-consumer:
+    name: No checkout native walkthrough / ${{ matrix.target }} / ${{ matrix.os }}
+    needs: [scope, installed-package, prepare-consumer]
+    if: ${{ !cancelled() && needs.scope.outputs.consumers != '[]' && (needs.installed-package.result == 'success' || needs.prepare-consumer.result == 'success') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        target: ${{ fromJSON(needs.scope.outputs.consumers) }}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: public-consumer
+          path: ${{ github.workspace }}
+      - name: Install only delivered product and explicit consumer tools
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/expec-package-npm-logs
+          npm_config_logs_max: '100'
+          npm_config_timing: 'true'
+        shell: pwsh
+        run: |
+          if ((Test-Path -LiteralPath src) -or (Test-Path -LiteralPath .git) -or (Test-Path -LiteralPath .local-docs)) { throw 'A development checkout is present.' }
+          $delivery = Get-Content -LiteralPath delivery.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -LiteralPath $delivery.artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $delivery.sha256) { throw 'Delivered package digest differs.' }
+          npm install --global npm@11.20.0 --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Package manager installation failed.' }
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./$($delivery.artifact)" vitest@5.0.2 '@types/node@24.13.6'
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer installation failed.' }
+      - name: Supply the ordinary JDK prerequisite
+        if: matrix.target != 'python'
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Materialize an ordinary JDK and isolated Gradle home
+        if: matrix.target != 'python'
+        shell: pwsh
+        run: |
+          node --input-type=module -e 'import { appendFile, cp, mkdtemp, realpath } from "node:fs/promises"; import { join } from "node:path"; const temp=await realpath(process.env.RUNNER_TEMP); const home=await mkdtemp(join(temp,"expec-consumer-jdk-")); await cp(await realpath(process.env.JAVA_HOME),home,{recursive:true,dereference:true}); const cache=await mkdtemp(join(temp,"expec-consumer-gradle-")); await appendFile(process.env.GITHUB_ENV,"JAVA_HOME="+home+"\nEXPEC_TEST_JAVA_HOME="+home+"\nGRADLE_USER_HOME="+cache+"\n");'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the ordinary native JDK prerequisite.' }
+      - name: Supply the CPython prerequisite
+        if: matrix.target == 'python'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.os == 'windows-latest' && '3.12.10' || '3.12.14' }}
+      - name: Supply only the pinned uv executable
+        if: matrix.target == 'python'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'expec-consumer-python-tools'
+          python -m venv --copies $tools
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the ordinary uv tool environment.' }
+          $native = Join-Path $tools $(if ($IsWindows) { 'Scripts/python.exe' } else { 'bin/python' })
+          & $native -m pip install --only-binary=:all: --disable-pip-version-check uv==0.12.23
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned uv executable.' }
+          $interpreter = python -I -S -c 'import pathlib,sys; print(pathlib.Path(sys.executable).resolve())'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not locate the selected ordinary CPython executable.' }
+          $uv = Join-Path $tools $(if ($IsWindows) { 'Scripts/uv.exe' } else { 'bin/uv' })
+          if (-not (Test-Path -LiteralPath $uv -PathType Leaf)) { throw 'The pinned uv executable is absent.' }
+          "EXPEC_TEST_PYTHON=$interpreter" >> $env:GITHUB_ENV
+          "EXPEC_TEST_UV=$uv" >> $env:GITHUB_ENV
+          "UV_CACHE_DIR=$(Join-Path $env:RUNNER_TEMP 'expec-consumer-uv-cache')" >> $env:GITHUB_ENV
+      - name: Follow the installed README through a real failure and repair
+        env:
+          EXPEC_CONSUMER_TARGET: ${{ matrix.target }}
+        run: node node_modules/vitest/vitest.mjs run --config vitest.native-consumer.config.js --reporter=default --reporter=json --outputFile=native-walkthrough-results.json
+      - name: Retain actual walkthrough observations
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: native-walkthrough-${{ matrix.target }}-${{ matrix.os }}
+          path: |
+            native-walkthrough-results.json
+            delivery.json
+          if-no-files-found: warn
+      - name: Retain npm installation evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-native-${{ matrix.target }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/expec-package-npm-logs
+          include-hidden-files: true
+          if-no-files-found: warn

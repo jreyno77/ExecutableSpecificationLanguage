@@ -7,6 +7,8 @@ import type { Configuration } from '../project/connection/configuration.js';
 import type { ProjectContext, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { hash } from '../project/connection/project-files.js';
 import { TypeScriptContext } from '../project/typescript/typescript-context.js';
+import { TypeScriptCapture } from '../project/typescript/typescript-capture.js';
+import type { Diagnostic } from '../compiler/checking.js';
 import { nativeInputs } from '../project/connection/native-inputs.js';
 import { JavaContext } from '../project/java/java-context.js';
 import { KotlinContext } from '../project/kotlin/kotlin-context.js';
@@ -35,6 +37,17 @@ export class BuildContext implements ProjectContext {
   during(original: ProjectSnapshot): BuildContext {
     return new BuildContext(this.project, this.checked, this.selected, [...this.inputs, ...original.nativeInputs ?? []], { ...original, readOnlyFiles: [] });
   }
+  completionProblems(snapshot: ProjectSnapshot): Diagnostic[] {
+    const configurations = new Set(this.selected.filter(output => output.id === 'typescript' || output.id === 'acceptance')
+      .map(output => typeof output.options.configFile === 'string' ? output.options.configFile : undefined));
+    const problems: Diagnostic[] = [];
+    for (const configFile of configurations) {
+      const capture = new TypeScriptCapture(snapshot, 'stage-completion', configFile);
+      try { problems.push(...capture.editableImportProblems); } finally { capture.service.dispose(); }
+    }
+    return problems;
+  }
+
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = await this.project.readSnapshot(), problems = [...snapshot.problems], evidence = [...snapshot.nativeInputs ?? [], ...this.inputs];
     let complete = snapshot.complete;
@@ -58,11 +71,17 @@ export class BuildContext implements ProjectContext {
       }
       inputs.set(key, input);
     }
-    for (const input of inputs.values()) try {
-      const path = fileURLToPath(input.uri), before = await fs.lstat(path, { bigint: true }), bytes = await fs.readFile(path), after = await fs.lstat(path, { bigint: true });
-      if (!before.isFile() || before.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino || before.mtimeNs !== after.mtimeNs
-        || hash(bytes) !== input.version) throw Error('Source bytes or route changed.');
-    } catch (error) { problems.push(cliProblem('stale-build-input', input.uri + ': ' + String(error), this.checked.manifest)); }
+    const observations = [...inputs.values()];
+    for (let index = 0; index < observations.length; index += 4) {
+      const failures = await Promise.all(observations.slice(index, index + 4).map(async input => {
+        try {
+          const path = fileURLToPath(input.uri), before = await fs.lstat(path, { bigint: true }), bytes = await fs.readFile(path), after = await fs.lstat(path, { bigint: true });
+          if (!before.isFile() || before.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino || before.mtimeNs !== after.mtimeNs
+            || hash(bytes) !== input.version) throw Error('Source bytes or route changed.');
+        } catch (error) { return cliProblem('stale-build-input', input.uri + ': ' + String(error), this.checked.manifest); }
+      }));
+      problems.push(...failures.filter((problem): problem is Diagnostic => problem !== undefined));
+    }
     const fresh = await this.project.readSnapshot();
     if (!isDeepStrictEqual(snapshot, fresh)) problems.push(cliProblem('stale-project', 'The project changed while collecting build evidence.', this.checked.manifest));
     return { ...snapshot, readOnlyFiles: [...native.values()].sort((a, b) => a.path.localeCompare(b.path)),

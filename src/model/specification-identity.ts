@@ -97,8 +97,9 @@ export class SpecificationIdentity {
       }
     }
     const unmatched = [...old.values()].filter(record => !retired.has(record.id) && !assigned.has(record.id));
-    if (unmatched.length) return problem('Explicit correspondence or retirement is required for ' +
-      unmatched.map(record => record.address.name ?? record.address.kind).join(', '));
+    if (unmatched.length) return { problems: unmatched.map(record => ({ code: 'identity-correspondence',
+      message: `Explicit correspondence or retirement is required for ${record.address.name ?? record.address.kind} (id: ${JSON.stringify(record.id)}). The location refers to the previous declaration.`,
+      at: record.origin, related: [] })), deferred: [] };
     if (ids.size !== projection.elements.length) return problem('Current subjects have unresolved owner correspondence.');
     const used = new Set([...old.keys(), ...retired]);
     for (const element of projection.elements) if (fresh.has(element.item.id)) {

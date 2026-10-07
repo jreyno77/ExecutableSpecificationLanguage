@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PackageExamples } from '../../../dsl/package/installed-package.js';
 
-beforeAll(() => PackageExamples.prepare());
+beforeAll(() => PackageExamples.prepareInstalled());
 afterAll(() => PackageExamples.finish());
 
 describe('Installed Java package consumers', () => {

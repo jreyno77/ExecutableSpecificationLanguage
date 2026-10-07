@@ -30,6 +30,7 @@ export class TypeScriptCapture {
   readonly snapshot: ProjectSnapshot;
   readonly texts = new Map<string, string>();
   readonly problems: Diagnostic[];
+  readonly editableImportProblems = new Set<Diagnostic>();
   readonly service: ts.LanguageService;
   readonly program: ts.Program | undefined;
   readonly configurations = new Set<string>();
@@ -127,7 +128,7 @@ export class TypeScriptCapture {
       roots.push(...targets);
     }
     roots = [...new Set(roots)];
-    const unresolved: { literal: ts.StringLiteralLike; source: ts.SourceFile }[] = [];
+    const unresolved: { literal: ts.StringLiteralLike; source: ts.SourceFile; lookups: Set<string> }[] = [];
     const resolutions = new Map<ts.SourceFile, (string | undefined)[]>();
     this.service = ts.createLanguageService({ ...moduleHost, getCompilationSettings: () => options,
       getCurrentDirectory: () => root, getScriptFileNames: () => roots, getScriptVersion: () => 'capture',
@@ -140,10 +141,16 @@ export class TypeScriptCapture {
           && !posix.resolve(posix.dirname(containing), literal.text).startsWith(root + '/')) {
           this.problems.push(diagnostic('unsupported-native-input', `Native import ${literal.text} is outside the connected project.`, this.projectPath(containing)!, literal.getStart(source), literal.getWidth(source)));
         }
-        const found = ts.resolveModuleName(literal.text, containing, settings, moduleHost, undefined, redirected, ts.getModeForUsageLocation(source, literal, settings));
+        const lookups = new Set<string>();
+        const observed: ts.ModuleResolutionHost = { ...moduleHost,
+          fileExists: path => { lookups.add(path); return moduleHost.fileExists(path); },
+          directoryExists: path => { lookups.add(path); return moduleHost.directoryExists!(path); },
+          readFile: path => { lookups.add(path); return moduleHost.readFile(path); },
+        };
+        const found = ts.resolveModuleName(literal.text, containing, settings, observed, undefined, redirected, ts.getModeForUsageLocation(source, literal, settings));
         const path = found.resolvedModule?.resolvedFileName;
         if (inputs) { const paths = resolutions.get(source) ?? []; paths.push(path); resolutions.set(source, paths); }
-        if (inputs && !path) unresolved.push({ literal, source });
+        if (!path) unresolved.push({ literal, source, lookups });
         if (inputs && path?.startsWith(root + '/node_modules/') && !/\.d\.[cm]?ts$/i.test(path)) this.problems.push(diagnostic('unsupported-native-input', `Native import ${literal.text} requires installed implementation rather than declarations.`, this.projectPath(containing)!, literal.getStart(source), literal.getWidth(source)));
         return found;
       }) });
@@ -162,16 +169,34 @@ export class TypeScriptCapture {
         ]) : ts.getPreEmitDiagnostics(this.program);
         this.problems.push(...diagnostics.map(error => this.nativeDiagnostic(error)));
         const checker = this.program.getTypeChecker();
-        for (const { literal, source } of unresolved) if (!checker.getSymbolAtLocation(literal)) {
+        for (const { literal, source, lookups } of unresolved) if (!checker.getSymbolAtLocation(literal)) {
+          const editable = this.editableImport(literal, source, lookups);
+          if (!inputs && !editable) continue;
           const path = this.projectPath(source.fileName)!, start = literal.getStart(source);
-          if (!this.problems.some(problem => /^(?:typescript-(2307|2792)|native-input-unavailable)$/.test(problem.code)
-            && problem.at.kind === 'dependency' && problem.at.path[1] === path && problem.at.path[2] === start)
-            && !optionalDeclarationPeer(literal, source, projectRead)) {
-            this.problems.push(diagnostic('native-input-unavailable', `Cannot acquire native declarations for ${literal.text}.`, path, start, literal.getWidth(source)));
+          const matches = this.problems.filter(problem => /^(?:typescript-(2307|2792)|native-input-unavailable)$/.test(problem.code)
+            && problem.at.kind === 'dependency' && problem.at.path[1] === path && problem.at.path[2] === start);
+          if (!matches.length && !optionalDeclarationPeer(literal, source, projectRead)) {
+            const finding = diagnostic('native-input-unavailable', `Cannot resolve native module ${literal.text}.`, path, start, literal.getWidth(source));
+            this.problems.push(finding); matches.push(finding);
           }
+          if (editable) matches.forEach(problem => this.editableImportProblems.add(problem));
         }
       }
     } catch (error) { this.service.dispose(); throw error; }
+  }
+  private editableImport(literal: ts.StringLiteralLike, source: ts.SourceFile, lookups: ReadonlySet<string>): boolean {
+    if (!this.snapshot.files.some(file => this.absolute(file.path) === source.fileName)
+      || !/^(?:\.\.?\/|\.{1,2}$)/.test(literal.text)) return false;
+    const key = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path;
+    const excluded = this.snapshot.excluded.map(key), names = new Set([...this.snapshot.excludeNames, 'node_modules'].map(key));
+    const included = (absolute: string) => {
+      const path = this.projectPath(posix.normalize(absolute));
+      if (absolute === root) return true;
+      return path !== undefined && !key(path).split('/').some(part => names.has(part))
+        && !excluded.some(entry => key(path) === entry || key(path).startsWith(entry + '/'));
+    };
+    return included(source.fileName) && included(posix.resolve(posix.dirname(source.fileName), literal.text))
+      && lookups.size > 0 && [...lookups].every(included);
   }
   absolute(path: string): string { return root + '/' + path; }
   projectPath(path: string): string | undefined { return path.startsWith(root + '/') ? path.slice(root.length + 1) : undefined; }

@@ -78,4 +78,56 @@ describe('native capture during one finite file stage', () => {
     await project.expectPendingBuildRetained();
   }, 60_000);
 
+  it('does not confirm a completed stage with an unresolved editable import', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame {}\n');
+    await project.registerOutputs([{
+      id: 'new-import',
+      stage: 'contracts',
+      file: 'src/new-import.ts',
+      text: 'import { missing } from "./missing.js"; export const value = missing;\n',
+    }]);
+    await project.outputs([
+      { id: 'typescript', options: { directory: 'src' } },
+      { id: 'new-import', options: {} },
+    ]);
+
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+
+    project.expectExit(1);
+    project.expectProblem('recovery-conflict');
+    await project.expectNativeProblemAt('typescript-2307', 'src/new-import.ts', '"./missing.js"');
+    await project.expectNativeClass('StoreGame');
+    await project.expectDestinationText(
+      'project/src/new-import.ts',
+      'import { missing } from "./missing.js"; export const value = missing;\n',
+    );
+    await project.expectNoDestinationFile('project/.expec/identity.json');
+    await project.expectPendingBuildRetained();
+  }, 60_000);
+
+  it('refuses an unchanged build with an unresolved editable import without creating recovery work', async () => {
+    project = await ConnectedBuild.create();
+    await project.source('main.expec', 'concept StoreGame {}\n');
+    await project.outputs([{ id: 'typescript', options: { directory: 'src' } }]);
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+    project.expectExit(0);
+    await project.expectNativeClass('StoreGame');
+    await project.expectNoPendingBuild();
+
+    await project.file(
+      'src/new-import.ts',
+      'import { missing } from "./missing.js"; export const value = missing;\n',
+    );
+    await project.rememberIdentities();
+    await project.rememberAllBytes();
+
+    await project.run(['build', '--config', 'spec/expec.json', '--json']);
+
+    project.expectExit(1);
+    await project.expectNativeProblemAt('typescript-2307', 'src/new-import.ts', '"./missing.js"');
+    await project.expectIdentitiesUnchanged();
+    await project.expectAllBytesUnchanged();
+    await project.expectNoPendingBuild();
+  }, 60_000);
 });

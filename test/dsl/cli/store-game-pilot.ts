@@ -8,7 +8,7 @@ export class StoreGamePilot {
   private originalSave = '';
   private constructor(private readonly driver: StoreGamePilotDriver) {}
   private static async prepare(layout: 'original' | 'distributed' | 'generated'): Promise<StoreGamePilot> {
-    const driver = new StoreGamePilotDriver(); onTestFinished(() => driver.dispose());
+    const driver = new StoreGamePilotDriver(); onTestFinished(() => driver.dispose(), 30_000);
     await driver.prepare(layout); return new StoreGamePilot(driver);
   }
   static originalStoreGame(): Promise<StoreGamePilot> { return this.prepare('original'); }
