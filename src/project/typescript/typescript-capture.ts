@@ -37,7 +37,7 @@ export class TypeScriptCapture {
   readonly resolveModule: (name: string, from: string) => ts.SourceFile | undefined;
   private readonly nativeFiles = new Set<string>();
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
-  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs, requireChecking = false) {
+  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs) {
     requireInput(snapshot && snapshot.root && typeof snapshot.root.path === 'string' && isAbsolute(snapshot.root.path)
       && typeof snapshot.root.identity === 'string' && !!snapshot.root.identity && Array.isArray(snapshot.files)
       && Array.isArray(snapshot.problems) && typeof snapshot.complete === 'boolean' && snapshot.complete === !snapshot.problems.length
@@ -94,10 +94,6 @@ export class TypeScriptCapture {
       }
     }
     options = { ...options, noEmit: true };
-    // Acquisition must see missing inputs even when the user's semantic checks are disabled.
-    // Pure project queries retain the original checking options.
-    if (inputs) options = { ...options, skipLibCheck: false, skipDefaultLibCheck: false, noCheck: false };
-    else if (requireChecking) options = { ...options, noCheck: false };
     const read = (path: string): string | undefined => {
       if (!path.startsWith(libraries + '/')) return projectRead(path);
       const name = path.slice(libraries.length + 1);
@@ -168,18 +164,12 @@ export class TypeScriptCapture {
           ...selected.flatMap(source => this.program!.getSemanticDiagnostics(source)),
         ]) : ts.getPreEmitDiagnostics(this.program);
         this.problems.push(...diagnostics.map(error => this.nativeDiagnostic(error)));
-        const checker = this.program.getTypeChecker();
-        for (const { literal, source, lookups } of unresolved) if (!checker.getSymbolAtLocation(literal)) {
-          const editable = this.editableImport(literal, source, lookups);
-          if (!inputs && !editable) continue;
+        // Only real compiler errors can be deferred for files generation may create.
+        for (const { literal, source, lookups } of unresolved) if (this.editableImport(literal, source, lookups)) {
           const path = this.projectPath(source.fileName)!, start = literal.getStart(source);
-          const matches = this.problems.filter(problem => /^(?:typescript-(2307|2792)|native-input-unavailable)$/.test(problem.code)
-            && problem.at.kind === 'dependency' && problem.at.path[1] === path && problem.at.path[2] === start);
-          if (!matches.length && !optionalDeclarationPeer(literal, source, projectRead)) {
-            const finding = diagnostic('native-input-unavailable', `Cannot resolve native module ${literal.text}.`, path, start, literal.getWidth(source));
-            this.problems.push(finding); matches.push(finding);
-          }
-          if (editable) matches.forEach(problem => this.editableImportProblems.add(problem));
+          for (const problem of this.problems) if (/^typescript-(2307|2792)$/.test(problem.code)
+            && problem.at.kind === 'dependency' && problem.at.path[1] === path && problem.at.path[2] === start)
+            this.editableImportProblems.add(problem);
         }
       }
     } catch (error) { this.service.dispose(); throw error; }
@@ -223,24 +213,6 @@ export class TypeScriptCapture {
 
 function hasModuleDeclaration(node: ts.Node): boolean {
   return ts.isModuleDeclaration(node) || !!ts.forEachChild(node, hasModuleDeclaration);
-}
-
-/** Native diagnostics have already run without skipLibCheck/noCheck: only an intentionally absent declaration peer qualifies. */
-function optionalDeclarationPeer(literal: ts.StringLiteralLike, source: ts.SourceFile, read: (path: string) => string | undefined): boolean {
-  const parent = literal.parent, declared = ts.isImportDeclaration(parent) && !!parent.importClause || ts.isExportDeclaration(parent)
-    || ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent);
-  if (!source.isDeclarationFile || !declared || !source.fileName.startsWith(root + '/node_modules/') || /^(?:\.|\/|[\w+.-]+:)/.test(literal.text)) return false;
-  for (let node: ts.Node = literal; node !== source; node = node.parent) if (ts.isModuleDeclaration(node)) return false;
-  const name = literal.text.split('/').slice(0, literal.text.startsWith('@') ? 2 : 1).join('/');
-  for (let directory = posix.dirname(source.fileName); directory.startsWith(root + '/node_modules/'); directory = posix.dirname(directory)) {
-    const text = read(directory + '/package.json');
-    if (text === undefined) continue;
-    try {
-      const metadata = JSON.parse(text) as { peerDependencies?: Record<string, unknown>; peerDependenciesMeta?: Record<string, { optional?: unknown }> };
-      return typeof metadata?.peerDependencies?.[name] === 'string' && metadata.peerDependenciesMeta?.[name]?.optional === true;
-    } catch { return false; }
-  }
-  return false;
 }
 
 // Pinned TypeScript exposes its own config glob walker at runtime, outside the declaration file.

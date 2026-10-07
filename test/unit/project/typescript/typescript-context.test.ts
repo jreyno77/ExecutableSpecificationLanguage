@@ -129,42 +129,91 @@ describe('captured native input contracts', { timeout: 30_000 }, () => {
     const store = result.files.find(file => file.path === 'src/store.ts')!;
     expect(Buffer.from(store.bytes).toString('utf8')).toBe('export interface Store {}');
   });
-  it('keeps a missing triple-slash path visible when declaration checking is skipped', async () => {
+  it('honors native declaration checking for a missing triple-slash path', async () => {
     const driver = await project();
     await driver.package('catalog', { types: 'index.d.ts' }, { 'index.d.ts': '/// <reference path="./missing.d.ts" />\nexport interface Book {}' });
     await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":true,"types":[]},"files":["src/book.ts"]}');
     await driver.file('src/book.ts', 'import type { Book } from "catalog"; export type Title = Book;');
     const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
-    expect(result.complete).toBe(false); expect(result.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('missing.d.ts'))).toBe(true);
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
+
+    await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":false,"types":[]},"files":["src/book.ts"]}');
+    expect(driver.nativeDiagnostics('tsconfig.json').map(problem => problem.code)).toContain(6053);
+    const checked = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(checked.complete).toBe(false);
+    expect(checked.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('missing.d.ts'))).toBe(true);
   });
-  it('keeps a missing triple-slash type package visible when declaration checking is skipped', async () => {
+  it('honors native declaration checking for a missing triple-slash type package', async () => {
     const driver = await project();
     await driver.package('catalog', { types: 'index.d.ts' }, { 'index.d.ts': '/// <reference types="missing-types" />\nexport interface Book {}' });
     await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":true,"types":[]},"files":["src/book.ts"]}');
     await driver.file('src/book.ts', 'import type { Book } from "catalog"; export type Title = Book;');
     const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
-    expect(result.complete).toBe(false); expect(result.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('missing-types'))).toBe(true);
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
+
+    await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":false,"types":[]},"files":["src/book.ts"]}');
+    expect(driver.nativeDiagnostics('tsconfig.json').map(problem => problem.code)).toContain(2688);
+    const checked = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(checked.complete).toBe(false);
+    expect(checked.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('missing-types'))).toBe(true);
   });
-  it('keeps an unavailable triple-slash compiler library visible when declaration checking is skipped', async () => {
+  it('honors native declaration checking for an unavailable triple-slash compiler library', async () => {
     const driver = await project();
     await driver.package('catalog', { types: 'index.d.ts' }, { 'index.d.ts': '/// <reference lib="es9999" />\nexport interface Book {}' });
     await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":true,"types":[]},"files":["src/book.ts"]}');
     await driver.file('src/book.ts', 'import type { Book } from "catalog"; export type Title = Book;');
     const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
-    expect(result.complete).toBe(false); expect(result.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('es9999'))).toBe(true);
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
+
+    await driver.file('tsconfig.json', '{"compilerOptions":{"skipLibCheck":false,"types":[]},"files":["src/book.ts"]}');
+    expect(driver.nativeDiagnostics('tsconfig.json').map(problem => problem.code)).toContain(2726);
+    const checked = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(checked.complete).toBe(false);
+    expect(checked.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('es9999'))).toBe(true);
   });
-  it('does not let skipLibCheck hide a missing transitive native declaration', async () => {
+  it('honors skipLibCheck for a transitive declaration the compiler accepts', async () => {
     const driver = await project();
     await driver.package('catalog', { types: 'index.d.ts' }, { 'index.d.ts': 'export type { Book } from "./missing.js";' });
     await driver.file('tsconfig.json', '{"compilerOptions":{"target":"ES2022","module":"NodeNext","skipLibCheck":true,"types":[]},"include":["src/**/*.ts"]}');
     await driver.file('src/book.ts', 'import type { Book } from "catalog"; export type Title = Book;');
     const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
-    expect(result.complete).toBe(false); expect(result.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('./missing.js'))).toBe(true);
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
   });
-  it('retains an unavailable side-effect import even when native semantic checking ignores it', async () => {
+  it('accepts a side-effect import when native semantic checking accepts it', async () => {
     const driver = await project(); await driver.file('src/setup.ts', 'import "missing-setup"; export {};');
     const result = await new TypeScriptContext(driver.context).readSnapshot();
-    expect(result.complete).toBe(false); expect(result.problems.some(problem => problem.code === 'native-input-unavailable' && problem.message.includes('missing-setup'))).toBe(true);
+    expect(driver.nativeDiagnostics()).toEqual([]);
+    expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
+  });
+  it('retains a bare side-effect error when native checking is explicitly enabled', async () => {
+    const driver = await project(), source = 'import "missing-setup"; export {};';
+    await driver.file('src/setup.ts', source);
+    await driver.file('tsconfig.json', '{"compilerOptions":{"noUncheckedSideEffectImports":true,"types":[]},"files":["src/setup.ts"]}');
+    const native = driver.nativeDiagnostics('tsconfig.json');
+    expect(native).toHaveLength(1); expect(native[0]).toMatchObject({ code: 2307, file: 'src/setup.ts' });
+    const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(result.complete).toBe(false); expectMissingNativeInputAt(result, 'src/setup.ts', '"missing-setup"');
+    expect(result.problems[0]!.message).toBe(native[0]!.message);
+  });
+  it('respects native suppression when side-effect checking is enabled', async () => {
+    const driver = await project();
+    await driver.file('src/setup.ts', '// @ts-ignore\nimport "missing-setup"; export {};');
+    await driver.file('tsconfig.json', '{"compilerOptions":{"noUncheckedSideEffectImports":true,"types":[]},"files":["src/setup.ts"]}');
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(result.problems).toEqual([]); expect(result.complete).toBe(true);
+  });
+  it('honors noCheck when capturing an unresolved native source import', async () => {
+    const driver = await project();
+    await driver.file('src/setup.ts', 'import { Missing } from "missing-setup"; export type Value = Missing;');
+    await driver.file('tsconfig.json', '{"compilerOptions":{"noCheck":true,"types":[]},"files":["src/setup.ts"]}');
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    const result = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(result.problems).toEqual([]); expect(result.complete).toBe(true);
   });
   it('accepts a real ambient module and preserves skipped declaration semantics in project queries', async () => {
     const driver = await project();
