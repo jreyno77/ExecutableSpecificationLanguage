@@ -49,7 +49,7 @@ class TypeScriptOutput implements OutputAdapter {
       if (data?.renderFormat !== 1) return { problems: [outputProblem('output-options-changed', statePath, 'Recorded native render format requires an explicit migration.')] };
       const state = stateSchema.parse(data), settings = typescriptOptions.parse(JSON.parse(state.options)), roots = state.files.map(file => file.id), ids = state.files.flatMap(file => file.artifacts.map(item => item.specId));
       if (new Set(roots).size !== roots.length || new Set(state.deleted).size !== state.deleted.length
-        || state.deleted.some(id => ids.includes(id)) || state.files.some(file => !literal(file.path) || !file.adopted?.length && !file.path.startsWith(settings.directory + '/') || !file.path.endsWith('.ts')
+        || state.deleted.some(id => ids.includes(id)) || state.files.some(file => !literal(file.path) || !file.adopted?.length && (settings.directory !== '.' && !file.path.startsWith(settings.directory + '/') || file.path.split('/').some(part => part.toLowerCase() === '.expec')) || !file.path.endsWith('.ts')
           || Buffer.from(file.generated).toString('utf8') !== file.generated || hash(Buffer.from(file.generated)) !== file.hash
           || file.adopted?.some(id => !file.artifacts.some(item => item.specId === id)) || file.adopted?.length && !file.renderedArtifacts
           || state.files.some(other => other !== file && key(other.path) === key(file.path) && (other.path !== file.path || other.confirmed !== file.confirmed))
@@ -98,7 +98,16 @@ class TypeScriptOutput implements OutputAdapter {
       if (previous && [...previous.deleted, ...previous.files.flatMap(file => file.artifacts.map(item => item.specId))].some(id => !known.has(id))) return refused([outputProblem('unknown-output-identity', statePath, 'Current identity does not recognize earlier output subjects.')]);
       if ('diff' in request && !validDiff(request.diff, current)) return refused([outputProblem('inconsistent-diff', '', 'The supplied transition disagrees with current identity facts.')]);
       if (request.operation === 'insert' && (request.diff.contextChanged || request.diff.changes.some(change => change.kinds.some(kind => kind !== 'add' && kind !== 'artifacts')))) return refused([outputProblem('not-addition-only', '', 'Use update when existing contracts change.')]);
-      const declarations = new TypeScriptDeclarations(current, this.options, this.context), files = declarations.render();
+      const placements = new Map<string, ArtifactAssociation>();
+      if (this.options.sourceRoot !== undefined) {
+        for (const file of previous?.files ?? []) if (file.adopted?.length) placements.set(file.id, file.artifacts.find(item => item.specId === file.id)!);
+        for (const item of current.baseline.artifacts) {
+          if (item.locator.outputId !== this.id || item.locator.format !== 'typescript-symbol-1') continue;
+          const at = item.locator.value as { declaration: unknown[] };
+          if (at.declaration.length === 1 && !previous?.files.some(file => file.id === item.specId)) placements.set(item.specId, item);
+        }
+      }
+      const declarations = new TypeScriptDeclarations(current, this.options, this.context, placements), files = declarations.render();
       if (declarations.problems.length) return refused(declarations.problems);
       next = { format: 1, renderFormat: 1, outputId: this.id, options: renderingOptions(this.options), deleted: [], files: files.map(file => ({ id: file.id, path: file.path,
         generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: structuredClone(file.artifacts) as ArtifactAssociation[] })) };

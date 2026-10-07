@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { Compiler, Outputs, SpecificationIdentity, typescriptOutput,
   type IdentifiedSpecification, type OutputContext, type OutputPlan, type ProjectSnapshot } from '../../../../src/index.js';
 
 const empty: ProjectSnapshot = { root: { path: '/native-fixture', identity: 'fixture' }, complete: true, files: [], excludeNames: [], excluded: [], problems: [] };
 const file = (path: string, text: string) => ({ path, bytes: Buffer.from(text), version: createHash('sha256').update(text).digest('hex') });
-function caller(options: Record<string, unknown> = { directory: 'src' }) {
+function caller(options: Record<string, unknown> = { directory: 'src' }, membership?: OutputContext) {
   let next = 0, snapshot = empty;
   const identity = new SpecificationIdentity(() => 'native-unit-' + ++next), outputs = new Outputs(); outputs.register(typescriptOutput);
   const context = { root: empty.root, readSnapshot: async () => snapshot }, writer = { apply: async () => { throw new Error('A pure output plan cannot write'); } };
-  const opened = outputs.open('typescript', options, context, writer), output = opened.value;
+  const opened = outputs.open('typescript', options, context, writer, membership), output = opened.value;
   return { outputs, identity, opened, output, get snapshot() { return snapshot; },
-    specify(text: string, before?: IdentifiedSpecification) {
-      const result = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text }, dependencies: { modules: [], packages: [] } });
+    specify(text: string, before?: IdentifiedSpecification, locator = 'main') {
+      const result = new Compiler().compile({ locator, source: { sourceId: locator === 'main' ? 'main.expec' : locator, text }, dependencies: { modules: [], packages: [] } });
       if (!result.value) throw new Error(JSON.stringify(result)); const current = identity.associate(result.value, before?.baseline);
       if (!current.value) throw new Error(JSON.stringify(current)); return current.value;
     },
@@ -206,5 +208,99 @@ describe('native output contracts from a caller', () => {
     value.edit(stateFile.path, Buffer.from(stateFile.bytes).toString().trimEnd().slice(0, -1) + ',"format":1}');
     const result = await value.output!.plan({ operation: 'create', current }, value.snapshot);
     expect(result.value).toBeUndefined(); expect(result.problems[0]?.code).toBe('invalid-output-state');
+  });
+});
+
+describe('source-folder output from a caller', () => {
+  const manifestLocation = resolve('layout-fixture/specs/expec.json');
+  const locator = pathToFileURL(resolve('layout-fixture/specs/core/game.expec')).href;
+  const membership = { workspaceModules: [locator], manifestLocation };
+
+  it('accepts explicit relative layout roots and leaves legacy flat options unchanged', () => {
+    for (const sourceRoot of ['.', '..', '../specs', 'contracts']) {
+      const value = caller({ sourceRoot, directory: '.' }, membership);
+      expect(value.opened.problems, sourceRoot).toEqual([]); expect(value.output).toBeDefined();
+    }
+    expect(caller({ directory: 'src' }).opened.problems).toEqual([]);
+    expect(caller({ directory: '.' }).opened.problems[0]?.code).toBe('invalid-output-options');
+  });
+
+  it.each(['', '/specs', 'C:/specs', 'C:specs', 'file:///specs', 'specs\\core', null, 3])('rejects invalid sourceRoot %j at the option boundary', sourceRoot => {
+    const value = caller({ sourceRoot, directory: 'src' }, membership);
+    expect(value.output).toBeUndefined(); expect(value.opened.problems[0]?.code).toBe('invalid-output-options');
+  });
+
+  it.each(['', 'specs/expec.json', 'C:expec.json', 'file:///specs/expec.json', null, 3])('rejects a manifest location that is not an absolute native filename: %j', manifestLocation => {
+    const value = caller({ directory: 'src' }, { workspaceModules: [], manifestLocation } as unknown as OutputContext);
+    expect(value.output).toBeUndefined(); expect(value.opened.problems[0]?.code).toBe('invalid-output-context');
+  });
+
+  it('copies and freezes the manifest location with the workspace context', () => {
+    const outputs = new Outputs(), source = { workspaceModules: [locator], manifestLocation }; let observed: OutputContext | undefined;
+    outputs.register({ ...typescriptOutput, id: 'observe-layout', open: (_options, context) => {
+      observed = context; const adapter = typescriptOutput.open({ directory: 'src' });
+      return { id: 'observe-layout', plan: adapter.plan.bind(adapter), read: adapter.read.bind(adapter), search: adapter.search.bind(adapter) };
+    } });
+    const opened = outputs.open('observe-layout', { sourceRoot: '.', directory: '.' },
+      { root: empty.root, readSnapshot: async () => empty }, { apply: async () => { throw new Error('No writes'); } }, source);
+    expect(opened.problems).toEqual([]);
+    source.manifestLocation = resolve('elsewhere/expec.json'); source.workspaceModules.length = 0;
+    expect(observed).toEqual({ workspaceModules: [locator], manifestLocation });
+    expect(Object.isFrozen(observed)).toBe(true); expect(Object.isFrozen(observed!.workspaceModules)).toBe(true);
+  });
+  it('reports a missing manifest location before planning source-folder output', async () => {
+    for (const context of [undefined, { workspaceModules: [locator] }]) {
+      const value = caller({ sourceRoot: '.', directory: 'src' }, context), current = value.specify('class Game {}', undefined, locator);
+      expect(value.opened.problems).toEqual([]);
+      const plan = await value.output!.plan({ operation: 'create', current }, empty);
+      expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('invalid-source-layout');
+    }
+  });
+
+  it.each([
+    'urn:contracts:game', 'file:///bad%ZZ/game.expec', 'file:///bad%2Ffolder/game.expec',
+    locator + '?revision=1', locator + '#declaration', 'file:///Z:/different-volume/game.expec',
+    pathToFileURL(resolve('layout-fixture/outside/game.expec')).href,
+  ])('refuses a source origin that cannot identify one file inside the layout root: %s', async source => {
+    const value = caller({ sourceRoot: '.', directory: 'src' }, { ...membership, workspaceModules: [source] });
+    const current = value.specify('class Game {}', undefined, source); expect(value.opened.problems).toEqual([]);
+    const plan = await value.output!.plan({ operation: 'create', current }, empty);
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('invalid-source-layout');
+  });
+
+  it.each(['.expec', 'bad*folder', 'preview?mode', 'fragment#name'])('refuses an unsafe mirrored destination folder: %s', async folder => {
+    const source = pathToFileURL(resolve('layout-fixture/specs', folder, 'game.expec')).href;
+    const value = caller({ sourceRoot: '.', directory: 'src' }, { ...membership, workspaceModules: [source] });
+    const current = value.specify('class Game {}', undefined, source); expect(value.opened.problems).toEqual([]);
+    const plan = await value.output!.plan({ operation: 'create', current }, empty);
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('invalid-source-layout');
+  });
+
+  it('protects an unowned file at the mirrored destination', async () => {
+    const value = caller({ sourceRoot: '.', directory: 'src' }, membership), current = value.specify('class Game {}', undefined, locator);
+    expect(value.opened.problems).toEqual([]); value.edit('src/core/Game.ts', 'handwritten');
+    const before = structuredClone(value.snapshot), plan = await value.output!.plan({ operation: 'create', current }, value.snapshot);
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('output-conflict');
+    expect(structuredClone(value.snapshot)).toEqual(before);
+  });
+
+  it('retains the native name collision check within a mirrored folder', async () => {
+    const value = caller({ sourceRoot: '.', directory: 'src', names: [{ declaration: ['Cart'], name: 'Game' }] }, membership);
+    const current = value.specify('class Game {}\nclass Cart {}', undefined, locator); expect(value.opened.problems).toEqual([]);
+    const plan = await value.output!.plan({ operation: 'create', current }, empty);
+    expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
+
+  it('reads root-directory ownership through a new output instance without planning duplicates', async () => {
+    const options = { sourceRoot: '.', directory: '.' }, value = caller(options, membership), current = value.specify('class Game {}', undefined, locator);
+    expect(value.opened.problems).toEqual([]);
+    const first = await value.output!.plan({ operation: 'create', current }, empty);
+    expect(first.problems).toEqual([]); expect(text(first.value!, 'core/Game.ts')).toContain('export class Game');
+    expect(first.value!.changes.flatMap(change => change.kind === 'write' && change.path.endsWith('.ts') ? [change.path] : [])).toEqual(['core/Game.ts']);
+    value.materialize(first.value!);
+    const reopened = value.reopen(options, membership); expect(reopened.problems).toEqual([]);
+    const repeated = await reopened.value!.plan({ operation: 'create', current }, value.snapshot);
+    expect(repeated.problems).toEqual([]); expect(repeated.value!.changes).toEqual([]);
+    expect(repeated.value!.artifacts).toEqual(first.value!.artifacts);
   });
 });

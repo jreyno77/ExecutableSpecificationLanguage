@@ -1,3 +1,4 @@
+import { isAbsolute, parse } from 'node:path';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { OutputProfile } from '../connection/configuration.js';
 import type { ProjectContext, ProjectSnapshot } from '../connection/project-connection.js';
@@ -29,7 +30,7 @@ export interface OutputAdapter {
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectRead>;
   search(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectSearch>;
 }
-export interface OutputContext { readonly workspaceModules: readonly string[] }
+export interface OutputContext { readonly workspaceModules: readonly string[]; readonly manifestLocation?: string }
 export interface OutputRegistration extends OutputProfile { open(options: Readonly<Record<string, unknown>>, context?: OutputContext): OutputAdapter }
 export class ProjectOutput implements Output {
   constructor(private readonly adapter: OutputAdapter, private readonly project: ProjectContext, private readonly writer: ProjectWriter) {
@@ -76,8 +77,11 @@ export class Outputs {
     const registration = this.registrations.get(id);
     if (!registration) return failure('unknown-output', 'Output is not registered: ' + id, ['outputs', id]);
     if (context !== undefined && (!jsonData(context) || !context || Array.isArray(context) || typeof context !== 'object'
-      || Object.keys(context).length !== 1 || !Array.isArray(context.workspaceModules) || context.workspaceModules.some(value => typeof value !== 'string' || !value.trim())
-      || new Set(context.workspaceModules).size !== context.workspaceModules.length)) return failure('invalid-output-context', 'Provide only a duplicate-free list of exact nonblank workspace module locators.', ['outputs', id, 'context']);
+      || Object.keys(context).some(key => !['workspaceModules', 'manifestLocation'].includes(key)) || !Array.isArray(context.workspaceModules) || context.workspaceModules.some(value => typeof value !== 'string' || !value.trim())
+      || new Set(context.workspaceModules).size !== context.workspaceModules.length
+      || context.manifestLocation !== undefined && (typeof context.manifestLocation !== 'string' || !isAbsolute(context.manifestLocation)
+        || context.manifestLocation.includes('\0') || Buffer.from(context.manifestLocation).toString() !== context.manifestLocation
+        || process.platform === 'win32' && parse(context.manifestLocation).root.length < 2))) return failure('invalid-output-context', 'Provide duplicate-free nonblank workspace module locators and an optional absolute native manifest location.', ['outputs', id, 'context']);
     if (!jsonData(options) || !options || Array.isArray(options) || typeof options !== 'object') return failure('invalid-output-options', 'Output options must be finite JSON data.', ['outputs', id, 'options']);
     const copy = captured(options), problems = registration.validate(copy);
     if (!Array.isArray(problems) || problems.some(item => !item || typeof item.message !== 'string' || !Array.isArray(item.path))) throw new TypeError('Output validator returned malformed findings.');

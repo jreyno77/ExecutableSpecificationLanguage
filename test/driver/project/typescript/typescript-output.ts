@@ -81,13 +81,16 @@ export class TypeScriptOutputDriver {
     this.beforeModel = JSON.stringify({ baseline: this.current.baseline, roots: [...specification.inspection.roots()] });
   }
   source(text: string): void { this.text = text; this.identify(this.compile(text)); }
-  async workspace(files: Record<string, string>): Promise<void> {
+  async workspace(files: Record<string, string>, reuse = false, retained: (string | readonly [string, string])[] = []): Promise<void> {
     for (const [path, text] of Object.entries(files)) { const target = join(this.directory, path); await fs.mkdir(dirname(target), { recursive: true }); await fs.writeFile(target, text); }
     const loaded = await new SourceLoader(join(this.directory, 'expec.json')).load(this.configuration(['main.expec']), { modules: this.libraries, packages: this.packages });
     if (!loaded.value) throw new Error(JSON.stringify(loaded));
-    this.membership = { workspaceModules: loaded.captures.flatMap(capture => capture.model ? [capture.model.locator] : []) };
+    this.membership = { workspaceModules: loaded.captures.flatMap(capture => capture.model ? [capture.model.locator] : []), manifestLocation: join(this.directory, 'expec.json') } as OutputContext;
     const entry = loaded.value.entries[0]!, result = new Compiler().compile({ resolution: new SourceComposer(loaded.value.locate).compose(entry.entry, entry.dependencies) });
-    if (!result.value) throw new Error(JSON.stringify(result)); this.identify(result.value);
+    if (!result.value) throw new Error(JSON.stringify(result));
+    const fresh = this.identity.associate(result.value).value!;
+    const decisions = retained.map(pair => { const [before, after] = typeof pair === 'string' ? [pair, pair] : pair; return { id: this.subject(before), to: fresh.node(this.subject(after, fresh)) }; });
+    this.identify(result.value, decisions, reuse);
   }
   subject(name: string, current = this.current): string {
     const path = (id: string): string => { const record = current.baseline.elements.find(item => item.id === id)!;

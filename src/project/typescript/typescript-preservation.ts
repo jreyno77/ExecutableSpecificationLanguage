@@ -9,7 +9,7 @@ import { TypeScriptCapture, diagnostic } from './typescript-capture.js';
 import { TypeScriptSymbols, nativeSelection, type Selector } from './typescript-symbols.js';
 import { NativeEdits, headerEnd, nativeMembers, nativeName, tokens, type NativeDeclaration } from './typescript-edits.js';
 import type { NativeContainer, NativeFile, TypeScriptOptions } from './typescript-declarations.js';
-import { nativeImports, nativeTypeText } from './typescript-imports.js';
+import { nativeImports, nativeTypeText, moveImports } from './typescript-imports.js';
 
 export interface NativeBaseline {
   id: string; path: string; generated: string; hash: string; artifacts: ArtifactAssociation[];
@@ -144,6 +144,7 @@ export class TypeScriptPreservation {
       const typeNames = new Map<string, string>();
       for (const file of [...previous.map(file => ({ artifacts: file.renderedArtifacts ?? file.artifacts })), ...desired])
         for (const item of file.artifacts) if (address(item).declaration.length === 1) typeNames.set(address(item).declaration[0]!.name, item.specId);
+      for (const item of associations) if (address(item).declaration.length === 1) typeNames.set(address(item).declaration[0]!.name, item.specId);
       const contracts = new NativeContracts(capture, symbols, typeNames, [...new Set([...old.values(), ...next.values()].map(node => node.getSourceFile()))]);
       for (const [key, node] of actual) {
         const prior = old.get(key), wanted = next.get(key), association = beforeByKey.get(key);
@@ -160,14 +161,18 @@ export class TypeScriptPreservation {
         const documentation = new Set(before?.documentation ?? []);
         const existingSource = capture.program?.getSourceFile(capture.absolute(before?.path ?? path));
         const aliases = existingSource && before ? nativeImports(capture, symbols, existingSource, file, desired, placements, associations, this.edits, this.problems) : new Map<string, string>();
+        if (!before && !isAdopted) {
+          const blank = ts.createSourceFile(capture.absolute(path), '', ts.ScriptTarget.Latest, true);
+          nativeImports(capture, symbols, blank, file, desired, placements, associations, this.edits, this.problems);
+          const generated = ts.createSourceFile(path, file.text, ts.ScriptTarget.Latest, true);
+          for (const statement of generated.statements.filter(ts.isImportDeclaration)) this.edits.add(path, statement.getStart(), statement.end, '');
+        }
         if (before && before.path !== path) {
           if (this.snapshot.files.some(item => item.path.toLowerCase() === path.toLowerCase())) { this.problems.push(diagnostic('native-name-conflict', 'The renamed file destination is occupied or aliases its source.', path)); continue; }
+          const represented = before.artifacts.map(association => ({ association, node: actual.get(selectionKey(association)) }));
+          if (represented.some(({ node }) => !node)) { this.problems.push(diagnostic('missing-project-symbol', 'A declaration in the relocated file is absent.', before.path)); continue; }
+          if (represented.some(({ association, node }) => !this.complete(capture, symbols, association.specId, node!, 'incomplete-native-rename'))) continue;
           moves.set(before.path, path);
-          for (const edit of capture.service.getEditsForFileRename(capture.absolute(before.path), capture.absolute(path), {}, {})) {
-            const file = capture.projectPath(edit.fileName);
-            if (!file) { this.problems.push(diagnostic('incomplete-native-rename', 'Native module edits escape captured scope.', before.path)); continue; }
-            for (const change of edit.textChanges) this.edits.add(file, change.span.start, change.span.start + change.span.length, change.newText);
-          }
         }
         for (const association of file.artifacts) {
           const key = selectionKey(association), wanted = next.get(key)!, prior = old.get(key), node = removed.has(key) ? undefined : actual.get(key);
@@ -210,7 +215,8 @@ export class TypeScriptPreservation {
           ...(adopted.length ? { adopted, renderedArtifacts: structuredClone(file.artifacts) as ArtifactAssociation[], documentation: [...documentation].sort() } : {}) });
       }
       if (this.problems.length) return;
-      this.finish(previous, moves);
+      moveImports(capture, moves, this.edits, this.problems);
+      if (!this.problems.length) this.finish(previous, moves);
     } finally { capture.service.dispose(); }
   }
   private signature(contracts: NativeContracts, node: NativeDeclaration, prior: NativeDeclaration, wanted: NativeDeclaration, id: string, aliases: ReadonlyMap<string, string>): void {
@@ -337,7 +343,7 @@ export class TypeScriptPreservation {
     for (const path of new Set([...this.edits.paths, ...previous.map(file => file.path), ...this.files.map(file => file.path)])) {
       const original = [...moves].find(([, after]) => after === path)?.[0] ?? path, captured = this.snapshot.files.find(item => item.path === original);
       if (captured) texts.set(moves.get(original) ?? original, this.edits.source(original, new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(captured.bytes)));
-      else if (this.files.some(file => file.path === path)) texts.set(path, this.files.find(file => file.path === path)!.generated);
+      else if (this.files.some(file => file.path === path)) texts.set(path, this.edits.source(path, this.files.find(file => file.path === path)!.generated));
     }
     for (const [path, text] of texts) {
       const original = [...moves].find(([, after]) => after === path)?.[0] ?? path, captured = this.snapshot.files.find(item => item.path === original), bytes = Buffer.from(text);

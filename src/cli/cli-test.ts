@@ -42,7 +42,7 @@ export async function testProject(checked: CheckedManifest, project: ProjectCont
   const associated = currentTestIdentity(checked, snapshot);
   if (!associated.value) return { ...result, problems: associated.problems };
   const selection = { root: snapshot.root, readSnapshot: async () => structuredClone(snapshot) };
-  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, selection, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [] });
+  const profile = profiles[0]!, opened = outputs.open(profile.id, profile.options, selection, new FileProjectWriter(context), { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
   if (!opened.value) return { ...result, problems: opened.problems };
   const current = associated.value, inspection = current.specification.inspection,
     modules = new Set([current.specification.entry, ...checked.workspaceModules ?? []]);

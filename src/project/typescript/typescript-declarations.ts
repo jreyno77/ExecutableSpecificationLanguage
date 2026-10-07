@@ -1,4 +1,6 @@
 import ts from 'typescript';
+import { dirname, isAbsolute, parse, posix, relative, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import type { Item } from '../../model/inspection-item.js';
 import type { NodeId } from '../../model/model.js';
@@ -13,14 +15,15 @@ import { decimal } from '../../compiler/decimal.js';
 const f = ts.factory, exported = [f.createModifier(ts.SyntaxKind.ExportKeyword)];
 const path = z.array(z.string().min(1)).min(1), name = z.string().min(1);
 export const typescriptOptions = z.strictObject({
-  directory: z.string().refine(value => literal(value) && !/[\\:*?<>|\[\]{}]/.test(value) && !value.split('/').some(part => part.toLowerCase() === '.expec')),
+  sourceRoot: z.string().min(1).refine(value => !!value.trim() && !value.startsWith('/') && !/[\\:\0]/.test(value) && Buffer.from(value).toString() === value).optional(),
+  directory: z.string().refine(value => value === '.' || literal(value) && !/[\\:*?<>|\[\]{}]/.test(value) && !value.split('/').some(part => part.toLowerCase() === '.expec')),
   concepts: z.enum(['class', 'interface']).default('class'),
   adoptExisting: z.boolean().default(false),
   configFile: z.string().refine(value => literal(value) && !value.includes('\\')).optional(),
   names: z.array(z.strictObject({ declaration: path, name, module: name.optional() })).default([]),
   imports: z.array(z.strictObject({ module: name, declaration: path, name, from: name.optional(), as: name.optional() })
     .refine(value => !value.as || !!value.from, { message: 'A global mapping cannot have an import alias.' })).default([]),
-});
+}).refine(value => value.directory !== '.' || value.sourceRoot !== undefined, { path: ['directory'], message: 'The project root directory requires an explicit sourceRoot.' });
 export type TypeScriptOptions = z.infer<typeof typescriptOptions>;
 export interface NativeContainer { readonly role: 'dsl' | 'driver'; readonly declaration: readonly import('./typescript-symbols.js').Selector[] }
 export interface NativeFile { readonly id: string; readonly path: string; readonly text: string; readonly artifacts: readonly ArtifactAssociation[]; readonly container?: NativeContainer }
@@ -45,6 +48,7 @@ export class TypeScriptDeclarations {
   private readonly eligible = new Set<NodeId>();
   private readonly owner = new Map<NodeId, Item>();
   private readonly modules: Set<string>;
+  private readonly destinations = new Map<NodeId, string>();
   private imports = new Map<string, Import>();
   private bindings = new Map<string, NodeId>();
   private required = new Set<string>();
@@ -53,7 +57,8 @@ export class TypeScriptDeclarations {
   private file = '';
   private root!: Item;
   private number = false;
-  constructor(private readonly current: IdentifiedSpecification, private readonly options: TypeScriptOptions, context?: OutputContext) {
+  constructor(private readonly current: IdentifiedSpecification, private readonly options: TypeScriptOptions, context?: OutputContext,
+    private readonly placements: ReadonlyMap<string, ArtifactAssociation> = new Map()) {
     this.inspection = current.specification.inspection; this.catalog = current.specification.types;
     this.modules = new Set([current.specification.entry, ...context?.workspaceModules ?? []]);
     this.roots = [...this.inspection.roots()].filter(item => rootKinds.has(item.kind) && item.origin.kind === 'source' && this.modules.has(item.origin.module));
@@ -87,6 +92,39 @@ export class TypeScriptDeclarations {
       for (const child of this.inspection.children(item.id)) checkProvider(child);
     };
     for (const root of this.inspection.roots()) if (rootKinds.has(root.kind) && !this.eligible.has(root.id)) checkProvider(root);
+    for (const root of this.roots) {
+      if (root.kind === 'opaque-type-declaration') continue;
+      const destination = this.destination(root, context);
+      if (destination !== undefined) this.destinations.set(root.id, this.placement(root)?.file ?? destination);
+    }
+  }
+  private placement(item: Item): { file: string; declaration: { name: string }[] } | undefined {
+    return this.placements.get(this.current.id(item.id))?.locator.value as { file: string; declaration: { name: string }[] } | undefined;
+  }
+  private destination(root: Item, context?: OutputContext): string | undefined {
+    const name = this.name(root) + '.ts';
+    if (this.options.sourceRoot === undefined) return this.options.directory + '/' + name;
+    try {
+      const manifest = context?.manifestLocation;
+      if (!manifest || !isAbsolute(manifest) || process.platform === 'win32' && parse(manifest).root.length < 2)
+        throw Error('Source-folder output requires an absolute native manifest location.');
+      if (root.origin.kind !== 'source') throw Error('Source-folder output requires an original source module.');
+      const uri = new URL(root.origin.module);
+      if (uri.protocol !== 'file:' || uri.search || uri.hash) throw Error('Source modules must be unambiguous file URLs without a query or fragment.');
+      const source = fileURLToPath(uri);
+      if (pathToFileURL(source).href !== root.origin.module) throw Error('Source module file URLs must retain their canonical spelling.');
+      const within = relative(resolve(dirname(manifest), this.options.sourceRoot), source);
+      if (!within || isAbsolute(within) || within.split(sep)[0] === '..') throw Error('Source module is outside the configured source root.');
+      const folder = dirname(within).split(sep).join('/');
+      const destination = posix.join(this.options.directory, folder, name);
+      if (!literal(destination) || /[\\:*?<>|\[\]{}#%"\x00-\x1f]/.test(destination)
+        || destination.split('/').some(part => part.toLowerCase() === '.expec' || /[. ]$/.test(part)
+          || /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(part)))
+        throw Error('The mirrored destination is not a portable literal import path.');
+      return destination;
+    } catch (error) {
+      this.problem('invalid-source-layout', root, error instanceof Error ? error.message : String(error)); return undefined;
+    }
   }
   private select(path: string[], module?: string): Item[] {
     return this.current.baseline.elements.filter(record => (module === undefined || record.address.module === module)
@@ -147,7 +185,14 @@ export class TypeScriptDeclarations {
     if (!root || item.kind === 'opaque-type-declaration') {
       this.problem('missing-native-mapping', item, 'No explicit native mapping for ' + ('name' in item ? item.name : item.kind)); return '__unmapped';
     }
-    if (root !== this.root) { this.bind(name, item, true); this.imports.set(name, { module: '', declaration: [], name, from: './' + this.name(root) + '.js' }); }
+    if (root !== this.root) {
+      const destination = this.destinations.get(root.id);
+      if (!destination) return '__unmapped';
+      if (destination === this.file) { this.bind(name, item); return name; }
+      let from = posix.relative(posix.dirname(this.file), destination).replace(/\.ts$/, '.js');
+      if (!from.startsWith('.')) from = './' + from;
+      this.bind(name, item, true); this.imports.set(name, { module: '', declaration: [], name, from });
+    }
     return name;
   }
   private type(id: TypeId): ts.TypeNode {
@@ -281,9 +326,13 @@ export class TypeScriptDeclarations {
     const files: NativeFile[] = [], paths = new Map<string, Item>();
     for (const root of this.roots) {
       if (root.kind === 'opaque-type-declaration') { if (!this.mappings.has(root.id)) this.problem('missing-native-mapping', root, 'No explicit native mapping for ' + root.name); continue; }
-      this.root = root; this.file = this.options.directory + '/' + this.name(root) + '.ts';
+      const destination = this.destinations.get(root.id); if (destination === undefined) continue;
+      this.root = root; this.file = destination;
       const key = process.platform === 'win32' ? this.file.toLowerCase() : this.file;
-      if (paths.has(key)) this.problem('native-name-conflict', root, 'Generated filename collides: ' + this.name(root)); paths.set(key, root);
+      const prior = paths.get(key);
+      if (prior && !(this.placement(prior)?.file === this.file && this.placement(root)?.file === this.file))
+        this.problem('native-name-conflict', root, 'Generated filename collides: ' + this.name(root));
+      paths.set(key, root);
       this.imports = new Map(); this.bindings = new Map(); this.required = new Set(); this.scopes = []; this.artifacts = []; this.number = false;
       this.bind(this.name(root), root);
       for (const item of this.current.baseline.elements.filter(record => this.eligible.has(this.current.node(record.id)))) {

@@ -45,7 +45,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
       const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
       for (const profile of profiles) {
-        const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [] });
+        const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
         if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
         opened.push({ id: profile.id, output: output.value });
         const plan = await output.value.plan(read.value.baseline ? { operation: 'update', current, diff: difference.value } : { operation: 'create', current }, basedOn);
