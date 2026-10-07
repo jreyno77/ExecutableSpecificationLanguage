@@ -44,9 +44,9 @@ function author(text: string, locator = firstCheckout, libraries: Record<string,
   expect(identified.problems).toEqual([]); expect(identified.value).toBeDefined();
   return { identity, current: identified.value! };
 }
-function open(id: 'typescript' | 'acceptance', imports: readonly Record<string, unknown>[], basedOn = id === 'acceptance' ? acceptanceNative() : native()) {
+function open(id: 'typescript' | 'acceptance', imports: readonly Record<string, unknown>[], basedOn = id === 'acceptance' ? acceptanceNative() : native(), settings: Record<string, unknown> = {}) {
   const outputs = new Outputs(); outputs.register(typescriptOutput); outputs.register(acceptanceOutput);
-  const options = { ...(id === 'typescript' ? { directory: 'src' } : { domain: 'editor' }), configFile: 'tsconfig.json', imports };
+  const options = { ...(id === 'typescript' ? { directory: 'src' } : { domain: 'editor' }), configFile: 'tsconfig.json', imports, ...settings };
   const result = outputs.open(id, options, { root: basedOn.root, readSnapshot: async () => basedOn },
     { apply: async () => { throw Error('A supplied-snapshot planning test cannot write to a project.'); } });
   expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
@@ -181,5 +181,142 @@ describe('portable native type bindings', () => {
       diff: user.identity.compare(user.current.baseline, user.current).value! }, edit(materialize(before, first.value!), 'src/read.ts', changed));
     expect(result.value).toBeUndefined();
     expect(result.problems.map(problem => problem.code)).toContain('contract-drift');
+  });
+});
+
+
+async function generatedBindings(text: string, imports: readonly Record<string, unknown>[] = [], id: 'typescript' | 'acceptance' = 'typescript', libraries: Record<string, string> = {}) {
+  const user = author(text, firstCheckout, libraries), before = id === 'acceptance' ? acceptanceNative() : native();
+  const generated = await open(id, imports).plan({ operation: 'create', current: user.current }, before);
+  expect(generated.problems).toEqual([]); expect(generated.value).toBeDefined();
+  return { user, generated: generated.value!, snapshot: materialize(before, generated.value!) };
+}
+function changedSpecification(user: ReturnType<typeof author>, text: string, rename?: { from: string; to: string }, libraries: Record<string, string> = {}) {
+  const specification = author(text, firstCheckout, libraries).current.specification;
+  const decisions = rename ? [{
+    id: user.current.baseline.elements.find(item => item.address.name === rename.from)!.id,
+    to: [...specification.inspection.query('opaque-type-declaration')].find(item => item.name === rename.to)!.id,
+  }] : [];
+  const next = user.identity.associate(specification, user.current.baseline, decisions);
+  expect(next.problems).toEqual([]); expect(next.value).toBeDefined();
+  const compared = user.identity.compare(user.current.baseline, next.value!);
+  expect(compared.problems).toEqual([]); expect(compared.value).toBeDefined();
+  return { current: next.value!, diff: compared.value! };
+}
+const anotherBinding = { declaration: ['AnotherDocument'], name: 'OtherDocument', from: 'vscode' };
+const anotherSource = '\nopaque type AnotherDocument\nfunction readAnother(document: AnotherDocument) returns Text';
+
+describe('adding a native binding during an explicit specification update', () => {
+  it('adds the first binding for a new opaque type and keeps the handwritten body', async () => {
+    const project = await generatedBindings('function read(document: Text) returns Text');
+    const generated = emitted(project.generated, 'src/read.ts');
+    expect(generated).toContain('throw new Error("Not implemented: read");');
+    const implemented = edit(project.snapshot, 'src/read.ts', generated.replace('throw new Error("Not implemented: read");', 'return "cached";'));
+    const next = changedSpecification(project.user, documentSource);
+    const output = open('typescript', [documentBinding]);
+    const result = await output.plan({ operation: 'update', ...next }, implemented);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    const updated = emitted(result.value!, 'src/read.ts');
+    expect(updated).toContain('import type { TextDocument } from "vscode";');
+    expect(updated).toContain('read(document: TextDocument): string');
+    expect(updated).toContain('return "cached";');
+    const after = materialize(implemented, result.value!);
+    const repeat = await output.plan({ operation: 'update', current: next.current,
+      diff: project.user.identity.compare(next.current.baseline, next.current).value! }, after);
+    expect(repeat.problems).toEqual([]); expect(repeat.value).toBeDefined();
+    expect(Buffer.from(materialize(after, repeat.value!).files.find(file => file.path === 'src/read.ts')!.bytes).toString()).toBe(updated);
+  });
+
+  it('appends a new binding without changing the existing mapped declaration or body', async () => {
+    const project = await generatedBindings(documentSource, [documentBinding]);
+    const generated = emitted(project.generated, 'src/read.ts');
+    expect(generated).toContain('throw new Error("Not implemented: read");');
+    const handwritten = generated.replace('throw new Error("Not implemented: read");', 'return document.getText();');
+    const implemented = edit(project.snapshot, 'src/read.ts', handwritten);
+    const next = changedSpecification(project.user, documentSource + anotherSource);
+    const result = await open('typescript', [documentBinding, anotherBinding]).plan({ operation: 'update', ...next }, implemented);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    expect(emitted(result.value!, 'src/readAnother.ts')).toContain('readAnother(document: OtherDocument): string');
+    expect(Buffer.from(materialize(implemented, result.value!).files.find(file => file.path === 'src/read.ts')!.bytes).toString()).toBe(handwritten);
+  });
+
+  it('requires update rather than create to introduce a binding into saved output', async () => {
+    const project = await generatedBindings('function read(document: Text) returns Text');
+    const next = changedSpecification(project.user, documentSource);
+    const result = await open('typescript', [documentBinding]).plan({ operation: 'create', current: next.current }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('refuses to bind an old unbound opaque type as though it were newly added', async () => {
+    const libraries = { 'native-types': 'opaque type VsCodeDocument' };
+    const project = await generatedBindings('use VsCodeDocument from "native-types"\nfunction read(document: Text) returns Text', [], 'typescript', libraries);
+    const next = changedSpecification(project.user, 'use VsCodeDocument from "native-types"\nfunction read(document: VsCodeDocument) returns Text', undefined, libraries);
+    const result = await open('typescript', [documentBinding]).plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('refuses replacement of an established mapping while appending a new one', async () => {
+    const project = await generatedBindings(documentSource, [documentBinding]);
+    const next = changedSpecification(project.user, documentSource + anotherSource);
+    const result = await open('typescript', [{ ...documentBinding, name: 'OtherDocument' }, anotherBinding])
+      .plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('refuses removal of an established mapping while appending a new one', async () => {
+    const project = await generatedBindings(documentSource, [documentBinding]);
+    const next = changedSpecification(project.user, documentSource + anotherSource);
+    const result = await open('typescript', [anotherBinding]).plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('refuses an unrelated output-directory change alongside a valid new binding', async () => {
+    const project = await generatedBindings('function read(document: Text) returns Text');
+    const next = changedSpecification(project.user, documentSource);
+    const result = await open('typescript', [documentBinding], native(), { directory: 'other' })
+      .plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('refuses to retarget an unchanged selector to a different source identity', async () => {
+    const project = await generatedBindings('opaque type VsCodeDocument\nfunction label() returns Text', [documentBinding]);
+    const next = changedSpecification(project.user,
+      'opaque type OriginalDocument\nfunction label() returns Text\n' + documentSource + anotherSource,
+      { from: 'VsCodeDocument', to: 'OriginalDocument' });
+    const result = await open('typescript', [documentBinding, anotherBinding]).plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('output-options-changed');
+  });
+
+  it('adds a binding for a new acceptance operation while preserving the existing driver body', async () => {
+    const project = await generatedBindings('examples { action closeDocument() returns Nothing }', [], 'acceptance');
+    const generated = emitted(project.generated, 'test/driver/editor.ts');
+    expect(generated).toContain('throw new Error("Not implemented: editor.closeDocument");');
+    const handwritten = generated.replace('throw new Error("Not implemented: editor.closeDocument");', 'return;');
+    const implemented = edit(project.snapshot, 'test/driver/editor.ts', handwritten);
+    const next = changedSpecification(project.user,
+      'opaque type VsCodeDocument\nexamples { action closeDocument() returns Nothing\naction openDocument(document: VsCodeDocument) returns Nothing }');
+    const result = await open('acceptance', [documentBinding]).plan({ operation: 'update', ...next }, implemented);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    const driver = Buffer.from(materialize(implemented, result.value!).files.find(file => file.path === 'test/driver/editor.ts')!.bytes).toString();
+    expect(driver).toContain('import type { TextDocument } from "vscode";');
+    expect(driver).toContain('openDocument(document: TextDocument)');
+    expect(driver).toContain('async closeDocument(): Promise<void> {\n    return;\n  }');
+  });
+
+  it('refuses to rebind an old acceptance type while adding a new binding', async () => {
+    const source = 'opaque type VsCodeDocument\nexamples { action openDocument(document: VsCodeDocument) returns Nothing }';
+    const project = await generatedBindings(source, [documentBinding], 'acceptance');
+    const next = changedSpecification(project.user,
+      'opaque type VsCodeDocument\nopaque type AnotherDocument\nexamples { action openDocument(document: VsCodeDocument) returns Nothing\naction openAnother(document: AnotherDocument) returns Nothing }');
+    const result = await open('acceptance', [{ ...documentBinding, name: 'OtherDocument' }, anotherBinding])
+      .plan({ operation: 'update', ...next }, project.snapshot);
+    expect(result.value).toBeUndefined();
+    expect(result.problems.map(problem => problem.code)).toContain('native-mapping-conflict');
   });
 });

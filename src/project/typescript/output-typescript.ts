@@ -3,7 +3,7 @@ import { visit } from 'jsonc-parser';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from '../output/output.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
-import type { ArtifactAssociation } from '../../model/specification-identity.js';
+import type { ArtifactAssociation, IdentityRecord } from '../../model/specification-identity.js';
 import type { FileChange } from '../connection/project-writer.js';
 import { canonical, identifier, locatorSchema, success } from '../../model/identity-baseline.js';
 import { hash, literal } from '../connection/project-files.js';
@@ -37,7 +37,7 @@ const renderingOptions = (options: TypeScriptOptions) => { const { adoptExisting
 class TypeScriptOutput implements OutputAdapter {
   readonly id = 'typescript';
   constructor(private readonly options: TypeScriptOptions, private readonly context?: OutputContext) {}
-  private state(snapshot: ProjectSnapshot): { value?: State; problems: Diagnostic[] } {
+  private state(snapshot: ProjectSnapshot, request?: OutputRequest): { value?: State; problems: Diagnostic[] } {
     const file = snapshot.files.find(file => file.path === statePath);
     if (!file) return { problems: [] };
     try {
@@ -61,8 +61,28 @@ class TypeScriptOutput implements OutputAdapter {
         kinds: (item.locator.value as { declaration: { kind: string }[] }).declaration.map(part => part.kind) })).sort((a, b) => canonical(a).localeCompare(canonical(b))));
       if (state.files.some(file => represented(file.artifacts) !== represented(file.renderedArtifacts ?? file.artifacts)
         || file.documentation?.some(id => !file.artifacts.some(item => item.specId === id)))) throw new Error('Invalid rendered associations');
-      return { value: state, problems: renderingOptions(settings) === renderingOptions(this.options) ? [] : [outputProblem('output-options-changed', statePath, 'Native output options require an explicit migration.')] };
+      return { value: state, problems: renderingOptions(settings) === renderingOptions(this.options) || this.additionalImports(settings, request) ? [] : [outputProblem('output-options-changed', statePath, 'Native output options require an explicit migration.')] };
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Recorded generated text, byte hash or native associations are invalid.')] }; }
+  }
+  private additionalImports(previous: TypeScriptOptions, request?: OutputRequest): boolean {
+    if (request?.operation !== 'update' || !validDiff(request.diff, request.current)
+      || renderingOptions({ ...this.options, imports: previous.imports }) !== renderingOptions(previous)
+      || canonical(this.options.imports.slice(0, previous.imports.length)) !== canonical(previous.imports)) return false;
+    const extra = this.options.imports.slice(previous.imports.length);
+    if (!extra.length) return false;
+    const current = new Map(request.current.baseline.elements.map(record => [record.id, record])), before = new Map(current), added = new Set<string>();
+    for (const change of request.diff.changes) {
+      if (change.before) before.set(change.id, change.before);
+      else { before.delete(change.id); added.add(change.id); }
+    }
+    const selected = (rule: TypeScriptOptions['imports'][number], records: ReadonlyMap<string, IdentityRecord>): string | undefined => {
+      const path = (record: IdentityRecord): string[] => [...record.address.owner ? path(records.get(record.address.owner)!) : [], record.address.name ?? record.address.kind];
+      const matches = [...records.values()].filter(record => (rule.module === undefined || record.address.module === rule.module)
+        && canonical(path(record)) === canonical(rule.declaration));
+      return matches.length === 1 ? matches[0]!.id : undefined;
+    };
+    return previous.imports.every(rule => { const id = selected(rule, before); return id !== undefined && id === selected(rule, current); })
+      && extra.every(rule => { const id = selected(rule, current); return id !== undefined && added.has(id); });
   }
   private project(state?: State): TypeScriptProject {
     return new TypeScriptProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state?.files.flatMap(file => file.artifacts) ?? []);
@@ -81,7 +101,7 @@ class TypeScriptOutput implements OutputAdapter {
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return refused([...snapshot.problems, outputProblem('incomplete-project', '', 'A complete captured project is required.')]);
     if (new Set(snapshot.files.map(file => key(file.path))).size !== snapshot.files.length || snapshot.files.some(file => !literal(file.path) || !(file.bytes instanceof Uint8Array) || hash(file.bytes) !== file.version)) return refused([outputProblem('invalid-project-snapshot', '', 'Captured paths and byte versions must be valid and unique.')]);
-    const stored = this.state(snapshot); if (stored.problems.length) return refused(stored.problems);
+    const stored = this.state(snapshot, request); if (stored.problems.length) return refused(stored.problems);
     const previous = stored.value, problems: Diagnostic[] = [];
     for (const file of previous?.files ?? []) if (!snapshot.files.some(current => current.path === file.path)) problems.push(conflict(file.path, 'The recorded generated file is missing.'));
     if (problems.length) return refused(problems);
