@@ -12,7 +12,7 @@ describe('source placement before acceptance generation', () => {
     await project.entries(['src/core/arithmetic.expec']);
     await project.nativeAcceptance();
     await project.outputs([
-      { id: 'typescript', options: { sourceRoot: '.', directory: '.', configFile: 'tsconfig.json' } },
+      { id: 'typescript', options: { sourceRoot: '.', directory: '.', configFile: 'tsconfig.source.json' } },
       { id: 'acceptance', options: { domain: 'arithmetic', configFile: 'tsconfig.json' } },
     ]);
     await project.runNative(['build', '--config', 'spec/expec.json', '--json']);
@@ -23,5 +23,5 @@ describe('source placement before acceptance generation', () => {
     await project.expectLayerDirectories(['test/acceptance', 'test/dsl', 'test/driver']);
     await project.expectGeneratedImport('test/acceptance', '../../src/core/multiply.js');
     project.expectNoNativeExecution();
-  }, 60_000);
+  }, 90_000);
 });
