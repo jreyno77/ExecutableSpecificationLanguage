@@ -236,7 +236,7 @@ it('captures the actual Vitest owner before its timed-out body is abandoned', as
   const checkout = fileURLToPath(new URL('../../../', import.meta.url));
   const parent = await fs.realpath(tmpdir()), root = await fs.mkdtemp(join(parent, 'expec-owner-runner-'));
   const test = join(root, 'owner.test.ts'), config = join(root, 'vitest.config.mjs'), report = join(root, 'report.json'), receipt = join(root, 'receipt.json');
-  await fs.writeFile(config, 'export default ' + JSON.stringify({ root: checkout, test: { include: [test.replaceAll('\\', '/')], maxWorkers: 1, environment: 'node' } }));
+  await fs.writeFile(config, 'export default ' + JSON.stringify({ root, test: { include: ['owner.test.ts'], maxWorkers: 1, environment: 'node' } }));
   await fs.writeFile(test, `import { afterEach, expect, it, TestRunner } from ${JSON.stringify(resolve(checkout, 'node_modules/vitest/dist/index.js').replaceAll('\\', '/'))};
 import { promises as fs } from 'node:fs';
 import { ConnectedBuildDriver } from ${JSON.stringify(resolve(checkout, 'test/driver/cli/connected-build.ts').replaceAll('\\', '/'))};
