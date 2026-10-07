@@ -50,21 +50,36 @@ describe('editable imports and native acquisition remain distinct', { timeout: 3
     expect(Buffer.from(after.files.find(file => file.path === 'src/Right.ts')!.bytes).toString()).toBe(right);
     expect(read(after, 'src/Left.ts').coverage.complete).toBe(true); expect(read(after, 'src/Left.ts').problems).toEqual([]);
   });
-  it('does not certify a missing side-effect module in a pure query', async () => {
+  it('accepts an unchecked side-effect import when native TypeScript accepts it', async () => {
     const driver = await project(), source = 'import "./missing.js"; export class Store {}'; await driver.file('src/store.ts', source);
-    const query = read(await driver.context.readSnapshot(), 'src/store.ts'); expect(query.coverage.complete).toBe(false);
-    expectLocated(query.problems, 'native-input-unavailable', 'src/store.ts', source, '"./missing.js"');
+    expect(driver.nativeDiagnostics()).toEqual([]);
+    const query = read(await driver.context.readSnapshot(), 'src/store.ts');
+    expect(query.coverage.complete).toBe(true); expect(query.problems).toEqual([]);
   });
-  it('does not let noCheck fabricate a missing editable module', async () => {
+  it('honors noCheck in an editable native query', async () => {
     const driver = await project(), source = 'import { missing } from "./missing.js"; export class Store { value = missing; }';
     await driver.file('tsconfig.json', '{"compilerOptions":{"noCheck":true,"types":[]},"files":["src/store.ts"]}'); await driver.file('src/store.ts', source);
-    const query = read(await driver.context.readSnapshot(), 'src/store.ts', 'tsconfig.json'); expect(query.coverage.complete).toBe(false);
-    expectLocated(query.problems, 'native-input-unavailable', 'src/store.ts', source, '"./missing.js"');
+    expect(driver.nativeDiagnostics('tsconfig.json')).toEqual([]);
+    const query = read(await driver.context.readSnapshot(), 'src/store.ts', 'tsconfig.json');
+    expect(query.coverage.complete).toBe(true); expect(query.problems).toEqual([]);
   });
-  it('retains actual missing-module evidence behind an authored suppression', async () => {
+  it('honors an authored suppression in an editable native query', async () => {
     const driver = await project(), source = '// @ts-ignore\nimport { missing } from "./missing.js"; export class Store { value = missing; }'; await driver.file('src/store.ts', source);
-    const query = read(await driver.context.readSnapshot(), 'src/store.ts'); expect(query.coverage.complete).toBe(false);
-    expectLocated(query.problems, 'native-input-unavailable', 'src/store.ts', source, '"./missing.js"');
+    expect(driver.nativeDiagnostics()).toEqual([]);
+    const query = read(await driver.context.readSnapshot(), 'src/store.ts');
+    expect(query.coverage.complete).toBe(true); expect(query.problems).toEqual([]);
+  });
+  it('retains native side-effect diagnostics when the project enables them', async () => {
+    const driver = await project(), source = 'import "./missing.js"; export class Store {}';
+    await driver.file('src/store.ts', source);
+    await driver.file('tsconfig.json', '{"compilerOptions":{"noUncheckedSideEffectImports":true,"types":[]},"files":["src/store.ts"]}');
+    const native = driver.nativeDiagnostics('tsconfig.json');
+    expect(native).toHaveLength(1); expect(native[0]).toMatchObject({ code: 2307, file: 'src/store.ts' });
+    const snapshot = await new TypeScriptContext(driver.context, { configFile: 'tsconfig.json' }).readSnapshot();
+    expect(snapshot.problems).toEqual([]); expect(snapshot.complete).toBe(true);
+    const query = read(snapshot, 'src/store.ts', 'tsconfig.json'); expect(query.coverage.complete).toBe(false);
+    expectLocated(query.problems, 'typescript-2307', 'src/store.ts', source, '"./missing.js"');
+    expect(query.problems[0]!.message).toBe(native[0]!.message);
   });
   it('keeps an excluded native extension candidate incomplete', async () => {
     const driver = await project(['node_modules', 'Book.ts']), source = 'import type { Book } from "./Book.js"; export type Title = Book["title"];';

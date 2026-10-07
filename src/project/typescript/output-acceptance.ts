@@ -110,7 +110,7 @@ export const acceptanceOutput: OutputRegistration = {
         const snapshot = { ...basedOn, files: [...basedOn.files.filter(file => !paths.has(file.path)), ...changed.map(file => ({
           path: file.path, bytes: file.bytes, version: hash(file.bytes),
         }))] };
-        const capture = new TypeScriptCapture(snapshot, 'acceptance', settings.configFile, undefined, undefined, true);
+        const capture = new TypeScriptCapture(snapshot, 'acceptance', settings.configFile);
         try {
           const problems = [...capture.problems.map(problem => ({ ...problem, code: fixture ? 'incompatible-fixture' : 'incompatible-driver' })),
             ...nativeCompatibility(capture, settings, preservation.state, request.current, associations.filter(item => projection.runtimeTargets.has(item.specId)))];

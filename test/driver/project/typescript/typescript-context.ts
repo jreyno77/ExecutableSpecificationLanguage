@@ -8,6 +8,7 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import { vi } from 'vitest';
+import ts from 'typescript';
 import { unreadableFile } from '../../unreadable-file.js';
 import { ConfigurationReader, ProjectConnector, TypeScriptContext, TypeScriptProject, FileProjectWriter,
   type ProjectContext, type ProjectSnapshot, type ArtifactAssociation, type ProjectRead, type ProjectSearch,
@@ -62,6 +63,28 @@ export class NativeContextDriver {
     this.native = new TypeScriptContext(this.context, this.options);
     this.snapshot = await this.native.readSnapshot();
     this.dependencyBefore = new Map((this.snapshot.readOnlyFiles ?? []).map(file => [file.path, Buffer.from(file.bytes).toString('hex')]));
+  }
+  nativeDiagnostics(configFile?: string): { code: number; message: string; file?: string; start?: number; length?: number }[] {
+    const defaults: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, moduleDetection: ts.ModuleDetectionKind.Legacy,
+      jsx: ts.JsxEmit.Preserve, strict: true, types: [], noEmit: true };
+    let options = defaults, roots = ts.sys.readDirectory(this.root, ['.ts', '.tsx', '.mts', '.cts'], ['node_modules']);
+    const errors: ts.Diagnostic[] = [];
+    if (configFile) {
+      const filename = this.path(configFile), loaded = ts.readConfigFile(filename, ts.sys.readFile);
+      if (loaded.error) errors.push(loaded.error);
+      else {
+        const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, this.root, undefined, filename);
+        options = { ...parsed.options, noEmit: true }; roots = parsed.fileNames; errors.push(...parsed.errors);
+      }
+    }
+    const program = ts.createProgram(roots, options);
+    return ts.sortAndDeduplicateDiagnostics([...errors, ...ts.getPreEmitDiagnostics(program)]).map(error => ({
+      code: error.code, message: ts.flattenDiagnosticMessageText(error.messageText, '\n'),
+      ...(error.file ? { file: relative(this.root, error.file.fileName).split(sep).join('/') } : {}),
+      ...(error.start === undefined ? {} : { start: error.start }),
+      ...(error.length === undefined ? {} : { length: error.length }),
+    }));
   }
   query(): TypeScriptProject { return new TypeScriptProject({ outputId: 'native', ...(this.options.configFile ? { configFile: this.options.configFile } : {}) }, this.associations); }
   search(id: string): void { this.found = this.query().search(id, this.snapshot); }
