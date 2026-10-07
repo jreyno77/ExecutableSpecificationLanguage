@@ -184,7 +184,9 @@ export class PackageDriver {
   private async installInto(directory: string, artifact: string): Promise<void> {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'expec-package-consumer', private: true, type: 'module' }));
-    await npm(directory, ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock', artifact]);
+    await npm(directory, ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock', `${packageName}@file:${artifact}`]);
+    const installed = JSON.parse(await readFile(join(directory, 'node_modules', packageName, 'package.json'), 'utf8'));
+    if (installed.name !== packageName) throw new Error(`Expected installed package ${packageName}, received ${installed.name}`);
   }
   async check(text: string): Promise<void> {
     const source = join(this.consumer, 'source.expec');
@@ -208,6 +210,17 @@ export class PackageDriver {
   async checkFromInstalledCommand(): Promise<void> {
     await cp(join(resources, 'cli-consumer.mjs'), join(this.consumer, 'cli-consumer.mjs'));
     this.result = await run(process.execPath, ['cli-consumer.mjs'], this.consumer); await this.readReport();
+  }
+  async pythonCommand(input: { command: string; source?: string; copies?: number }): Promise<unknown> {
+    for (const name of ['python-cli-consumer.mjs', 'python-cli-guard.mjs', 'python-public.mts'])
+      await cp(join(resources, name), join(this.consumer, name));
+    await cp(join(checkout, 'test/resources/python/basket.py'), join(this.consumer, 'basket.py'));
+    const checkoutFile = join(checkout, 'src/index.ts'); await stat(checkoutFile);
+    await writeFile(join(this.consumer, 'python-cli-input.json'), JSON.stringify({ ...input, checkoutFile }));
+    this.result = await run(process.execPath, ['python-cli-consumer.mjs'], await realpath(this.consumer), 720_000);
+    await this.readReport();
+    if (this.result.code !== 0) throw Error('Installed Python consumer failed. ' + output(this.result));
+    return this.report;
   }
   async buildPublicCatalog(source: string): Promise<void> {
     await cp(join(resources, 'cli-catalog-consumer.mjs'), join(this.consumer, 'cli-catalog-consumer.mjs'));
@@ -411,12 +424,19 @@ async function npm(directory: string, args: string[]): Promise<ProcessResult> {
 }
 async function run(executable: string, args: string[], cwd: string, timeout = 120_000, environment: Record<string, string> = {}): Promise<ProcessResult> {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase()))), ...environment };
+  const started = performance.now();
   try {
     const result = await execute(executable, args, { cwd, env, timeout, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return { code: 0, ...result };
   } catch (error) {
-    const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
-    if (typeof failure.code !== 'number' || failure.killed) throw error;
+    const failure = error as { code?: number | string; stdout?: string; stderr?: string; killed?: boolean; signal?: string | null };
+    if (typeof failure.code !== 'number' || failure.killed) {
+      try {
+        console.error('[package-process-failure]', JSON.stringify({ cwd, elapsedMs: performance.now() - started, timeout,
+          code: failure.code, signal: failure.signal, killed: failure.killed, stderr: typeof failure.stderr === 'string' ? failure.stderr.slice(-2000) : '' }));
+      } catch { /* Diagnostics must not replace the process failure. */ }
+      throw error;
+    }
     return { code: failure.code, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
   }
 }

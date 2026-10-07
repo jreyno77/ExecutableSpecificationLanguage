@@ -22,6 +22,7 @@ export class KotlinDeliveryDriver {
   prepared!: Check<InitializationPlan>;
   initialized!: InitializationResult;
   context!: ProjectContext;
+  private project!: ProjectContext;
   current!: IdentifiedSpecification;
   diff!: SpecDiff;
   written!: OutputWrite;
@@ -74,7 +75,7 @@ export class KotlinDeliveryDriver {
     this.configuration = configuration.value;
     const connection = await new ProjectConnector(manifest, { excludeNames: ['.git', 'node_modules', '.gradle', '.kotlin', 'build'] }).connect(configuration.value);
     if (connection.value?.status !== 'connected') throw new Error(JSON.stringify(connection));
-    this.context = connection.value.context;
+    this.context = this.project = connection.value.context;
   }
   async prepareKotlin(): Promise<void> {
     this.initializer = new ProjectInitializer(this.manifest, this.configuration);
@@ -84,7 +85,7 @@ export class KotlinDeliveryDriver {
   async initializeKotlin(accepted: boolean): Promise<void> {
     if (!this.prepared.value) throw new Error(JSON.stringify(this.prepared));
     this.initialized = await this.initializer.apply(this.prepared.value, accepted);
-    if (this.initialized.value) { this.context = this.initialized.value.context; this.configuration = this.initialized.value.configuration; }
+    if (this.initialized.value) { this.context = this.project = this.initialized.value.context; this.configuration = this.initialized.value.configuration; }
     this.files = await this.capturedFiles();
   }
   async configureNative(testLibraries: readonly string[] = []): Promise<void> {
@@ -152,7 +153,7 @@ export class KotlinDeliveryDriver {
   async build(): Promise<void> {
     const opened = this.open();
     this.written = opened.value ? await opened.value.create(this.current) : { problems: opened.problems };
-    this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
+    this.files = await this.capturedFiles();
   }
   async file(path: string, text: string): Promise<void> { await fs.mkdir(dirname(join(this.root, path)), { recursive: true }); await fs.writeFile(join(this.root, path), text); }
   async replace(path: string, before: string, after: string): Promise<void> {
@@ -161,10 +162,10 @@ export class KotlinDeliveryDriver {
     await this.file(path, text.replace(before, after));
   }
   async appendBuild(text: string): Promise<void> { await this.file('build.gradle.kts', await fs.readFile(join(this.root, 'build.gradle.kts'), 'utf8') + '\n' + text); }
-  async capturedFiles(): Promise<Map<string, string>> { return new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')])); }
+  async capturedFiles(): Promise<Map<string, string>> { return new Map((await this.project.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')])); }
   async update(): Promise<void> {
     const opened = this.open(); this.written = opened.value ? await opened.value.update(this.diff, this.current) : { problems: opened.problems };
-    this.files = new Map((await this.context.readSnapshot()).files.map(file => [file.path, Buffer.from(file.bytes).toString('utf8')]));
+    this.files = await this.capturedFiles();
   }
   async delete(name: string): Promise<void> {
     const opened = this.open(); this.written = opened.value ? await opened.value.delete(this.subject(this.current, name)) : { problems: opened.problems };
@@ -181,7 +182,7 @@ export class KotlinDeliveryDriver {
     await this.file(path, await fs.readFile(join(this.root, path), 'utf8') + '\n' + text + '\n');
   }
   async projectBytes(): Promise<Map<string, Uint8Array>> {
-    return new Map((await this.context.readSnapshot()).files.map(file => [file.path, Uint8Array.from(file.bytes)]));
+    return new Map((await this.project.readSnapshot()).files.map(file => [file.path, Uint8Array.from(file.bytes)]));
   }
   async search(name: string): Promise<void> { this.searchResult = await this.output.search(this.subject(this.current, name)); }
   async read(name: string): Promise<void> { this.readResult = await this.output.read(this.subject(this.current, name)); }

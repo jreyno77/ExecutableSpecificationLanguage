@@ -11,10 +11,12 @@ import { initialConfiguration, starter } from '../typescript/initialization-prof
 import { javaStarter } from '../java/java-initialization.js';
 import { kotlinStarter } from '../kotlin/kotlin-initialization.js';
 import { kotlinExclusions } from '../kotlin/cli-kotlin.js';
+import { pythonStarter } from '../python/python-initialization.js';
+import { pythonExclusions } from '../python/python-profile.js';
 
 export interface InitializationPlan {
   readonly root: string;
-  readonly target: 'typescript' | 'java' | 'kotlin';
+  readonly target: 'typescript' | 'java' | 'kotlin' | 'python';
   readonly configuration: Configuration;
   readonly changes: readonly FileChange[];
 }
@@ -34,15 +36,17 @@ export class ProjectInitializer {
     if (!configurationSchema.safeParse(data).success) throw new TypeError('Provide a validated configuration.');
     this.configuration = structuredClone(configuration);
   }
-  async prepare(choice: { readonly root: string; readonly target: string; readonly javaHome?: string }): Promise<Check<InitializationPlan>> {
+  async prepare(choice: { readonly root: string; readonly target: string; readonly javaHome?: string; readonly python?: string; readonly uv?: string }): Promise<Check<InitializationPlan>> {
     if (!choice || !nativePath(choice.root) || typeof choice.target !== 'string') throw new TypeError('Provide a native destination and a target identifier.');
     const path = resolve(dirname(this.manifestLocation), choice.root);
     try {
-      if (choice.target !== 'typescript' && choice.target !== 'java' && choice.target !== 'kotlin') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
+      if (choice.target !== 'typescript' && choice.target !== 'java' && choice.target !== 'kotlin' && choice.target !== 'python') reject('unsupported-initialization-target', path, `Unsupported initialization target ${choice.target}.`);
       const destination = await InitializationDestination.capture(path);
       const java = choice.target === 'java' ? await javaStarter(this.configuration, choice.root, choice.javaHome ?? '') : undefined;
       if (java && !java.value) return { problems: java.problems, deferred: java.deferred };
-      const native = choice.target === 'kotlin' ? await kotlinStarter(this.configuration, choice.root, choice.javaHome) : java?.value;
+      const python = choice.target === 'python' ? await pythonStarter(this.configuration, choice.root, choice.python ?? '', choice.uv ?? '') : undefined;
+      if (python && !python.value) return { problems: python.problems, deferred: python.deferred };
+      const native = choice.target === 'kotlin' ? await kotlinStarter(this.configuration, choice.root, choice.javaHome) : java?.value ?? python?.value;
       const configuration = native?.configuration ?? initialConfiguration(this.configuration, choice.root);
       const plan: InitializationPlan = { root: path, target: choice.target as InitializationPlan['target'], configuration,
         changes: native?.changes ?? starter(configuration.version) };
@@ -64,7 +68,7 @@ export class ProjectInitializer {
       cancelled(); await destination.verifyEmpty(); cancelled(); await destination.create();
       await destination.verifyEmpty(); cancelled();
       const connected = await new ProjectConnector(this.manifestLocation, captured.plan.target === 'kotlin'
-        ? { excludeNames: kotlinExclusions } : undefined).connect(captured.plan.configuration);
+        ? { excludeNames: kotlinExclusions } : captured.plan.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(captured.plan.configuration);
       if (connected.value?.status !== 'connected') { problems.push(...connected.problems); reject('initialization-connection-failed', path, 'The chosen project could not be connected.'); }
       const context = connected.value.context;
       await destination.verifyIdentity();

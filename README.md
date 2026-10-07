@@ -707,6 +707,47 @@ Library callers can compose `KotlinContext`, `FileProjectWriter` and the
 explicit. Changed build configuration requires installation before native capture.
 The installed package includes the pinned K2 bridge and its upstream notices.
 
+## Python projects
+
+Provide CPython 3.12 and uv 0.12.23 as absolute paths to ordinary executable
+files, not symbolic links. Start with authored `spec/main.expec` and this
+`spec/expec.json`:
+
+```json
+{
+  "formatVersion": 1,
+  "version": "1.0.0",
+  "build": { "entries": ["main.expec"] },
+  "outputs": []
+}
+```
+
+```sh
+expec init --config spec/expec.json --root ../store-game --target python --python /absolute/python3.12 --uv /absolute/uv --yes
+expec install --config spec/expec.json
+expec build --config spec/expec.json
+```
+
+Initialization selects the Python contract and acceptance outputs in the manifest
+and saves `src`/`test` roots and tool paths in `expec.python.json`. Installation acquires
+LibCST 1.9.0, Jedi 0.20.0, mypy 2.4.0 and pytest 9.1.1, creates the `.venv`
+environment and records the selected dependencies. `install --offline` uses
+available cached packages; missing packages fail. Additional requirements use
+`pypi:` names and exact two- or three-part release versions.
+
+Build generates contracts and readable pytest tests with DSL/driver layers.
+Implement the generated application/driver methods, then run
+`expec test --config spec/expec.json`. Test selects the current generated pytest
+cases; missing, skipped, failed or unfinished cases cannot establish success.
+Build and native inspection do not install packages or run application code.
+
+The CLI selects one executable target per manifest. Changed native configuration
+or requirements need an explicit install. Native inspection uses captured source
+and declared dependencies; dynamic or unresolved uses limit coverage and cannot
+authorize preserving edits. Compiled application extensions require compatible
+stubs. Library callers compose `PythonContext`, `PythonProject.read/search`,
+`pythonOutput` and `pythonAcceptanceOutput` through the existing project/output APIs.
+
 ## Connected commands
 
 The installed package provides the `expec` command. Start with an `expec.json` manifest and authored source entries. Paths in the manifest stay relative to that file, including when commands run from another directory.

@@ -13,6 +13,8 @@ import { SourceLoader, type SourceCapture } from '../project/connection/source-l
 import { cliProfile } from './cli-profile.js';
 import { checkedJavaPackages, javaCliExclusions } from '../project/java/cli-java.js';
 import { readKotlinPackages, kotlinExclusions } from '../project/kotlin/cli-kotlin.js';
+import { checkedPythonPackages } from '../project/python/cli-python.js';
+import { pythonExclusions } from '../project/python/python-profile.js';
 
 export interface CheckedManifest {
   manifest: string;
@@ -38,34 +40,40 @@ export async function readManifest(filename: string, profiles: readonly OutputPr
   const read = new ConfigurationReader(profiles).read({ sourceId: pathToFileURL(result.manifest).href, text });
   result.problems = read.problems;
   if (!read.value) return result;
-  const profile = cliProfile(read.value);
-  result.problems = profile.problems;
-  if (!profile.value) return result;
-  result.configuration = read.value; result.profile = profile.value; result.text = text; return result;
+  result.configuration = read.value; result.text = text; return result;
 }
 export async function checkManifest(filename: string, profiles: readonly OutputProfile[]): Promise<CheckedManifest> {
   const result = await readManifest(filename, profiles);
   if (!result.configuration) return result;
   const configuration = result.configuration;
+  const profile = cliProfile(configuration);
+  if (!profile.value) { result.problems = profile.problems; return result; }
+  result.profile = profile.value;
   const libraries = await new LibraryLoader(result.manifest).load(configuration);
   result.captures = libraries.captures; result.syntax = libraries.syntax; result.problems = libraries.problems;
   let packages: { name: string; version: string }[] = [];
-  if (configuration.packages.length || result.profile?.target === 'java') {
+  if (configuration.packages.length || result.profile?.target === 'java' || result.profile?.target === 'python') {
     const connection = await new ProjectConnector(result.manifest, result.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
-      : result.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions } : undefined).connect(configuration);
+      : result.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions }
+      : result.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(configuration);
     result.problems = [...result.problems, ...connection.problems];
     if (connection.value?.status === 'connected') {
       result.project = connection.value.context.root;
       const observed = result.profile?.target === 'java'
         ? await checkedJavaPackages(result, connection.value.context, result.profile.configFile!)
         : result.profile?.target === 'kotlin' ? await readKotlinPackages(connection.value.context, configuration.packages)
+        : result.profile?.target === 'python' ? await checkedPythonPackages(connection.value.context, configuration, result.manifest, result.profile.configFile)
         : await readPackages(result.project, configuration.packages);
       result.packageInputs = observed.inputs;
       result.problems = [...result.problems, ...observed.problems]; packages = [...observed.value ?? []];
     } else if (connection.value) result.problems = [...result.problems, cliProblem('project-required',
       'Requested packages need a connected project. Initialize it explicitly, then install the declared packages.', result.manifest)];
   }
-  const dependencies = new DependencyPlanner().resolve(configuration, { modules: libraries.value?.inventory ?? [], packages });
+  const python = result.profile?.target === 'python';
+  let dependencies = new DependencyPlanner().resolve(python ? { ...configuration, packages: [] } : configuration,
+    { modules: libraries.value?.inventory ?? [], packages: python ? [] : packages });
+  if (python && dependencies.value && !result.problems.length) dependencies = { ...dependencies, value: { ...dependencies.value,
+    packages: configuration.packages.map(item => ({ alias: item.alias, phases: [...item.phases] })) } };
   result.problems = [...result.problems, ...dependencies.problems];
   if (!libraries.value || !dependencies.value) return result;
   const sources = await new SourceLoader(result.manifest).load(configuration, dependencies.value, libraries.value);

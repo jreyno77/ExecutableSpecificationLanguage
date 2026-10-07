@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const components = ['language', 'model', 'compiler', 'cli', 'project/connection',
-  'project/dependencies', 'project/output', 'project/java', 'project/kotlin', 'project/typescript', 'package', 'workflow'];
+  'project/dependencies', 'project/output', 'project/java', 'project/kotlin', 'project/python', 'project/typescript', 'package', 'workflow'];
 const ownership: [RegExp, string][] = [
   [/^(README\.md|AGENTS\.md|\.github\/pull_request_template\.md|\.agents\/.*)$/, 'docs'],
   [/^src\/cli-entry\.ts$/, 'cli'],
@@ -13,6 +13,8 @@ const ownership: [RegExp, string][] = [
   [/^(\.github\/(workflows|ci)\/|vitest(\.[\w-]+)?\.config\.ts$|test\/global-setup\.ts$|test\/driver\/(compiled-checkout|unreadable-file)\.ts$|\.git(ignore|attributes)$)/, 'workflow'],
   [/^test\/resources\/package-consumer\/java-(consumer|cli-consumer|cli-guard)\.mjs$/, 'project/java'],
   [/^test\/resources\/package-consumer\/(kotlin-(consumer|cli-consumer)|checkout-guard)\.mjs$/, 'project/kotlin'],
+  [/^test\/resources\/package-consumer\/python-(cli-consumer\.mjs|cli-guard\.mjs|public\.mts)$/, 'project/python'],
+  [/^test\/resources\/python\//, 'project/python'],
   [/^test\/resources\/grammar\//, 'language'],
   [/^test\/resources\/(domain-failures|workspace-compilation)\//, 'compiler'],
   [/^test\/resources\/diagrams\//, 'project/output'],
@@ -32,14 +34,19 @@ function componentFor(path: string): string {
 
 export function checksFor(event: string, paths: readonly string[], ref = '') {
   const full = event !== 'pull_request' || Boolean(ref);
-  const owners = new Set(full ? components : paths.map(componentFor));
+  const owners = new Set(full ? components : paths.flatMap(path =>
+    path === 'test/resources/jvm/junit-platform-console-standalone-6.1.3.jar'
+      || path === 'test/resources/jvm/JUNIT-NOTICE.txt'
+      ? ['project/java', 'project/kotlin'] : [componentFor(path)]));
   return {
-    core: components.filter(owner => owners.has(owner) && owner !== 'project/java' && owner !== 'project/kotlin' && owner !== 'workflow')
+    core: components.filter(owner => owners.has(owner) && owner !== 'project/java' && owner !== 'project/kotlin' && owner !== 'project/python' && owner !== 'workflow')
       .flatMap(owner => ['test/unit/' + owner, 'test/acceptance/' + owner]),
     java: owners.has('project/java'),
     kotlin: owners.has('project/kotlin'),
+    python: owners.has('project/python'),
     package: owners.has('package'),
     pilot: owners.has('cli'),
+    prepareConsumer: owners.has('cli') && !owners.has('package'),
     workflow: owners.has('workflow'),
     shards: full ? [1, 2, 3, 4, 5] : [1],
   };

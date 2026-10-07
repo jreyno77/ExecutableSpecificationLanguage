@@ -20,6 +20,14 @@ export class InitializationExamples {
     return this.driver.prepare(root, 'java', process.env.JAVA_HOME);
   }
   expectJavaToolchain(): void { this.expectPlannedJsonProperty('expec.java.json', ['javaHome'], process.env.JAVA_HOME); }
+  preparePython(root: string): Promise<void> { return this.driver.preparePython(root); }
+  preparePythonWithoutInterpreter(root: string): Promise<void> { return this.driver.preparePython(root, this.driver.path('missing-python')); }
+  async expectPythonProjectVersion(version: string): Promise<void> { expect(await this.driver.pythonProjectVersion()).toBe(version); }
+  async expectReturnedCaptureExcludes(paths: string[]): Promise<void> {
+    const snapshot = await this.driver.result!.value!.context.readSnapshot(); expect(snapshot.complete).toBe(true);
+    for (const path of paths) expect(snapshot.files.map(file => file.path)).not.toContain(path);
+    expect(snapshot.files.map(file => file.path)).toContain('pyproject.toml');
+  }
   apply(accepted: boolean): Promise<void> { return this.driver.apply(accepted); }
   async applyWithAlreadyAbortedSignal(accepted: boolean): Promise<void> { const controller = new AbortController(); controller.abort(); await this.driver.apply(accepted, controller.signal); }
   file(path: string, text: string): Promise<void> { return this.driver.file(path, text); }
