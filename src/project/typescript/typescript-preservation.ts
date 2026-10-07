@@ -367,7 +367,9 @@ class NativeContracts {
         if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
         const members = statement.importClause?.namedBindings;
         if (!members || !ts.isNamedImports(members)) continue;
-        const target = capture.resolveModule(statement.moduleSpecifier.text, source.fileName), module = target && checker.getSymbolAtLocation(target);
+        const specifier = statement.moduleSpecifier.text, target = capture.resolveModule(specifier, source.fileName);
+        const module = target && checker.getSymbolAtLocation(target)
+          || checker.getAmbientModules().find(symbol => symbol.getName() === JSON.stringify(specifier));
         for (const member of members.elements) {
           const name = member.propertyName?.text ?? member.name.text;
           let symbol = module && checker.getExportsOfModule(module).find(symbol => symbol.getName() === name);
