@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import ts from 'typescript';
 import { expect } from 'vitest';
@@ -272,6 +273,28 @@ export class ConnectedBuild {
     const record = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));
     const file = record.graph.files.find((file: any) => file.path === path);
     expect(file).toBeDefined(); expect(file.version).toBe(expected.version); expect(file.bytes !== undefined).toBe(expected.preimage);
+  }
+  expectNoPrivateCoordinationBodies(): void {
+    const outcomes = this.driver.writeOutcomes();
+    expect(outcomes.length).toBeGreaterThan(0);
+    const rows = outcomes.flatMap(outcome => [outcome.change, ...outcome.before, ...outcome.after])
+      .filter(row => row.path === '.expec/build-transition.json' || row.path === '.expec/build-pending.json');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('bytes');
+      if (row.state === 'file') expect(row.version).toMatch(/^[a-f0-9]{64}$/);
+    }
+  }
+  expectUserByteReceipt(path: string, text: string): void {
+    const outcome = this.driver.writeOutcomes().find(outcome => outcome.change.kind === 'write' && outcome.change.path === path && outcome.state === 'applied');
+    expect(outcome).toBeDefined();
+    const bytes = { encoding: 'base64', data: Buffer.from(text).toString('base64') };
+    expect(outcome.change.bytes).toEqual(bytes);
+    const observed = outcome.after.find((file: any) => file.path === path);
+    expect(observed).toMatchObject({ path, state: 'file', bytes });
+    expect(observed.version).toMatch(/^[a-f0-9]{64}$/);
+    expect(observed.version).toBe(createHash('sha256').update(Buffer.from(text)).digest('hex'));
+    expect(Buffer.from(observed.bytes.data, 'base64').toString()).toBe(text);
   }
   dispose(): Promise<void> { return this.driver.dispose(); }
 }

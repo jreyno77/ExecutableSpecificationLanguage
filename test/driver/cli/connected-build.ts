@@ -104,6 +104,10 @@ export class ConnectedBuildDriver {
       ...(item.afterPlan ? { afterPlan: { ...item.afterPlan, path: this.path(item.afterPlan.path) } } : {}),
     })) }));
   }
+  writeOutcomes(): any[] {
+    return this.report.stages.flatMap((stage: any) => [stage.receipt, stage.journal, stage.write, stage.initialization?.write]
+      .filter(Boolean).flatMap((receipt: any) => receipt.outcomes ?? []));
+  }
   async filesUnder(path: string): Promise<{ path: string; text: string }[]> {
     const result: { path: string; text: string }[] = [];
     const walk = async (directory: string): Promise<void> => {

@@ -527,6 +527,11 @@ describe that boundary.
 - `test` verifies current generated identities and executes their native tests.
 
 Use `--json` for one format-1 result on stdout; application logs go to stderr.
+Ordinary file byte receipts use `{ encoding: "base64", data }`. In stage write
+receipts, the private `.expec/build-transition.json` and `.expec/build-pending.json`
+paths omit only `bytes` on write changes and file observations. Outcomes,
+before/after states, paths, versions and findings remain. Direct API receipts and
+on-disk recovery records retain their complete bodies.
 Exit codes: 0 success, 1 invalid/failed work, 2 usage, 3 an author decision,
 130 cancellation. A missing implementation or prose verification obligation
 is unfinished work, not a passing test.

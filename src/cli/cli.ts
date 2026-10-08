@@ -1,4 +1,5 @@
 import { packageRoot } from '../resources.js';
+import { commandJson } from './command-json.js';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -46,10 +47,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
   const report = (status: string, exitCode: number, values: Partial<Report> = {}): number => {
     const result: Report = { format: 1, command, status, exitCode, manifest, problems: [], syntax: [], deferred: [],
       obligations: [], stages: [], ...values, ...(interrupted ? { status: 'cancelled', exitCode: 130 } : {}) };
-    if (json) process.stdout.write(JSON.stringify(result, function (key, value: unknown) {
-      const original = key ? this[key] as unknown : value;
-      return original instanceof Uint8Array ? { encoding: 'base64', data: Buffer.from(original).toString('base64') } : value;
-    }) + '\n');
+    if (json) process.stdout.write(commandJson(result) + '\n');
     else {
       const stream = result.exitCode ? process.stderr : process.stdout;
       stream.write(result.status + ': ' + manifest + (result.version ? ' (specification ' + result.version + ')' : '') + '\n');
