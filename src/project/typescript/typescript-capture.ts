@@ -25,6 +25,21 @@ export function diagnostic(code: string, message: string, file: string, start?: 
   return { code, message, at: { kind: 'dependency', path: ['typescript', file, ...(start === undefined ? [] : [start, length ?? 0])] }, related: [] };
 }
 
+export function validateSnapshot(snapshot: ProjectSnapshot): void {
+  requireInput(snapshot && snapshot.root && typeof snapshot.root.path === 'string' && isAbsolute(snapshot.root.path)
+    && typeof snapshot.root.identity === 'string' && !!snapshot.root.identity && Array.isArray(snapshot.files)
+    && Array.isArray(snapshot.problems) && typeof snapshot.complete === 'boolean' && snapshot.complete === !snapshot.problems.length
+    && Array.isArray(snapshot.excludeNames) && snapshot.excludeNames.every(name => pathValid(name) && !name.includes('/'))
+    && new Set(snapshot.excludeNames).size === snapshot.excludeNames.length && Array.isArray(snapshot.excluded)
+    && snapshot.excluded.every(pathValid) && new Set(snapshot.excluded).size === snapshot.excluded.length, 'Malformed project snapshot.');
+  requireInput(snapshot.files.every(file => file && pathValid(file.path) && file.bytes instanceof Uint8Array
+    && typeof file.version === 'string' && /^[a-f0-9]{64}$/.test(file.version))
+    && new Set(snapshot.files.map(file => file.path)).size === snapshot.files.length, 'Malformed or duplicate captured file.');
+  requireInput(snapshot.problems.every(problem => problem && typeof problem.code === 'string' && typeof problem.message === 'string'
+    && problem.at && typeof problem.at.kind === 'string' && Array.isArray(problem.related)), 'Malformed capture diagnostic.');
+  requireInput(validateReadOnly(snapshot), 'Malformed, overlapping or hash-invalid read-only evidence.');
+}
+
 /** Captured project/configuration host and the bounded installed standard-library resource. */
 export class TypeScriptCapture {
   readonly snapshot: ProjectSnapshot;
@@ -38,18 +53,7 @@ export class TypeScriptCapture {
   private readonly nativeFiles = new Set<string>();
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
   constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs) {
-    requireInput(snapshot && snapshot.root && typeof snapshot.root.path === 'string' && isAbsolute(snapshot.root.path)
-      && typeof snapshot.root.identity === 'string' && !!snapshot.root.identity && Array.isArray(snapshot.files)
-      && Array.isArray(snapshot.problems) && typeof snapshot.complete === 'boolean' && snapshot.complete === !snapshot.problems.length
-      && Array.isArray(snapshot.excludeNames) && snapshot.excludeNames.every(name => pathValid(name) && !name.includes('/'))
-      && new Set(snapshot.excludeNames).size === snapshot.excludeNames.length && Array.isArray(snapshot.excluded)
-      && snapshot.excluded.every(pathValid) && new Set(snapshot.excluded).size === snapshot.excluded.length, 'Malformed project snapshot.');
-    requireInput(snapshot.files.every(file => file && pathValid(file.path) && file.bytes instanceof Uint8Array
-      && typeof file.version === 'string' && /^[a-f0-9]{64}$/.test(file.version))
-      && new Set(snapshot.files.map(file => file.path)).size === snapshot.files.length, 'Malformed or duplicate captured file.');
-    requireInput(snapshot.problems.every(problem => problem && typeof problem.code === 'string' && typeof problem.message === 'string'
-      && problem.at && typeof problem.at.kind === 'string' && Array.isArray(problem.related)), 'Malformed capture diagnostic.');
-    requireInput(validateReadOnly(snapshot), 'Malformed, overlapping or hash-invalid read-only evidence.');
+    validateSnapshot(snapshot);
     this.snapshot = structuredClone(snapshot); this.problems = [...this.snapshot.problems];
     for (const file of [...this.snapshot.files, ...this.snapshot.readOnlyFiles ?? []]) {
       const path = this.absolute(file.path);
