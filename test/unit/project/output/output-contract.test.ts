@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
+import { planWithinHeapLimit } from '../../../driver/project/output/planning.js';
 import { Outputs, ProjectOutput, type OutputAdapter, type OutputPlan, type ProjectSnapshot, type IdentifiedSpecification } from '../../../../src/index.js';
 const basedOn: ProjectSnapshot = { root: { path: '/project', identity: 'test' }, complete: true, files: [], excludeNames: [], excluded: [], problems: [] };
 const current = {} as IdentifiedSpecification;
@@ -120,5 +121,72 @@ describe('the output workflow checks its replaceable collaborators', () => {
     target.read = async () => ({ artifacts: [], coverage: { scope, complete: false, limitations: ['Some project files are unavailable.'] }, problems: [] });
     const output = new ProjectOutput(target, { root: basedOn.root, readSnapshot: async () => snapshot }, { apply: async () => { throw new Error('Read must not write'); } });
     expect((await output.read('id')).problems).toContainEqual(problem);
+  });
+});
+
+function capturedFiles(): ProjectSnapshot {
+  const file = (path: string, text: string) => ({ path, bytes: Buffer.from(text), version: createHash('sha256').update(text).digest('hex') });
+  return { ...basedOn, files: [file('src/one.ts', 'one'), file('src/two.ts', 'two')],
+    readOnlyFiles: [file('node_modules/sdk/index.d.ts', 'export interface SDK {}')],
+    nativeInputs: [{ uri: 'file:///C:/sdk/package.json', version: 'a'.repeat(64) }],
+    excludeNames: ['.git', '.cache'], excluded: ['.git', '.cache'] };
+}
+function planCaptured(snapshot: ProjectSnapshot, proposed: ProjectSnapshot) {
+  return workflow(adapter({ value: { ...value, basedOn: proposed }, problems: [], deferred: [] }))
+    .output.plan({ operation: 'create', current }, snapshot);
+}
+describe('an output plan retains the captured snapshot efficiently', () => {
+  it('plans an unchanged captured 8 MiB file within a 256 MiB heap', async () => {
+    const result = await planWithinHeapLimit({ fileMiB: 8, heapMiB: 256 });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.report).toEqual({ planned: true, bytesUnchanged: true, metadataUnchanged: true, reads: 0, writes: 0 });
+  }, 15_000);
+  it('rejects changed source bytes even when their version is unchanged', async () => {
+    const snapshot = capturedFiles(), proposed = structuredClone(snapshot); proposed.files[0]!.bytes[0] = 0;
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('rejects changed read-only bytes even when their version is unchanged', async () => {
+    const snapshot = capturedFiles(), proposed = structuredClone(snapshot); proposed.readOnlyFiles![0]!.bytes[0] = 0;
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('rejects a changed captured root', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, root: { ...snapshot.root, path: '/other' } };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('rejects changed native input evidence', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, nativeInputs: [{ ...snapshot.nativeInputs![0]!, version: 'b'.repeat(64) }] };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('rejects changed exclusion rules', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, excludeNames: ['.git'] };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('rejects changed excluded paths', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, excluded: ['.git'] };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('retains captured file order', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, files: [...snapshot.files].reverse() };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('retains exclusion array order', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, excludeNames: [...snapshot.excludeNames].reverse() };
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
+  });
+  it('accepts equal Buffer and Uint8Array byte views with different offsets', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, files: snapshot.files.map(file => {
+      const padded = new Uint8Array(file.bytes.length + 4); padded.set(file.bytes, 2);
+      return { ...file, bytes: padded.subarray(2, padded.length - 2) };
+    }) };
+    expect((await planCaptured(snapshot, proposed)).value?.basedOn.files).toEqual(proposed.files);
+  });
+  it('accepts omitted and undefined optional evidence with reordered object keys', async () => {
+    const proposed = { problems: [], excluded: [], excludeNames: [], files: [], complete: true,
+      root: { identity: 'test', path: '/project' }, nativeInputs: undefined, readOnlyFiles: undefined } as unknown as ProjectSnapshot;
+    expect((await planCaptured(basedOn, proposed)).value).toBeDefined();
+  });
+  it('rejects a numeric object masquerading as captured bytes', async () => {
+    const snapshot = capturedFiles(), proposed = { ...snapshot, files: snapshot.files.map(file => ({ ...file, bytes: { ...file.bytes } })) } as unknown as ProjectSnapshot;
+    await expect(planCaptured(snapshot, proposed)).rejects.toThrow('snapshot');
   });
 });

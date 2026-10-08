@@ -21,6 +21,17 @@ function coverage(value: RelationshipObservation['coverage'], snapshot: ProjectS
   require(value.complete === !(value.limitations.length || unresolved), 'Coverage must explain exactly why observations are incomplete.');
   require(!value.complete || snapshot.complete && !snapshot.problems.length && !!value.scope.length && !value.limitations.length, 'Incomplete project or limitations cannot claim complete coverage.');
 }
+function sameSnapshot(left: ProjectSnapshot, right: ProjectSnapshot): boolean {
+  if (!left || !Array.isArray(left.files) || left.readOnlyFiles !== undefined && !Array.isArray(left.readOnlyFiles)) return false;
+  const before = [...right.files, ...right.readOnlyFiles ?? []], after = [...left.files, ...left.readOnlyFiles ?? []];
+  if (before.length !== after.length || [...before, ...after].some(file => !(file?.bytes instanceof Uint8Array))) return false;
+  const metadata = (snapshot: ProjectSnapshot) => ({ ...snapshot, files: snapshot.files.map(({ bytes, ...file }) => file),
+    ...snapshot.readOnlyFiles === undefined ? {} : { readOnlyFiles: snapshot.readOnlyFiles.map(({ bytes, ...file }) => file) } });
+  return canonical(metadata(left)) === canonical(metadata(right)) && before.every((file, index) => {
+    const other = after[index]!.bytes, bytes = file.bytes;
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).equals(Buffer.from(other.buffer, other.byteOffset, other.byteLength));
+  });
+}
 export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, id: string): void {
   require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.problems) && Array.isArray(result.deferred), 'Malformed output plan.'); diagnostics(result.problems);
@@ -30,7 +41,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   if (plan.obligations !== undefined) diagnostics(plan.obligations);
   require(validateReadOnly(snapshot), 'Malformed read-only native evidence.');
   require(snapshot.complete && !snapshot.problems.length, 'A successful output plan requires complete input.');
-  require(!result.problems.length && plan.outputId === id && canonical(plan.basedOn) === canonical(snapshot), 'A successful plan must retain its output, snapshot, and clean findings.');
+  require(!result.problems.length && plan.outputId === id && sameSnapshot(plan.basedOn, snapshot), 'A successful plan must retain its output, snapshot, and clean findings.');
   require(Array.isArray(plan.changes) && Array.isArray(plan.artifacts), 'Malformed file changes or associations.');
   const endpoints: string[] = [], locators = new Set<string>();
   for (const change of plan.changes) {
