@@ -72,7 +72,8 @@ class ConnectedProject implements ProjectContext {
   constructor(private readonly selected: string, private readonly captured: ProjectRoot, private readonly exclusions: readonly string[]) {}
   get root(): ProjectRoot { return { ...this.captured }; }
   async readSnapshot(): Promise<ProjectSnapshot> {
-    const files: ProjectFile[] = [], excluded: string[] = [], problems: Diagnostic[] = [];
+    let files: ProjectFile[] = [], excluded: string[] = [];
+    const problems: Diagnostic[] = [];
     const problem = (code: string, message: string, parts: string[]) => problems.push(diagnostic(code, message, ['project', this.captured.path, ...parts]));
     const verifyRoot = async () => {
       try {
@@ -82,44 +83,68 @@ class ConnectedProject implements ProjectContext {
       } catch (error) { problem('root-unavailable', `Cannot read selected project root ${this.selected}: ${osError(error)}.`, []); }
       return false;
     };
-    const changed = (parts: string[]) => problem('changed-during-read', `Project entry ${parts.join('/') || this.captured.path} changed while it was being read.`, parts);
-    const read = async (parts: string[]): Promise<void> => {
+    let active = 0;
+    const waiting: (() => void)[] = [];
+    const acquire = async (): Promise<() => void> => {
+      if (active < 4) active++;
+      else await new Promise<void>(resolve => waiting.push(resolve));
+      return () => { const next = waiting.shift(); if (next) next(); else active--; };
+    };
+    type Branch = { files: ProjectFile[]; excluded: string[]; problems: Diagnostic[] };
+    const read = async (parts: string[]): Promise<Branch> => {
+      const branch: Branch = { files: [], excluded: [], problems: [] };
+      const problem = (code: string, message: string) => branch.problems.push(diagnostic(code, message, ['project', this.captured.path, ...parts]));
       const path = join(this.captured.path, ...parts), relative = parts.join('/');
+      const changed = () => problem('changed-during-read', `Project entry ${relative || this.captured.path} changed while it was being read.`);
+      let release: (() => void) | undefined = await acquire();
       try {
         const before = await fs.lstat(path, { bigint: true });
-        if (before.isSymbolicLink()) { problem('link-not-followed', `Project link ${relative} was not followed.`, parts); return; }
+        if (before.isSymbolicLink()) { problem('link-not-followed', `Project link ${relative} was not followed.`); return branch; }
         if (before.isDirectory()) {
-          const start = files.length, skipped = excluded.length, names = new Set<string>();
+          const children: string[][] = [], names = new Set<string>();
           for (const raw of (await fs.readdir(path, { encoding: 'buffer' })).sort(Buffer.compare)) {
             const name = raw.toString('utf8');
             if (!Buffer.from(name).equals(raw) || names.has(name)) {
-              problem('unsupported-entry', `Cannot represent filename bytes ${raw.toString('hex')} losslessly in ${relative || this.captured.path}.`, parts);
+              problem('unsupported-entry', `Cannot represent filename bytes ${raw.toString('hex')} losslessly in ${relative || this.captured.path}.`);
               continue;
             }
             names.add(name);
-            if (this.exclusions.includes(name)) excluded.push([...parts, name].join('/'));
-            else await read([...parts, name]);
+            if (this.exclusions.includes(name)) branch.excluded.push([...parts, name].join('/'));
+            else children.push([...parts, name]);
           }
+          release(); release = undefined;
+          const captured = await Promise.allSettled(children.map(read));
+          for (const child of captured) {
+            if (child.status === 'rejected') throw child.reason;
+            for (const file of child.value.files) branch.files.push(file);
+            for (const path of child.value.excluded) branch.excluded.push(path);
+            for (const problem of child.value.problems) branch.problems.push(problem);
+          }
+          release = await acquire();
           const after = await fs.lstat(path, { bigint: true });
-          if (!sameFile(before, after)) changed(parts);
+          if (!sameFile(before, after)) changed();
           if (!after.isDirectory() || before.dev !== after.dev || before.ino !== after.ino) {
-            files.splice(start); excluded.splice(skipped);
+            branch.files.length = 0; branch.excluded.length = 0;
           }
         } else if (before.isFile()) {
           const handle = await fs.open(path, 'r');
           try {
-            if (!sameFile(before, await handle.stat({ bigint: true }))) { changed(parts); return; }
+            if (!sameFile(before, await handle.stat({ bigint: true }))) { changed(); return branch; }
             const bytes = await handle.readFile();
             if (!sameFile(before, await handle.stat({ bigint: true })) || !sameFile(before, await fs.lstat(path, { bigint: true }))) {
-              changed(parts); return;
+              changed(); return branch;
             }
-            files.push({ path: relative, bytes, version: createHash('sha256').update(bytes).digest('hex') });
+            branch.files.push({ path: relative, bytes, version: createHash('sha256').update(bytes).digest('hex') });
           } finally { await handle.close(); }
-        } else problem('unsupported-entry', `Project entry ${relative} is neither a regular file nor a directory.`, parts);
-      } catch (error) { problem('read-failed', `Cannot read project entry ${relative || this.captured.path}: ${osError(error)}.`, parts); }
+        } else problem('unsupported-entry', `Project entry ${relative} is neither a regular file nor a directory.`);
+      } catch (error) { problem('read-failed', `Cannot read project entry ${relative || this.captured.path}: ${osError(error)}.`); }
+      finally { release?.(); }
+      return branch;
     };
     if (await verifyRoot()) {
-      await read([]);
+      const captured = await read([]);
+      files = captured.files; excluded = captured.excluded;
+      for (const problem of captured.problems) problems.push(problem);
       if (!await verifyRoot()) { files.length = 0; excluded.length = 0; }
     }
     const location = (item: Diagnostic) => item.at.kind === 'dependency' ? item.at.path.slice(2).join('/') : '';
