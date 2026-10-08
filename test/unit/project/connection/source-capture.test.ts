@@ -25,7 +25,7 @@ describe('initial source acquisition', () => {
   });
   it('refuses a confirming status that differs from the candidate', async () => {
     source = await CapturedSource.author('opaque type Before'); source.transition('candidate');
-    await source.read(); source.expectRefused('source-changed', 1);
+    await source.read(); source.expectCandidateMismatch(); source.expectRefused('source-changed', 1);
   });
   it('refuses another transition during confirmation', async () => {
     source = await CapturedSource.author('opaque type Before'); source.transition('twice');

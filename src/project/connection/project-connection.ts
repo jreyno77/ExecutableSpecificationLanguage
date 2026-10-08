@@ -16,7 +16,11 @@ export interface ProjectSnapshot {
   readonly excluded: readonly string[];
   readonly problems: readonly Diagnostic[];
 }
-export interface ProjectContext { readonly root: ProjectRoot; readSnapshot(): Promise<ProjectSnapshot> }
+export interface ProjectContext {
+  readonly root: ProjectRoot;
+  readSnapshot(): Promise<ProjectSnapshot>;
+  captureSnapshot?(): Promise<ProjectSnapshot>;
+}
 export type ProjectConnection =
   | { readonly status: 'connected'; readonly context: ProjectContext }
   | { readonly status: 'unconnected'; readonly reason: 'not-configured' | 'missing-root'; readonly root?: string };
@@ -71,7 +75,9 @@ export async function connectDirectory(selected: string, exclusions: readonly st
 class ConnectedProject implements ProjectContext {
   constructor(private readonly selected: string, private readonly captured: ProjectRoot, private readonly exclusions: readonly string[]) {}
   get root(): ProjectRoot { return { ...this.captured }; }
-  async readSnapshot(): Promise<ProjectSnapshot> {
+  readSnapshot(): Promise<ProjectSnapshot> { return this.snapshot(false); }
+  captureSnapshot(): Promise<ProjectSnapshot> { return this.snapshot(true); }
+  private async snapshot(captureInitial: boolean): Promise<ProjectSnapshot> {
     let files: ProjectFile[] = [], excluded: string[] = [];
     const problems: Diagnostic[] = [];
     const problem = (code: string, message: string, parts: string[]) => problems.push(diagnostic(code, message, ['project', this.captured.path, ...parts]));
@@ -127,15 +133,33 @@ class ConnectedProject implements ProjectContext {
             branch.files.length = 0; branch.excluded.length = 0;
           }
         } else if (before.isFile()) {
+          let confirming: { bytes: Buffer; candidate: BigIntStats } | undefined;
           const handle = await fs.open(path, 'r');
           try {
             if (!sameFile(before, await handle.stat({ bigint: true }))) { changed(); return branch; }
             const bytes = await handle.readFile();
-            if (!sameFile(before, await handle.stat({ bigint: true })) || !sameFile(before, await fs.lstat(path, { bigint: true }))) {
+            const after = await handle.stat({ bigint: true }), stable = sameFile(before, after);
+            if ((!stable && (!captureInitial || !ctimeOnly(before, after))) || !sameFile(after, await fs.lstat(path, { bigint: true }))) {
               changed(); return branch;
             }
-            branch.files.push({ path: relative, bytes, version: createHash('sha256').update(bytes).digest('hex') });
+            if (stable) branch.files.push({ path: relative, bytes, version: createHash('sha256').update(bytes).digest('hex') });
+            else confirming = { bytes, candidate: after };
           } finally { await handle.close(); }
+          if (confirming) {
+            const candidate = confirming.candidate;
+            if (!sameFile(candidate, await fs.lstat(path, { bigint: true }))) { changed(); return branch; }
+            const confirmation = await fs.open(path, 'r');
+            let bytes: Buffer;
+            try {
+              if (!sameFile(candidate, await confirmation.stat({ bigint: true }))) { changed(); return branch; }
+              bytes = await confirmation.readFile();
+              if (!sameFile(candidate, await confirmation.stat({ bigint: true })) || !sameFile(candidate, await fs.lstat(path, { bigint: true }))) {
+                changed(); return branch;
+              }
+            } finally { await confirmation.close(); }
+            if (!confirming.bytes.equals(bytes)) { changed(); return branch; }
+            branch.files.push({ path: relative, bytes, version: createHash('sha256').update(bytes).digest('hex') });
+          }
         } else problem('unsupported-entry', `Project entry ${relative} is neither a regular file nor a directory.`);
       } catch (error) { problem('read-failed', `Cannot read project entry ${relative || this.captured.path}: ${osError(error)}.`); }
       finally { release?.(); }
@@ -164,6 +188,10 @@ function identity(path: string, info: BigIntStats): string { return `${info.dev}
 function sameFile(before: BigIntStats, after: BigIntStats): boolean {
   return before.dev === after.dev && before.ino === after.ino && before.mode === after.mode
     && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs;
+}
+function ctimeOnly(before: BigIntStats, after: BigIntStats): boolean {
+  return before.dev === after.dev && before.ino === after.ino && before.mode === after.mode
+    && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs !== after.ctimeNs;
 }
 function ordinal(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 function diagnostic(code: string, message: string, path: readonly (string | number)[]): Diagnostic {

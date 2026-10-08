@@ -52,7 +52,7 @@ export class SourceCaptureDriver {
     const lstat = fs.lstat.bind(fs), open = fs.open.bind(fs);
     const named = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
       const info = await Reflect.apply(lstat, fs, args);
-      if (String(args[0]) !== this.name || typeof info.ctimeNs !== 'bigint') return info;
+      if (String(args[0]) !== this.name || !('ctimeNs' in info) || typeof info.ctimeNs !== 'bigint') return info;
       const observed = this.view(info as BigIntStats, true); this.record('named', observed); return observed;
     });
     this.restores.push(() => named.mockRestore());
@@ -93,7 +93,7 @@ export class SourceCaptureDriver {
     this.restores.push(() => opening.mockRestore());
   }
   private record(operation: 'named' | 'opened', info: BigIntStats, handle?: number): void {
-    this.metadata.push({ operation, handle, tuple: Object.fromEntries(['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].map(field => [field, String(info[field as keyof BigIntStats])])) });
+    this.metadata.push({ operation, ...(handle === undefined ? {} : { handle }), tuple: Object.fromEntries(['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].map(field => [field, String(info[field as keyof BigIntStats])])) });
   }
   async dispose(): Promise<void> {
     for (const restore of this.restores) restore();
