@@ -1,9 +1,10 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { ArtifactAssociation, SpecIdentifier } from '../../model/specification-identity.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
 import { z } from 'zod';
 import { canonical, identifier, jsonData, locatorSchema } from '../../model/identity-baseline.js';
-import { TypeScriptCapture, diagnostic, pathValid, requireInput } from './typescript-capture.js';
+import { TypeScriptCapture, diagnostic, pathValid, requireInput, validateSnapshot } from './typescript-capture.js';
 import { TypeScriptSymbols, unique, type Selector } from './typescript-symbols.js';
 
 export interface TypeScriptProjectOptions { readonly outputId: string; readonly configFile?: string }
@@ -13,6 +14,7 @@ export class TypeScriptProject {
   private readonly options: TypeScriptProjectOptions;
   private readonly associations: readonly ArtifactAssociation[];
   private readonly libraries = new Map<string, string>();
+  private retained: TypeScriptCapture | undefined;
   constructor(options: TypeScriptProjectOptions, associations: readonly ArtifactAssociation[]) {
     const settings = z.strictObject({ outputId: z.string().trim().min(1), configFile: z.string().refine(pathValid).optional() });
     requireInput(jsonData(options) && settings.safeParse(options).success, 'Provide an output ID and optional exact project-relative configuration path.');
@@ -33,10 +35,22 @@ export class TypeScriptProject {
     }
     this.options = structuredClone(options); this.associations = structuredClone(selected);
   }
+  private prepare(snapshot: ProjectSnapshot): TypeScriptCapture {
+    try {
+      validateSnapshot(snapshot);
+      if (this.retained && sameCapture(this.retained.snapshot, snapshot)) return this.retained;
+      this.retained?.service.dispose(); this.retained = undefined;
+      const capture = new TypeScriptCapture(snapshot, this.options.outputId, this.options.configFile, this.libraries);
+      if (!capture.problems.length) this.retained = capture;
+      return capture;
+    } catch (error) {
+      this.retained?.service.dispose(); this.retained = undefined; throw error;
+    }
+  }
   private query(basedOn: ProjectSnapshot) {
-    const capture = new TypeScriptCapture(basedOn, this.options.outputId, this.options.configFile, this.libraries);
+    const capture = this.prepare(basedOn);
     try { return { capture, symbols: new TypeScriptSymbols(capture, this.associations) }; }
-    catch (error) { capture.service.dispose(); throw error; }
+    catch (error) { if (this.retained === capture) this.retained = undefined; capture.service.dispose(); throw error; }
   }
   private subject(id: SpecIdentifier, capture: TypeScriptCapture, symbols: TypeScriptSymbols) {
     const associated = this.associations.filter(item => item.specId === id), problems = [...capture.problems, ...symbols.problems];
@@ -61,7 +75,7 @@ export class TypeScriptProject {
         });
         return structuredClone({ artifacts: unique(artifacts), coverage: { scope: capture.scope(), complete: !problems.length, limitations: problems.map(problem => problem.message) }, problems });
       });
-    } finally { capture.service.dispose(); }
+    } finally { if (this.retained !== capture) capture.service.dispose(); }
   }
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): ProjectRead {
     return this.readAll([id], basedOn)[0]!;
@@ -76,6 +90,21 @@ export class TypeScriptProject {
       const observation = (direction: 'incoming' | 'outgoing') => ({ subject: id, direction, ...uses[direction], coverage: { scope,
         complete: !problems.length && !uses[direction].unresolved.length, limitations: [...new Set([...problems.map(problem => problem.message), ...uses[direction].unresolved.map(item => item.reason)])] } });
       return structuredClone({ definitions: symbols.definitions(id), incoming: observation('incoming'), outgoing: observation('outgoing'), problems });
-    } finally { capture.service.dispose(); }
+    } finally { if (this.retained !== capture) capture.service.dispose(); }
   }
+}
+
+function sameCapture(left: ProjectSnapshot, right: ProjectSnapshot): boolean {
+  const bodies = (a: ProjectSnapshot['files'], b: ProjectSnapshot['files']) => a.length === b.length && a.every((file, index) => {
+    const other = b[index]!;
+    return Buffer.from(file.bytes.buffer, file.bytes.byteOffset, file.bytes.byteLength)
+      .equals(Buffer.from(other.bytes.buffer, other.bytes.byteOffset, other.bytes.byteLength));
+  });
+  if (!bodies(left.files, right.files) || !bodies(left.readOnlyFiles ?? [], right.readOnlyFiles ?? [])) return false;
+  const metadata = (snapshot: ProjectSnapshot) => {
+    const file = ({ bytes: _bytes, ...fields }: ProjectSnapshot['files'][number]) => fields;
+    return structuredClone({ ...snapshot, files: snapshot.files.map(file),
+      ...(snapshot.readOnlyFiles === undefined ? {} : { readOnlyFiles: snapshot.readOnlyFiles.map(file) }) });
+  };
+  return isDeepStrictEqual(metadata(left), metadata(right));
 }
