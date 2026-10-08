@@ -58,10 +58,12 @@ export function fileText(result: ProjectSnapshot, path: string, native = false):
   if (!file) throw Error('Missing captured comparison file: ' + path);
   return Buffer.from(file.bytes).toString('utf8');
 }
-export function observeEditableArrayBodyClones() {
+export function observeEditableArrayBodyClones(editablePaths: readonly string[]) {
+  const editable = new Set(editablePaths);
   const clone = globalThis.structuredClone, arrays: string[][] = []; let snapshots = 0;
   const observer = vi.spyOn(globalThis, 'structuredClone').mockImplementation(((value: unknown, options?: Parameters<typeof structuredClone>[1]) => {
-    if (Array.isArray(value) && value.length && value.every(file => file && typeof file.path === 'string' && file.bytes instanceof Uint8Array)) arrays.push(value.map(file => file.path));
+    if (Array.isArray(value) && value.length && value.every(file => file && typeof file.path === 'string' && file.bytes instanceof Uint8Array)
+      && value.some(file => editable.has(file.path))) arrays.push(value.map(file => file.path));
     if (value && typeof value === 'object' && 'root' in value && 'files' in value && Array.isArray(value.files)) snapshots++;
     return clone(value, options);
   }) as typeof structuredClone);

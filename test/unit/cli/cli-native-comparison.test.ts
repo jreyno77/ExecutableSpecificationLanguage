@@ -64,7 +64,7 @@ describe('collecting the same editable project for native builds', () => {
   });
   it('compares native editable files without cloning their bodies for equality', async () => {
     const build = await nativeBuild({ 'src/value.ts': source, 'assets/data.bin': 'one' });
-    const copies = observeEditableArrayBodyClones();
+    const copies = observeEditableArrayBodyClones(['assets/data.bin', 'expec.json', 'package.json', 'src/value.ts']);
     try {
       const result = await build.collect();
       expect(result.complete).toBe(true); expect(result.problems).toEqual([]);
