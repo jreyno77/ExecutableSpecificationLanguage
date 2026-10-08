@@ -32,11 +32,20 @@ function changedInput(before: ProjectSnapshot['nativeInputs'], after: ProjectSna
   return [...new Set([...left.keys(), ...right.keys()])].find(uri => left.get(uri) !== right.get(uri)) ?? '<native-inputs>';
 }
 
-/** Resolves supplied bytes, reusing complete facts only within one operation. */
+/** Resolves supplied bytes; operations retain their facts, while a reader retains one latest successful capture. */
 export class JavaAnalysis {
   private readonly completed = new Map<string, JavaFacts>();
-  constructor(private readonly configFile: string) {}
+  private generation = 0;
+  constructor(private readonly configFile: string, private readonly retention?: 'reader') {}
   async read(supplied: ProjectSnapshot) {
+    const generation = ++this.generation;
+    try { return await this.analyze(supplied, generation); }
+    catch (error) { this.forget(generation); throw error; }
+  }
+  private forget(generation: number): void {
+    if (this.retention === 'reader' && generation === this.generation) this.completed.clear();
+  }
+  private async analyze(supplied: ProjectSnapshot, generation: number) {
     javaSnapshot(supplied);
     const snapshot = structuredClone(supplied), configFile = this.configFile;
     const input = await javaInputs(snapshot, configFile), problems = input.problems;
@@ -47,7 +56,7 @@ export class JavaAnalysis {
     let facts: JavaFacts = { format: 1, declarations: [], uses: [], problems: [], unresolved: [], comments: [] };
     if (input.nativeInputs.some(required => !snapshot.nativeInputs?.some(captured => captured.uri === required.uri && captured.version === required.version))) problems.push(javaProblem('native-input-changed', 'Java native evidence is missing or changed; capture it again.', configFile,
       changedInput(snapshot.nativeInputs, input.nativeInputs)));
-    if (problems.length || !input.config || !input.report) return { facts, problems, scope };
+    if (problems.length || !input.config || !input.report) { this.forget(generation); return { facts, problems, scope }; }
     const capturedFiles = (files: ProjectSnapshot['files'] | undefined) => files?.map(({ path, bytes, version }) => ({ path, version, bytes: Buffer.from(bytes).toString('base64') }));
     const key = hash(Buffer.from(canonical({ configFile, root: { path: snapshot.root.path, identity: snapshot.root.identity },
       complete: snapshot.complete, excludeNames: snapshot.excludeNames, excluded: snapshot.excluded,
@@ -117,7 +126,11 @@ export class JavaAnalysis {
       problems.push(javaProblem('native-input-changed', 'Java native inputs changed during analysis.', configFile, changedInput(input.nativeInputs, current.nativeInputs)));
       facts = { format: 1, declarations: [], uses: [], problems: [], unresolved: [], comments: [] };
     }
-    if (!saved && !problems.length && !facts.unresolved.length) this.completed.set(key, structuredClone(facts));
+    if (!problems.length && !facts.unresolved.length) {
+      if (!saved && (this.retention !== 'reader' || generation === this.generation)) {
+        this.forget(generation); this.completed.set(key, structuredClone(facts));
+      }
+    } else this.forget(generation);
     return structuredClone({ facts, problems, scope });
   }
 }
