@@ -20,7 +20,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
-  const initial = await project.readSnapshot(), stage = pendingStage(initial);
+  const initial = await (project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
   const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs);
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
