@@ -86,12 +86,30 @@ export class NativeDeclarations implements NativeInputs {
     try {
       handle = fs.openSync(absolute, 'r'); const opened = fs.fstatSync(handle, { bigint: true });
       if (!same(before, opened)) { this.problem('stale-project', path, 'Native input changed before it could be read.'); return undefined; }
-      const bytes = fs.readFileSync(handle), after = fs.fstatSync(handle, { bigint: true });
-      if (!same(opened, after) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
+      let bytes = fs.readFileSync(handle);
+      const after = fs.fstatSync(handle, { bigint: true }), settled = !same(opened, after);
+      if (settled && !statusChanged(opened, after) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
         this.problem('stale-project', path, 'Native input changed while it was read.'); return undefined;
       }
+      if (settled) {
+        fs.closeSync(handle); handle = undefined;
+        const named = fs.lstatSync(absolute, { bigint: true });
+        if (!named.isFile() || named.isSymbolicLink() || !same(after, named)) {
+          this.problem('stale-project', path, 'Native input changed before its settling read.'); return undefined;
+        }
+        handle = fs.openSync(absolute, 'r');
+        if (!same(after, fs.fstatSync(handle, { bigint: true }))) {
+          this.problem('stale-project', path, 'Native input changed before its settling read.'); return undefined;
+        }
+        const fresh = fs.readFileSync(handle);
+        if (!same(after, fs.fstatSync(handle, { bigint: true })) || !same(after, fs.lstatSync(absolute, { bigint: true })) || !bytes.equals(fresh)) {
+          this.problem('stale-project', path, 'Native input changed during its settling read.'); return undefined;
+        }
+        bytes = fresh;
+      }
       const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-      this.files.set(path, { path, bytes: Uint8Array.from(bytes), version: createHash('sha256').update(bytes).digest('hex') }); return text;
+      const file = { path, bytes: Uint8Array.from(bytes), version: createHash('sha256').update(bytes).digest('hex') };
+      this.files.set(path, file); if (settled) this.observed.set(path, after); return text;
     } catch (error) { this.problem('native-read-failed', path, `Cannot read native input: ${String(error)}`); return undefined; }
     finally { if (handle !== undefined) fs.closeSync(handle); }
   }
@@ -142,4 +160,7 @@ export class NativeDeclarations implements NativeInputs {
 }
 function sameNames(a: readonly string[], b: readonly string[]): boolean { return a.length === b.length && a.every((name, index) => name === b[index]); }
 function same(a: BigIntStats, b: BigIntStats): boolean { return a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs; }
+function statusChanged(a: BigIntStats, b: BigIntStats): boolean {
+  return a.ctimeNs !== b.ctimeNs && a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs;
+}
 function missing(error: unknown): boolean { return ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? ''); }
