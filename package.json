@@ -9,7 +9,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./syntax/expec.tmLanguage.json": "./dist/syntax/expec.tmLanguage.json"
   },
   "files": [
     "dist",
@@ -25,7 +26,7 @@
   },
   "packageManager": "npm@11.20.0",
   "scripts": {
-    "grammar:generate": "langium generate",
+    "grammar:generate": "langium generate && node src/language/langium/syntax-build.mjs",
     "java:build": "node src/project/java/java-build.mjs",
     "kotlin:build": "node src/project/kotlin/kotlin-build.mjs",
     "python:build": "node src/project/python/python-build.mjs",
@@ -64,7 +65,9 @@
     "langium-cli": "4.4.0",
     "rolldown": "1.2.11",
     "rollup-plugin-license": "3.7.1",
-    "vitest": "5.0.2"
+    "vitest": "5.0.2",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
   },
   "bin": {
     "expec": "./dist/cli-entry.js"
