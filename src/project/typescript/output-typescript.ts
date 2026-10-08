@@ -87,10 +87,17 @@ class TypeScriptOutput implements OutputAdapter {
   private project(state?: State): TypeScriptProject {
     return new TypeScriptProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state?.files.flatMap(file => file.artifacts) ?? []);
   }
+  async readAll(ids: readonly string[], snapshot: ProjectSnapshot) {
+    if (!ids.length) return [];
+    const state = this.state(snapshot);
+    return this.project(state.value).readAll(ids, snapshot).map(result => {
+      const problems = [...result.problems, ...structuredClone(state.problems)];
+      return { ...result, problems, coverage: { ...result.coverage, complete: !problems.length && result.coverage.complete,
+        limitations: [...result.coverage.limitations, ...state.problems.map(problem => problem.message)] } };
+    });
+  }
   async read(id: string, snapshot: ProjectSnapshot) {
-    const state = this.state(snapshot), result = this.project(state.value).read(id, snapshot), problems = [...result.problems, ...state.problems];
-    return { ...result, problems, coverage: { ...result.coverage, complete: !problems.length && result.coverage.complete,
-      limitations: [...result.coverage.limitations, ...state.problems.map(problem => problem.message)] } };
+    return (await this.readAll([id], snapshot))[0]!;
   }
   async search(id: string, snapshot: ProjectSnapshot) {
     const state = this.state(snapshot), result = this.project(state.value).search(id, snapshot), problems = [...result.problems, ...state.problems];

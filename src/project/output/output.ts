@@ -5,7 +5,7 @@ import type { ProjectContext, ProjectSnapshot } from '../connection/project-conn
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
 import type { ProjectChanges, ProjectWriter, WriteResult } from '../connection/project-writer.js';
 import type { ArtifactAssociation, IdentifiedSpecification, SpecDiff, SpecIdentifier } from '../../model/specification-identity.js';
-import { canonical, captured, failure, jsonData, success } from '../../model/identity-baseline.js';
+import { canonical, captured, failure, identifier, jsonData, success } from '../../model/identity-baseline.js';
 import { checkPlan, checkRead, checkSearch } from './output-contract.js';
 export { contractListOutput, structureListOutput } from './output-lists.js';
 
@@ -14,6 +14,7 @@ export interface Output {
   insert(diff: SpecDiff, current: IdentifiedSpecification): Promise<OutputWrite>;
   update(diff: SpecDiff, current: IdentifiedSpecification): Promise<OutputWrite>;
   read(id: SpecIdentifier): Promise<ProjectRead>;
+  readAll(ids: readonly SpecIdentifier[], basedOn?: ProjectSnapshot): Promise<readonly ProjectRead[]>;
   search(id: SpecIdentifier): Promise<ProjectSearch>;
   delete(id: SpecIdentifier): Promise<OutputWrite>;
   plan(request: OutputRequest, basedOn: ProjectSnapshot): Promise<Check<OutputPlan>>;
@@ -28,6 +29,7 @@ export interface OutputAdapter {
   readonly id: string;
   plan(request: OutputRequest, basedOn: ProjectSnapshot): Promise<Check<OutputPlan>>;
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectRead>;
+  readAll?(ids: readonly SpecIdentifier[], basedOn: ProjectSnapshot): Promise<readonly ProjectRead[]>;
   search(id: SpecIdentifier, basedOn: ProjectSnapshot): Promise<ProjectSearch>;
 }
 export interface OutputContext { readonly workspaceModules: readonly string[]; readonly manifestLocation?: string }
@@ -51,6 +53,21 @@ export class ProjectOutput implements Output {
     const receipt = await this.writer.apply(plan.value);
     return { receipt, problems: receipt.problems, ...plan.value.obligations === undefined ? {} : { obligations: structuredClone(plan.value.obligations) },
       ...(receipt.status === 'stopped' ? {} : { artifacts: structuredClone(plan.value.artifacts) }) };
+  }
+  async readAll(ids: readonly SpecIdentifier[], basedOn?: ProjectSnapshot): Promise<readonly ProjectRead[]> {
+    if (!Array.isArray(ids) || !Array.from(ids).every(id => identifier.safeParse(id).success)) throw new TypeError('Provide specification identifiers.');
+    const subjects = [...ids];
+    if (!subjects.length) return [];
+    const snapshot = structuredClone(basedOn ?? await this.project.readSnapshot());
+    const observe = (result: ProjectRead) => { checkRead(result, snapshot, this.adapter.id); return observed(result, snapshot); };
+    if (this.adapter.readAll) {
+      const results = await this.adapter.readAll([...subjects], structuredClone(snapshot));
+      if (!Array.isArray(results) || results.length !== subjects.length) throw new TypeError('An output batch must return one result per subject.');
+      return Array.from(results, observe);
+    }
+    const results: ProjectRead[] = [];
+    for (const id of subjects) results.push(observe(await this.adapter.read(id, structuredClone(snapshot))));
+    return results;
   }
   async read(id: SpecIdentifier): Promise<ProjectRead> {
     const snapshot = await this.project.readSnapshot(), result = await this.adapter.read(id, structuredClone(snapshot));

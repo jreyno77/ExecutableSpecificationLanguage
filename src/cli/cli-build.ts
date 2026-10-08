@@ -64,10 +64,14 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {
         failureStage = 'tests';
         changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
-        for (const { id: outputId, output } of opened) for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
-          const read = await output.read(id);
-          if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-          read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+        const completed = await context.readSnapshot();
+        if (!completed.complete) return { ...result, problems: completed.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+        for (const { id: outputId, output } of opened) {
+          const ids = [...new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))];
+          for (const read of await output.readAll(ids, completed)) {
+            if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+            read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+          }
         }
       }
     } catch (error) {
