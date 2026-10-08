@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import fs from 'node:fs';
+import { isBuiltin } from 'node:module';
 import { dirname, join, relative, isAbsolute } from 'node:path';
 import { posix } from 'node:path';
 import type { Diagnostic } from '../../compiler/checking.js';
@@ -129,6 +130,7 @@ export class TypeScriptCapture {
     }
     roots = [...new Set(roots)];
     const unresolved: { literal: ts.StringLiteralLike; source: ts.SourceFile; lookups: Set<string> }[] = [];
+    const implementations: { literal: ts.StringLiteralLike; problem: Diagnostic }[] = [];
     const resolutions = new Map<ts.SourceFile, (string | undefined)[]>();
     this.service = ts.createLanguageService({ ...moduleHost, getCompilationSettings: () => options,
       getCurrentDirectory: () => root, getScriptFileNames: () => roots, getScriptVersion: () => 'capture',
@@ -151,11 +153,17 @@ export class TypeScriptCapture {
         const path = found.resolvedModule?.resolvedFileName;
         if (inputs) { const paths = resolutions.get(source) ?? []; paths.push(path); resolutions.set(source, paths); }
         if (!path) unresolved.push({ literal, source, lookups });
-        if (inputs && path?.startsWith(root + '/node_modules/') && !/\.d\.[cm]?ts$/i.test(path)) this.problems.push(diagnostic('unsupported-native-input', `Native import ${literal.text} requires installed implementation rather than declarations.`, this.projectPath(containing)!, literal.getStart(source), literal.getWidth(source)));
+        if (inputs && path?.startsWith(root + '/node_modules/') && !/\.d\.[cm]?ts$/i.test(path)) implementations.push({ literal, problem: diagnostic('unsupported-native-input', `Native import ${literal.text} requires installed implementation rather than declarations.`, this.projectPath(containing)!, literal.getStart(source), literal.getWidth(source)) });
         return found;
       }) });
     try {
       this.program = this.service.getProgram();
+      const checker = implementations.length ? this.program?.getTypeChecker() : undefined;
+      const ambient = new Map(checker?.getAmbientModules().map(symbol => [symbol.getName(), symbol]));
+      for (const { literal, problem } of implementations) {
+        const declaration = ambient.get(JSON.stringify(literal.text));
+        if (!isBuiltin(literal.text) || !declaration || checker?.getSymbolAtLocation(literal) !== declaration) this.problems.push(problem);
+      }
       if (this.program) {
         // Acquisition checks sources that can report unavailable inputs; pure queries retain full diagnostics.
         const selected = inputs ? this.program.getSourceFiles().filter(source => source.referencedFiles.length
