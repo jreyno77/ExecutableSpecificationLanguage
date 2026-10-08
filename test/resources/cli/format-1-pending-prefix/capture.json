@@ -1,0 +1,22 @@
+{
+  "provenance": {
+    "commit": "07681c68b614578cca79ad7d3689c7bf3125f037",
+    "pendingSHA256": "d001cd3afdcc74a97d2a853b074ac9933b6a9ee45c72979c774336ebab8c490c",
+    "root": {
+      "path": "C:\\Users\\jreys\\AppData\\Local\\Temp\\expec-journal-GI2TV9\\project",
+      "identity": "3260448421:1970324837759157:C:\\Users\\jreys\\AppData\\Local\\Temp\\expec-journal-GI2TV9\\project"
+    },
+    "manifest": "C:\\Users\\jreys\\AppData\\Local\\Temp\\expec-journal-GI2TV9\\spec\\expec.json",
+    "sourceUri": "file:///C:/Users/jreys/AppData/Local/Temp/expec-journal-GI2TV9/spec/main.expec",
+    "recipe": "Real checked two-concept source; notes.txt retained; first fixed-file write applied; actual second write refused."
+  },
+  "manifest": "{\"formatVersion\":1,\"version\":\"1.0.0\",\"project\":{\"root\":\"../project\"},\"build\":{\"entries\":[\"main.expec\"]},\"outputs\":[{\"id\":\"first\"},{\"id\":\"second\"}]}",
+  "source": "concept First {}\nconcept Second {}",
+  "original": {
+    "notes.txt": "dW5jaGFuZ2VkIG5vdGVz"
+  },
+  "prefix": {
+    "First.txt": "Rmlyc3Q=",
+    "notes.txt": "dW5jaGFuZ2VkIG5vdGVz"
+  }
+}

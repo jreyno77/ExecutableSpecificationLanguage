@@ -45,7 +45,7 @@ export class ConnectedBuildDriver {
   }
   sourceText(name: string): Promise<string> { return readFile(this.path('spec/' + name), 'utf8'); }
   async saveManifest(): Promise<void> { await this.write('spec/expec.json', JSON.stringify(this.manifest, null, 2) + '\n'); }
-  async write(path: string, text: string): Promise<void> {
+  async write(path: string, text: string | Uint8Array): Promise<void> {
     const target = this.path(path); await mkdir(dirname(target), { recursive: true }); await writeFile(target, text);
   }
   path(path: string): string {
