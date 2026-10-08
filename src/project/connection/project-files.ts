@@ -66,7 +66,10 @@ export class ProjectFiles {
       this.parents.set(relative, info);
     }
   }
-  async read(path: string): Promise<ObservedFile> {
+  async read(path: string): Promise<ObservedFile> { return this.readFile(path, false); }
+  /** Initial admission may prove one ctime-only change with a fresh strict read. */
+  async capture(path: string): Promise<ObservedFile> { return this.readFile(path, true); }
+  private async readFile(path: string, initial: boolean): Promise<ObservedFile> {
     await this.ancestors(path);
     let info: BigIntStats;
     try { info = await fs.lstat(this.path(path), { bigint: true }); } catch (error) {
@@ -76,14 +79,24 @@ export class ProjectFiles {
     if (!info.isFile() || info.isSymbolicLink()) fail(this.root, 'unsupported-change', path, 'Only ordinary files can be changed.');
     await this.spelling(path);
     const handle = await fs.open(this.path(path), 'r');
+    let bytes: Buffer, candidate: BigIntStats;
     try {
       if (!stable(info, await handle.stat({ bigint: true }))) fail(this.root, 'stale-project', path, 'File identity changed while opening it.');
-      const bytes = await handle.readFile();
-      if (!stable(info, await handle.stat({ bigint: true })) || !stable(info, await fs.lstat(this.path(path), { bigint: true }))) {
+      bytes = await handle.readFile();
+      candidate = await handle.stat({ bigint: true });
+      if (!stable(info, candidate) && (!initial || !ctimeOnly(info, candidate))) {
         fail(this.root, 'stale-project', path, 'File changed while reading it.');
       }
-      return { value: { path, state: 'file', bytes, version: hash(bytes) }, info };
+      if (!stable(candidate, await fs.lstat(this.path(path), { bigint: true }))) {
+        fail(this.root, 'stale-project', path, 'File changed while reading it.');
+      }
+      if (stable(info, candidate)) return { value: { path, state: 'file', bytes, version: hash(bytes) }, info };
     } finally { await handle.close(); }
+    const fresh = await this.read(path);
+    if (!fresh.info || !stable(candidate, fresh.info) || fresh.value.state !== 'file' || !bytes.equals(fresh.value.bytes)) {
+      fail(this.root, 'stale-project', path, 'File changed while reading it.');
+    }
+    return fresh;
   }
   async observe(path: string): Promise<FileObservation> {
     try { return (await this.read(path)).value; } catch { return { path, state: 'unknown' }; }
@@ -180,4 +193,8 @@ export function sameObservation(a: FileObservation, b: FileObservation): boolean
 }
 function stable(a: BigIntStats, b: BigIntStats): boolean {
   return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+
+function ctimeOnly(a: BigIntStats, b: BigIntStats): boolean {
+  return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs !== b.ctimeNs;
 }
