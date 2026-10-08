@@ -25,10 +25,15 @@ export const javaOutput: OutputRegistration = {
 
 class JavaOutput implements OutputAdapter {
   readonly id = 'java';
+  private queryProject: { associations: string; project: JavaProject } | undefined;
   constructor(private readonly options: z.infer<typeof javaOptions>, private readonly context?: OutputContext) {}
   private project(snapshot: ProjectSnapshot) {
     const state = readJavaOutputState(this.id,this.options,javaOptions,snapshot);
-    return { state, project: new JavaProject({ outputId: this.id, configFile: this.options.configFile ?? 'expec.java.json' }, state.value?.files.flatMap(file => file.artifacts) ?? []) };
+    const associations = state.value?.files.flatMap(file => file.artifacts) ?? [], key = canonical(associations);
+    const project = () => new JavaProject({ outputId: this.id, configFile: this.options.configFile ?? 'expec.java.json' }, associations);
+    if (!state.value || state.problems.length) { this.queryProject = undefined; return { state, project: project() }; }
+    if (this.queryProject?.associations !== key) this.queryProject = { associations: key, project: project() };
+    return { state, project: this.queryProject.project };
   }
   async read(id: string, snapshot: ProjectSnapshot) {
     const { state, project } = this.project(snapshot), result = await project.read(id, snapshot);

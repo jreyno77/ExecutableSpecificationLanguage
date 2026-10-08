@@ -4,7 +4,7 @@ import type { ProjectRead, ProjectSearch } from '../connection/project-inspectio
 import { z } from 'zod';
 import { canonical, identifier } from '../../model/identity-baseline.js';
 import { pythonPath } from './python-profile.js';
-import { inspectPython, pythonSelector, pythonTargetKey, type PythonFacts } from './python-inspection.js';
+import { PythonInspection, pythonSelector, pythonTargetKey, type PythonFacts } from './python-inspection.js';
 import { outputProblem } from '../output/output-documents.js';
 
 const symbol = z.strictObject({ file: z.string().refine(pythonPath), declaration: pythonSelector });
@@ -17,6 +17,7 @@ const prefix = (left: Declaration['declaration'], right: Declaration['declaratio
 export class PythonProject {
   private readonly options: { outputId: string; configFile?: string };
   private readonly associations: readonly ArtifactAssociation[];
+  private readonly inspection = new PythonInspection();
   constructor(options: { outputId: string; configFile?: string }, associations: readonly ArtifactAssociation[]) {
     const parsed = settings.safeParse(options);
     if (!parsed.success || !Array.isArray(associations) || associations.some(item => !identifier.safeParse(item?.specId).success || !item.locator
@@ -33,7 +34,8 @@ export class PythonProject {
   }
   async read(id: string, snapshot: ProjectSnapshot): Promise<ProjectRead> {
     if (!identifier.safeParse(id).success) throw new TypeError('Provide a specification identifier.');
-    const inspected = await inspectPython(snapshot, this.options.configFile), selected = this.associations.filter(item => item.specId === id), problems = [...inspected.problems];
+    snapshot = structuredClone(snapshot);
+    const inspected = await this.inspection.inspect(snapshot, this.options.configFile), selected = this.associations.filter(item => item.specId === id), problems = [...inspected.problems];
     if (!selected.length) problems.push(outputProblem('project-artifact-not-found', '', 'No Python association identifies ' + id + '.'));
     const artifacts: ProjectRead['artifacts'][number][] = [];
     if (inspected.value) for (const association of selected) {
@@ -48,7 +50,8 @@ export class PythonProject {
   }
   async search(id: string, snapshot: ProjectSnapshot): Promise<ProjectSearch> {
     if (!identifier.safeParse(id).success) throw new TypeError('Provide a specification identifier.');
-    const inspected = await inspectPython(snapshot, this.options.configFile), problems = [...inspected.problems], facts = inspected.value;
+    snapshot = structuredClone(snapshot);
+    const inspected = await this.inspection.inspect(snapshot, this.options.configFile), problems = [...inspected.problems], facts = inspected.value;
     const selected = this.associations.filter(item => item.specId === id), declarations = facts ? selected.flatMap(item => this.select(item, facts)) : [];
     if (!selected.length || facts && !declarations.length) problems.push(outputProblem('python-definition-unavailable', '', 'No exact native definition identifies ' + id + '.'));
     const incoming: RelationshipObservation['uses'][number][] = [], outgoing: RelationshipObservation['uses'][number][] = [], unresolved: RelationshipObservation['unresolved'][number][] = [];

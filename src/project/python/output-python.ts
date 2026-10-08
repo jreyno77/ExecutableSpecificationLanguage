@@ -47,7 +47,18 @@ export const pythonOutput: OutputRegistration = {
 /** Coordinates checked projection, native preserving edits and the ordinary guarded writer. */
 class PythonOutput implements OutputAdapter {
   readonly id = 'python';
+  private reader: { key: string; value: PythonProject } | undefined;
   constructor(private readonly options: PythonOptions, private readonly context?: OutputContext) {}
+  private query(state: Check<State | undefined>): PythonProject {
+    const artifacts = state.value?.artifacts ?? [], key = canonical(artifacts);
+    if (state.problems.length) this.reader = undefined;
+    if (!this.reader || this.reader.key !== key) {
+      const value = new PythonProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, artifacts);
+      if (state.problems.length) return value;
+      this.reader = { key, value };
+    }
+    return this.reader.value;
+  }
   private state(snapshot: ProjectSnapshot): Check<State | undefined> {
     const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
     try {
@@ -66,12 +77,12 @@ class PythonOutput implements OutputAdapter {
     } catch { return failure('invalid-output-state', 'Recorded Python ownership or generated text is invalid.', [statePath]); }
   }
   async read(id: string, snapshot: ProjectSnapshot) {
-    const state = this.state(snapshot), result = await new PythonProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state.value?.artifacts ?? []).read(id, snapshot);
+    const state = this.state(snapshot), result = await this.query(state).read(id, snapshot);
     const problems = [...state.problems, ...result.problems];
     return { ...result, problems, coverage: { ...result.coverage, complete: !problems.length && result.coverage.complete, limitations: [...result.coverage.limitations, ...state.problems.map(problem => problem.message)] } };
   }
   async search(id: string, snapshot: ProjectSnapshot) {
-    const state = this.state(snapshot), result = await new PythonProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state.value?.artifacts ?? []).search(id, snapshot);
+    const state = this.state(snapshot), result = await this.query(state).search(id, snapshot);
     const problems = [...state.problems, ...result.problems], coverage = (direction: 'incoming' | 'outgoing') => ({ ...result[direction], coverage: {
       ...result[direction].coverage, complete: !problems.length && result[direction].coverage.complete,
       limitations: [...result[direction].coverage.limitations, ...state.problems.map(problem => problem.message)] } });

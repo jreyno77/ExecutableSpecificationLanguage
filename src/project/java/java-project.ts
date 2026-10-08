@@ -11,6 +11,7 @@ import { JavaAnalysis, javaSymbol, type JavaFacts } from './java-analysis.js';
 export class JavaProject {
   private readonly options: { outputId: string; configFile?: string };
   private readonly associations: readonly ArtifactAssociation[];
+  private readonly analysis: JavaAnalysis;
   constructor(options: { outputId: string; configFile?: string }, associations: readonly ArtifactAssociation[]) {
     callerOptions(javaQueryOptions, options);
     requireJava(jsonData(associations) && z.array(z.strictObject({ specId: identifier, locator: locatorSchema })).safeParse(associations).success, 'Provide finite artifact associations.');
@@ -22,10 +23,11 @@ export class JavaProject {
       if (locator.format === 'java-alias-1') requireJava(z.strictObject({ file: z.string().refine(literal), alias: identifier, start: z.number().int().nonnegative(), length: z.number().int().positive() }).safeParse(locator.value).success, 'Provide an exact alias documentation span.');
     }
     this.options = structuredClone(options); this.associations = structuredClone(selected);
+    this.analysis = new JavaAnalysis(this.options.configFile ?? 'expec.java.json', 'reader');
   }
   private async query(id: SpecIdentifier, supplied: ProjectSnapshot) {
     requireJava(identifier.safeParse(id).success && supplied && Array.isArray(supplied.files), 'Provide a subject and captured project.');
-    const snapshot = structuredClone(supplied), { facts, problems, scope: sourceScope } = await new JavaAnalysis(this.options.configFile ?? 'expec.java.json').read(snapshot);
+    const snapshot = structuredClone(supplied), { facts, problems, scope: sourceScope } = await this.analysis.read(snapshot);
     const claimed = new Map<string, string>(), definitions = new Map<string, JavaFacts['declarations']>();
     for (const association of this.associations) {
       if (association.locator.format !== 'java-symbol-1') continue;
