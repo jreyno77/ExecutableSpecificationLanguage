@@ -33,12 +33,22 @@ export class CapturedSource {
     expect(named[2]).toEqual(initial[1]); expect(confirming[0]).toEqual(initial[1]);
     expect(confirming[1]).toEqual(initial[1]); expect(named[3]).toEqual(initial[1]);
   }
+  expectCandidateMismatch(): void {
+    const named = this.driver.metadata.filter(row => row.operation === 'named').map(row => row.tuple);
+    const opened = this.driver.metadata.filter(row => row.handle === 1).map(row => row.tuple);
+    expect(named).toHaveLength(3); expect(opened).toHaveLength(2);
+    expect(named[0]).toEqual(opened[0]); expect(named[1]).toEqual(opened[1]);
+    expect(Object.keys(opened[0]!).filter(field => opened[0]![field] !== opened[1]![field])).toEqual(['ctimeNs']);
+    expect(Object.keys(named[1]!).filter(field => named[1]![field] !== named[2]![field])).toEqual(['ctimeNs']);
+  }
   expectProblem(code: string): void {
     expect(this.driver.files.problems).toHaveLength(1);
     expect(this.driver.files.problems[0]).toMatchObject({ code, at: { kind: 'dependency', path: ['manifest', 'settings', 'build', 'entries', 0] } });
   }
   expectRetainedSource(text: string): void {
-    expect(this.driver.files.captured.get(this.driver.name)?.capture.source.text).toBe(text);
+    const retained = this.driver.files.captured.get(this.driver.name)?.capture;
+    expect(retained).toBe(this.capture); expect(retained?.source.text).toBe(text);
+    expect(retained?.version).toBe(this.driver.digest(text)); this.expectOwnership(2);
   }
   private expectOwnership(reads: number): void {
     expect(this.driver.bodyReads).toBe(reads);
