@@ -265,5 +265,13 @@ export class ConnectedBuild {
   expectSyntaxIn(file: string): void {
     expect(this.driver.report.syntax.some((finding: any) => finding.primaryRange.sourceId.endsWith('/' + file))).toBe(true);
   }
+  binaryFile(name: string, bytes: Uint8Array): Promise<void> { return this.driver.write('project/' + name, bytes); }
+  async expectBinaryFile(name: string, bytes: Uint8Array): Promise<void> { expect((await readFile(this.driver.path('project/' + name))).equals(Buffer.from(bytes))).toBe(true); }
+  async expectPendingRecordBelow(bytes: number): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-pending.json'))).size).toBeLessThan(bytes); }
+  async expectPendingFileFact(path: string, expected: { version: string; preimage: boolean }): Promise<void> {
+    const record = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));
+    const file = record.graph.files.find((file: any) => file.path === path);
+    expect(file).toBeDefined(); expect(file.version).toBe(expected.version); expect(file.bytes !== undefined).toBe(expected.preimage);
+  }
   dispose(): Promise<void> { return this.driver.dispose(); }
 }

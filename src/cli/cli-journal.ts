@@ -20,14 +20,44 @@ const change = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('w
 const graphSchema = z.strictObject({ root: z.strictObject({ path: z.string(), identity: z.string() }),
   files: z.array(z.strictObject({ path, bytes, version: z.string().regex(/^[a-f0-9]{64}$/) })),
   excluded: z.array(path), excludeNames: z.array(z.string()), nativeInputs: z.array(z.strictObject({ uri: z.string(), version: z.string() })) });
-const graphOf = (snapshot: ProjectSnapshot): z.infer<typeof graphSchema> => ({ root: snapshot.root,
-  files: snapshot.files.filter(file => file.path !== pendingPath && file.path !== '.expec/write.lock').map(file => ({ ...file, bytes: Buffer.from(file.bytes).toString('base64') })),
-  excluded: [...snapshot.excluded], excludeNames: [...snapshot.excludeNames], nativeInputs: [...snapshot.nativeInputs ?? []] });
-const restoreGraph = (graph: z.infer<typeof graphSchema>): ProjectSnapshot => ({ ...graph, complete: true, problems: [], files: graph.files.map(file => ({ ...file, bytes: Buffer.from(file.bytes, 'base64') })) });
-const journalSchema = z.strictObject({ format: z.literal(1), stage: z.enum(['contracts', 'tests']), manifest: z.string(),
+const compactGraphSchema = graphSchema.extend({ files: z.array(z.strictObject({ path, bytes: bytes.optional(), version: z.string().regex(/^[a-f0-9]{64}$/) })) });
+const legacyJournalSchema = z.strictObject({ format: z.literal(1), stage: z.enum(['contracts', 'tests']), manifest: z.string(),
   candidate: z.unknown(), facts: z.string(), graph: graphSchema,
   plans: z.array(z.strictObject({ outputId: z.string(), changes: z.array(change), artifacts: z.array(z.unknown()), obligations: z.array(z.unknown()) })), ledger: bytes });
+const journalSchema = z.discriminatedUnion('format', [legacyJournalSchema, legacyJournalSchema.extend({ format: z.literal(2), graph: compactGraphSchema })]);
 type Journal = z.infer<typeof journalSchema>;
+const preimagePaths = (changes: readonly (FileChange | z.infer<typeof change>)[]) => new Set([identityPath,
+  ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path])]);
+const graphOf = (snapshot: ProjectSnapshot, required: ReadonlySet<string>): z.infer<typeof compactGraphSchema> => ({ root: { ...snapshot.root },
+  files: snapshot.files.filter(file => file.path !== pendingPath && file.path !== '.expec/write.lock').map(file => ({ path: file.path, version: file.version,
+    ...(required.has(file.path) ? { bytes: Buffer.from(file.bytes).toString('base64') } : {}) })),
+  excluded: [...snapshot.excluded], excludeNames: [...snapshot.excludeNames], nativeInputs: (snapshot.nativeInputs ?? []).map(input => ({ ...input })) });
+/** Owns one original graph; untouched bodies come only from independently verified raw acquisition. */
+function originalOf(journal: Journal, current: ProjectSnapshot): ProjectSnapshot {
+  const graph = journal.graph, required = preimagePaths(journal.plans.flatMap(plan => plan.changes));
+  if (new Set(graph.files.map(file => file.path)).size !== graph.files.length
+    || graph.files.some(file => file.path === pendingPath || file.path === '.expec/write.lock')) throw Error('Invalid original file table.');
+  if (journal.format === 2 && (!current.complete || current.problems.length
+    || canonical({ root: current.root, excluded: current.excluded, excludeNames: current.excludeNames })
+      !== canonical({ root: graph.root, excluded: graph.excluded, excludeNames: graph.excludeNames }))) throw Error('Raw original acquisition changed.');
+  const observed = new Map(current.files.map(file => [file.path, file]));
+  const files = graph.files.map(file => {
+    if (journal.format === 2 && (file.bytes !== undefined) !== required.has(file.path)) throw Error('Missing or extra original preimage.');
+    let body: Uint8Array;
+    if (file.bytes !== undefined) body = Buffer.from(file.bytes, 'base64');
+    else {
+      const fresh = observed.get(file.path);
+      if (!fresh || fresh.version !== file.version || hash(fresh.bytes) !== file.version) throw Error('Untouched original file changed: ' + file.path);
+      body = Buffer.from(fresh.bytes);
+    }
+    if (hash(body) !== file.version) throw Error('Invalid retained acquisition bytes.');
+    return { path: file.path, version: file.version, bytes: body };
+  });
+  const original: ProjectSnapshot = { root: { ...graph.root }, files, excluded: [...graph.excluded], excludeNames: [...graph.excludeNames],
+    nativeInputs: graph.nativeInputs.map(input => ({ ...input })), complete: true, problems: [] };
+  if (!nativeInputs(original)) throw Error('Invalid original native input evidence.');
+  return original;
+}
 export function pendingStage(snapshot: ProjectSnapshot): 'contracts' | 'tests' {
   try {
     const file = snapshot.files.find(file => file.path === pendingPath);
@@ -67,14 +97,15 @@ export class BuildJournal {
       return problems.length ? { status: 'invalid', exitCode: 1, problems, stages: [{ name: stage, status: 'stopped' }] }
         : { status: 'built', exitCode: 0, problems: [], stages: [{ name: stage, status: 'unchanged', outputs: plans.map(plan => plan.outputId) }] };
     }
-    const journal: Journal = { format: 1, stage, manifest: this.checked.manifest, candidate, facts: facts(basedOn), graph: graphOf(basedOn), ledger: encode(ledger),
+    const journal: Journal = { format: 2, stage, manifest: this.checked.manifest, candidate, facts: facts(basedOn), graph: graphOf(basedOn, preimagePaths(all)), ledger: encode(ledger),
       plans: plans.map(plan => ({ outputId: plan.outputId, artifacts: [...plan.artifacts], obligations: [...plan.obligations ?? []], changes: plan.changes.map(change =>
         change.kind === 'remove' ? change : { ...change, bytes: encode(change.bytes ?? basedOn.files.find(file => file.path === (change as { from: string }).from)!.bytes) }) })) };
+    const original = originalOf(journal, fresh);
     const pendingBytes = Buffer.from(canonical(journal) + '\n');
-    const stageContext = this.context.during(basedOn);
+    const stageContext = this.context.during(original);
     const saved = await new FileProjectWriter(stageContext).apply({ basedOn, changes: [{ kind: 'write', path: pendingPath, bytes: pendingBytes }] }, this.signal);
     if (saved.status === 'stopped') return { status: 'invalid', exitCode: 1, problems: saved.problems, stages: [{ name: stage, status: 'stopped', journal: saved }] };
-    return this.finish(journal, await stageContext.readSnapshot(), 0, false, hash(pendingBytes));
+    return this.finish(journal, original, await stageContext.readSnapshot(), 0, false, hash(pendingBytes));
   }
   async recover(snapshot: ProjectSnapshot): Promise<Check<CommandResult | null>> {
     const file = snapshot.files.find(file => file.path === pendingPath);
@@ -83,8 +114,7 @@ export class BuildJournal {
     try {
       const parsed = journalSchema.safeParse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (_code, message) => problems.push(this.problem(message))));
       if (!parsed.success || problems.length) throw Error('Malformed pending build record.');
-      const journal = parsed.data, original = restoreGraph(journal.graph);
-      if (!nativeInputs(original) || new Set(original.files.map(file => file.path)).size !== original.files.length || original.files.some(file => hash(file.bytes) !== file.version)) throw Error('Invalid retained acquisition bytes.');
+      const journal = parsed.data, original = originalOf(journal, snapshot);
       snapshot = await this.context.during(original).readSnapshot();
       const read = identities().read({ sourceId: pendingPath, text: JSON.stringify(journal.candidate) });
       if (!read.value || journal.manifest !== this.checked.manifest || journal.facts !== facts(snapshot) || !snapshot.complete) throw Error('Pending inputs, native evidence or baseline changed.');
@@ -103,17 +133,17 @@ export class BuildJournal {
           endpoints.push(key);
         }
       }
-      const actual = new Map(versions(snapshot)), expected = new Map(versions(restoreGraph(journal.graph)));
+      const actual = new Map(versions(snapshot)), expected = new Map(versions(original));
       let prefix = sameFiles(expected, actual) ? 0 : -1;
       for (let index = 0; index < all.length; index++) { advance(expected, all[index]!); if (sameFiles(expected, actual)) prefix = index + 1; }
       expected.set(identityPath, hash(Buffer.from(journal.ledger, 'base64')));
       const confirmed = sameFiles(expected, actual);
       if (!confirmed && prefix < 0) throw Error('Project bytes are not an unchanged pending prefix; retain the record and resolve the conflicting edit explicitly.');
-      return { value: await this.finish(journal, snapshot, confirmed ? all.length : prefix, confirmed, file.version), problems: [], deferred: [] };
+      return { value: await this.finish(journal, original, snapshot, confirmed ? all.length : prefix, confirmed, file.version), problems: [], deferred: [] };
     } catch (error) { return { problems: [...problems, this.problem(String(error))], deferred: [] }; }
   }
-  private async finish(journal: Journal, snapshot: ProjectSnapshot, prefix: number, confirmed: boolean, pendingVersion: string): Promise<CommandResult> {
-    const stageContext = this.context.during(restoreGraph(journal.graph)), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],
+  private async finish(journal: Journal, original: ProjectSnapshot, snapshot: ProjectSnapshot, prefix: number, confirmed: boolean, pendingVersion: string): Promise<CommandResult> {
+    const stageContext = this.context.during(original), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],
       obligations: journal.plans.flatMap(plan => plan.obligations) as Diagnostic[] };
     const owned = (snapshot: ProjectSnapshot) => canonical({ root: snapshot.root, excluded: [...snapshot.excluded].sort(), excludeNames: [...snapshot.excludeNames].sort(),
       files: snapshot.files.filter(file => file.path !== '.expec/write.lock').map(file => [file.path, file.version]).sort() });
@@ -129,7 +159,7 @@ export class BuildJournal {
     } };
     const completionWriter = new FileProjectWriter(completionContext);
     let receipt: WriteResult | undefined;
-    const all = changes(journal), expected = new Map(versions(restoreGraph(journal.graph)));
+    const all = changes(journal), expected = new Map(versions(original));
     all.slice(0, prefix).forEach(change => advance(expected, change));
     if (confirmed) expected.set(identityPath, hash(Buffer.from(journal.ledger, 'base64')));
     const matches = (snapshot: ProjectSnapshot): boolean => snapshot.complete && !snapshot.problems.length
