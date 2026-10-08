@@ -67,6 +67,12 @@ describe('checks for directly changed components', () => {
         .toEqual({ core: [], java: false, kotlin: true, python: false, package: false, pilot: false, workflow: false, consumers: ['kotlin'], prepareConsumer: true, shards: [1] });
   });
 
+  it('checks only shared output for a changed output test resource', () => {
+    expect(checksFor('pull_request', ['test/resources/project/output/bounded-plan.mjs']))
+      .toEqual({ core: ['test/unit/project/output', 'test/acceptance/project/output'],
+        java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1] });
+  });
+
   it('checks compiler folders without consumers', () => {
     expect(checksFor('pull_request', ['src/compiler/compiler.ts']))
       .toEqual({ core: ['test/unit/compiler', 'test/acceptance/compiler'],
