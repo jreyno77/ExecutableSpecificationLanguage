@@ -20,7 +20,7 @@ const ownership: [RegExp, string][] = [
   [/^test\/resources\/diagrams\//, 'project/output'],
   [/^test\/resources\/project\/output\//, 'project/output'],
   [/^test\/resources\/java-project\//, 'project/java'],
-  [/^test\/resources\/((junit-reports|pilot)\/|connected-(output|selection)\.mjs$)/, 'cli'],
+  [/^test\/resources\/((cli|junit-reports|pilot)\/|connected-(output|selection)\.mjs$)/, 'cli'],
   [/^test\/resources\/scenario-execution\//, 'project/typescript'],
   [/^test\/resources\/(package-consumer|clean-package)\//, 'package'],
 ];

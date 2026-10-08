@@ -14,6 +14,12 @@ describe('checks for directly changed components', () => {
         pilot: false, workflow: false, consumers: ['java', 'kotlin'], prepareConsumer: true, shards: [1] });
   });
 
+  it('checks only CLI behavior for a historical recovery fixture', () => {
+    expect(checksFor('pull_request', ['test/resources/cli/format-1-pending-prefix/capture.json']))
+      .toEqual({ core: ['test/unit/cli', 'test/acceptance/cli'],
+        java: false, kotlin: false, python: false, package: false, pilot: true, workflow: false,
+        consumers: [], prepareConsumer: true, shards: [1] });
+  });
   it('prepares an archive for a pilot-only change without selecting package tests', () => {
     const selected = checksFor('pull_request', ['src/cli/cli.ts']);
     expect(selected.pilot).toBe(true);

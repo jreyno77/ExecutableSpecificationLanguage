@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { visit } from 'jsonc-parser';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
@@ -36,6 +37,7 @@ const renderingOptions = (options: TypeScriptOptions) => { const { adoptExisting
 /** Coordinates native projection, preservation ownership and a guarded project write plan. */
 class TypeScriptOutput implements OutputAdapter {
   readonly id = 'typescript';
+  private queryProject: { associations: readonly ArtifactAssociation[]; project: TypeScriptProject } | undefined;
   constructor(private readonly options: TypeScriptOptions, private readonly context?: OutputContext) {}
   private state(snapshot: ProjectSnapshot, request?: OutputRequest): { value?: State; problems: Diagnostic[] } {
     const file = snapshot.files.find(file => file.path === statePath);
@@ -84,16 +86,20 @@ class TypeScriptOutput implements OutputAdapter {
     return previous.imports.every(rule => { const id = selected(rule, before); return id !== undefined && id === selected(rule, current); })
       && extra.every(rule => { const id = selected(rule, current); return id !== undefined && added.has(id); });
   }
-  private project(state?: State): TypeScriptProject {
-    return new TypeScriptProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, state?.files.flatMap(file => file.artifacts) ?? []);
+  private project(state?: State, retain = false): TypeScriptProject {
+    const associations = state?.files.flatMap(file => file.artifacts) ?? [];
+    if (retain && this.queryProject && isDeepStrictEqual(this.queryProject.associations, associations)) return this.queryProject.project;
+    const project = new TypeScriptProject({ outputId: this.id, ...this.options.configFile ? { configFile: this.options.configFile } : {} }, associations);
+    if (retain) this.queryProject = { associations: structuredClone(associations), project };
+    return project;
   }
   async read(id: string, snapshot: ProjectSnapshot) {
-    const state = this.state(snapshot), result = this.project(state.value).read(id, snapshot), problems = [...result.problems, ...state.problems];
+    const state = this.state(snapshot), result = this.project(state.value, true).read(id, snapshot), problems = [...result.problems, ...state.problems];
     return { ...result, problems, coverage: { ...result.coverage, complete: !problems.length && result.coverage.complete,
       limitations: [...result.coverage.limitations, ...state.problems.map(problem => problem.message)] } };
   }
   async search(id: string, snapshot: ProjectSnapshot) {
-    const state = this.state(snapshot), result = this.project(state.value).search(id, snapshot), problems = [...result.problems, ...state.problems];
+    const state = this.state(snapshot), result = this.project(state.value, true).search(id, snapshot), problems = [...result.problems, ...state.problems];
     const cover = (direction: 'incoming' | 'outgoing') => ({ ...result[direction], coverage: { ...result[direction].coverage,
       complete: !problems.length && result[direction].coverage.complete, limitations: [...result[direction].coverage.limitations, ...state.problems.map(problem => problem.message)] } });
     return { ...result, incoming: cover('incoming'), outgoing: cover('outgoing'), problems };
