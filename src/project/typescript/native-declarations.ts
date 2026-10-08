@@ -13,6 +13,7 @@ export class NativeDeclarations implements NativeInputs {
   private readonly spellings = new Map<string, string>();
   private readonly identities = new Map<string, string>();
   private readonly refused = new Set<string>();
+  private readonly listings = new Map<string, readonly string[]>();
   constructor(private readonly root: ProjectRoot, readonly imports: readonly string[]) {}
   private problem(code: string, path: string, message: string): void {
     if (!this.problems.some(problem => problem.code === code && problem.at.kind === 'dependency' && problem.at.path[1] === path)) this.problems.push(diagnostic(code, message, path));
@@ -61,7 +62,13 @@ export class NativeDeclarations implements NativeInputs {
   directoryExists(path: string): boolean { return this.observe(path)?.isDirectory() ?? false; }
   directories(path: string): string[] {
     if (!this.directoryExists(path)) return [];
-    try { return fs.readdirSync(join(this.root.path, path), { withFileTypes: true }).filter(entry => entry.isDirectory() || entry.isSymbolicLink()).map(entry => entry.name).sort(); }
+    try {
+      const entries = fs.readdirSync(join(this.root.path, path), { withFileTypes: true });
+      const names = entries.map(entry => entry.name).sort(), previous = this.listings.get(path);
+      if (previous && !sameNames(previous, names)) this.problem('stale-project', path, 'Native directory entries changed during capture.');
+      else this.listings.set(path, names);
+      return entries.filter(entry => entry.isDirectory() || entry.isSymbolicLink()).map(entry => entry.name).sort();
+    }
     catch (error) { this.problem('native-read-failed', path, `Cannot inspect native type directories: ${String(error)}`); return []; }
   }
   fileExists(path: string): boolean {
@@ -79,12 +86,30 @@ export class NativeDeclarations implements NativeInputs {
     try {
       handle = fs.openSync(absolute, 'r'); const opened = fs.fstatSync(handle, { bigint: true });
       if (!same(before, opened)) { this.problem('stale-project', path, 'Native input changed before it could be read.'); return undefined; }
-      const bytes = fs.readFileSync(handle), after = fs.fstatSync(handle, { bigint: true });
-      if (!same(opened, after) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
+      let bytes = fs.readFileSync(handle);
+      const after = fs.fstatSync(handle, { bigint: true }), settled = !same(opened, after);
+      if (settled && !statusChanged(opened, after) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
         this.problem('stale-project', path, 'Native input changed while it was read.'); return undefined;
       }
+      if (settled) {
+        fs.closeSync(handle); handle = undefined;
+        const named = fs.lstatSync(absolute, { bigint: true });
+        if (!named.isFile() || named.isSymbolicLink() || !same(after, named)) {
+          this.problem('stale-project', path, 'Native input changed before its settling read.'); return undefined;
+        }
+        handle = fs.openSync(absolute, 'r');
+        if (!same(after, fs.fstatSync(handle, { bigint: true }))) {
+          this.problem('stale-project', path, 'Native input changed before its settling read.'); return undefined;
+        }
+        const fresh = fs.readFileSync(handle);
+        if (!same(after, fs.fstatSync(handle, { bigint: true })) || !same(after, fs.lstatSync(absolute, { bigint: true })) || !bytes.equals(fresh)) {
+          this.problem('stale-project', path, 'Native input changed during its settling read.'); return undefined;
+        }
+        bytes = fresh;
+      }
       const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-      this.files.set(path, { path, bytes: Uint8Array.from(bytes), version: createHash('sha256').update(bytes).digest('hex') }); return text;
+      const file = { path, bytes: Uint8Array.from(bytes), version: createHash('sha256').update(bytes).digest('hex') };
+      this.files.set(path, file); if (settled) this.observed.set(path, after); return text;
     } catch (error) { this.problem('native-read-failed', path, `Cannot read native input: ${String(error)}`); return undefined; }
     finally { if (handle !== undefined) fs.closeSync(handle); }
   }
@@ -100,6 +125,42 @@ export class NativeDeclarations implements NativeInputs {
       } catch (error) { if (before || !missing(error)) this.problem('stale-project', path, 'A native lookup input became unavailable during capture.'); }
     }
   }
+  /** Verifies a successful closure without modifying its retained observations. */
+  unchanged(): boolean {
+    const routes = (): boolean => {
+      try {
+        const root = fs.lstatSync(this.root.path, { bigint: true });
+        if (!root.isDirectory() || root.isSymbolicLink() || `${root.dev}:${root.ino}:${this.root.path}` !== this.root.identity) return false;
+        for (const [path, before] of this.observed) {
+          try {
+            const after = fs.lstatSync(join(this.root.path, path), { bigint: true });
+            if (!before || !same(before, after)) return false;
+          }
+          catch (error) { if (before || !missing(error)) return false; }
+        }
+        for (const [path, names] of this.listings) if (!sameNames(names, fs.readdirSync(join(this.root.path, path)).sort())) return false;
+        return true;
+      } catch { return false; }
+    };
+    if (this.problems.length || !routes()) return false;
+    for (const [path, file] of this.files) {
+      let handle: number | undefined;
+      try {
+        const absolute = join(this.root.path, path), before = this.observed.get(path)!;
+        handle = fs.openSync(absolute, 'r');
+        if (!same(before, fs.fstatSync(handle, { bigint: true }))) return false;
+        const bytes = fs.readFileSync(handle);
+        if (!same(before, fs.fstatSync(handle, { bigint: true })) || !same(before, fs.lstatSync(absolute, { bigint: true }))
+          || createHash('sha256').update(bytes).digest('hex') !== file.version) return false;
+      } catch { return false; }
+      finally { if (handle !== undefined) fs.closeSync(handle); }
+    }
+    return routes();
+  }
 }
+function sameNames(a: readonly string[], b: readonly string[]): boolean { return a.length === b.length && a.every((name, index) => name === b[index]); }
 function same(a: BigIntStats, b: BigIntStats): boolean { return a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs; }
+function statusChanged(a: BigIntStats, b: BigIntStats): boolean {
+  return a.ctimeNs !== b.ctimeNs && a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs;
+}
 function missing(error: unknown): boolean { return ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? ''); }

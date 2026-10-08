@@ -377,6 +377,15 @@ Use that ID and the new declaration's starting line/column (both start at 1). A 
 does not authorize destroying handwritten code. Resolve reported conflicts and
 inspect partial write receipts before retrying.
 
+When contracts succeed but acceptance generation stops, `build` retains the original
+specification transition for the unfinished stage. Repair the reported handwritten
+implementation and retry the same command. Default names follow the retained rename;
+explicit mappings and handwritten code keep their existing protections. A different
+specification, configuration, project identity or captured dependency requires resolving
+the reported recovery conflict first. `test` will not execute an unfinished build.
+Older stopped builds without retained transition evidence do not gain invented history.
+Do not edit the private identity or recovery records.
+
 Existing handwritten layouts use the public library API with explicit native
 mappings and a host-owned baseline. `SpecificationIdentity.read/write/withArtifacts`
 preserve those associations; `Outputs.open(...).read(id)` reads the current
@@ -518,6 +527,11 @@ describe that boundary.
 - `test` verifies current generated identities and executes their native tests.
 
 Use `--json` for one format-1 result on stdout; application logs go to stderr.
+Ordinary file byte receipts use `{ encoding: "base64", data }`. In stage write
+receipts, the private `.expec/build-transition.json` and `.expec/build-pending.json`
+paths omit only `bytes` on write changes and file observations. Outcomes,
+before/after states, paths, versions and findings remain. Direct API receipts and
+on-disk recovery records retain their complete bodies.
 Exit codes: 0 success, 1 invalid/failed work, 2 usage, 3 an author decision,
 130 cancellation. A missing implementation or prose verification obligation
 is unfinished work, not a passing test.
