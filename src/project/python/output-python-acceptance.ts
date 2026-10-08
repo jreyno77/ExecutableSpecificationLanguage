@@ -10,7 +10,7 @@ import { pythonName, pythonOptions } from './python-declarations.js';
 import { pythonPath, pythonConfiguration } from './python-profile.js';
 import { PythonProject } from './python-project.js';
 import { PythonExamples } from './python-examples.js';
-import { inspectPython, type PythonFacts } from './python-inspection.js';
+import { inspectPython, PythonInspection, type PythonFacts } from './python-inspection.js';
 import { validDiff } from '../output/output-contract.js';
 import { hash } from '../connection/project-files.js';
 import { readJson } from '../connection/json-data.js';
@@ -40,6 +40,13 @@ export const pythonAcceptanceOutput: OutputRegistration = {
       ? selectedFixture.safeParse(options.fixture.value).data : undefined;
     const fixtureSelection = fixture ? { file: fixture.file, name: fixture.declaration[0].name } : undefined;
     const native = (state?: State) => new PythonProject({ outputId: 'python-acceptance', ...options.configFile ? { configFile: options.configFile } : {} }, state?.artifacts ?? []);
+    let reader: { key: string; value: PythonProject } | undefined, assertions = new PythonInspection();
+    const query = (state: Check<State | undefined>) => {
+      const key = canonical(state.value?.artifacts ?? []);
+      if (state.problems.length || reader?.key !== key) { reader = undefined; assertions = new PythonInspection(); }
+      if (state.problems.length) return native(state.value);
+      return (reader ??= { key, value: native(state.value) }).value;
+    };
     const state = (snapshot: ProjectSnapshot): Check<State | undefined> => {
       const file = snapshot.files.find(file => file.path === statePath); if (!file) return success(undefined);
       try {
@@ -52,7 +59,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         native(result); return success(result);
       } catch { return failure('invalid-output-state', 'Recorded Python acceptance ownership is invalid.', [statePath]); }
     };
-    const integrity = async (snapshot: ProjectSnapshot, current?: State) => current ? (await inspectPython(snapshot, options.configFile, { tests: current.files })).problems : [];
+    const integrity = async (snapshot: ProjectSnapshot, current?: State) => current ? (await assertions.inspect(snapshot, options.configFile, current.files)).problems : [];
     const preserve = async (snapshot: ProjectSnapshot, previous: State, next?: State, retired: readonly string[] = [], restoreOnly = false): Promise<Check<OutputPlan>> => {
       const artifacts = next?.artifacts ?? previous.artifacts.filter(item => !retired.includes(item.specId));
       const result = await inspectPython(snapshot, options.configFile, { tests: previous.files,
@@ -167,13 +174,13 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: examples.artifacts, obligations: examples.obligations });
       },
       async read(id, snapshot) {
-        const previous = state(snapshot), result = await native(previous.value).read(id, snapshot);
+        const previous = state(snapshot), result = await query(previous).read(id, snapshot);
         const problems = [...previous.problems, ...result.problems, ...await integrity(snapshot, previous.value)];
         return { ...result, problems, coverage: { ...result.coverage, complete: result.coverage.complete && !problems.length,
           limitations: [...result.coverage.limitations, ...problems.map(problem => problem.message)] } };
       },
       async search(id, snapshot) {
-        const previous = state(snapshot), result = await native(previous.value).search(id, snapshot);
+        const previous = state(snapshot), result = await query(previous).search(id, snapshot);
         const problems = [...previous.problems, ...result.problems, ...await integrity(snapshot, previous.value)];
         const checked = (direction: 'incoming' | 'outgoing') => ({ ...result[direction], coverage: { ...result[direction].coverage,
           complete: result[direction].coverage.complete && !problems.length, limitations: [...result[direction].coverage.limitations, ...problems.map(problem => problem.message)] } });
