@@ -1,5 +1,5 @@
 {
   "projectName": "Expec",
-  "languages": [{ "id": "expec", "grammar": "src/language/langium/Expec.langium", "fileExtensions": [".expec"] }],
+  "languages": [{ "id": "expec", "grammar": "src/language/langium/Expec.langium", "fileExtensions": [".expec"], "textMate": { "out": "dist/syntax/expec.tmLanguage.json" } }],
   "out": "src/language/langium/generated"
 }
