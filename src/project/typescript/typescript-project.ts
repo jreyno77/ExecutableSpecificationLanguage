@@ -47,34 +47,48 @@ export class TypeScriptProject {
       this.retained?.service.dispose(); this.retained = undefined; throw error;
     }
   }
-  private query(id: SpecIdentifier, basedOn: ProjectSnapshot) {
-    requireInput(identifier.safeParse(id).success, 'Provide a specification identifier.');
-    const capture = this.prepare(basedOn);
+  private query(basedOn: ProjectSnapshot, retain = true) {
+    const capture = retain ? this.prepare(basedOn) : new TypeScriptCapture(basedOn, this.options.outputId, this.options.configFile, this.libraries);
+    try { return { capture, symbols: new TypeScriptSymbols(capture, this.associations) }; }
+    catch (error) { if (this.retained === capture) this.retained = undefined; capture.service.dispose(); throw error; }
+  }
+  private subject(id: SpecIdentifier, capture: TypeScriptCapture, symbols: TypeScriptSymbols) {
+    const associated = this.associations.filter(item => item.specId === id), problems = [...capture.problems, ...symbols.problems];
+    if (!associated.length) problems.push(diagnostic('unassociated-subject', 'No association for this subject exists in this output namespace.', '<associations>'));
+    for (const { locator } of associated) {
+      if (!['typescript-symbol-1', 'typescript-file-1'].includes(locator.format)) problems.push(diagnostic('unsupported-project-locator', 'This locator is not a TypeScript declaration or companion-file address.', '<associations>'));
+      else if (!capture.snapshot.files.some(file => file.path === (locator.value as { file: string }).file)) problems.push(diagnostic('missing-project-artifact', 'Associated project file is absent.', (locator.value as { file: string }).file));
+    }
+    return { associated, problems: unique(problems) };
+  }
+  private readSubject(id: SpecIdentifier, capture: TypeScriptCapture, symbols: TypeScriptSymbols): ProjectRead {
+    const { associated, problems } = this.subject(id, capture, symbols);
+    const locations = [...associated.map(item => item.locator), ...symbols.definitions(id)];
+    const artifacts = locations.flatMap(at => {
+      const path = at.value && typeof at.value === 'object' && 'file' in at.value ? at.value.file : undefined;
+      const file = capture.snapshot.files.find(file => file.path === path); return file ? [{ at, file }] : [];
+    });
+    return structuredClone({ artifacts: unique(artifacts), coverage: { scope: capture.scope(), complete: !problems.length, limitations: problems.map(problem => problem.message) }, problems });
+  }
+  readAll(ids: readonly SpecIdentifier[], basedOn: ProjectSnapshot): readonly ProjectRead[] {
+    requireInput(Array.isArray(ids) && Array.from(ids).every(id => identifier.safeParse(id).success), 'Provide specification identifiers.');
+    if (!ids.length) return [];
+    const { capture, symbols } = this.query(basedOn, false);
     try {
-      const symbols = new TypeScriptSymbols(capture, this.associations);
-      const associated = this.associations.filter(item => item.specId === id), problems = [...capture.problems, ...symbols.problems];
-      if (!associated.length) problems.push(diagnostic('unassociated-subject', 'No association for this subject exists in this output namespace.', '<associations>'));
-      for (const { locator } of associated) {
-        if (!['typescript-symbol-1', 'typescript-file-1'].includes(locator.format)) problems.push(diagnostic('unsupported-project-locator', 'This locator is not a TypeScript declaration or companion-file address.', '<associations>'));
-        else if (!capture.snapshot.files.some(file => file.path === (locator.value as { file: string }).file)) problems.push(diagnostic('missing-project-artifact', 'Associated project file is absent.', (locator.value as { file: string }).file));
-      }
-      return { capture, symbols, associated, problems: unique(problems) };
-    } catch (error) { if (this.retained === capture) this.retained = undefined; capture.service.dispose(); throw error; }
+      return ids.map(id => this.readSubject(id, capture, symbols));
+    } finally { capture.service.dispose(); }
   }
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): ProjectRead {
-    const { capture, symbols, associated, problems } = this.query(id, basedOn);
-    try {
-      const locations = [...associated.map(item => item.locator), ...symbols.definitions(id)];
-      const artifacts = locations.flatMap(at => {
-        const path = at.value && typeof at.value === 'object' && 'file' in at.value ? at.value.file : undefined;
-        const file = capture.snapshot.files.find(file => file.path === path); return file ? [{ at, file }] : [];
-      });
-      return structuredClone({ artifacts: unique(artifacts), coverage: { scope: capture.scope(), complete: !problems.length, limitations: problems.map(problem => problem.message) }, problems });
-    } finally { if (this.retained !== capture) capture.service.dispose(); }
+    requireInput(identifier.safeParse(id).success, 'Provide a specification identifier.');
+    const { capture, symbols } = this.query(basedOn);
+    try { return this.readSubject(id, capture, symbols); }
+    finally { if (this.retained !== capture) capture.service.dispose(); }
   }
   search(id: SpecIdentifier, basedOn: ProjectSnapshot): ProjectSearch {
-    const { capture, symbols, problems } = this.query(id, basedOn);
+    requireInput(identifier.safeParse(id).success, 'Provide a specification identifier.');
+    const { capture, symbols } = this.query(basedOn);
     try {
+      const { problems } = this.subject(id, capture, symbols);
       if (!symbols.selected(id).length) problems.push(diagnostic('missing-symbol-association', 'Search needs an available native symbol association.', '<associations>'));
       const uses = symbols.relationships(id), scope = capture.scope();
       const observation = (direction: 'incoming' | 'outgoing') => ({ subject: id, direction, ...uses[direction], coverage: { scope,
