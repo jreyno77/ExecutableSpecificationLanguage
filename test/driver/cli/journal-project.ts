@@ -137,7 +137,7 @@ export class JournalDriver {
         element.address.module = sourceUri; element.origin.module = sourceUri; element.origin.node.sourceId = sourceUri; element.origin.range.sourceId = sourceUri;
       }
     };
-    const input = (value: any) => { if (value.uri === pathToFileURL(old.manifest).href) value.uri = pathToFileURL(driver.checked.manifest).href;
+    const input = (value: any) => { if (value.uri === pathToFileURL(old.manifest, { windows: true }).href) value.uri = pathToFileURL(driver.checked.manifest).href;
       else if (value.uri === old.sourceUri) value.uri = sourceUri; else throw Error('Unexpected historical native URI.'); };
     rebound.graph.root = driver.context.root; rebound.manifest = driver.checked.manifest;
     rebound.graph.nativeInputs.forEach(input);
