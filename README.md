@@ -557,3 +557,16 @@ The installed CLI uses the connected project's acquired dependencies.
 
 After editing `src/language/langium/Expec.langium`, run `npm run grammar:generate`;
 generated files are ignored.
+
+## Editor highlighting
+
+The package exports `executable-specification-language/syntax/expec.tmLanguage.json` for editor builds. Copy this generated asset into your extension and register it with VS Code's grammar contribution:
+
+```javascript
+import { copyFile } from 'node:fs/promises';
+
+const syntax = new URL(import.meta.resolve('executable-specification-language/syntax/expec.tmLanguage.json'));
+await copyFile(syntax, 'expec.tmLanguage.json');
+```
+
+`npm run grammar:generate` derives it from the existing Langium grammar. Names use lexical theme scopes; type analysis and definitions have separate language services.
