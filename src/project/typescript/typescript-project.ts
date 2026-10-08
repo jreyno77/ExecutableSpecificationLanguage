@@ -47,8 +47,8 @@ export class TypeScriptProject {
       this.retained?.service.dispose(); this.retained = undefined; throw error;
     }
   }
-  private query(basedOn: ProjectSnapshot) {
-    const capture = this.prepare(basedOn);
+  private query(basedOn: ProjectSnapshot, retain = true) {
+    const capture = retain ? this.prepare(basedOn) : new TypeScriptCapture(basedOn, this.options.outputId, this.options.configFile, this.libraries);
     try { return { capture, symbols: new TypeScriptSymbols(capture, this.associations) }; }
     catch (error) { if (this.retained === capture) this.retained = undefined; capture.service.dispose(); throw error; }
   }
@@ -61,24 +61,28 @@ export class TypeScriptProject {
     }
     return { associated, problems: unique(problems) };
   }
+  private readSubject(id: SpecIdentifier, capture: TypeScriptCapture, symbols: TypeScriptSymbols): ProjectRead {
+    const { associated, problems } = this.subject(id, capture, symbols);
+    const locations = [...associated.map(item => item.locator), ...symbols.definitions(id)];
+    const artifacts = locations.flatMap(at => {
+      const path = at.value && typeof at.value === 'object' && 'file' in at.value ? at.value.file : undefined;
+      const file = capture.snapshot.files.find(file => file.path === path); return file ? [{ at, file }] : [];
+    });
+    return structuredClone({ artifacts: unique(artifacts), coverage: { scope: capture.scope(), complete: !problems.length, limitations: problems.map(problem => problem.message) }, problems });
+  }
   readAll(ids: readonly SpecIdentifier[], basedOn: ProjectSnapshot): readonly ProjectRead[] {
     requireInput(Array.isArray(ids) && Array.from(ids).every(id => identifier.safeParse(id).success), 'Provide specification identifiers.');
     if (!ids.length) return [];
-    const { capture, symbols } = this.query(basedOn);
+    const { capture, symbols } = this.query(basedOn, false);
     try {
-      return ids.map(id => {
-        const { associated, problems } = this.subject(id, capture, symbols);
-        const locations = [...associated.map(item => item.locator), ...symbols.definitions(id)];
-        const artifacts = locations.flatMap(at => {
-          const path = at.value && typeof at.value === 'object' && 'file' in at.value ? at.value.file : undefined;
-          const file = capture.snapshot.files.find(file => file.path === path); return file ? [{ at, file }] : [];
-        });
-        return structuredClone({ artifacts: unique(artifacts), coverage: { scope: capture.scope(), complete: !problems.length, limitations: problems.map(problem => problem.message) }, problems });
-      });
-    } finally { if (this.retained !== capture) capture.service.dispose(); }
+      return ids.map(id => this.readSubject(id, capture, symbols));
+    } finally { capture.service.dispose(); }
   }
   read(id: SpecIdentifier, basedOn: ProjectSnapshot): ProjectRead {
-    return this.readAll([id], basedOn)[0]!;
+    requireInput(identifier.safeParse(id).success, 'Provide a specification identifier.');
+    const { capture, symbols } = this.query(basedOn);
+    try { return this.readSubject(id, capture, symbols); }
+    finally { if (this.retained !== capture) capture.service.dispose(); }
   }
   search(id: SpecIdentifier, basedOn: ProjectSnapshot): ProjectSearch {
     requireInput(identifier.safeParse(id).success, 'Provide a specification identifier.');
