@@ -1,0 +1,81 @@
+// PROJECT-23: the public command remains `expec build --config spec/expec.json`.
+// Authored consumer examples; this repository is not yet a self-hosted generated project.
+// Equivalent executable evidence uses the CLI DSL and cli-transition unit examples.
+// These authored helper declarations are not automatically bound or generated here.
+// Setup invokes real builds and verifies the stated stopped/completed stages.
+// The interrupted-stage journal alone owns write replay; callers never edit it.
+examples {
+  fixture before: Text = "component Editor {\n  public save\n  capability save(source: Text) returns Nothing\n}\nexamples { observation count() returns Number\nexample \"one\": count() => 1 }"
+  fixture after: Text = "component Editor {\n  public save\n  capability save(document: Text) returns Nothing\n}\nexamples { observation count() returns Number\nexample \"one\": count() => 1\nexample \"two\": count() => 2 }"
+
+  // Allocate a real baseline, retain Editor.save.source's ID for document, apply
+  // contracts, and observe TypeScript refusing the driver's handwritten return "many".
+  setup stoppedAfterRename(oldSource: Text, newSource: Text) returns Nothing
+  setup completedRename(oldSource: Text, newSource: Text) returns Nothing
+  action driverReturnsNumber(value: Number) returns Nothing
+  action generateProject() returns Nothing
+  action executeTests() returns Nothing
+  action rememberCompletedFiles() returns Nothing
+  action changeOutputDirectory(directory: Text) returns Nothing
+  observation exitCode() returns Number
+  observation problemReported(code: Text) returns Boolean
+  observation completedFilesUnchanged() returns Boolean
+  observation generatedExampleNames() returns List<Text>
+  observation handwrittenBody(owner: Text, method: Text) returns Text
+
+  check expectExit(expected: Number) {
+    let actual = exitCode()
+    assert actual == expected
+  }
+  check expectExamples(expected: List<Text>) {
+    let actual = generatedExampleNames()
+    assert actual == expected
+  }
+  check expectProblem(code: Text) {
+    let actual = problemReported(code)
+    assert actual == true
+  }
+  check expectBody(owner: Text, method: Text, expected: Text) {
+    let actual = handwrittenBody(owner, method)
+    assert actual == expected
+  }
+  check expectUnchanged() {
+    let actual = completedFilesUnchanged()
+    assert actual == true
+  }
+
+  scenario "resume a rename after repairing a refused acceptance stage" {
+    given stoppedAfterRename(before, after)
+    when driverReturnsNumber(1)
+    when generateProject()
+    then expectExit(0)
+    then expectExamples(["one", "two"])
+    then expectBody("Editor", "save", "void document;")
+    then expectBody("CountsDriver", "count", "return 1;")
+  }
+
+  scenario "a repeated completed build changes no generated or handwritten files" {
+    given completedRename(before, after)
+    when rememberCompletedFiles()
+    when generateProject()
+    then expectExit(0)
+    then expectUnchanged()
+  }
+
+  scenario "unfinished generation prevents native test execution" {
+    given stoppedAfterRename(before, after)
+    when executeTests()
+    then expectExit(1)
+    then expectProblem("generation-required")
+  }
+
+  scenario "a retry cannot silently adopt different output settings" {
+    given stoppedAfterRename(before, after)
+    when rememberCompletedFiles()
+    when changeOutputDirectory("different-src")
+    when generateProject()
+    then expectExit(1)
+    then expectProblem("recovery-conflict")
+    then expectUnchanged()
+  }
+}

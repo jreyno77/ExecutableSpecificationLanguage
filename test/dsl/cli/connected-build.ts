@@ -28,6 +28,17 @@ export class ConnectedBuild {
     expect(calls.filter(call => call.expression.getText() === name).map(call => call.arguments.map(arg => arg.getText()))).toEqual([args.map(String)]);
     expect(calls.filter(call => call.expression.getText() === 'expectData').map(call => call.arguments[1]?.getText())).toEqual([String(expected)]);
   }
+  async expectGeneratedExampleNames(expected: string[]): Promise<void> {
+    const files = await this.driver.filesUnder('project/test/acceptance'), names: string[] = [];
+    for (const file of files) {
+      const source = ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && node.expression.getText() === 'test' && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) names.push(node.arguments[0].text);
+        node.forEachChild(visit);
+      }; visit(source);
+    }
+    expect(names).toEqual(expected);
+  }
   async expectGeneratedImport(directory: string, from: string): Promise<void> {
     const files = await this.driver.filesUnder('project/' + directory);
     const imports = files.flatMap(file => [...ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true).statements]
@@ -117,6 +128,23 @@ export class ConnectedBuild {
     expect(method.body).toBeDefined();
     await this.driver.write(source.fileName, source.text.slice(0, method.body!.getStart() + 1) + '\n' + body + '\n' + source.text.slice(method.body!.end - 1));
   }
+  async implementDriverMethod(owner: string, name: string, body: string): Promise<void> {
+    const files = await this.driver.filesUnder('project/test/driver');
+    const source = files.map(file => ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true))
+      .find(source => source.statements.some(node => ts.isClassDeclaration(node) && node.name?.text === owner))!;
+    const declaration = source.statements.filter(ts.isClassDeclaration).find(node => node.name?.text === owner)!;
+    const method = declaration.members.filter(ts.isMethodDeclaration).find(node => node.name.getText() === name)!;
+    expect(method.body).toBeDefined();
+    await this.driver.write(source.fileName, source.text.slice(0, method.body!.getStart() + 1) + '\n' + body + '\n' + source.text.slice(method.body!.end - 1));
+  }
+  async expectDriverMethodBody(owner: string, name: string, body: string): Promise<void> {
+    const files = await this.driver.filesUnder('project/test/driver');
+    const declarations = files.flatMap(file => [...ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true).statements])
+      .filter(ts.isClassDeclaration).filter(node => node.name?.text === owner);
+    expect(declarations).toHaveLength(1);
+    const methods = declarations[0]!.members.filter(ts.isMethodDeclaration).filter(node => node.name.getText() === name);
+    expect(methods).toHaveLength(1); expect(methods[0]!.body?.getText()).toContain(body);
+  }
   async afterTestPlanningChangeVitestDeclaration(): Promise<void> {
     const metadata = JSON.parse(await readFile(this.driver.path('project/node_modules/vitest/package.json'), 'utf8'));
     const path = 'project/node_modules/vitest/' + metadata.types.replace(/^\.\//, '');
@@ -158,9 +186,11 @@ export class ConnectedBuild {
   changeAfterOutputWrite(source: string, path: string, text: string): void { this.driver.afterOutputWrite = { source, path, text }; }
   changeAfterWriterRelease(count: number, path: string, text: string): void { this.driver.afterWriterRelease = { count, path, text }; }
   interruptAfterOutputWrite(path: string): void { this.driver.signalAfterOutputWrite = path; }
-  failActualWrite(path: string): void { this.driver.failure = { operation: 'write', path }; }
-  failPendingRemoval(): void { this.driver.failure = { operation: 'remove', path: '.expec/build-pending.json' }; }
+  failActualWrite(path: string, after = 0): void { this.driver.failure = { operation: 'write', path, after }; }
+  failPendingRemoval(after = 0): void { this.driver.failure = { operation: 'remove', path: '.expec/build-pending.json', after }; }
   clearActualWriteFailure(): void { delete this.driver.failure; }
+  async expectTransitionRetained(): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-transition.json'))).isFile()).toBe(true); }
+  expectNoTransition(): Promise<void> { return this.expectNoDestinationFile('project/.expec/build-transition.json'); }
   async expectPendingBuildRetained(): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-pending.json'))).isFile()).toBe(true); }
   async rememberPendingIdentities(names = ['First', 'Second']): Promise<void> {
     const pending = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));

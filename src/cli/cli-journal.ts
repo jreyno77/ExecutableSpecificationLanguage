@@ -51,7 +51,8 @@ const advance = (files: Map<string, string>, change: FileChange): void => {
 export class BuildJournal {
   constructor(private readonly checked: CheckedManifest, private readonly context: BuildContext, private readonly signal: AbortSignal) {}
   private problem(message: string) { return cliProblem('recovery-conflict', message, this.checked.manifest); }
-  async apply(stage: 'contracts' | 'tests', basedOn: ProjectSnapshot, plans: readonly OutputPlan[], candidate: IdentityBaseline): Promise<CommandResult> {
+  async apply(stage: 'contracts' | 'tests', basedOn: ProjectSnapshot, plans: readonly OutputPlan[], candidate: IdentityBaseline, completion?: FileChange): Promise<CommandResult> {
+    if (completion) plans = plans.map((plan, index) => index === plans.length - 1 ? { ...plan, changes: [...plan.changes, completion] } : plan);
     const fresh = await this.context.readSnapshot();
     if (!fresh.complete || facts(fresh) !== facts(basedOn) || !sameFiles(new Map(versions(fresh)), new Map(versions(basedOn)))) return {
       status: 'invalid', exitCode: 1, problems: fresh.problems.length ? fresh.problems : [cliProblem('stale-project', 'Project changed after output planning.', this.checked.manifest)],

@@ -12,7 +12,7 @@ import { readJson } from '../project/connection/json-data.js';
 import type { ProjectRoot, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { SpecificationIdentity, type IdentifiedSpecification, type IdentityBaseline, type IdentityDecision } from '../model/specification-identity.js';
 
-export const identityPath = '.expec/identity.json', pendingPath = '.expec/build-pending.json';
+export const identityPath = '.expec/identity.json', pendingPath = '.expec/build-pending.json', transitionPath = '.expec/build-transition.json';
 export const identities = () => new SpecificationIdentity(randomUUID);
 export function readIdentity(snapshot: ProjectSnapshot, checked: CheckedManifest): Check<{ baseline?: IdentityBaseline }> {
   const file = snapshot.files.find(file => file.path === identityPath), problems: Diagnostic[] = [];
@@ -40,7 +40,7 @@ export function identityBytes(checked: CheckedManifest, root: ProjectRoot, basel
 /** Native execution requires the current source to match the confirmed generated identity. */
 export function currentTestIdentity(checked: CheckedManifest, snapshot: ProjectSnapshot): Check<IdentifiedSpecification> {
   const fail = (message: string): Check<IdentifiedSpecification> => ({ problems: [cliProblem('generation-required', message, checked.manifest)], deferred: [] });
-  if (snapshot.files.some(file => file.path === pendingPath)) return fail('Complete the pending build before executing tests.');
+  if (snapshot.files.some(file => file.path === pendingPath || file.path === transitionPath)) return fail('Complete the pending build before executing tests.');
   const saved = readIdentity(snapshot, checked);
   if (!saved.value) return { problems: saved.problems, deferred: saved.deferred };
   if (!saved.value.baseline) return fail('Build the current specification before executing its tests.');
