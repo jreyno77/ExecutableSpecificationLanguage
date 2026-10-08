@@ -3,11 +3,13 @@ import { NativeDeclarations } from './native-declarations.js';
 import { TypeScriptCapture, diagnostic, pathValid, requireInput } from './typescript-capture.js';
 import { packagePath, validateReadOnly } from '../connection/project-readonly.js';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
 
 /** Captures installed native declaration evidence without granting project write ownership. */
 export class TypeScriptContext implements ProjectContext {
   private readonly options: { configFile?: string; imports?: readonly string[] };
   private readonly libraries = new Map<string, string>();
+  private retained: { key: ReturnType<typeof inputKey>; native: NativeDeclarations } | undefined;
   constructor(private readonly project: ProjectContext, options: { configFile?: string; imports?: readonly string[] } = {}) {
     requireInput(project && typeof project.readSnapshot === 'function' && project.root && typeof project.root.path === 'string' && typeof project.root.identity === 'string', 'Provide a ProjectContext.');
     requireInput(options && typeof options === 'object' && !Array.isArray(options) && Object.keys(options).every(key => ['configFile', 'imports'].includes(key))
@@ -21,9 +23,12 @@ export class TypeScriptContext implements ProjectContext {
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = structuredClone(await this.project.readSnapshot());
     requireInput(validateReadOnly({ ...snapshot, files: snapshot.files.filter(file => !packagePath(file.path)) }), 'Malformed read-only native inputs.');
-    const problems = [...snapshot.problems], native = new NativeDeclarations(snapshot.root, this.options.imports ?? []);
+    const key = inputKey(snapshot), retained = this.retained;
+    const reused = retained !== undefined && isDeepStrictEqual(key, retained.key) && retained.native.unchanged();
+    if (!reused && this.retained === retained) this.retained = undefined;
+    const problems = [...snapshot.problems], native = reused ? retained.native : new NativeDeclarations(snapshot.root, this.options.imports ?? []);
     if (!snapshot.excludeNames.includes('node_modules') || snapshot.files.some(file => packagePath(file.path))) problems.push(diagnostic('unsupported-native-input', 'Native dependencies must remain excluded from editable capture.', 'node_modules'));
-    if (!problems.length) {
+    if (!problems.length && !reused) {
       const capture = new TypeScriptCapture({ ...snapshot, readOnlyFiles: [] }, 'native-inputs', this.options.configFile, this.libraries, native);
       try {
         for (const problem of capture.problems) {
@@ -35,13 +40,24 @@ export class TypeScriptContext implements ProjectContext {
       } finally { capture.service.dispose(); }
     }
     const fresh = await this.project.readSnapshot();
-    if (!isDeepStrictEqual(snapshot, structuredClone(fresh))) problems.push(diagnostic('stale-project', 'Project inputs changed during native capture.', ''));
+    if (!isDeepStrictEqual(key, inputKey(fresh))) problems.push(diagnostic('stale-project', 'Project inputs changed during native capture.', ''));
     for (const file of snapshot.readOnlyFiles ?? []) {
-      const current = native.read(file.path);
-      if (current === undefined || native.files.get(file.path)?.version !== file.version) problems.push(diagnostic('stale-project', 'Previously supplied native evidence changed.', file.path));
+      if (!reused) native.read(file.path);
+      const current = native.files.get(file.path);
+      if (!current || current.version !== file.version) problems.push(diagnostic('stale-project', 'Previously supplied native evidence changed.', file.path));
     }
-    native.verify(); problems.push(...native.problems);
-    const readOnlyFiles = [...native.files.values()].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    if (!reused) { native.verify(); problems.push(...native.problems); }
+    if (!problems.length && !native.unchanged()) problems.push(diagnostic('stale-project', 'Native inputs changed while completing capture.', ''));
+    if (!problems.length) { if (!reused) this.retained = { key, native }; }
+    else if (this.retained?.native === native) this.retained = undefined;
+    const readOnlyFiles = structuredClone([...native.files.values()].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     return { ...snapshot, readOnlyFiles, complete: problems.length === 0, problems };
   }
+}
+
+function inputKey(snapshot: ProjectSnapshot) {
+  const file = (value: ProjectSnapshot['files'][number]) => ({ ...value,
+    bytes: createHash('sha256').update(value.bytes).digest('hex') });
+  return structuredClone({ ...snapshot, files: snapshot.files.map(file),
+    ...(snapshot.readOnlyFiles === undefined ? {} : { readOnlyFiles: snapshot.readOnlyFiles.map(file) }) });
 }
