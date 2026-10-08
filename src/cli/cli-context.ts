@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { CheckedManifest } from './cli-check.js';
 import { cliProblem } from './cli-check.js';
 import type { Configuration } from '../project/connection/configuration.js';
-import type { ProjectContext, ProjectSnapshot } from '../project/connection/project-connection.js';
+import type { ProjectContext, ProjectFile, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { hash } from '../project/connection/project-files.js';
 import { TypeScriptContext } from '../project/typescript/typescript-context.js';
 import { TypeScriptCapture } from '../project/typescript/typescript-capture.js';
@@ -55,7 +55,7 @@ export class BuildContext implements ProjectContext {
     for (const context of this.native) {
       const captured = await context.readSnapshot();
       problems.push(...captured.problems); complete &&= captured.complete; evidence.push(...captured.nativeInputs ?? []);
-      if ((!this.acquisition && !isDeepStrictEqual(structuredClone(snapshot.files), structuredClone(captured.files))) || !isDeepStrictEqual(snapshot.root, captured.root)
+      if ((!this.acquisition && !sameEditableFiles(snapshot.files, captured.files)) || !isDeepStrictEqual(snapshot.root, captured.root)
         || !isDeepStrictEqual(snapshot.excluded, captured.excluded) || !isDeepStrictEqual(snapshot.excludeNames, captured.excludeNames)) problems.push(cliProblem('stale-project', 'Native configurations observed different project bytes.', this.checked.manifest));
       for (const file of captured.readOnlyFiles ?? []) {
         const previous = native.get(file.path);
@@ -87,4 +87,13 @@ export class BuildContext implements ProjectContext {
     return { ...snapshot, readOnlyFiles: [...native.values()].sort((a, b) => a.path.localeCompare(b.path)),
       nativeInputs: [...inputs.values()], complete: complete && fresh.complete && !problems.length, problems };
   }
+}
+
+function sameEditableFiles(before: readonly ProjectFile[], after: readonly ProjectFile[]): boolean {
+  const metadata = (files: readonly ProjectFile[]) => files.map(({ bytes, ...file }) => file);
+  return isDeepStrictEqual(structuredClone(metadata(before)), structuredClone(metadata(after))) && before.every((file, index) => {
+    const bytes = file.bytes, other = after[index]!.bytes;
+    return bytes instanceof Uint8Array && other instanceof Uint8Array
+      && Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).equals(Buffer.from(other.buffer, other.byteOffset, other.byteLength));
+  });
 }
