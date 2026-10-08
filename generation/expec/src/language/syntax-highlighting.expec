@@ -1,0 +1,65 @@
+// CORE-34: the existing Langium Expec.langium is the only authored language grammar.
+// Export the generated asset as executable-specification-language/syntax/expec.tmLanguage.json.
+// Consumers resolve/read the JSON without compiler execution. The normal language build generates it.
+// Derive keyword/string/comment patterns through Langium and ID/QUOTED_NAME regexes from its generated grammar.
+// No copied keyword table, lexer regex or separate grammar. Lexical names make no semantic type claim.
+// Existing pinned Langium 4.4.0; declared test-only vscode-textmate 9.3.2 and vscode-oniguruma 2.0.1.
+// These six source examples preserve the existing CORE-34 acceptance assertions; authors independently supply scopes.
+examples {
+  setup preparedEditorSyntax() returns Nothing
+  action readEditorSyntax() returns Nothing
+  action tokenizeSyntax(text: Text) returns Nothing
+  observation syntaxAvailability() returns Text
+  observation syntaxLanguageName() returns Text
+  observation syntaxRootScope() returns Text
+  observation syntaxFileTypes() returns List<Text>
+  // One-based position: return the real engine's innermost token scope, carrying state only within this source.
+  observation syntaxScopeAt(line: Number, column: Number) returns Text
+
+  check expectSyntaxAvailable() {
+    assert syntaxAvailability() == "available"
+    assert syntaxLanguageName() == "expec"
+    assert syntaxRootScope() == "source.expec"
+    assert syntaxFileTypes() == [".expec"]
+  }
+  check expectSyntaxScope(line: Number, column: Number, expected: Text) {
+    let actual = syntaxScopeAt(line, column)
+    assert actual == expected
+  }
+
+  scenario "read the highlighting asset from the public package export" {
+    given preparedEditorSyntax()
+    when readEditorSyntax()
+    then expectSyntaxAvailable()
+  }
+  scenario "highlight declaration keywords and lexical names" {
+    given preparedEditorSyntax()
+    when tokenizeSyntax("type Book { title: Text }")
+    then expectSyntaxScope(1, 1, "keyword.control.expec")
+    then expectSyntaxScope(1, 6, "entity.name.expec")
+  }
+  scenario "keep keyword and comment text inside quoted strings" {
+    given preparedEditorSyntax()
+    when tokenizeSyntax("component Store { capability save() { promises \"type // Book\" } }")
+    then expectSyntaxScope(1, 49, "string.quoted.double.expec")
+    then expectSyntaxScope(1, 56, "string.quoted.double.expec")
+  }
+  scenario "finish comment scope at its line boundary" {
+    given preparedEditorSyntax()
+    when tokenizeSyntax("// type Book {}\nconcept Store {}")
+    then expectSyntaxScope(1, 4, "comment.line.expec")
+    then expectSyntaxScope(2, 1, "keyword.control.expec")
+  }
+  scenario "keep keyword and comment text inside quoted names" {
+    given preparedEditorSyntax()
+    when tokenizeSyntax("concept `type // Book` {}")
+    then expectSyntaxScope(1, 10, "entity.name.expec")
+    then expectSyntaxScope(1, 15, "entity.name.expec")
+  }
+  scenario "preserve an escaped backtick in a quoted name" {
+    given preparedEditorSyntax()
+    when tokenizeSyntax("concept `a\\` // Book` {}\nconcept Store {}")
+    then expectSyntaxScope(1, 16, "entity.name.expec")
+    then expectSyntaxScope(2, 1, "keyword.control.expec")
+  }
+}
