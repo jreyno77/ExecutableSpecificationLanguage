@@ -22,6 +22,7 @@ const kind = (node: ts.Node) => ts.isClassDeclaration(node) ? 'class' : ts.isInt
   : ts.isConstructorDeclaration(node) ? 'constructor' : ts.isMethodDeclaration(node) || ts.isMethodSignature(node) ? 'method' : 'property';
 const selectionKey = (item: ArtifactAssociation) => item.specId + ':' + address(item).declaration.map(part => part.kind).join('/');
 type Located = Pick<ts.Node, 'end' | 'getStart' | 'getSourceFile'>;
+const documentationText = (text: string): string => text.replace(/\r\n/g, '\n');
 const docs = (node: ts.Node) => {
   const file = node.getSourceFile(), ranges = [...ts.getLeadingCommentRanges(file.text, node.pos) ?? [], ...ts.getTrailingCommentRanges(file.text, node.pos) ?? []];
   return [...new Map(ranges.filter(range => range.end <= node.getStart() && file.text.startsWith('/**', range.pos)).map(range => [range.pos, range])).values()]
@@ -111,10 +112,10 @@ export class TypeScriptPreservation {
         if (!baseline || record?.adopted?.includes(beforeByKey.get(key)!.specId)) return true;
         if (node.body && (!baseline.body || tokens(node.body.getText(), true) !== tokens(baseline.body.getText(), true))) return true;
         if (node.initializer && (!baseline.initializer || tokens(node.initializer.getText(), true) !== tokens(baseline.initializer.getText(), true))) return true;
-        const ownedDocs = docs(baseline).map(doc => doc.getText());
-        if (docs(node).some(doc => !ownedDocs.includes(doc.getText())) || ownedDocs.some(text => docs(node).filter(doc => doc.getText() === text).length !== 1)) return true;
+        const ownedDocs = docs(baseline).map(doc => documentationText(doc.getText()));
+        if (docs(node).some(doc => !ownedDocs.includes(documentationText(doc.getText()))) || ownedDocs.some(text => docs(node).filter(doc => documentationText(doc.getText()) === text).length !== 1)) return true;
         const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, node.getText()), allowed = [...actual.entries()]
-          .filter(([, member]) => within(member, node)).flatMap(([key, member]) => docs(member).filter(comment => docs(old.get(key) ?? member).some(owned => owned.getText() === comment.getText())));
+          .filter(([, member]) => within(member, node)).flatMap(([key, member]) => docs(member).filter(comment => docs(old.get(key) ?? member).some(owned => documentationText(owned.getText()) === documentationText(comment.getText()))));
         for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan())
           if ((token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia)
             && !allowed.some(comment => comment.getStart() === node.getStart() + scanner.getTokenPos())) return true;
@@ -192,7 +193,7 @@ export class TypeScriptPreservation {
             }
             const actualPath = capture.projectPath(node.getSourceFile().fileName)!;
             if (prior && contracts.shape(prior, false) !== contracts.shape(wanted, false)) this.signature(contracts, node, prior, wanted, association.specId, aliases);
-            if (prior && canonical(docs(prior).map(doc => doc.getText())) !== canonical(docs(wanted).map(doc => doc.getText()))) {
+            if (prior && canonical(docs(prior).map(doc => documentationText(doc.getText()))) !== canonical(docs(wanted).map(doc => documentationText(doc.getText())))) {
               this.documentation(node, prior, wanted, actualPath, !adopted.includes(association.specId) || documentation.has(association.specId));
               documentation.add(association.specId);
             }
@@ -264,8 +265,8 @@ export class TypeScriptPreservation {
         if (token !== ts.SyntaxKind.SingleLineCommentTrivia && token !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
         const at = opening.end + scanner.getTokenPos();
         if (retained.some(range => at >= range.start && at < range.end)) continue;
-        const generated = node.parameters.some((parameter, index) => docs(parameter).filter(comment => comment.getText() === scanner.getTokenText()).length === 1
-          && docs(parameter).some(comment => comment.getStart() === at) && docs(prior.parameters![index]!).some(comment => comment.getText() === scanner.getTokenText()));
+        const generated = node.parameters.some((parameter, index) => docs(parameter).filter(comment => documentationText(comment.getText()) === documentationText(scanner.getTokenText())).length === 1
+          && docs(parameter).some(comment => comment.getStart() === at) && docs(prior.parameters![index]!).some(comment => documentationText(comment.getText()) === documentationText(scanner.getTokenText())));
         if (!generated) orphaned.push(scanner.getTokenText() + (token === ts.SyntaxKind.SingleLineCommentTrivia ? newline : ' '));
       }
       this.edits.add(actualPath, opening.end, closing.getStart(), (parameters.join(', ') + (orphaned.length ? ' ' + orphaned.join('') : '')).replace(/\r?\n/g, newline), true);
@@ -284,7 +285,7 @@ export class TypeScriptPreservation {
   private documentation(node: NativeDeclaration, prior: NativeDeclaration, wanted: NativeDeclaration, actualPath: string, ownedPreviously: boolean): void {
     const newline = node.getSourceFile().text.includes('\r\n') ? '\r\n' : '\n';
     const baselineDocs = ownedPreviously ? docs(prior) : [], currentDocs = docs(node), replacements = docs(wanted);
-    const owned = baselineDocs.map(doc => currentDocs.filter(candidate => candidate.getText() === doc.getText()));
+    const owned = baselineDocs.map(doc => currentDocs.filter(candidate => documentationText(candidate.getText()) === documentationText(doc.getText())));
     if (owned.some(matches => matches.length !== 1)) {
       const at = currentDocs.at(-1) ?? node; this.problems.push(diagnostic('owned-documentation-drift', 'The generated documentation was changed or cannot be identified unambiguously.', actualPath, at.getStart(), at.end - at.getStart()));
     } else {
@@ -298,7 +299,23 @@ export class TypeScriptPreservation {
     const source = name.getSourceFile(), position = name.getStart() + (ts.isStringLiteralLike(name) ? 1 : 0), checker = capture.program!.getTypeChecker(), selected = checker.getSymbolAtLocation(name);
     const namespace = ts.isParameter(node) ? ts.SymbolFlags.Value : ts.isTypeParameterDeclaration(node) ? ts.SymbolFlags.Type : ts.SymbolFlags.Value | ts.SymbolFlags.Type;
     const member = ts.isPropertyDeclaration(node) || ts.isPropertySignature(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node);
-    if (!member && checker.getSymbolsInScope(node, namespace).some(symbol => symbol.getName() === newName && symbol !== selected)) { this.problem(capture, 'native-name-conflict', node, 'The new name conflicts with an existing native binding.'); return; }
+    const parameterScope = ts.isParameter(node) && !ts.isParameterPropertyDeclaration(node, node.parent) ? node.parent : undefined;
+    const localBinding = (symbol: ts.Symbol) => !parameterScope || symbol.declarations?.some(declaration => within(declaration, parameterScope));
+    const conflicts = checker.getSymbolsInScope(node, namespace | (parameterScope ? ts.SymbolFlags.Alias : 0)).filter(symbol => symbol.getName() === newName && symbol !== selected);
+    if (!member && conflicts.some(localBinding)) { this.problem(capture, 'native-name-conflict', node, 'The new name conflicts with an existing native binding.'); return; }
+    if (parameterScope) {
+      const outerBindings = new Set(conflicts.filter(symbol => !localBinding(symbol)));
+      let capturedReference: ts.Node | undefined;
+      const visit = (child: ts.Node): void => {
+        if (ts.isIdentifier(child) && child.text === newName) {
+          const symbol = ts.isShorthandPropertyAssignment(child.parent) ? checker.getShorthandAssignmentValueSymbol(child.parent) : checker.getSymbolAtLocation(child);
+          if (symbol && outerBindings.has(symbol)) capturedReference ??= child;
+        }
+        ts.forEachChild(child, visit);
+      };
+      visit(parameterScope);
+      if (capturedReference) { this.problem(capture, 'native-name-conflict', capturedReference, 'The new parameter name would capture an outer native reference.'); return; }
+    }
     if (!this.complete(capture, symbols, id, node, 'incomplete-native-rename')) return;
     const info = capture.service.getRenameInfo(source.fileName, position, { providePrefixAndSuffixTextForRename: true });
     const locations = info.canRename ? capture.service.findRenameLocations(source.fileName, position, false, false, { providePrefixAndSuffixTextForRename: true }) : undefined;
@@ -323,7 +340,7 @@ export class TypeScriptPreservation {
         && !((ts.isImportSpecifier(token.parent) || ts.isExportSpecifier(token.parent)) && token.parent.propertyName === token)
         && !(ts.isPropertyDeclaration(token.parent) || ts.isPropertySignature(token.parent) || ts.isMethodDeclaration(token.parent) || ts.isMethodSignature(token.parent))) {
         const siteSymbol = checker.getSymbolAtLocation(token);
-        if (checker.getSymbolsInScope(token, namespace | ts.SymbolFlags.Alias).some(symbol => symbol.getName() === newName && symbol !== selected && symbol !== siteSymbol)) {
+        if (checker.getSymbolsInScope(token, namespace | ts.SymbolFlags.Alias).some(symbol => symbol.getName() === newName && symbol !== selected && symbol !== siteSymbol && localBinding(symbol))) {
           this.problem(capture, 'native-name-conflict', token, 'The new name conflicts with a binding at this native reference.'); continue;
         }
       }
@@ -367,7 +384,9 @@ class NativeContracts {
         if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
         const members = statement.importClause?.namedBindings;
         if (!members || !ts.isNamedImports(members)) continue;
-        const target = capture.resolveModule(statement.moduleSpecifier.text, source.fileName), module = target && checker.getSymbolAtLocation(target);
+        const specifier = statement.moduleSpecifier.text, target = capture.resolveModule(specifier, source.fileName);
+        const module = target && checker.getSymbolAtLocation(target)
+          || checker.getAmbientModules().find(symbol => symbol.getName() === JSON.stringify(specifier));
         for (const member of members.elements) {
           const name = member.propertyName?.text ?? member.name.text;
           let symbol = module && checker.getExportsOfModule(module).find(symbol => symbol.getName() === name);

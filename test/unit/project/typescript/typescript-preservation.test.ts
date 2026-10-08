@@ -414,3 +414,75 @@ describe('native preservation decisions', { timeout: 30_000 }, () => {
   });
 
 });
+
+describe('owned documentation line endings and lexical parameter renames', { timeout: 30_000 }, () => {
+  it('updates CRLF obligation documentation while retaining the handwritten body and CRLF', async () => {
+    const user = author('function read(source: Text) returns Text { promises "Read supplied text." }'), adapter = output();
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, captured({})); expect(first.problems).toEqual([]);
+    let snapshot = materialize(captured({}), first.value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => {
+      const text = Buffer.from(file.bytes).toString();
+      return [file.path, file.path === 'src/read.ts' ? text.replace(/throw new Error\("[^"]*"\);/, 'return source;').replace(/\r?\n/g, '\r\n') : text];
+    })));
+    const current = user.revise('function read(source: Text) returns Text { promises "Read current text." }');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    const text = Buffer.from(materialize(snapshot, result.value!).files.find(file => file.path === 'src/read.ts')!.bytes).toString();
+    expect(text).toContain('Read current text.'); expect(text).not.toContain('Read supplied text.');
+    expect(text).toContain('return source;'); expect(text).toContain('\r\n'); expect(text.replace(/\r\n/g, '')).not.toContain('\n');
+  });
+
+  it.each(['changed text', 'changed whitespace', 'duplicated comment', 'mixed-newline duplicates'])('refuses CRLF obligation documentation with %s', async alteration => {
+    const user = author('function read() returns Text { promises "Read supplied text." }'), adapter = output();
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, captured({})); expect(first.problems).toEqual([]);
+    let snapshot = materialize(captured({}), first.value!);
+    snapshot = captured(Object.fromEntries(snapshot.files.map(file => {
+      const text = Buffer.from(file.bytes).toString();
+      const altered = alteration === 'changed text' ? text.replace('Read supplied text.', 'Handwritten promise.')
+        : alteration === 'changed whitespace' ? text.replace('Read supplied text.', 'Read  supplied text.')
+        : text.slice(0, text.indexOf('export function')) + text;
+      return [file.path, file.path === 'src/read.ts' ? alteration === 'mixed-newline duplicates'
+        ? text.slice(0, text.indexOf('export function')) + text.replace(/\r?\n/g, '\r\n') : altered.replace(/\r?\n/g, '\r\n') : text];
+    })));
+    const current = user.revise('function read() returns Text { promises "Read current text." }');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('owned-documentation-drift');
+  });
+
+  it('renames a parameter to document when the DOM global is unused in that function', async () => {
+    const user = author('function read(source: Text) returns Text'), adapter = typescriptOutput.open({ directory: 'src', configFile: 'tsconfig.json' });
+    let snapshot = captured({ 'tsconfig.json': '{"compilerOptions":{"target":"ES2022","lib":["ES2022","DOM"],"strict":true,"types":[]},"include":["**/*.ts"]}' });
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, snapshot); expect(first.problems).toEqual([]);
+    snapshot = materialize(snapshot, first.value!);
+    snapshot = captured({ ...Object.fromEntries(snapshot.files.map(file => [file.path, Buffer.from(file.bytes).toString()])),
+      'src/read.ts': 'export function read(source: string): string { const item = { document: "suffix" }; return source + item.document; }',
+      'page.ts': 'export const title = document.title;' });
+    const current = user.rename('function read(document: Text) returns Text', 'source', 'document');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.problems).toEqual([]); expect(result.value).toBeDefined();
+    const files = materialize(snapshot, result.value!).files;
+    expect(Buffer.from(files.find(file => file.path === 'src/read.ts')!.bytes).toString())
+      .toBe('export function read(document: string): string { const item = { document: "suffix" }; return document + item.document; }');
+    expect(Buffer.from(files.find(file => file.path === 'page.ts')!.bytes).toString()).toBe('export const title = document.title;');
+  });
+
+  it.each([
+    ['body reference', 'return source + document.title;'],
+    ['imported binding', 'return source + document;'],
+    ['nested closure', 'const title = () => document.title; return source + title();'],
+    ['default initializer', 'function title(value = document.title) { return value; } return source + title();'],
+    ['shorthand reference', 'const page = { document }; return source + page.document.title;'],
+    ['nested binding', 'function title(document: string) { return source + document; } return title("suffix");'],
+  ])('refuses a parameter rename that would change a %s', async (_case, body) => {
+    const user = author('function read(source: Text) returns Text'), adapter = typescriptOutput.open({ directory: 'src', configFile: 'tsconfig.json' });
+    let snapshot = captured({ 'tsconfig.json': '{"compilerOptions":{"target":"ES2022","lib":["ES2022","DOM"],"strict":true,"types":[]},"include":["**/*.ts"]}' });
+    const first = await adapter.plan({ operation: 'create', current: user.initial }, snapshot); expect(first.problems).toEqual([]);
+    snapshot = materialize(snapshot, first.value!);
+    snapshot = captured({ ...Object.fromEntries(snapshot.files.map(file => [file.path, Buffer.from(file.bytes).toString()])),
+      'src/read.ts': (_case === 'imported binding' ? 'import { document } from "../page.js"; ' : '') + 'export function read(source: string): string { ' + body + ' }',
+      ...(_case === 'imported binding' ? { 'page.ts': 'export const document = "page";' } : {}) });
+    const current = user.rename('function read(document: Text) returns Text', 'source', 'document');
+    const result = await adapter.plan({ operation: 'update', current, diff: user.identity.compare(user.initial.baseline, current).value! }, snapshot);
+    expect(result.value).toBeUndefined(); expect(result.problems.map(problem => problem.code)).toContain('native-name-conflict');
+  });
+});

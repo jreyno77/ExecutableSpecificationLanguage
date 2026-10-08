@@ -21,7 +21,7 @@ export const typescriptOptions = z.strictObject({
   adoptExisting: z.boolean().default(false),
   configFile: z.string().refine(value => literal(value) && !value.includes('\\')).optional(),
   names: z.array(z.strictObject({ declaration: path, name, module: name.optional() })).default([]),
-  imports: z.array(z.strictObject({ module: name, declaration: path, name, from: name.optional(), as: name.optional() })
+  imports: z.array(z.strictObject({ module: name.optional(), declaration: path, name, from: name.optional(), as: name.optional() })
     .refine(value => !value.as || !!value.from, { message: 'A global mapping cannot have an import alias.' })).default([]),
 }).refine(value => value.directory !== '.' || value.sourceRoot !== undefined, { path: ['directory'], message: 'The project root directory requires an explicit sourceRoot.' });
 export type TypeScriptOptions = z.infer<typeof typescriptOptions>;

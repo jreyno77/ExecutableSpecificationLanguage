@@ -20,7 +20,7 @@ export class AcceptanceProjection {
   readonly obligations: Diagnostic[] = [];
   readonly implementations = new Map<string, Diagnostic>();
   readonly runtimeTargets = new Set<string>();
-  private imports = new Map<string, AcceptanceTarget>();
+  private imports = new Map<string, AcceptanceTarget & { typeOnly: boolean }>();
   private readonly inspection;
   private readonly operations: Operation[];
   private readonly bridges = new Set<NodeId>();
@@ -54,14 +54,14 @@ export class AcceptanceProjection {
   private problem(code: string, at: Item, message: string): string {
     this.problems.push({ code, message, at: at.origin, related: [] }); return 'undefined';
   }
-  private imported(target: AcceptanceTarget): string {
+  private imported(target: AcceptanceTarget, typeOnly = false): string {
     const name = target.as ?? ([this.domain, 'expect', 'test', 'expectData', 'comparisonData', 'comparisonEqual', 'finiteNumber'].includes(target.name) ? target.name + 'Implementation' : target.name);
     const before = this.imports.get(name);
     if (before && (before.file !== target.file || before.from !== target.from || before.name !== target.name)) this.problems.push({
       code: 'native-name-conflict', message: 'Different native targets require distinct import names: ' + name,
       at: { kind: 'dependency', path: ['outputs', 'acceptance', 'imports', name] }, related: [],
     });
-    else this.imports.set(name, target);
+    else this.imports.set(name, { ...target, typeOnly: typeOnly && (!before || before.typeOnly) });
     return name;
   }
   private expression(node: Item, receiver: string): string {
@@ -131,7 +131,7 @@ export class AcceptanceProjection {
     if (type.kind === 'declared' || type.kind === 'alias' || type.kind === 'parameter') {
       if (type.kind === 'parameter') return this.name(this.inspection.read(type.declaration));
       const rule = this.bindings?.imported(this.inspection.read(type.declaration)), target = rule ?? this.targets.get(this.current.id(type.declaration));
-      if (target) return this.imported(target) + (type.arguments.length ? '<' + type.arguments.map(argument => this.typeValue(argument)).join(', ') + '>' : '');
+      if (target) return this.imported(target, !!rule) + (type.arguments.length ? '<' + type.arguments.map(argument => this.typeValue(argument)).join(', ') + '>' : '');
       return this.problem('missing-native-mapping', this.inspection.read(type.declaration), 'The declared runtime type requires its exact native association.');
     }
     if (type.kind === 'optional') return this.typeValue(type.inner) + ' | undefined';
@@ -249,7 +249,7 @@ export class AcceptanceProjection {
   private importText(file: string): string {
     return [...this.imports].filter(([, target]) => target.file || target.from).map(([name, target]) => {
       const path = target.file ? posix.relative(posix.dirname(file), target.file).replace(/\.ts$/, '.js') : undefined;
-      return 'import { ' + target.name + (name === target.name ? '' : ' as ' + name) + ' } from ' + quote(target.from ?? (path!.startsWith('.') ? path! : './' + path)) + ';\n';
+      return 'import ' + (target.typeOnly ? 'type ' : '') + '{ ' + target.name + (name === target.name ? '' : ' as ' + name) + ' } from ' + quote(target.from ?? (path!.startsWith('.') ? path! : './' + path)) + ';\n';
     }).join('');
   }
 }

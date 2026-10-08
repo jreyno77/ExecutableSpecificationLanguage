@@ -41,7 +41,7 @@ export class AcceptanceBindings {
       else this.names.set(item.id, rule.name);
     }
     for (const rule of options.imports) {
-      const matches = current.baseline.elements.filter(item => item.address.module === rule.module && JSON.stringify(path(item.id)) === JSON.stringify(rule.declaration));
+      const matches = current.baseline.elements.filter(item => (rule.module === undefined || item.address.module === rule.module) && JSON.stringify(path(item.id)) === JSON.stringify(rule.declaration));
       const item = matches.length === 1 ? current.specification.inspection.read(current.node(matches[0]!.id)) : undefined;
       if (!item || !['record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'concept', 'component', 'class', 'interface'].includes(item.kind)
         || !nativeIdentifier(rule.name) || rule.as && !nativeIdentifier(rule.as) || this.imports.has(item.id)) this.problem('invalid-native-mapping', item, 'Select one declared type with an unambiguous native import.');
