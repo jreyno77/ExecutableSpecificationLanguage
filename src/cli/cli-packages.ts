@@ -12,7 +12,8 @@ export async function readPackages(root: ProjectRoot, packages: Configuration['p
   if (problems.length) return { inputs: [], packages: [], problems, deferred: [] };
   try {
     const paths = ['package.json', 'package-lock.json', ...requests.map(request => 'node_modules/' + request.native + '/package.json')];
-    const captures = await Promise.all(paths.map(async path => ({ path, observed: await files.read(path) })));
+    const settled = await Promise.allSettled(paths.map(async path => ({ path, observed: await files.capture(path) })));
+    const captures = settled.map(result => { if (result.status === 'rejected') throw result.reason; return result.value; });
     const read = await new NpmDependencies(root.path).read(packages);
     for (const { path, observed } of captures) await files.verify(path, observed);
     return { ...read, inputs: captures.flatMap(({ path, observed }) => observed.value.state === 'file'
