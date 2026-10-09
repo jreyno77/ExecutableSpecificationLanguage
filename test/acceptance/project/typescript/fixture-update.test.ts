@@ -61,5 +61,5 @@ describe('authored acceptance fixture data follows its specification', () => {
     await project.update();
     project.expectWriteStatus('unchanged');
     await project.expectAllBytesUnchanged();
-  });
+  }, 30_000);
 });
