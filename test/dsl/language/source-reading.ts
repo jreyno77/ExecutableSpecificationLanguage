@@ -1,4 +1,5 @@
 import { expect } from 'vitest';
+import type { SourceRange, SyntaxDiagnostic } from '../../../src/index.js';
 import { SourceReadingDriver } from '../../driver/language/source-reading.js';
 
 /** Domain actions and observations for an author reading a specification. */
@@ -10,6 +11,22 @@ export class SourceReading {
     const declaredName = this.driver.conceptName(name);
     expect(declaredName, `the specification declares the concept ${name}`).toMatchObject({ kind: 'name', decoded: name, quoted: expected.quoted });
     expect(declaredName?.origin).toMatchObject({ kind: 'source', range: { sourceId: this.driver.originalSource!.sourceId, start: expected.at } });
+  }
+  expectSyntaxProblem(expected: {
+    category: SyntaxDiagnostic['category'];
+    primaryRange: Pick<SourceRange, 'start' | 'end'>;
+    relatedRanges: readonly Pick<SourceRange, 'start' | 'end'>[];
+  }): void {
+    const result = this.driver.result;
+    expect(result?.status, 'the author receives a located syntax problem').toBe('rejected');
+    if (result?.status !== 'rejected') throw new Error('The reader did not reject the supplied specification.');
+    expect(result.diagnostics).toHaveLength(1);
+    const problem = result.diagnostics[0]!;
+    const sourceId = this.driver.originalSource!.sourceId;
+    expect(problem.explanation.trim()).not.toBe('');
+    expect(problem.category).toBe(expected.category);
+    expect(problem.primaryRange).toEqual({ sourceId, ...expected.primaryRange });
+    expect(problem.relatedRanges).toEqual(expected.relatedRanges.map(range => ({ sourceId, ...range })));
   }
   expectOriginalSourcePreserved(): void {
     const result = this.acceptedResult();
