@@ -85,10 +85,12 @@ export class NativeDeclarations implements NativeInputs {
     let handle: number | undefined;
     try {
       handle = fs.openSync(absolute, 'r'); const opened = fs.fstatSync(handle, { bigint: true });
-      if (!same(before, opened)) { this.problem('stale-project', path, 'Native input changed before it could be read.'); return undefined; }
+      const changedAtOpen = !same(before, opened);
+      if (changedAtOpen && !statusChanged(before, opened)) { this.problem('stale-project', path, 'Native input changed before it could be read.'); return undefined; }
       let bytes = fs.readFileSync(handle);
-      const after = fs.fstatSync(handle, { bigint: true }), settled = !same(opened, after);
-      if (settled && !statusChanged(opened, after) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
+      const after = fs.fstatSync(handle, { bigint: true }), changedDuringRead = !same(opened, after);
+      const settled = changedAtOpen || changedDuringRead;
+      if (changedDuringRead && (changedAtOpen || !statusChanged(opened, after)) || !same(after, fs.lstatSync(absolute, { bigint: true }))) {
         this.problem('stale-project', path, 'Native input changed while it was read.'); return undefined;
       }
       if (settled) {
