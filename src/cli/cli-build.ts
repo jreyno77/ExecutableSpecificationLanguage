@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import type { Diagnostic } from '../compiler/checking.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { BuildContext } from './cli-context.js';
+import type { BuildAdmission } from './cli-host.js';
 import { BuildJournal, pendingStage } from './cli-journal.js';
 import { readTransition, retainTransition, transitionChange } from './cli-transition.js';
 import { identities, identityPath, pendingPath, transitionPath, readIdentity, readDecisions } from './cli-identity.js';
@@ -13,23 +14,23 @@ import type { ProjectContext } from '../project/connection/project-connection.js
 import { FileProjectWriter, type FileChange } from '../project/connection/project-writer.js';
 
 export async function build(checked: CheckedManifest, project: ProjectContext, outputs: Outputs,
-  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string): Promise<CommandResult & { obligations: Diagnostic[] }> {
+  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string, admission?: BuildAdmission): Promise<CommandResult & { obligations: Diagnostic[] }> {
   const result: CommandResult & { obligations: Diagnostic[] } = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [], obligations: [] };
   const retain = (obligations: readonly Diagnostic[]) => { for (const obligation of obligations)
     if (!result.obligations.some(before => isDeepStrictEqual(before, obligation))) result.obligations.push(obligation); };
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
-  const initial = await (project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
+  const initial = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
-  const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs);
+  const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs, undefined, admission);
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
   if (!('value' in recovered)) return { ...result, problems: recovered.problems };
   if (recovered.value) {
     result.stages.push(...recovered.value.stages); retain(recovered.value.obligations ?? []);
     if (recovered.value.exitCode) return { ...result, problems: recovered.value.problems };
   }
-  const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs);
+  const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs, undefined, admission);
   const snapshot = await transitionContext.readSnapshot();
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const read = readIdentity(snapshot, checked);
@@ -60,7 +61,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     try {
       const profiles = selected.filter(output => testIds.has(output.id) === (name === 'tests'));
       if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
-      const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs]), basedOn = await context.readSnapshot();
+      const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs], undefined, admission), basedOn = await context.readSnapshot();
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
       const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
       for (const profile of profiles) {
