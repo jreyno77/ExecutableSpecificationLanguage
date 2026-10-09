@@ -30,6 +30,7 @@ export class ConnectedBuildDriver {
   failure?: { operation: "write" | "remove"; path: string; after?: number };
   pendingIds?: Record<string, string>;
   signalAfterOutputWrite?: string;
+  signalAfterPendingRemoval?: boolean;
   afterOutputWrite?: { source: string; path: string; text: string };
   afterWriterRelease?: { count: number; path: string; text: string };
   result!: { code: number; stdout: string; stderr: string };
@@ -79,6 +80,9 @@ export class ConnectedBuildDriver {
     if (this.failure) prelude.push('import { promises as faultyFs } from "node:fs"; const failure = ' + JSON.stringify({ ...this.failure, path: this.path('project/' + this.failure.path) }) + ';' +
       'const operation = failure.operation === "write" ? "open" : "unlink", original = faultyFs[operation]; let matchingOperations = 0; faultyFs[operation] = async (...args) => {' +
       'if (String(args[0]) === failure.path && (operation === "unlink" || args[1] !== "r") && matchingOperations++ >= (failure.after ?? 0)) throw Object.assign(Error("Deliberate native fixture write refusal"), {code:"EACCES"}); return original(...args); };');
+    if (this.signalAfterPendingRemoval) prelude.push('import { promises as pendingFs } from "node:fs"; const pendingPath = ' + JSON.stringify(this.path('project/.expec/build-pending.json')) + ';' +
+      'const pendingUnlink = pendingFs.unlink; let removed = false; pendingFs.unlink = async (...args) => { const result = await pendingUnlink(...args);' +
+      'if (!removed && String(args[0]) === pendingPath) { removed = true; process.emit("SIGINT"); } return result; };');
     if (this.afterWriterRelease) prelude.push('import { promises as changedFs } from "node:fs"; import { dirname as changeParent } from "node:path"; const mutation = ' + JSON.stringify({ ...this.afterWriterRelease, path: this.path('project/' + this.afterWriterRelease.path), lock: this.path('project/.expec/write.lock') }) + ';' +
       'const unlink = changedFs.unlink; let releases = 0; changedFs.unlink = async (...args) => { const result = await unlink(...args); if (String(args[0]) === mutation.lock && ++releases === mutation.count) {' +
       'await changedFs.mkdir(changeParent(mutation.path), {recursive:true}); await changedFs.writeFile(mutation.path, mutation.text); } return result; };');

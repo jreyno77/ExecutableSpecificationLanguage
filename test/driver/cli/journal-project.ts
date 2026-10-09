@@ -14,6 +14,8 @@ import { ProjectConnector, type ProjectContext, type ProjectSnapshot } from '../
 import type { FileChange } from '../../../src/project/connection/project-writer.js';
 import type { OutputPlan } from '../../../src/project/output/output.js';
 import type { CommandResult } from '../../../src/cli/cli-project.js';
+import { acceptanceOptions } from '../../../src/project/typescript/acceptance-bindings.js';
+import { acceptancePlacement, acceptanceStatePath, type AcceptanceState } from '../../../src/project/typescript/acceptance-state.js';
 
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const fixture = new URL('../../resources/cli/format-1-pending-prefix/', import.meta.url);
@@ -30,6 +32,8 @@ export class JournalDriver {
   pendingIds!: string[];
   historical?: { raw: any; rebound: any; provenance: any };
   private release?: () => void;
+  private confirmationCase = false;
+  private recoveryController?: AbortController;
   static async create(files: Record<string, string> = {}): Promise<JournalDriver> {
     const driver = new JournalDriver();
     driver.directory = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'expec-journal-')));
@@ -43,6 +47,68 @@ export class JournalDriver {
     await driver.initialize();
     return driver;
   }
+  static async completedConfirmation(options: { unapplied?: boolean; nonConfirmation?: boolean; changedIdentity?: boolean; publicWrite?: boolean } = {}): Promise<JournalDriver> {
+    const driver = await JournalDriver.create(), settings = acceptanceOptions.parse({ domain: 'counts' });
+    driver.confirmationCase = true;
+    const manifest = JSON.parse(await fs.readFile(driver.checked.manifest, 'utf8'));
+    manifest.outputs = [{ id: 'acceptance', options: { domain: 'counts' } }];
+    await fs.writeFile(driver.checked.manifest, JSON.stringify(manifest));
+    driver.checked = await checkManifest(driver.checked.manifest, [{ id: 'acceptance', validate: () => [] }]);
+    const file = 'test/driver/counts.ts', generated = 'export class CountsDriver { count(): number { throw Error("stub"); } }';
+    const first = driver.identified.baseline.elements[0]!.id, second = driver.identified.baseline.elements[1]!.id;
+    const artifacts: IdentifiedSpecification['baseline']['artifacts'] = [
+      { specId: first, locator: { outputId: 'acceptance', format: 'typescript-file-1', value: { file } } },
+      { specId: second, locator: { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file, declaration: [
+        { kind: 'class', name: 'CountsDriver' }, { kind: 'method', name: 'count', static: false },
+      ] } } },
+    ];
+    const prior = identities().withArtifacts(driver.identified, [...artifacts].reverse()).value!;
+    const candidate = identities().withArtifacts(driver.identified, artifacts).value!;
+    const initial = 'export class CountsDriver { count(): number { return 0; } }';
+    const confirmed = 'export class CountsDriver { count(): number { return 1; } }';
+    const state: AcceptanceState = { format: 1, options: acceptancePlacement(settings), mappings: [], deleted: [], authored: [], files: [{
+      id: 'driver', path: file, generated, hash: digest(Buffer.from(generated)), artifacts: [...artifacts],
+      confirmed: digest(Buffer.from(initial)), container: { role: 'driver', declaration: [{ kind: 'class', name: 'CountsDriver' }] },
+    }] };
+    await driver.write(file, confirmed);
+    await driver.write(acceptanceStatePath, canonical(state, 2) + '\n');
+    await driver.write(identityPath, identityBytes(driver.checked, driver.context.root, prior.baseline));
+    const after = structuredClone(state); after.files[0]!.confirmed = digest(Buffer.from(confirmed));
+    if (options.nonConfirmation) after.authored.push(first);
+    driver.stopAtWrite(options.unapplied ? acceptanceStatePath : identityPath);
+    const context = driver.buildContext(), snapshot = await context.readSnapshot(); driver.original = snapshot;
+    const baseline = options.changedIdentity ? { ...candidate.baseline, context: 'sha256:' + '0'.repeat(64) } : candidate.baseline;
+    driver.report = await new BuildJournal(driver.checked, context, new AbortController().signal).apply('tests', snapshot, [{ outputId: 'acceptance', basedOn: snapshot,
+      changes: [{ kind: 'write', path: acceptanceStatePath, bytes: Buffer.from(canonical(after, 2) + '\n') }, ...(options.publicWrite ? [{ kind: 'write' as const, path: 'generated.txt', bytes: Buffer.from('generated contract') }] : [])], artifacts, obligations: [] }], baseline);
+    if (driver.report.exitCode !== 1 || !(await driver.pending()).plans.length) throw Error('Expected a real interrupted metadata refresh.');
+    driver.clearFailure(); return driver;
+  }
+  async recoverCancelled(): Promise<void> {
+    const controller = new AbortController(); controller.abort();
+    const result = await new BuildJournal(this.checked, this.buildContext(), controller.signal).recover(await this.context.readSnapshot());
+    this.report = result.value ?? { status: 'invalid', exitCode: 1, problems: [...result.problems], stages: [] };
+  }
+  changeDuringCleanup(path: string, text: string): void {
+    const context = this.context; let changed = false;
+    this.context = { root: context.root, readSnapshot: async () => {
+      if (!changed && await fs.stat(this.path('.expec/write.lock')).then(() => true, () => false)) {
+        changed = true; await this.write(path, text);
+      }
+      return context.readSnapshot();
+    } };
+  }
+  private afterPendingRemoval(effect: () => void | Promise<void>): void {
+    this.clearFailure(); const unlink = fs.unlink.bind(fs); let observed = false;
+    const spy = vi.spyOn(fs, 'unlink').mockImplementation(async target => {
+      await unlink(target);
+      if (!observed && String(target) === this.path(pendingPath)) { observed = true; await effect(); }
+    }); this.release = () => spy.mockRestore();
+  }
+  cancelAfterPendingRemoval(): void {
+    this.recoveryController = new AbortController();
+    this.afterPendingRemoval(() => this.recoveryController!.abort());
+  }
+  changeAfterPendingRemoval(path: string, text: string): void { this.afterPendingRemoval(() => this.write(path, text)); }
   private async initialize(): Promise<void> {
     this.checked = await checkManifest(join(this.directory, 'spec/expec.json'), ['first', 'second'].map(id => ({ id, validate: () => [] })));
     if (!this.checked.specification || !this.checked.configuration) throw Error(JSON.stringify(this.checked.problems));
@@ -66,7 +132,7 @@ export class JournalDriver {
     const subject = this.identified.baseline.elements.find(element => element.address.name === (outputId === 'first' ? 'First' : 'Second'))!;
     return { outputId, changes, basedOn: this.original, artifacts: [{ specId: subject.id, locator: { outputId, format: 'fixture-file-1', value: { file: 'fixture.txt', subject: subject.id } } }] };
   }
-  private buildContext(): BuildContext { return new BuildContext(this.context, this.checked, this.checked.configuration!.outputs); }
+  private buildContext(): BuildContext { return new BuildContext(this.context, this.checked, this.confirmationCase ? [] : this.checked.configuration!.outputs); }
   async apply(plans: OutputPlan[], completion?: FileChange): Promise<void> {
     const context = this.buildContext(), snapshot = await context.readSnapshot();
     this.original ??= await this.context.readSnapshot();
@@ -74,7 +140,7 @@ export class JournalDriver {
       plans.map(plan => ({ ...plan, basedOn: snapshot })), this.identified.baseline, completion);
   }
   async recover(): Promise<void> {
-    const result = await new BuildJournal(this.checked, this.buildContext(), new AbortController().signal).recover(await this.context.readSnapshot());
+    const result = await new BuildJournal(this.checked, this.buildContext(), (this.recoveryController ?? new AbortController()).signal).recover(await this.context.readSnapshot());
     this.report = result.value ?? { status: 'invalid', exitCode: 1, problems: [...result.problems], stages: [] };
   }
   stopAtWrite(path: string): void {

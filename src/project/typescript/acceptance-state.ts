@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { z } from 'zod';
 import { visit } from 'jsonc-parser';
 import type { Diagnostic } from '../../compiler/checking.js';
-import type { ProjectSnapshot } from '../connection/project-connection.js';
+import type { ProjectFile, ProjectSnapshot } from '../connection/project-connection.js';
 import type { ArtifactAssociation } from '../../model/specification-identity.js';
 import { mappingSchema, type AcceptanceMapping, type AcceptanceOptions } from './acceptance-bindings.js';
 import type { NativeBaseline } from './typescript-preservation.js';
@@ -74,6 +74,21 @@ export function acceptanceState(snapshot: ProjectSnapshot, options: AcceptanceOp
     }
     return { value: value as AcceptanceState, problems: value.options === acceptancePlacement(options) ? [] : [diagnostic('output-options-changed', 'Acceptance placement requires an explicit migration.', acceptanceStatePath)] };
   } catch { return { problems: [diagnostic('invalid-output-state', 'Recorded acceptance ownership or generated text is invalid.', acceptanceStatePath)] }; }
+}
+
+/** A completed handwriting confirmation has no new generated contracts or ownership. */
+export function confirmationOnly(before: AcceptanceState, after: AcceptanceState, original: readonly Pick<ProjectFile, 'path' | 'version'>[]): boolean {
+  const structure = (state: AcceptanceState) => canonical({ ...state, files: state.files.map(({ confirmed: _confirmed, ...file }) => file) });
+  if (structure(before) !== structure(after)) return false;
+  let changed = false;
+  for (const [index, file] of after.files.entries()) {
+    const prior = before.files[index]!.confirmed;
+    if (file.confirmed === prior) continue;
+    if (prior !== undefined && !/^[a-f0-9]{64}$/.test(prior) || !file.confirmed || !/^[a-f0-9]{64}$/.test(file.confirmed)
+      || original.find(original => original.path === file.path)?.version !== file.confirmed) return false;
+    changed = true;
+  }
+  return changed;
 }
 
 /** Retains the proved native sync/Promise form while the DSL remains asynchronous. */
