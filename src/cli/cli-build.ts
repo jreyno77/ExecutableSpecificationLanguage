@@ -9,8 +9,8 @@ import { BuildJournal, pendingStage } from './cli-journal.js';
 import { readTransition, retainTransition, transitionChange } from './cli-transition.js';
 import { identities, identityPath, pendingPath, transitionPath, readIdentity, readDecisions } from './cli-identity.js';
 import type { CommandResult } from './cli-project.js';
-import { Outputs, type OutputPlan } from '../project/output/output.js';
-import type { ProjectContext } from '../project/connection/project-connection.js';
+import { Outputs, type Output, type OutputPlan } from '../project/output/output.js';
+import type { ProjectContext, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { FileProjectWriter, type FileChange } from '../project/connection/project-writer.js';
 
 export async function build(checked: CheckedManifest, project: ProjectContext, outputs: Outputs,
@@ -63,9 +63,12 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
       const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs], undefined, admission), basedOn = await context.readSnapshot();
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      const writer = new FileProjectWriter(context), plans: OutputPlan[] = [];
+      const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
+      let querySnapshot: ProjectSnapshot | undefined;
+      const outputProject: ProjectContext = { get root() { return context.root; },
+        readSnapshot: () => querySnapshot ? Promise.resolve(querySnapshot) : context.readSnapshot() };
       for (const profile of profiles) {
-        const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
+        const output = outputs.open(profile.id, profile.options, outputProject, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
         if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
         const unfinished = !transition || transition.remaining.includes(name);
         const before = unfinished ? (transition ? transition.before : read.value.baseline) : current.baseline;
@@ -73,7 +76,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         if (!compared.value) return { ...result, problems: compared.problems };
         const plan = await output.value.plan(before ? { operation: 'update', current, diff: compared.value } : { operation: 'create', current }, basedOn);
         if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-        plans.push(plan.value);
+        plans.push(plan.value); opened.push({ id: profile.id, output: output.value });
       }
       const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
       if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
@@ -90,16 +93,14 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
         const captured = await context.readSnapshot();
         if (!captured.complete) return { ...result, problems: captured.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-        // Query one post-application scope; adapters still receive their own snapshot copies.
-        const scope: ProjectContext = { root: captured.root, readSnapshot: async () => captured };
+        // Preserve adapter lifetime while querying one post-application scope.
+        querySnapshot = captured;
         const queryAdmission = admission ?? new BuildAdmission(checked.manifest, signal);
-        for (const profile of profiles) {
-          const output = outputs.open(profile.id, profile.options, scope, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
-          if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-          for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === profile.id).map(item => item.specId))) {
-            const admitted = await queryAdmission.capture(scope);
+        for (const { id: outputId, output } of opened) {
+          for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
+            const admitted = await queryAdmission.capture(outputProject);
             if (!admitted.complete) return { ...result, problems: admitted.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-            const read = await output.value.read(id);
+            const read = await output.read(id);
             if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
             read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
           }
