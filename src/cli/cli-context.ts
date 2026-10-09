@@ -25,7 +25,8 @@ export class BuildContext implements ProjectContext {
       imports: [...new Set([...(output.id === 'acceptance' ? ['vitest'] : []), ...((output.options.imports ?? []) as { from?: string }[])
         .flatMap(item => item.from && !/^[./]|:/.test(item.from) ? [item.from] : [])])],
     }));
-    const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) } : project;
+    const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) }
+      : { get root() { return project.root; }, readSnapshot: () => this.acquireSnapshot() };
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
     if (checked.profile?.target === 'java') this.native.push(new JavaContext(nativeProject, { configFile: checked.profile.configFile! }));
     if (checked.profile?.target === 'kotlin') this.native.push(new KotlinContext(nativeProject));
@@ -48,8 +49,12 @@ export class BuildContext implements ProjectContext {
     return problems;
   }
 
+  private acquireSnapshot(): Promise<ProjectSnapshot> {
+    return this.project.captureSnapshot ? this.project.captureSnapshot() : this.project.readSnapshot();
+  }
+
   async readSnapshot(): Promise<ProjectSnapshot> {
-    const snapshot = await this.project.readSnapshot(), problems = [...snapshot.problems], evidence = [...snapshot.nativeInputs ?? [], ...this.inputs];
+    const snapshot = await this.acquireSnapshot(), problems = [...snapshot.problems], evidence = [...snapshot.nativeInputs ?? [], ...this.inputs];
     let complete = snapshot.complete;
     const native = new Map((snapshot.readOnlyFiles ?? []).map(file => [file.path, file]));
     for (const context of this.native) {
@@ -82,7 +87,7 @@ export class BuildContext implements ProjectContext {
       }));
       problems.push(...failures.filter((problem): problem is Diagnostic => problem !== undefined));
     }
-    const fresh = await this.project.readSnapshot();
+    const fresh = await this.acquireSnapshot();
     if (!isDeepStrictEqual(snapshot, fresh)) problems.push(cliProblem('stale-project', 'The project changed while collecting build evidence.', this.checked.manifest));
     return { ...snapshot, readOnlyFiles: [...native.values()].sort((a, b) => a.path.localeCompare(b.path)),
       nativeInputs: [...inputs.values()], complete: complete && fresh.complete && !problems.length, problems };
