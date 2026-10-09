@@ -111,7 +111,19 @@ function authoredBodies(desired: AcceptanceFile, before: NativeBaseline, after: 
     const previous = nativeSelection(prior, selectors)[0],
       next = nativeSelection(wanted, (desiredArtifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration)[0],
       actual = nativeSelection(current, (actualArtifact.locator.value as unknown as { declaration: readonly Selector[] }).declaration)[0];
-    if (before.adopted?.includes(artifact.specId) || !previous || !next || !actual || !ts.isMethodDeclaration(previous) || !ts.isMethodDeclaration(next) || !ts.isMethodDeclaration(actual)
+    if (before.adopted?.includes(artifact.specId) || !previous || !next) continue;
+    if (ts.isPropertyDeclaration(previous) && ts.isPropertyDeclaration(next) && previous.initializer && next.initializer) {
+      if (tokens(previous.initializer.getText()) === tokens(next.initializer.getText())) continue;
+      const initializer = actual && ts.isPropertyDeclaration(actual) ? actual.initializer : undefined;
+      if (initializer && tokens(initializer.getText()) === tokens(next.initializer.getText())) continue;
+      if (!initializer || tokens(initializer.getText()) !== tokens(previous.initializer.getText())) {
+        const at = initializer ?? actual;
+        problems.push(diagnostic('handwritten-fixture-conflict', 'Handwritten fixture data competes with the authored change.', desired.path,
+          at?.getStart(), at && at.end - at.getStart()));
+      } else edits.replaceSyntax(desired.path, text, initializer.getStart(), initializer.end, next.initializer.getText());
+      continue;
+    }
+    if (!actual || !ts.isMethodDeclaration(previous) || !ts.isMethodDeclaration(next) || !ts.isMethodDeclaration(actual)
       || !previous.body || !next.body || !actual.body || tokens(previous.body.getText()) === tokens(next.body.getText()) || tokens(actual.body.getText()) === tokens(next.body.getText())) continue;
     if (tokens(actual.body.getText()) !== tokens(previous.body.getText())) problems.push(diagnostic('handwritten-check-conflict', 'Handwritten check or composition logic competes with the authored change.', desired.path, actual.body.getStart(), actual.body.end - actual.body.getStart()));
     else edits.replaceSyntax(desired.path, text, actual.body.getStart(), actual.body.end, next.body.getText());

@@ -105,6 +105,12 @@ export class AcceptanceGenerationExamples {
   async expectFileAbsent(path: string): Promise<void> { await expect(this.driver.text(path)).rejects.toMatchObject({ code: 'ENOENT' }); }
   mapDriverClass(file: string, name: string): void { this.driver.settings.driver = { outputId: 'acceptance', format: 'typescript-symbol-1', value: { file, declaration: [{ kind: 'class', name }] } }; }
   mapDriverMethods(names: string[]): void { this.driver.mapDriverMethods(names); }
+  implementDriverBody(name: string, body: string): Promise<void> { return this.driver.replaceStub(name, body); }
+  replaceFixtureInitializer(name: string, text: string): Promise<void> { return this.driver.replaceFixtureInitializer(name, text); }
+  addFixtureComment(name: string, comment: string): Promise<void> { return this.driver.fixtureComment(name, comment); }
+  async expectFixtureValue(name: string, value: unknown): Promise<void> { expect(await this.driver.fixtureValue(name)).toEqual(value); }
+  async expectFixtureComment(name: string, comment: string): Promise<void> { expect(await this.driver.fixtureCommentText(name)).toContain(comment); }
+  async expectProblemAtFixtureInitializer(name: string): Promise<void> { expect(await this.driver.conflictAtFixtureInitializer(name)).toBe(true); }
   rememberDriverBody(name: string): Promise<void> { return this.driver.rememberBody(name); }
   async expectDriverBodyUnchanged(name: string): Promise<void> { expect(await this.driver.sameBody(name)).toBe(true); }
   async expectDriverSignature(name: string, parameters: string[], result: string): Promise<void> {
