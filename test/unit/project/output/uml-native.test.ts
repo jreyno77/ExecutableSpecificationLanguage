@@ -93,3 +93,60 @@ describe('native diagram source facts', { timeout: 30_000 }, () => {
     expect(documents.definitions).toEqual([]); expect(documents.coverage().complete).toBe(false);
   });
 });
+
+
+describe('native literal keys and patterns', { timeout: 30_000 }, () => {
+  it('keeps quoted, escaped and question-mark keys literal', async () => {
+    const native = new NativeDiagrams();
+    try {
+      const diagram = await native.read('literal.d2', {
+        'literal.d2': '"choose(value?: Text)"\n\'literal*?\'\nescaped\\*\nliteral?\nShelf: "label*?"',
+      });
+      expect(diagram.statements.map(statement => statement.key)).toEqual([
+        ['choose(value?: Text)'], ['literal*?'], ['escaped*'], ['literal?'], ['Shelf'],
+      ]);
+      expect(diagram.statements.at(-1)?.value).toBe('label*?');
+      expect(diagram.limitations).toEqual([]);
+      expect(diagram.problems).toEqual([]);
+    } finally { await native.dispose(); }
+  });
+  it('keeps quoted punctuation in both edge endpoints literal', async () => {
+    const native = new NativeDiagrams();
+    try {
+      const diagram = await native.read('literal.d2', {
+        'literal.d2': '"literal*?"\nShelf\n"literal*?" -> Shelf\nShelf -> "literal*?"',
+      });
+      expect(diagram.statements.flatMap(statement => statement.edges).map(edge => [edge.from, edge.to]))
+        .toEqual([[['literal*?'], ['Shelf']], [['Shelf'], ['literal*?']]]);
+      expect(diagram.limitations).toEqual([]);
+      expect(diagram.problems).toEqual([]);
+    } finally { await native.dispose(); }
+  });
+  it('retains the unsupported guard for a real unquoted key glob', async () => {
+    const native = new NativeDiagrams();
+    try {
+      const diagram = await native.read('glob.d2', { 'glob.d2': 'Shelf\n*: {style.fill: red}' });
+      expect(diagram.statements.some(statement => statement.key[0] === '*')).toBe(true);
+      expect(diagram.limitations).toContain('glob.d2: globs');
+      expect(diagram.problems).toEqual([]);
+    } finally { await native.dispose(); }
+  });
+  it('retains the unsupported guard for a real source-endpoint glob', async () => {
+    const native = new NativeDiagrams();
+    try {
+      const diagram = await native.read('glob.d2', { 'glob.d2': 'Shelf\nBook\n* -> Shelf' });
+      expect(diagram.statements.flatMap(statement => statement.edges).some(edge => edge.from[0] === '*')).toBe(true);
+      expect(diagram.limitations).toContain('glob.d2: globs');
+      expect(diagram.problems).toEqual([]);
+    } finally { await native.dispose(); }
+  });
+  it('retains the unsupported guard for a real destination-endpoint glob', async () => {
+    const native = new NativeDiagrams();
+    try {
+      const diagram = await native.read('glob.d2', { 'glob.d2': 'Shelf\nBook\nShelf -> *' });
+      expect(diagram.statements.flatMap(statement => statement.edges).some(edge => edge.to[0] === '*')).toBe(true);
+      expect(diagram.limitations).toContain('glob.d2: globs');
+      expect(diagram.problems).toEqual([]);
+    } finally { await native.dispose(); }
+  });
+});

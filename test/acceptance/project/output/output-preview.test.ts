@@ -95,3 +95,14 @@ describe('authored output previews', () => {
     preview.expectStructuredDeclaration('draft/structure/Book.structure.json', 'Book', 'title');
   });
 });
+
+
+describe('literal diagram method previews', () => {
+  it('previews an optional capability parameter as a literal native method', async () => {
+    const preview = PreviewExample.specify('component Screen { public select\ncapability select(label: Text?) returns Nothing }');
+    await preview.show('uml', { directory: 'draft/uml', views: ['structure'] });
+    preview.expectDocument('uml', 'draft/uml/structure.d2', 'text/vnd.d2', '"select(label: Text?)"');
+    preview.expectSvgLabel('draft/uml/structure.svg', 'select(label: Text?)');
+    preview.expectNoFindings('uml');
+  });
+});
