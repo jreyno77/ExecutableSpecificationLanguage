@@ -1,7 +1,7 @@
 import { promises as fs, type BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { vi } from 'vitest';
 import { ConfigurationReader } from '../../../../src/project/connection/configuration.js';
 import { ProjectConnector, type ProjectContext, type ProjectSnapshot } from '../../../../src/project/connection/project-connection.js';
@@ -9,8 +9,9 @@ import { ProjectConnector, type ProjectContext, type ProjectSnapshot } from '../
 type Change = 'none' | 'status' | 'repeated-status' | 'modified-time' | 'mode' | 'named-replacement' | 'opened-mismatch' | 'candidate-mismatch' | 'changed-bytes';
 export type FileTuple = Pick<BigIntStats, 'dev' | 'ino' | 'mode' | 'size' | 'mtimeNs' | 'ctimeNs'>;
 export interface SnapshotObservation {
-  readonly events: { kind: 'named' | 'opened' | 'body' | 'open' | 'close'; handle: number; tuple?: FileTuple; actual?: FileTuple; bytes?: Uint8Array }[];
+  readonly events: { kind: 'named' | 'opened' | 'body' | 'open' | 'close'; handle: number; acquisition: number; tuple?: FileTuple; actual?: FileTuple; bytes?: Uint8Array }[];
   readonly handles: { closed: boolean; close: () => Promise<void> }[];
+  readonly acquisitions: { kind: 'ordinary' | 'capture'; index: number }[];
   pending: number;
   atReturn?: { pending: number; open: number; closed: number };
 }
@@ -24,14 +25,22 @@ export class InitialSnapshotDriver {
   private change: Change = 'none';
   private closeError: 0 | 1 | 2 = 0;
   private replacement = '';
+  private beginAcquisition: ((kind: 'ordinary' | 'capture') => void) | undefined;
   readonly observations: SnapshotObservation[] = [];
   current!: ProjectSnapshot;
 
-  async setup(text: string): Promise<void> {
+  get project(): ProjectContext { return this.context; }
+  path(name: string): string {
+    const path = resolve(this.directory, name), part = relative(this.directory, path);
+    if (isAbsolute(name) || isAbsolute(part) || part === '..' || part.startsWith('..' + sep)) throw Error('Snapshot fixture path escaped its owned root.');
+    return path;
+  }
+  async setup(text: string, name = '.gitattributes'): Promise<void> {
     this.parent = await fs.realpath(tmpdir());
     this.directory = await fs.mkdtemp(join(this.parent, 'expec-initial-snapshot-'));
     this.directory = await fs.realpath(this.directory);
-    this.file = join(this.directory, '.gitattributes');
+    this.file = this.path(name);
+    await fs.mkdir(dirname(this.file), { recursive: true });
     await fs.writeFile(this.file, text);
     const read = new ConfigurationReader([]).read({ sourceId: 'initial-snapshot', text: JSON.stringify({
       formatVersion: 1, version: '0.2.0', build: { entries: ['unused.expec'] }, project: { root: '.' },
@@ -45,11 +54,25 @@ export class InitialSnapshotDriver {
   replaceAfterFirstClose(text: string): void { this.change = 'changed-bytes'; this.replacement = text; }
   failClose(handle: 1 | 2): void { this.closeError = handle; }
 
-  async read(initial: boolean): Promise<void> {
-    const observation: SnapshotObservation = { events: [], handles: [], pending: 0 };
+  read(initial: boolean): Promise<void> {
+    const capture = this.context.captureSnapshot;
+    return this.observe(() => this.acquire(initial && capture ? 'capture' : 'ordinary',
+      () => initial && capture ? capture.call(this.context) : this.context.readSnapshot()));
+  }
+  async acquire(kind: 'ordinary' | 'capture', action: () => Promise<ProjectSnapshot>): Promise<ProjectSnapshot> {
+    this.beginAcquisition?.(kind);
+    return action();
+  }
+  async observe(action: () => Promise<ProjectSnapshot>, selectedAcquisition = 1): Promise<void> {
+    const observation: SnapshotObservation = { events: [], handles: [], acquisitions: [], pending: 0 };
     this.observations.push(observation);
-    const change = this.change, closeError = this.closeError, actual = { lstat: fs.lstat.bind(fs), open: fs.open.bind(fs) };
-    let anchor: BigIntStats | undefined, bodies = 0;
+    const arranged = this.change, closeError = this.closeError, actual = { lstat: fs.lstat.bind(fs), open: fs.open.bind(fs) };
+    let anchor: BigIntStats | undefined, bodies = 0, acquisition = 0, firstHandle = 1, change: Change = 'none';
+    this.beginAcquisition = kind => {
+      acquisition++; anchor = undefined; bodies = 0; firstHandle = observation.handles.length + 1;
+      change = acquisition === selectedAcquisition ? arranged : 'none';
+      observation.acquisitions.push({ kind, index: acquisition });
+    };
     const restore: (() => void)[] = [];
     const track = async <T>(action: () => Promise<T>): Promise<T> => {
       observation.pending++;
@@ -66,10 +89,10 @@ export class InitialSnapshotDriver {
         if (change === 'modified-time') values.mtimeNs = anchor.mtimeNs + 1n;
         if (change === 'mode') values.mode = anchor.mode ^ 1n;
         if (change === 'named-replacement' && kind === 'named') values.ino = anchor.ino + 1n;
-        if (change === 'candidate-mismatch' && observation.handles[0]?.closed) values.ctimeNs = anchor.ctimeNs + 2n;
+        if (change === 'candidate-mismatch' && observation.handles[firstHandle - 1]?.closed) values.ctimeNs = anchor.ctimeNs + 2n;
       }
       if (change === 'opened-mismatch' && kind === 'opened') values.ctimeNs = anchor.ctimeNs + 1n;
-      observation.events.push({ kind, handle, tuple: { ...values }, actual: tuple(info) });
+      observation.events.push({ kind, handle, acquisition, tuple: { ...values }, actual: tuple(info) });
       return Object.assign(Object.create(Object.getPrototypeOf(info)) as BigIntStats, info, values);
     };
     restore.push(vi.spyOn(fs, 'lstat').mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
@@ -84,30 +107,32 @@ export class InitialSnapshotDriver {
     const watch = (handle: FileHandle): void => {
       const number = observation.handles.length + 1, stat = handle.stat.bind(handle), read = handle.readFile.bind(handle), close = handle.close.bind(handle);
       const owned = { closed: false, close };
-      observation.events.push({ kind: 'open', handle: number });
+      observation.events.push({ kind: 'open', handle: number, acquisition });
       observation.handles.push(owned);
       restore.push(vi.spyOn(handle, 'stat').mockImplementation((async (...args: Parameters<typeof handle.stat>) =>
         observed(await track(() => stat(...args)) as BigIntStats, 'opened', number)) as typeof handle.stat).mockRestore);
       restore.push(vi.spyOn(handle, 'readFile').mockImplementation((async (...args: Parameters<typeof handle.readFile>) => {
         const bytes = await track(() => read(...args));
         bodies++;
-        observation.events.push({ kind: 'body', handle: number, bytes: Uint8Array.from(typeof bytes === 'string' ? Buffer.from(bytes) : bytes) });
+        observation.events.push({ kind: 'body', handle: number, acquisition, bytes: Uint8Array.from(typeof bytes === 'string' ? Buffer.from(bytes) : bytes) });
         return bytes;
       }) as typeof handle.readFile).mockRestore);
       restore.push(vi.spyOn(handle, 'close').mockImplementation(() => track(async () => {
         await close();
         owned.closed = true;
-        observation.events.push({ kind: 'close', handle: number });
-        if (change === 'changed-bytes' && number === 1) await fs.writeFile(this.file, this.replacement);
-        if (closeError === number) throw Object.assign(Error('Arranged close failure after physical closure.'), { code: 'EIO' });
+        observation.events.push({ kind: 'close', handle: number, acquisition });
+        if (change === 'changed-bytes' && number === firstHandle) await fs.writeFile(this.file, this.replacement);
+        if (closeError === number - firstHandle + 1) throw Object.assign(Error('Arranged close failure after physical closure.'), { code: 'EIO' });
       })).mockRestore);
     };
     try {
-      const capture = this.context as ProjectContext & { captureSnapshot?: () => Promise<ProjectSnapshot> };
-      this.current = await (initial && capture.captureSnapshot ? capture.captureSnapshot() : this.context.readSnapshot());
+      this.current = await action();
       observation.atReturn = { pending: observation.pending, open: observation.handles.filter(handle => !handle.closed).length,
         closed: observation.handles.filter(handle => handle.closed).length };
-    } finally { for (const undo of restore.reverse()) undo(); this.change = 'none'; this.closeError = 0; }
+    } finally {
+      observation.atReturn ??= { pending: observation.pending, open: observation.handles.filter(handle => !handle.closed).length,
+        closed: observation.handles.filter(handle => handle.closed).length };
+      for (const undo of restore.reverse()) undo(); this.change = 'none'; this.closeError = 0; this.beginAcquisition = undefined; }
   }
   async dispose(): Promise<void> {
     if (!this.directory) return;

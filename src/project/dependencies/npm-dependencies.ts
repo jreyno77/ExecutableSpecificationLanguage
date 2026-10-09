@@ -39,7 +39,7 @@ export class NpmDependencies {
     let cache: ProjectFiles | undefined;
     try {
       let project: NpmProject;
-      try { project = await NpmProject.open(this.projectRoot); }
+      try { project = await NpmProject.open(this.projectRoot, install ? 'strict' : 'capture'); }
       catch (error) { record(error, problems, () => report('native-project-unavailable', message(error), 'package.json')); return result(); }
       const verifyInstallation = install ? await project.prepareInstall() : undefined;
       if (!install) cache = await project.readCache();
@@ -58,7 +58,7 @@ export class NpmDependencies {
         } catch (error) { record(error, problems, () => report('package-install-failed', message(error))); return result(); }
       }
       await this.observe(project, requests, observations, problems, options);
-      if (!install) await project.files.verify('package.json', project.manifest);
+      if (!install) await project.verify('package.json', project.manifest);
       await project.verifyRoot();
     } catch (error) { record(error, problems, () => report('native-package-read-failed', message(error))); }
     finally {
@@ -129,7 +129,7 @@ export class NpmDependencies {
         }
       } catch (error) { record(error, problems, () => report('native-package-read-failed', message(error))); }
     }
-    for (const [path, observation] of captures) await project.files.verify(path, observation);
+    for (const [path, observation] of captures) await project.verify(path, observation);
   }
 }
 function record(error: unknown, problems: Diagnostic[], fallback: () => void): void {
