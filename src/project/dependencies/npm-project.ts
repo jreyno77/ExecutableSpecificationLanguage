@@ -6,12 +6,12 @@ import { errorCode, fail, literal, ProjectFiles, sameIdentity, type ObservedFile
 
 /** Native manifest and package evidence use the existing guarded project-file operations. */
 export class NpmProject {
-  private constructor(readonly selected: string, readonly files: ProjectFiles, readonly manifest: ObservedFile, readonly data: Record<string, unknown>) {}
-  static async open(selected: string): Promise<NpmProject> {
+  private constructor(readonly selected: string, readonly files: ProjectFiles, readonly manifest: ObservedFile, readonly data: Record<string, unknown>, private readonly acquisition: 'strict' | 'capture') {}
+  static async open(selected: string, acquisition: 'strict' | 'capture' = 'strict'): Promise<NpmProject> {
     const named = await fs.lstat(selected, { bigint: true }), path = await fs.realpath(selected), actual = await fs.lstat(path, { bigint: true });
     if (!named.isDirectory() || named.isSymbolicLink() || !sameIdentity(named, actual) || actual.ino <= 0n) throw new Error('Provide an ordinary native project directory with usable identity.');
     const files = new ProjectFiles({ path, identity: `${actual.dev}:${actual.ino}:${path}` });
-    const manifest = await files.read('package.json');
+    const manifest = await (acquisition === 'capture' ? files.capture('package.json') : files.read('package.json'));
     if (manifest.value.state !== 'file') fail(files.root, 'native-project-unavailable', 'package.json', 'An existing regular package.json is required.');
     const data = parse(files, manifest, 'package.json');
     if (data.workspaces !== undefined) fail(files.root, 'unsupported-native-project', 'package.json', 'npm workspace orchestration is not supported.');
@@ -19,7 +19,7 @@ export class NpmProject {
       && (!object(data[name]) || Object.values(data[name]).some(value => typeof value !== 'string'))) {
       fail(files.root, 'invalid-native-manifest', 'package.json', name + ' must be a native string dependency map.');
     }
-    const project = new NpmProject(selected, files, manifest, data);
+    const project = new NpmProject(selected, files, manifest, data, acquisition);
     await project.verifyRoot(); return project;
   }
   async verifyRoot(): Promise<void> {
@@ -72,8 +72,11 @@ export class NpmProject {
     return this.files.read('package.json');
   }
   async json(path: string): Promise<{ data?: Record<string, unknown>; observation: ObservedFile }> {
-    const observation = await this.files.read(path);
+    const observation = await (this.acquisition === 'capture' ? this.files.capture(path) : this.files.read(path));
     return { observation, ...(observation.value.state === 'file' ? { data: parse(this.files, observation, path) } : {}) };
+  }
+  verify(path: string, previous: ObservedFile): Promise<ObservedFile> {
+    return this.acquisition === 'capture' ? this.files.capture(path, previous) : this.files.verify(path, previous);
   }
   location(path: string): string {
     if (!literal(path) || /[\\*]/.test(path) || /^[A-Za-z]:/.test(path)) {
