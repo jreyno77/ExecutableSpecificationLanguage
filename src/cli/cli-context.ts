@@ -13,13 +13,14 @@ import { nativeInputs } from '../project/connection/native-inputs.js';
 import { JavaContext } from '../project/java/java-context.js';
 import { KotlinContext } from '../project/kotlin/kotlin-context.js';
 import { PythonContext } from '../project/python/python-context.js';
+import type { BuildAdmission } from './cli-host.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {
   private readonly native: ProjectContext[];
   private readonly inputs: { uri: string; version: string }[];
   constructor(private readonly project: ProjectContext, private readonly checked: CheckedManifest,
-    private readonly selected: Configuration['outputs'], inputs: readonly { uri: string; version: string }[] = [], private readonly acquisition?: ProjectSnapshot) {
+    private readonly selected: Configuration['outputs'], inputs: readonly { uri: string; version: string }[] = [], private readonly acquisition?: ProjectSnapshot, private readonly admission?: BuildAdmission) {
     const options = selected.filter(output => output.id === 'typescript' || output.id === 'acceptance').map(output => ({
       ...(typeof output.options.configFile === 'string' ? { configFile: output.options.configFile } : {}),
       imports: [...new Set([...(output.id === 'acceptance' ? ['vitest'] : []), ...((output.options.imports ?? []) as { from?: string }[])
@@ -36,7 +37,7 @@ export class BuildContext implements ProjectContext {
   }
   get root() { return this.project.root; }
   during(original: ProjectSnapshot): BuildContext {
-    return new BuildContext(this.project, this.checked, this.selected, [...this.inputs, ...original.nativeInputs ?? []], { ...original, readOnlyFiles: [] });
+    return new BuildContext(this.project, this.checked, this.selected, [...this.inputs, ...original.nativeInputs ?? []], { ...original, readOnlyFiles: [] }, this.admission);
   }
   completionProblems(snapshot: ProjectSnapshot): Diagnostic[] {
     const configurations = new Set(this.selected.filter(output => output.id === 'typescript' || output.id === 'acceptance')
@@ -50,16 +51,20 @@ export class BuildContext implements ProjectContext {
   }
 
   private acquireSnapshot(): Promise<ProjectSnapshot> {
-    return this.project.captureSnapshot ? this.project.captureSnapshot() : this.project.readSnapshot();
+    return this.admission ? this.admission.capture(this.project)
+      : this.project.captureSnapshot ? this.project.captureSnapshot() : this.project.readSnapshot();
   }
 
   async readSnapshot(): Promise<ProjectSnapshot> {
     const snapshot = await this.acquireSnapshot(), problems = [...snapshot.problems], evidence = [...snapshot.nativeInputs ?? [], ...this.inputs];
+    if (this.admission?.stopped) return snapshot;
     let complete = snapshot.complete;
     const native = new Map((snapshot.readOnlyFiles ?? []).map(file => [file.path, file]));
     for (const context of this.native) {
+      if (this.admission?.stopped) return this.acquireSnapshot();
       const captured = await context.readSnapshot();
       problems.push(...captured.problems); complete &&= captured.complete; evidence.push(...captured.nativeInputs ?? []);
+      if (this.admission?.stopped) return { ...snapshot, complete: false, problems };
       if ((!this.acquisition && !sameEditableFiles(snapshot.files, captured.files)) || !isDeepStrictEqual(snapshot.root, captured.root)
         || !isDeepStrictEqual(snapshot.excluded, captured.excluded) || !isDeepStrictEqual(snapshot.excludeNames, captured.excludeNames)) problems.push(cliProblem('stale-project', 'Native configurations observed different project bytes.', this.checked.manifest));
       for (const file of captured.readOnlyFiles ?? []) {
@@ -78,6 +83,7 @@ export class BuildContext implements ProjectContext {
     }
     const observations = [...inputs.values()];
     for (let index = 0; index < observations.length; index += 4) {
+      if (this.admission?.stopped) return this.acquireSnapshot();
       const failures = await Promise.all(observations.slice(index, index + 4).map(async input => {
         try {
           const path = fileURLToPath(input.uri), before = await fs.lstat(path, { bigint: true }), bytes = await fs.readFile(path), after = await fs.lstat(path, { bigint: true });
@@ -88,6 +94,7 @@ export class BuildContext implements ProjectContext {
       problems.push(...failures.filter((problem): problem is Diagnostic => problem !== undefined));
     }
     const fresh = await this.acquireSnapshot();
+    problems.push(...fresh.problems);
     if (!isDeepStrictEqual(snapshot, fresh)) problems.push(cliProblem('stale-project', 'The project changed while collecting build evidence.', this.checked.manifest));
     return { ...snapshot, readOnlyFiles: [...native.values()].sort((a, b) => a.path.localeCompare(b.path)),
       nativeInputs: [...inputs.values()], complete: complete && fresh.complete && !problems.length, problems };
