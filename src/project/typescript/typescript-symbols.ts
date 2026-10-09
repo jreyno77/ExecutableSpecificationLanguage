@@ -126,6 +126,15 @@ export class TypeScriptSymbols {
   relationships(id: string, within?: readonly ts.Node[]): { incoming: { uses: ObservedRelationship[]; unresolved: Unresolved[] }; outgoing: { uses: ObservedRelationship[]; unresolved: Unresolved[] } } {
     const selected = this.selected(id), nodes = within ?? selected.flatMap(item => item.nodes), keys = new Set(selected.map(item => item.key));
     const incoming = { uses: [] as ObservedRelationship[], unresolved: [] as Unresolved[] }, outgoing = { uses: [] as ObservedRelationship[], unresolved: [] as Unresolved[] };
+    const namedMembers = selected.length > 0 && selected.every(({ key, nodes }) => !('kind' in key) && nodes.length > 0
+      && nodes.every(node => ['property', 'method', 'accessor'].includes(kindOf(node) ?? ''))
+      && key.name !== 'NaN' && Number.isNaN(Number(key.name)));
+    const unrelatedNumericArray = (node: ts.ElementAccessExpression): boolean => {
+      if (!namedMembers || !this.checker) return false;
+      const receiver = this.checker.getTypeAtLocation(node.expression), key = this.checker.getTypeAtLocation(node.argumentExpression);
+      return (this.checker.isArrayType(receiver) || this.checker.isTupleType(receiver))
+        && (key.isUnion() ? key.types : [key]).every(type => !!(type.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)));
+    };
     const contains = (node: ts.Node) => nodes.some(owner => inside(node, owner));
     const references = new Set<string>(), imports = new Set<ts.ImportDeclaration | ts.ExportDeclaration>();
     // Native reference search supplies alias/merge/member occurrences; the checker supplies each target.
@@ -177,7 +186,8 @@ export class TypeScriptSymbols {
       if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && ['require', 'eval'].includes(node.expression.text))) {
         if (node.expression.getText() === 'eval' || !node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0])) unresolved(node, 'Dynamic code/module lookup has no single static target.');
       }
-      if (ts.isElementAccessExpression(node) && !ts.isStringLiteralLike(node.argumentExpression) && !ts.isNumericLiteral(node.argumentExpression)) unresolved(node, 'Computed member lookup has no unique static target.');
+      if (ts.isElementAccessExpression(node) && !ts.isStringLiteralLike(node.argumentExpression) && !ts.isNumericLiteral(node.argumentExpression))
+        unresolved(node, 'Computed member lookup has no unique static target.', contains(node), !unrelatedNumericArray(node));
       if (node.kind === ts.SyntaxKind.SuperKeyword && ts.isCallExpression(node.parent)) {
         const declaration = this.checker?.getResolvedSignature(node.parent)?.declaration;
         if (declaration && ts.isConstructorDeclaration(declaration)) {
