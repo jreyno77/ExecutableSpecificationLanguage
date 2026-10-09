@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { NativeDeclarations } from '../../../../src/project/typescript/native-declarations.js';
 import { NativeContextDriver } from './typescript-context.js';
 
-type FirstFault = 'none' | 'status' | 'mode' | 'identity' | 'mtime' | 'before-open' | 'named-after' | 'repeated';
+type FirstFault = 'none' | 'open-status' | 'open-mode' | 'open-size' | 'open-mtime' | 'open-identity' | 'status' | 'mode' | 'identity' | 'mtime' | 'before-open' | 'named-after' | 'repeated';
 type SecondFault = 'none' | 'open-status' | 'named-status' | 'read-error' | 'link' | 'route';
 type Handle = { initial: boolean; number: number; reads: number; stats: number };
 const tuple = (info: BigIntStats) => [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs].map(String);
@@ -33,6 +33,8 @@ export class NativeSettlingDriver {
   private status: bigint | undefined;
   private beforeStatus: bigint | undefined;
   private candidate: string[] | undefined;
+  private additionalReadStatus = false;
+  private initialNamedStatus = false;
   private altered = false;
   private linked = false;
   private installed = false;
@@ -44,6 +46,8 @@ export class NativeSettlingDriver {
 
   select(path: string): void { if (this.installed && path !== this.selected) throw Error('A settling fixture owns one selected path.'); this.selected = path; }
   firstFault(path: string, fault: FirstFault): void { this.select(path); this.first = fault; this.required.add('first-' + fault); }
+  addFirstReadStatusChange(): void { this.additionalReadStatus = true; this.required.add('first-read-status-again'); }
+  addInitialNamedStatusChange(): void { this.initialNamedStatus = true; this.required.add('first-named-after'); }
   secondFault(fault: SecondFault): void { this.second = fault; this.required.add('second-' + fault); }
   replaceBytes(text: string): void {
     this.replacement = text; this.required.add('replacement');
@@ -78,7 +82,17 @@ export class NativeSettlingDriver {
   }
   private patch(info: BigIntStats, handle?: Handle, named = false): BigIntStats {
     this.beforeStatus ??= info.ctimeNs;
+    if (this.first === 'open-status' && handle?.initial && handle.number === 1 && handle.stats === 1) {
+      this.status = this.beforeStatus + 1n; this.reached.add('first-open-status');
+    }
     const changed: Partial<BigIntStats> = {};
+    if (handle?.initial && handle.number === 1 && handle.stats === 1) {
+      if (this.first === 'open-mode') changed.mode = info.mode ^ 0o100n;
+      if (this.first === 'open-size') changed.size = info.size + 1n;
+      if (this.first === 'open-mtime') changed.mtimeNs = info.mtimeNs + 1n;
+      if (this.first === 'open-identity') changed.ino = info.ino + 1n;
+      if (this.first.startsWith('open-')) this.reached.add('first-' + this.first);
+    }
     if (this.status !== undefined) changed.ctimeNs = this.status;
     const settling = this.initial && this.firstClosed && this.initialOpens <= 2;
     if (this.altered && this.replacement !== undefined) {
@@ -90,7 +104,7 @@ export class NativeSettlingDriver {
     }
     if (this.altered && this.first === 'mode') { changed.mode = info.mode ^ 0o100n; this.reached.add('first-mode'); }
     if (this.altered && this.first === 'mtime') { changed.mtimeNs = info.mtimeNs + 1n; this.reached.add('first-mtime'); }
-    if (named && this.initial && !this.firstClosed && this.bodies.length && this.first === 'named-after') {
+    if (named && this.initial && !this.firstClosed && this.bodies.length && (this.first === 'named-after' || this.initialNamedStatus)) {
       changed.ctimeNs = this.status! + 1n; this.reached.add('first-named-after');
     }
     if (handle?.initial && handle.number === 2 && handle.stats === 1 && this.second === 'open-status') {
@@ -147,7 +161,7 @@ export class NativeSettlingDriver {
       if (observation?.initial) {
         if (!Buffer.isBuffer(bytes)) throw Error('Selected native descriptor must return actual bytes.');
         observation.reads++; driver.bodies.push(bytes.toString('utf8'));
-        if (observation.number === 1 && driver.first !== 'none' && driver.first !== 'before-open') {
+        if (observation.number === 1 && driver.first !== 'none' && driver.first !== 'before-open' && !driver.first.startsWith('open-')) {
           if (!['mode', 'mtime', 'named-after'].includes(driver.first)) driver.reached.add('first-' + driver.first);
           driver.status = driver.beforeStatus! + 1n;
           if (driver.first === 'identity') {
@@ -155,6 +169,9 @@ export class NativeSettlingDriver {
             fs.unlinkSync(selected); fs.writeFileSync(selected, driver.identityText);
           }
           if (driver.first === 'mode' || driver.first === 'mtime') driver.altered = true;
+        }
+        if (observation.number === 1 && driver.additionalReadStatus) {
+          driver.status = (driver.status ?? driver.beforeStatus!) + 1n; driver.reached.add('first-read-status-again');
         }
         if (driver.first === 'repeated') driver.status = driver.beforeStatus! + BigInt(driver.bodies.length);
       }
