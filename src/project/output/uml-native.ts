@@ -65,6 +65,7 @@ export class NativeDiagrams {
       const edges = Array.isArray(key.edges) ? key.edges.map(value => {
         const edge = object(value), src = object(edge.src), dst = object(edge.dst);
         const from = segments(src), to = segments(dst);
+        if (glob(src) || glob(dst)) result.limitations.push(result.path + ': globs');
         if (from.length !== 1 || to.length !== 1) result.limitations.push(result.path + ': nested-endpoint');
         return { from, to, range: range(edge.range, result), fromRange: range(src.range, result), toRange: range(dst.range, result), left: !!edge.src_arrow, right: !!edge.dst_arrow };
       }) : [];
@@ -73,7 +74,7 @@ export class NativeDiagrams {
       if (metadata && ((metadata.edge || metadata.message) ? !edges.length : edges.length || keys.length !== 1)
         || metadata?.member && depth !== 1) throw new Error('Identity metadata does not match the following native statement.');
       if (values.map) statement.children = this.statements(object(values.map), result, depth + 1);
-      if (keys.some(key => /[*?]/.test(key))) result.limitations.push(result.path + ': globs');
+      if (glob(path)) result.limitations.push(result.path + ': globs');
       if (['layers', 'scenarios', 'steps', 'vars'].includes(keys[0] ?? '')) result.limitations.push(result.path + ': boards or substitution');
       if (keys.some(key => ['icon', 'link'].includes(key)) || keys[0] === 'shape' && statement.value === 'image') result.limitations.push(result.path + ': external-asset');
       if (hasNative(record, ['import'])) result.limitations.push(result.path + ': imports');
@@ -96,6 +97,12 @@ function scalar(value: unknown): string {
   return '';
 }
 function segments(path: Record<string, unknown>): string[] { return Array.isArray(path.path) ? path.path.map(scalar) : []; }
+function glob(path: Record<string, unknown>): boolean {
+  return Array.isArray(path.path) && path.path.some(part => {
+    const pattern = object(object(part).unquoted_string).pattern;
+    return Array.isArray(pattern) && pattern.length > 0;
+  });
+}
 function hasNative(value: unknown, fields: string[]): boolean {
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, child]) => fields.includes(key) && child !== null || hasNative(child, fields));
