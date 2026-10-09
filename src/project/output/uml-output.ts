@@ -1,4 +1,4 @@
-import type { OutputRegistration, OutputAdapter, OutputPlan, OutputRequest } from './output.js';
+import type { OutputRegistration, OutputAdapter, OutputPlan, OutputPreviewDocument, OutputRequest } from './output.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ArtifactAssociation } from '../../model/specification-identity.js';
@@ -20,6 +20,26 @@ export const umlOutput: OutputRegistration = {
     ...(options.views !== undefined && (!Array.isArray(options.views) || !options.views.length || new Set(options.views).size !== options.views.length
       || options.views.some(view => view !== 'structure' && view !== 'interactions')) ? [{ path: ['views'], message: 'Select structure and/or interactions once.' }] : []),
   ], open: options => new DiagramOutput(options.directory as string, options.views as ('structure' | 'interactions')[] ?? ['structure']),
+  preview: async (current, options) => {
+    const views = options.views as ('structure' | 'interactions')[] ?? ['structure'];
+    if (views.includes('interactions') && ![...current.specification.inspection.query('interaction')].length)
+      return { problems: [outputProblem('missing-interaction', '', 'No authored interaction is available.')], deferred: [] };
+    const drawings = [...views.includes('structure') ? [structure(current)] : [], ...views.includes('interactions') ? interactions(current) : []];
+    const sources = Object.fromEntries(drawings.map(drawing => [options.directory + (drawing.view === 'structure' ? '/structure.d2' : '/interactions/' + hash(Buffer.from(drawing.id!)) + '.d2'), drawing.text]));
+    const engine = new NativeDiagrams(), documents: OutputPreviewDocument[] = [];
+    try {
+      for (const [path, text] of Object.entries(sources)) {
+        const document = await engine.read(path, sources);
+        if (document.problems.length) return { problems: document.problems, deferred: [] };
+        if (document.limitations.length) return { problems: [outputProblem('unsupported-diagram-syntax', path, document.limitations.join('; '))], deferred: [] };
+        let svg: string;
+        try { svg = await engine.render(document); }
+        catch (error) { return { problems: [outputProblem('native-render-failed', path, String(error))], deferred: [] }; }
+        documents.push({ path, mediaType: 'text/vnd.d2', bytes: Buffer.from(text) }, { path: svgPath(path), mediaType: 'image/svg+xml', bytes: Buffer.from(svg) });
+      }
+      return success(documents);
+    } finally { await engine.dispose(); }
+  },
 };
 const refused = (problems: readonly Diagnostic[]): Check<OutputPlan> => ({ problems, deferred: [] });
 const conflict = (path: string, message: string) => outputProblem('output-conflict', path, message);
