@@ -1,4 +1,4 @@
-import type { NodeKind, ModelNode, NodeId, Origin, ReferenceResolution } from '../../model/model.js';
+import type { NodeKind, ModelNode, NodeId, Origin, ReferenceLookup, ReferenceResolution } from '../../model/model.js';
 import type { PackageAvailability } from './package-availability.js';
 import type { ResolutionProblem } from './problem.js';
 import type { Scope, ScopeGraph, Lookup } from './scopes.js';
@@ -28,6 +28,39 @@ const subjectKinds: ReadonlySet<NodeKind> = new Set([
   ...typeKinds, 'capability', 'function', 'setup', 'action', 'observation', 'check',
 ]);
 const capabilityKind: ReadonlySet<NodeKind> = new Set(['capability']);
+const builtinKind: ReadonlySet<NodeKind> = new Set(['builtin-type']);
+const parameterKind: ReadonlySet<NodeKind> = new Set(['type-parameter']);
+
+/** Ordinary type references and explicit dependency lookups share this policy. */
+export function typeLookupKinds(instruction?: ReferenceLookup): ReadonlySet<NodeKind> {
+  return instruction?.kind === 'builtin' ? builtinKind : instruction?.kind === 'type-parameter' ? parameterKind : typeKinds;
+}
+
+/** The same selection outcome is used during linking and captured candidate queries. */
+export function lookupResolution(reference: ModelNode<'reference'>, path: readonly string[], found: Lookup,
+  required: ReadonlySet<NodeKind> | undefined,
+  options: { moduleLookup?: boolean; missingDeferred?: boolean; subject?: ReferenceResolution } = {}): ReferenceResolution {
+  const at = reference.origin;
+  const deferred = (requires = requirements.composition): ReferenceResolution => ({ status: 'deferred',
+    requirement: { occurrence: reference.id, origin: at, reason: 'composition', requires } });
+  switch (found.status) {
+    case 'found': return !required || required.has(found.declaration.kind)
+      ? { status: 'bound', target: found.declaration.id }
+      : { status: 'invalid', problems: [{ code: 'wrong-reference-kind',
+        message: `${path.join('.')} cannot supply this kind of reference.`, at, related: [found.declaration.origin] }] };
+    case 'invalid': return { status: 'invalid', problems: options.moduleLookup ? found.problems.map(cause =>
+      cause.code === 'invalid-dependency-input' ? cause : { ...cause, at, related: [cause.at, ...cause.related] }) : found.problems };
+    case 'subject-context': return options.subject?.status === 'invalid' ? options.subject
+      : deferred('Examples checking needs the subject scope from source composition.');
+    case 'ambiguous': return { status: 'invalid', problems: [{ code: 'ambiguous-reference',
+      message: `${path.join('.')} has multiple explicit introductions.`, at,
+      related: found.introductions.map(introduction => introduction.at) }] };
+    case 'inaccessible': return { status: 'invalid', problems: [{ code: 'inaccessible-reference',
+      message: `${path.join('.')} is not accessible from this scope.`, at, related: [found.declaration.origin] }] };
+    case 'missing': return options.missingDeferred ? deferred() : { status: 'invalid', problems: [{
+      code: 'unresolved-reference', message: `No visible declaration supplies ${path.join('.')}.`, at, related: [] }] };
+  }
+}
 
 /** Resolves each authored use in its lexical context; it never loads or rewrites declarations. */
 export class ReferenceResolver {
@@ -127,8 +160,7 @@ export class ReferenceResolver {
       const found = instruction.kind === 'module'
         ? this.scopes.selectFrom(this.source.locator, instruction.locator, path, scope)
         : instruction.kind === 'builtin' ? this.scopes.builtin(path[0]!) : this.scopes.lookup(scope, path);
-      const required = instruction.kind === 'builtin' ? new Set<NodeKind>(['builtin-type'])
-        : instruction.kind === 'type-parameter' ? new Set<NodeKind>(['type-parameter']) : typeKinds;
+      const required = typeLookupKinds(instruction);
       this.accept(reference, path, scope, found, required, instruction.kind === 'module');
       return;
     }
@@ -164,43 +196,16 @@ export class ReferenceResolver {
 
   private accept(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,
     found: Lookup, required?: ReadonlySet<NodeKind>, moduleLookup = false, complete = false): void {
-    const at = reference.origin;
-    let problem: ResolutionProblem;
-    switch (found.status) {
-      case 'found':
-        if (!required || required.has(found.declaration.kind)) {
-          this.bindings.set(reference.id, { status: 'bound', target: found.declaration.id });
-          return;
-        }
-        problem = {
-          code: 'wrong-reference-kind', message: `${path.join('.')} cannot supply this kind of reference.`,
-          at, related: [found.declaration.origin],
-        }; break;
-      case 'invalid': {
-        const problems = moduleLookup ? this.locateFailures(reference, found.problems) : found.problems;
-        this.bindings.set(reference.id, { status: 'invalid', problems }); return;
-      }
-      case 'subject-context': {
-        const subject = this.bindings.get(found.subject);
-        if (subject?.status === 'invalid') this.bindings.set(reference.id, subject);
-        else this.defer(reference, 'composition', 'Examples checking needs the subject scope from source composition.');
-        return;
-      }
-      case 'ambiguous': problem = {
-        code: 'ambiguous-reference', message: `${path.join('.')} has multiple explicit introductions.`,
-        at, related: found.introductions.map(introduction => introduction.at),
-      }; break;
-      case 'inaccessible': problem = {
-        code: 'inaccessible-reference', message: `${path.join('.')} is not accessible from this scope.`,
-        at, related: [found.declaration.origin],
-      }; break;
-      case 'missing':
-        if (!complete && !moduleLookup && this.requiresComposition(scope, path)) { this.defer(reference, 'composition'); return; }
-        problem = { code: 'unresolved-reference', message: `No visible declaration supplies ${path.join('.')}.`, at, related: [] };
-        break;
-    }
-    this.problems.push(problem);
-    this.bindings.set(reference.id, { status: 'invalid', problems: [problem] });
+    const outcome = lookupResolution(reference, path, found, required, {
+      moduleLookup,
+      missingDeferred: found.status === 'missing' && !complete && !moduleLookup && this.requiresComposition(scope, path),
+      ...(found.status === 'subject-context' && this.bindings.has(found.subject) ? { subject: this.bindings.get(found.subject)! } : {}),
+    });
+    this.bindings.set(reference.id, outcome);
+    // Ordinary invalid introductions and inherited subject failures were already reported.
+    if (outcome.status === 'invalid' && found.status !== 'subject-context'
+      && (found.status !== 'invalid' || moduleLookup)) this.problems.push(...outcome.problems);
+    if (outcome.status === 'deferred') this.deferred.push(outcome.requirement);
   }
 
   private requiresComposition(scope: Scope, path: readonly string[]): boolean {

@@ -69,6 +69,13 @@ export class TypeCandidateDriver {
   forbidFurtherInputModelReads(): void {
     this.beforeQuery = this.modelFacts(); this.forbidInputs = true; this.inputReads = 0;
   }
+  suppliedNameReadFromCallback(name: string): () => string {
+    let retained: { readonly decoded: string } | undefined;
+    this.input(this.entry).nodes('name').forEach(node => { if (node.decoded === name) retained = node; });
+    if (!retained) throw new Error('The real supplied name must exist before observing its getter.');
+    const observed = retained;
+    return () => observed.decoded;
+  }
   capturedModelObservation(): { before: unknown; after: unknown } { return { before: this.beforeQuery, after: this.modelFacts() }; }
   attemptCandidateMutation(name: string): void {
     const candidate = this.candidate(name) as { name: string; insertionText: string; target: NodeId };
@@ -150,7 +157,7 @@ export class TypeCandidateDriver {
     const proxy = new Proxy(input, { get: (target, key) => {
       const check = (): void => { if (this.forbidInputs) { this.inputReads++; throw new Error('A completed query reread a supplied model fact.'); } };
       check(); const value: unknown = Reflect.get(target, key, target);
-      if (typeof value === 'function') return (...args: unknown[]) => { check(); const result: unknown = Reflect.apply(value, target, args);
+      if (typeof value === 'function') return (...args: unknown[]) => { check(); const result: unknown = Reflect.apply(value, Array.isArray(target) ? proxy : target, args);
         return result && typeof result === 'object' ? this.protect(result) : result; };
       return value && typeof value === 'object' ? this.protect(value) : value;
     } });

@@ -11,6 +11,13 @@ function source(text: string): ModuleModel {
 }
 
 describe('a consumer keeps completed resolution views independent', () => {
+  it('reports a duplicate declaration once when a type reference encounters that conflict', () => {
+    const result = new Resolver().resolve(source('type Book {}\ntype Book {}\nfunction read(value: Book)'),
+      { modules: [], packages: [] });
+
+    expect(result.problems.map(problem => problem.code)).toEqual(['duplicate-declaration']);
+  });
+
   it('owns fresh builtin handles while preserving the same supplied declaration handles', () => {
     const inspection = source('type Message { body: Text }');
     const resolver = new Resolver();

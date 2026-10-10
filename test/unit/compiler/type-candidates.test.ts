@@ -1,4 +1,5 @@
-import { it } from 'vitest';
+import { expect, it } from 'vitest';
+import { TypeCandidateDriver } from '../../driver/compiler/type-candidates.js';
 import { ContextualTypeCandidates } from '../../dsl/compiler/type-candidates.js';
 
 it('rejects a foreign captured reference identity', () => {
@@ -77,4 +78,15 @@ it('refuses an unspellable external name with its actual input location', () => 
   types.expectMissingCandidate('Bad\nName');
   types.expectCandidate('Box', 'Box', { module: 'entry', name: 'Box', kind: 'record-type-declaration', externalPath: [1] });
   types.expectExternalQueryProblem('invalid-dependency-input', 'entry', [0, 'name']);
+});
+
+it('traps a callback-retained supplied name getter after input reads are forbidden', () => {
+  const types = new TypeCandidateDriver();
+  types.sourceIs('type Book {}\nfunction read(value: Book)');
+  types.resolveDeclarations();
+  const readRetainedName = types.suppliedNameReadFromCallback('Book');
+  types.forbidFurtherInputModelReads();
+
+  expect(readRetainedName).toThrow('A completed query reread a supplied model fact.');
+  expect(types.furtherInputReads).toBe(1);
 });
