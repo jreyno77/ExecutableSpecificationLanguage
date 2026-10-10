@@ -1,4 +1,5 @@
-import type { Model, ModelNode, NodeId, ReferenceResolution } from '../../model/model.js';
+import type { Model, ModelNode, NodeId, ReferenceLookup, ReferenceResolution } from '../../model/model.js';
+import { IndexedModel } from '../../model/model-index.js';
 import type { ProblemLocation, ResolutionProblem } from './problem.js';
 import { SourceIndex } from './source-index.js';
 import type { Modules } from './modules.js';
@@ -32,6 +33,14 @@ export type Lookup =
   | { readonly status: 'ambiguous'; readonly introductions: readonly Introduction[] }
   | { readonly status: 'invalid'; readonly problems: readonly ResolutionProblem[] };
 
+export type CandidateContext = {
+  readonly scope: Scope | undefined;
+  readonly requester: Scope;
+  readonly ownOnly: boolean;
+  readonly exportsOnly: boolean;
+  readonly failure?: Lookup;
+};
+
 /** Ready lexical/module scopes over common nodes. Construction owns the indexing order. */
 export class ScopeGraph {
   readonly problems: ResolutionProblem[] = [];
@@ -45,7 +54,9 @@ export class ScopeGraph {
   private readonly members = new Map<NodeId, Scope>();
   private readonly privateTo = new Map<NodeId, Scope>();
   private readonly capabilityOwners = new Map<NodeId, Scope>();
+  private readonly capabilityNames = new Map<NodeId, string>();
   private readonly publicNames = new Map<Scope, Set<string>>();
+  private readonly candidateSelections = new Map<Scope, Map<Scope, Map<number, readonly { name: string; found: Lookup }[]>>>();
   private readonly attachedExamples: {
     readonly source: SourceIndex;
     readonly subject: NodeId;
@@ -142,6 +153,78 @@ export class ScopeGraph {
     return found;
   }
 
+  /** Select the actual containing scope before the final, replaceable segment. */
+  candidateContext(requester: Scope, prefix: readonly string[], instruction: ReferenceLookup | undefined, owner: string): CandidateContext {
+    let scope: Scope | undefined = requester;
+    const exportsOnly = instruction?.kind === 'module';
+    const ownOnly = prefix.length > 0 || instruction?.kind === 'builtin' || exportsOnly;
+    if (instruction?.kind === 'builtin') scope = this.builtinScope;
+    if (exportsOnly) {
+      const locator = this.modules ? this.modules.locate(owner, instruction.locator) : instruction.locator;
+      scope = locator === undefined ? undefined : this.moduleRoots.get(locator);
+      if (!scope || (locator !== undefined && this.modules?.failures.get(locator)?.length)) {
+        return { scope: undefined, requester, ownOnly, exportsOnly,
+          failure: this.selectFrom(owner, instruction.locator, prefix, requester) };
+      }
+    }
+    if (prefix.length) {
+      const selected = exportsOnly ? this.selectFrom(owner, instruction.locator, prefix, requester)
+        : this.lookup(scope!, prefix, instruction?.kind === 'builtin');
+      if (selected.status !== 'found') return { scope: undefined, requester, ownOnly, exportsOnly, failure: selected };
+      scope = this.members.get(selected.declaration.id);
+    }
+    return { scope, requester, ownOnly, exportsOnly };
+  }
+
+  /** Enumerate lazily, retaining the ordinary nearest-name and accessibility policy. */
+  candidateLookups(context: CandidateContext): readonly { name: string; found: Lookup }[] {
+    if (!context.scope) return [];
+    let request = this.candidateSelections.get(context.requester);
+    if (!request) this.candidateSelections.set(context.requester, request = new Map());
+    let selections = request.get(context.scope);
+    if (!selections) request.set(context.scope, selections = new Map());
+    const key = Number(context.ownOnly) + 2 * Number(context.exportsOnly);
+    const cached = selections.get(key);
+    if (cached) return cached;
+    const names = new Set<string>();
+    for (let scope: Scope | undefined = context.scope; scope; scope = context.ownOnly ? undefined : scope.parent) {
+      for (const name of scope.names.keys()) names.add(name);
+    }
+    const choices = [...names].sort().map(name => ({ name, found: context.ownOnly
+      ? this.choose(context.scope!, name, context.requester, context.exportsOnly)
+      : this.lookup(context.scope!, [name]) }));
+    selections.set(key, choices);
+    return choices;
+  }
+
+  /** Detach the selection graph; supplied sources, modules and getters are not retained. */
+  snapshot(capture: <T>(value: T) => T): { graph: ScopeGraph; scope: (original: Scope) => Scope } {
+    const graph = new ScopeGraph([], new IndexedModel([], []));
+    const copies = new Map<Scope, Scope>([[this.builtinScope, graph.builtinScope], [this.outside, graph.outside]]);
+    const scope = (original: Scope): Scope => {
+      let copy = copies.get(original);
+      if (!copy) {
+        copy = new Scope(original.parent && scope(original.parent), original.owner, original.composition,
+          new Set(original.orderedNames), original.blockedSubject, original.shared && scope(original.shared));
+        copies.set(original, copy);
+      }
+      return copy;
+    };
+    for (const original of [this.builtinScope, this.outside, ...this.scopes]) {
+      const copy = scope(original);
+      for (const [name, introductions] of original.names) copy.names.set(name, capture(introductions));
+      if (original !== this.builtinScope && original !== this.outside) graph.scopes.push(copy);
+    }
+    for (const [key, value] of this.moduleRoots) graph.moduleRoots.set(key, scope(value));
+    for (const [key, value] of this.nodeScopes) graph.nodeScopes.set(key, scope(value));
+    for (const [key, value] of this.members) graph.members.set(key, scope(value));
+    for (const [key, value] of this.privateTo) graph.privateTo.set(key, scope(value));
+    for (const [key, value] of this.capabilityOwners) graph.capabilityOwners.set(key, scope(value));
+    for (const [key, value] of this.capabilityNames) graph.capabilityNames.set(key, value);
+    for (const [key, value] of this.publicNames) graph.publicNames.set(scope(key), new Set(value));
+    return { graph, scope };
+  }
+
   hasOrderedName(scope: Scope, name: string): boolean {
     for (let current: Scope | undefined = scope; current; current = current.parent) {
       if (current.orderedNames.has(name)) return true;
@@ -204,7 +287,7 @@ export class ScopeGraph {
     if (privateScope && !this.within(from, privateScope)) return { status: 'inaccessible', declaration };
     const owner = this.capabilityOwners.get(declaration.id);
     if (owner && declaration.kind === 'capability' && !this.within(from, owner)) {
-      const name = this.indices.get(declaration.id)!.name(declaration.name);
+      const name = this.capabilityNames.get(declaration.id)!;
       if (!this.publicNames.get(owner)?.has(name)) return { status: 'inaccessible', declaration };
     }
     return { status: 'found', declaration };
@@ -301,7 +384,10 @@ export class ScopeGraph {
     if (!('name' in node)) throw new Error('A declaration must have a name.');
     this.introduce(scope, source.name(node.name), { target: node, at: node.origin });
     if (local) this.privateTo.set(node.id, scope.canonical);
-    if (node.kind === 'capability') this.capabilityOwners.set(node.id, scope.canonical);
+    if (node.kind === 'capability') {
+      this.capabilityOwners.set(node.id, scope.canonical);
+      this.capabilityNames.set(node.id, source.name(node.name));
+    }
   }
 
   private parameters(source: SourceIndex, ids: readonly NodeId[], scope: Scope): void {

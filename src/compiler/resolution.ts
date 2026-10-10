@@ -7,6 +7,7 @@ import { ReferenceResolver, type DeferredReference } from './resolution/referenc
 import type { ResolutionProblem } from './resolution/problem.js';
 import { Composition } from './resolution/composition.js';
 import type { Scope } from './resolution/scopes.js';
+import { captureTypeCandidates } from './type-candidates.js';
 
 export interface ResolutionDependencies {
   readonly modules: readonly ModuleModel[];
@@ -58,8 +59,10 @@ export function resolveModules(modules: Modules, suppliedPackages: readonly Depe
     for (const node of primitiveNodes) containment.set(node.id, [...primitives.children(node.id)]);
     const captured = new WeakMap<object, unknown>();
     const outcomes = new Map([...bindings].map(([id, outcome]) => [id, capture(outcome, captured)]));
-    return { entry: main!.locator, model: new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes,
-      new Set([...modules.unanalyzed, ...composition?.omitted ?? []]), containment),
+    const model = new IndexedModel(roots, nodes.map(node => capture(node, captured)), outcomes,
+      new Set([...modules.unanalyzed, ...composition?.omitted ?? []]), containment);
+    captureTypeCandidates(model, scopes, sources, bindings, value => capture(value, captured));
+    return { entry: main!.locator, model,
       problems: capture([...new Set(problems)], captured), deferred: capture(deferred, captured) };
 }
 

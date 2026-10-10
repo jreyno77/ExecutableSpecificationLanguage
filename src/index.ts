@@ -13,6 +13,7 @@ export { Resolver } from './compiler/resolution.js';
 export { SourceComposer } from './compiler/source-composer.js';
 export type { ModuleLocator } from './compiler/source-composer.js';
 export type { Resolution, ResolutionDependencies } from './compiler/resolution.js';
+export { typeCandidates, type TypeCandidate } from './compiler/type-candidates.js';
 export type { DeferredReference, DeferredReason } from './compiler/resolution/reference-resolver.js';
 export type { ResolutionProblem, ResolutionProblemCode, ProblemLocation } from './compiler/resolution/problem.js';
 export type { DependencyPackage, PackagePhase } from './compiler/resolution/package-availability.js';
