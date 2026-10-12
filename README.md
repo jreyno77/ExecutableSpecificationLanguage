@@ -570,3 +570,30 @@ await copyFile(syntax, 'expec.tmLanguage.json');
 ```
 
 `npm run grammar:generate` derives it from the existing Langium grammar. Names use lexical theme scopes; type analysis and definitions have separate language services.
+
+## Shared tooling and source dependencies
+
+Declare each native package and version once in the manifest's `packages` catalog.
+Use its alias in `requirements` to share build/test tooling and record where source
+files need runtime packages. Add this fragment to an existing `expec.json` whose
+catalog declares the `typescript`, `react` and `playwright` aliases and their phases:
+
+```json
+{
+  "requirements": {
+    "project": { "build": ["typescript"] },
+    "folders": [{ "path": "src/ui", "runtime": ["react"] }],
+    "files": [{ "path": "src/ui/view.expec", "test": ["playwright"] }]
+  }
+}
+```
+
+Paths use literal `/`-separated names relative to the folder containing the manifest.
+Project, ancestor folder and exact file requirements add together; a narrower scope
+cannot override a package's identity or version. Files outside that folder inherit
+project requirements only. Component-specific `requires package` declarations keep
+working; shared tooling does not need repeating in every component.
+
+Checking validates aliases and phases without installing anything. The explicit
+`install` command still prepares the manifest's complete package catalog in the
+connected project; folder scopes do not create nested native package manifests.
