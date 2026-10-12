@@ -35,6 +35,7 @@ export type { InteractionChecking, Communication } from './compiler/interaction-
 export { Compiler } from './compiler/compiler.js';
 export type { CompilationInput, Compilation, Specification } from './compiler/compiler.js';
 export { ConfigurationReader } from './project/connection/configuration.js';
+export { requirementsFor, type RequirementSource, type ScopedPackageRequirement } from './project/dependencies/package-requirements.js';
 export type { Configuration, OutputProfile, OptionProblem } from './project/connection/configuration.js';
 export { DependencyPlanner } from './project/dependencies/dependency-planner.js';
 export type { DependencyInventory } from './project/dependencies/dependency-planner.js';

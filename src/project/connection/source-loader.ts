@@ -10,12 +10,14 @@ import type { ResolutionDependencies } from '../../compiler/resolution.js';
 import type { ProblemLocation } from '../../compiler/resolution/problem.js';
 import type { ModuleLocator } from '../../compiler/source-composer.js';
 import type { LoadedLibraries } from '../dependencies/library-loader.js';
+import { requirementsFor, type ScopedPackageRequirement } from '../dependencies/package-requirements.js';
 import { nativePath, SourceFiles } from './source-files.js';
 import { localFilename, validLocator, references, ordinal } from './source-references.js';
 
 export interface SourceCapture {
   readonly source: Readonly<SourceDocument>;
   readonly version: string;
+  readonly localPath?: string;
   readonly model?: ModuleModel;
 }
 export interface LoadedSources {
@@ -25,6 +27,7 @@ export interface LoadedSources {
 export interface SourceLoad extends Check<LoadedSources> {
   readonly captures: readonly SourceCapture[];
   readonly syntax: readonly SyntaxDiagnostic[];
+  readonly requirements: readonly ScopedPackageRequirement[];
 }
 
 /** Captures explicitly reached files; existing composition owns their meaning. */
@@ -36,6 +39,8 @@ export class SourceLoader {
     this.directory = dirname(manifestLocation);
   }
   async load(input: Configuration, dependencies: ResolutionDependencies, libraries?: LoadedLibraries): Promise<SourceLoad> {
+    const configured = requirementsFor(input, []);
+    if (!configured.value) return { captures: [], syntax: [], requirements: [], problems: configured.problems, deferred: configured.deferred };
     const configuration = structuredClone(input);
     const files = new SourceFiles(this.directory, configuration), syntax: SyntaxDiagnostic[] = [];
     const models = new Map<string, ModuleModel>(), selected = new Map(dependencies.modules
@@ -103,11 +108,13 @@ export class SourceLoader {
     const captures = [...files.captured.values()].map(({ capture }) => Object.freeze({
       ...capture, ...(models.has(capture.source.sourceId) ? { model: models.get(capture.source.sourceId)! } : {}),
     })).sort((a, b) => ordinal(a.source.sourceId, b.source.sourceId));
-    const problems = files.problems.sort((a, b) => ordinal(JSON.stringify(a.at), JSON.stringify(b.at)) || ordinal(a.code, b.code));
+    const prepared = requirementsFor(configuration, captures.map(capture => ({ sourceId: capture.source.sourceId,
+      ...(capture.localPath !== undefined ? { localPath: capture.localPath } : {}) })));
+    const problems = [...files.problems, ...prepared.problems].sort((a, b) => ordinal(JSON.stringify(a.at), JSON.stringify(b.at)) || ordinal(a.code, b.code));
     syntax.sort((a, b) => ordinal(a.primaryRange.sourceId, b.primaryRange.sourceId) || a.primaryRange.start.offset - b.primaryRange.start.offset);
     const supplied = [...new Set([...models.values(), ...selected.values(), ...acquired.values()])];
-    return { captures: Object.freeze(captures), syntax, problems, deferred: [],
-      ...(!problems.length && !syntax.length ? { value: {
+    return { captures: Object.freeze(captures), requirements: prepared.value ?? [], syntax, problems, deferred: prepared.deferred,
+      ...(prepared.value && !problems.length && !syntax.length ? { value: {
         entries: entries.map(entry => ({ entry, dependencies: { modules: supplied.filter(model => model !== entry), packages } })),
         locate: (owner: string, authored: string) => mappings.get(JSON.stringify([owner, authored])),
       } } : {}) };

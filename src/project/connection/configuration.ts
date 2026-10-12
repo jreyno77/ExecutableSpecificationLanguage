@@ -1,7 +1,7 @@
 import { readJson } from './json-data.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { SourceDocument } from '../../language/grammar/source.js';
-import { configurationSchema, type Configuration } from './configuration-schema.js';
+import { validateConfiguration, type Configuration } from './configuration-schema.js';
 
 export type { Configuration } from './configuration-schema.js';
 export interface OutputProfile {
@@ -28,28 +28,15 @@ export class ConfigurationReader {
     };
     const data = readJson(source.text, problem);
     if (problems.length) return { problems, deferred: [] };
-    const checked = configurationSchema.safeParse(data);
-    if (!checked.success) {
-      for (const issue of checked.error.issues) {
-        const path = issue.path as (string | number)[];
-        if (issue.code === 'unrecognized_keys') {
-          for (const key of issue.keys) problem('invalid-setting', `Unknown setting ${key}.`, [...path, key]);
-        } else {
-          const details = issue.code === 'custom' ? issue.params : undefined;
-          const code = details?.code ?? (path.length === 1 && path[0] === 'formatVersion' ? 'unsupported-format' : 'invalid-setting');
-          problem(code, code === 'unsupported-format' ? 'Supported manifest formatVersion is 1.' : issue.message, path,
-            details?.related ? [...path.slice(0, -details.width), ...details.related] : undefined);
-        }
-      }
-      return { problems, deferred: [] };
-    }
-    checked.data.outputs.forEach((output, index) => {
+    const checked = validateConfiguration(data, source.sourceId);
+    if (!checked.value) return checked;
+    checked.value.outputs.forEach((output, index) => {
       const validate = this.outputs.get(output.id);
       if (!validate) problem('unknown-output', `Output ${output.id} has no registered profile.`, ['outputs', index, 'id']);
       else for (const finding of validate(output.options)) {
         problem('invalid-output-options', finding.message, ['outputs', index, 'options', ...finding.path]);
       }
     });
-    return { ...(!problems.length ? { value: { ...checked.data, sourceId: source.sourceId } } : {}), problems, deferred: [] };
+    return { ...(!problems.length ? { value: checked.value } : {}), problems, deferred: [] };
   }
 }

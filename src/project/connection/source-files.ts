@@ -16,6 +16,7 @@ export class SourceFiles {
   readonly problems: Diagnostic[] = [];
   readonly captured = new Map<string, File>();
   private readonly roots: Root[] = [];
+  private primary?: Root;
   private readonly excluded: Root[] = [];
   private readonly failures = new Map<string, FileProblem>();
   constructor(private readonly directory: string, private readonly configuration: Configuration) {}
@@ -38,7 +39,11 @@ export class SourceFiles {
         if (!stat.isDirectory() || !usable(stat)) throw new FileProblem('invalid-source-root', 'A source root must be a directory with usable filesystem identity.');
         const collection = ownership === 'excluded' ? this.excluded : this.roots, previous = collection.find(root => sameIdentity(root.stat, stat));
         if (previous) this.problem('invalid-source-root', 'Source root ' + selected + ' repeats ' + previous.selected + '.', at, [previous.at]);
-        else collection.push({ selected, path, stat, at });
+        else {
+          const root = { selected, path, stat, at };
+          collection.push(root);
+          if (ownership === 'workspace' && selected === resolve(this.directory)) this.primary = root;
+        }
       } catch (error) { this.report(error, 'source-root-unavailable', selected, at); }
     }
   }
@@ -73,7 +78,8 @@ export class SourceFiles {
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
       catch { throw new FileProblem('source-encoding', 'Source is not valid UTF-8: ' + path); }
       const capture = Object.freeze({ source: Object.freeze({ sourceId: pathToFileURL(path).href, text }),
-        version: 'sha256:' + createHash('sha256').update(bytes).digest('hex') });
+        version: 'sha256:' + createHash('sha256').update(bytes).digest('hex'),
+        ...(this.primary && inside(this.primary.path, path) ? { localPath: relative(this.primary.path, path).split(sep).join('/') } : {}) });
       this.captured.set(path, { path, capture, stat, ancestors, uses: [at] });
       return capture;
     } catch (error) {
