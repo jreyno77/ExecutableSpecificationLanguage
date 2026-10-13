@@ -9,6 +9,18 @@ function questions(bytes: Uint8Array = Buffer.from(source)): QueryAnalysis {
   project.selectClass('store', 'store.ts', 'Store'); project.observePreparation(); return project;
 }
 
+function coreQuestions(): QueryAnalysis {
+  const project = new QueryAnalysis({
+    'store.ts': Buffer.from(source),
+    'tsconfig.query.json': JSON.stringify({ compilerOptions: {
+      target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
+      moduleDetection: 'legacy', jsx: 'preserve', strict: true, types: [],
+      noEmit: true, lib: ['ES2022'],
+    }, files: ['store.ts'] }),
+  }, 'tsconfig.query.json');
+  project.selectClass('store', 'store.ts', 'Store'); project.observePreparation(); return project;
+}
+
 describe('exact captured inputs for native query preparation', () => {
   it('reuses equal visible Buffer and Uint8Array slices with different backing bytes', async () => {
     const first = Buffer.from('prefix' + source + 'suffix').subarray(6, 6 + Buffer.byteLength(source));
@@ -58,7 +70,7 @@ describe('exact captured inputs for native query preparation', () => {
   });
 
   it('rechecks changed root, exclusions, native facts and declared provenance', async () => {
-    const project = questions();
+    const project = coreQuestions();
     await project.read('store'); project.expectCompleteRead();
 
     project.driver.snapshot = { ...project.driver.snapshot, root: { ...project.driver.snapshot.root, identity: 'other-root' } };
@@ -67,7 +79,7 @@ describe('exact captured inputs for native query preparation', () => {
     await project.read('store'); project.expectCompleteRead(); project.expectPreparations(3);
     project.driver.snapshot = { ...project.driver.snapshot, nativeInputs: [{ uri: 'file:///declared-input', version: '1'.repeat(64) }] };
     await project.read('store'); project.expectCompleteRead(); project.expectPreparations(4);
-    project.driver.snapshot = { ...project.driver.snapshot, files: project.driver.snapshot.files.map(file => ({ ...file, version: '2'.repeat(64) })) };
+    project.driver.snapshot = { ...project.driver.snapshot, files: project.driver.snapshot.files.map(file => file.path === 'store.ts' ? { ...file, version: '2'.repeat(64) } : file) };
     await project.read('store'); project.expectCompleteRead();
     expect(project.driver.readResult.artifacts[0]!.file.version).toBe('2'.repeat(64));
     project.expectPreparations(5);
