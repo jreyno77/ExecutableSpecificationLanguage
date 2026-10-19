@@ -4,6 +4,7 @@ import type { Item } from '../model/inspection-item.js';
 import type { NodeId } from '../model/model.js';
 import type { TypeCatalog } from './type-catalog.js';
 import type { TypeDescription, TypeId } from './types.js';
+import { retainNames } from './name-evidence.js';
 
 export interface FixtureChecking {
   check(fixture: NodeId): Check<TypeId>;
@@ -34,14 +35,15 @@ export class FixtureChecker implements FixtureChecking {
         const target = this.declarations.inspection.read(occurrence.resolution.target);
         if (target.kind !== 'fixture') return undefined;
         const result = check(target, occurrence);
-        return { ...result, problems: result.problems.map(cause => ({ ...cause,
+        return retainNames({ ...result, problems: result.problems.map(cause => ({ ...cause,
           related: [...new Set([...cause.related, occurrence.origin])],
-        })) };
+        })) }, result);
       };
       const type = fromFact(this.declarations.typeOf(node.declaredType.id));
       const checked = mergeChecks(type, type.value ? this.expressions.checkValue(node.value.id, type.value, scope)
         : this.expressions.typeOf(node.value.id, scope), this.data(node.value, type.value, scope));
-      const result = type.value && !checked.problems.length && !checked.deferred.length ? { value: type.value, ...checked } : checked;
+      const result = type.value && !checked.problems.length && !checked.deferred.length
+        ? retainNames({ value: type.value, ...checked }, checked) : checked;
       active.pop();
       completed.set(node.id, result);
       return result;

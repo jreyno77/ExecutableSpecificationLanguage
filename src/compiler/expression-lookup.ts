@@ -4,6 +4,7 @@ import type { Item } from '../model/inspection-item.js';
 import { QueryError, type NodeId } from '../model/model.js';
 import type { TypeCatalog } from './type-catalog.js';
 import type { TypeId } from './types.js';
+import { retainNames, selectName } from './name-evidence.js';
 
 /** Answers lexical and receiver questions without exposing the source model. */
 export class ExpressionLookup {
@@ -31,7 +32,7 @@ export class ExpressionLookup {
       if (!callable || !enclosing.some(node => node.kind === 'ensures')) return this.unavailable(reference);
       const result = fromFact(this.declarations.callable(callable.id).result);
       if (!result.value) return mergeChecks(result);
-      return result.value.kind === 'value' ? { value: result.value.type, problems: [], deferred: [] }
+      return result.value.kind === 'value' ? this.selected({ value: result.value.type, problems: [], deferred: [] }, reference)
         : result.value.kind === 'none' ? this.unavailable(reference)
         : { problems: [], deferred: [{ reason: 'declared-result', origin: reference.origin, requires: 'Contextual result needs a declared output type.' }] };
     }
@@ -49,8 +50,11 @@ export class ExpressionLookup {
       if (binding.status === 'invalid' || binding.status === 'not-analyzed') return undefined;
       const index = parameters.findIndex(parameter => binding.status === 'bound' ? binding.target === parameter.id
         : reference.segments.length === 1 && reference.segments[0] === parameter.name);
-      return index < 0 ? outer?.(reference) : index >= limit ? undefined
-        : fromFact(this.declarations.typeOf(parameters[index]!.declaredType.id));
+      if (index < 0) return outer?.(reference);
+      if (index >= limit) return undefined;
+      const parameter = parameters[index]!;
+      const result = fromFact(this.declarations.typeOf(parameter.declaredType.id));
+      return result.value ? this.selected(result, reference, parameter.id) : result;
     };
   }
 
@@ -79,18 +83,30 @@ export class ExpressionLookup {
       || publicOnly && (declaration.kind !== 'capability' || !exposed.some(entry => entry.value?.id === declaration.id))) return {
       problems: [{ code: 'invalid-member', message: 'No unambiguous accessible member supplies ' + name + '.', at: at.origin, related: candidates.map(candidate => candidate.origin) }], deferred: [],
     };
-    if (declaration.kind !== 'field') return { value: { declaration }, problems: [], deferred: [] };
+    const origin = occurrence.kind === 'reference' ? occurrence.segmentOrigins[0] : at.origin;
+    if (declaration.kind !== 'field') {
+      const result = { value: { declaration }, problems: [], deferred: [] };
+      return origin ? selectName(retainNames(result, visibility), origin, name, declaration.id) : retainNames(result, visibility);
+    }
     if (!receiver) return { problems: [{ code: 'invalid-member', message: 'A field requires a receiver value.', at: at.origin, related: [declaration.origin] }], deferred: [] };
     const fields = fromFact(this.declarations.fields(receiver));
     if (!fields.value) return mergeChecks(fields);
     const field = fields.value.kind === 'available' ? fields.value.fields.find(field => field.declaration === declaration.id) : undefined;
     if (!field) return { problems: [{ code: 'invalid-member', message: 'The receiver does not expose this field.', at: at.origin, related: [declaration.origin] }], deferred: [] };
     const type = fromFact(field.type);
-    return type.value ? { value: { declaration, type: type.value }, problems: type.problems, deferred: type.deferred } : mergeChecks(type);
+    if (!type.value) return mergeChecks(type);
+    const result = retainNames({ value: { declaration, type: type.value }, problems: type.problems, deferred: type.deferred },
+      type, fields, visibility);
+    return origin ? selectName(result, origin, name, declaration.id) : result;
   }
 
   *ancestors(id: NodeId): Iterable<Item> {
     for (let parent = this.declarations.inspection.parent(id); parent; parent = this.declarations.inspection.parent(parent.id)) yield parent;
+  }
+
+  private selected<T extends object>(result: T, reference: Item<'reference'>, declaration?: NodeId): T {
+    const origin = reference.segmentOrigins.at(-1), spelling = reference.segments.at(-1);
+    return origin && spelling !== undefined ? selectName(result, origin, spelling, declaration) : result;
   }
 
   private supplied(reference: Item<'reference'>, scope?: ValueScope): Check<TypeId> | undefined {

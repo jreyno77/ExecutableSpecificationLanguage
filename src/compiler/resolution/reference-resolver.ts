@@ -1,3 +1,4 @@
+import { selectName } from '../name-evidence.js';
 import type { NodeKind, ModelNode, NodeId, Origin, ReferenceLookup, ReferenceResolution } from '../../model/model.js';
 import type { PackageAvailability } from './package-availability.js';
 import type { ResolutionProblem } from './problem.js';
@@ -196,11 +197,15 @@ export class ReferenceResolver {
 
   private accept(reference: ModelNode<'reference'>, path: readonly string[], scope: Scope,
     found: Lookup, required?: ReadonlySet<NodeKind>, moduleLookup = false, complete = false): void {
-    const outcome = lookupResolution(reference, path, found, required, {
+    let outcome = lookupResolution(reference, path, found, required, {
       moduleLookup,
       missingDeferred: found.status === 'missing' && !complete && !moduleLookup && this.requiresComposition(scope, path),
       ...(found.status === 'subject-context' && this.bindings.has(found.subject) ? { subject: this.bindings.get(found.subject)! } : {}),
     });
+    if (outcome.status === 'bound' && found.status === 'found') for (const [index, id] of reference.segments.entries()) {
+      const name = this.source.node(id);
+      outcome = selectName(outcome, name.origin, this.source.name(id), found.names[index]!);
+    }
     this.bindings.set(reference.id, outcome);
     // Ordinary invalid introductions and inherited subject failures were already reported.
     if (outcome.status === 'invalid' && found.status !== 'subject-context'

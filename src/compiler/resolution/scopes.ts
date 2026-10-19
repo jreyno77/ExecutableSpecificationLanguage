@@ -1,3 +1,4 @@
+import { selectName } from '../name-evidence.js';
 import type { Model, ModelNode, NodeId, ReferenceLookup, ReferenceResolution } from '../../model/model.js';
 import { IndexedModel } from '../../model/model-index.js';
 import type { ProblemLocation, ResolutionProblem } from './problem.js';
@@ -7,6 +8,7 @@ import type { Modules } from './modules.js';
 export type Introduction = {
   readonly at: ProblemLocation;
   readonly importKey?: string;
+  readonly spellingOwner?: NodeId;
 } & (
   | { readonly target: ModelNode; readonly problems?: never }
   | { readonly problems: readonly ResolutionProblem[]; readonly target?: never }
@@ -26,7 +28,7 @@ export class Scope {
 }
 
 export type Lookup =
-  | { readonly status: 'found'; readonly declaration: ModelNode }
+  | { readonly status: 'found'; readonly declaration: ModelNode; readonly names: readonly NodeId[] }
   | { readonly status: 'missing' }
   | { readonly status: 'inaccessible'; readonly declaration: ModelNode }
   | { readonly status: 'subject-context'; readonly subject: NodeId }
@@ -115,7 +117,8 @@ export class ScopeGraph {
       if (found.status !== 'found') return found;
       const inside = this.members.get(found.declaration.id);
       if (!inside) return { status: 'missing' };
-      found = this.choose(inside, segment, requester, true);
+      const next = this.choose(inside, segment, requester, true);
+      found = next.status === 'found' ? { ...next, names: [...found.names, ...next.names] } : next;
     }
     return found;
   }
@@ -148,7 +151,8 @@ export class ScopeGraph {
       if (found.status !== 'found') return found;
       const inside = this.members.get(found.declaration.id);
       if (!inside) return { status: 'missing' };
-      found = this.choose(inside, segment, scope);
+      const next = this.choose(inside, segment, scope);
+      found = next.status === 'found' ? { ...next, names: [...found.names, ...next.names] } : next;
     }
     return found;
   }
@@ -290,7 +294,7 @@ export class ScopeGraph {
       const name = this.capabilityNames.get(declaration.id)!;
       if (!this.publicNames.get(owner)?.has(name)) return { status: 'inaccessible', declaration };
     }
-    return { status: 'found', declaration };
+    return { status: 'found', declaration, names: [introductions[0]!.spellingOwner ?? declaration.id] };
   }
 
   private importModuleNames(source: SourceIndex): void {
@@ -302,13 +306,20 @@ export class ScopeGraph {
         const item = source.node(id);
         if (item.kind !== 'import-item') throw new Error('Inspected import item is malformed.');
         const reference = source.node(item.imported);
+        if (reference.kind !== 'reference') throw new Error('Inspected import reference is malformed.');
         const path = source.reference(reference.id);
         const name = item.alias ? source.name(item.alias) : path.at(-1)!;
         const found = this.selectFrom(source.locator, locator.value, path, root);
         const introduction = { at: item.origin, importKey: JSON.stringify([locator.value, path]) };
         if (found.status === 'found') {
-          this.introduce(root, name, { ...introduction, target: found.declaration });
-          this.imports.set(reference.id, { status: 'bound', target: found.declaration.id });
+          this.introduce(root, name, { ...introduction, target: found.declaration,
+            spellingOwner: item.alias ?? found.declaration.id });
+          let binding: ReferenceResolution = { status: 'bound', target: found.declaration.id };
+          for (const [index, id] of reference.segments.entries()) {
+            const name = source.node(id);
+            binding = selectName(binding, name.origin, source.name(id), found.names[index]!);
+          }
+          this.imports.set(reference.id, binding);
         } else {
           const problems = this.importProblems(reference, path, found);
           this.introduce(root, name, { ...introduction, problems });
