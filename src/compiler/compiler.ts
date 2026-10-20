@@ -1,3 +1,5 @@
+import { captureSourceNames, type CheckedSourceNames } from './checked-source-names.js';
+import { retainNames } from './name-evidence.js';
 import type { Check, Diagnostic, Requirement } from './checking.js';
 import { ExpressionChecker, type ValueScope } from './expression-checker.js';
 import { FixtureChecker } from './fixture-checker.js';
@@ -26,6 +28,7 @@ export interface Specification {
   readonly entry: string;
   readonly inspection: Inspection;
   readonly types: TypeCatalog;
+  readonly names: CheckedSourceNames;
   message(message: NodeId): Check<Communication>;
   call(call: NodeId): Check<NodeId>;
   step(step: NodeId): Check<ScenarioStep>;
@@ -57,7 +60,7 @@ export class Compiler {
       const target = inspection.read(reference.resolution.target);
       if (target.kind !== 'fixture') return undefined;
       const result = fixtures.check(target.id);
-      return { ...result, problems: result.problems.map(cause => ({ ...cause, related: [...cause.related, reference.origin] })) };
+      return retainNames({ ...result, problems: result.problems.map(cause => ({ ...cause, related: [...cause.related, reference.origin] })) }, result);
     };
     for (const kind of ['field', 'parameter'] as const) for (const node of authored(kind)) {
       if (!node.hasDefault || inspection.parent(node.id)?.kind === 'interaction') continue;
@@ -93,7 +96,7 @@ export class Compiler {
     const findings = combine([...checks, { problems: expressions.conflicts, deferred }]);
     const calls = new Map(expressions.calls);
     return { syntax: [], ...findings, ...(!findings.problems.length && !findings.deferred.length
-      ? { value: { entry: resolution.entry, inspection, types, message: interactions.message.bind(interactions),
+      ? { value: { entry: resolution.entry, inspection, types, names: captureSourceNames(resolution.model, resolution, findings), message: interactions.message.bind(interactions),
         call(id: NodeId): Check<NodeId> {
           const node = ungroup(inspection.read(id));
           if (node.kind !== 'call-expression') throw new QueryError('unexpected-kind', id, 'Expected a call expression.');
@@ -128,7 +131,7 @@ function combine(checks: readonly Check<unknown>[]): Check {
       if (!deferred.has(key)) deferred.set(key, requirement);
     }
   }
-  return { problems: [...problems.values()], deferred: [...deferred.values()] };
+  return retainNames({ problems: [...problems.values()], deferred: [...deferred.values()] }, ...checks);
 }
 
 function location(at: ProblemLocation): string {

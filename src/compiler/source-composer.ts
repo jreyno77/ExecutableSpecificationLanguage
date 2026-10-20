@@ -1,3 +1,4 @@
+import { retainNames } from './name-evidence.js';
 import type { ModuleModel } from '../model/model.js';
 import { resolveModules, type Resolution, type ResolutionDependencies } from './resolution.js';
 import { Modules } from './resolution/modules.js';
@@ -19,8 +20,8 @@ export class SourceComposer {
     const result = resolveModules(new Modules(first, input.modules.slice(1), this.locate, input), entry[0]!.dependencies.packages);
     const location = (at: ProblemLocation): ProblemLocation => at.kind === 'dependency' && at.path[0] === 'packages'
       ? { ...at, path: ['entries', 0, 'dependencies', ...at.path] } : at;
-    return { ...result, problems: [...input.problems, ...result.problems.map(problem => ({ ...problem,
-      at: location(problem.at), related: problem.related.map(location) }))] };
+    return retainNames({ ...result, problems: [...input.problems, ...result.problems.map(problem => ({ ...problem,
+      at: location(problem.at), related: problem.related.map(location) }))] }, result);
   }
 }
 

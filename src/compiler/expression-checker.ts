@@ -5,6 +5,7 @@ import type { TypeDescription, TypeId, TypeProblem } from './type-description.js
 import { fromFact, mergeChecks, type Check } from './checking.js';
 import { TypeCompatibility } from './type-compatibility.js';
 import { ExpressionLookup } from './expression-lookup.js';
+import { retainNames } from './name-evidence.js';
 
 export type ValueScope = (reference: Item<'reference'>) => Check<TypeId> | undefined;
 export interface ExpressionChecking {
@@ -216,7 +217,8 @@ export class ExpressionChecker implements ExpressionChecking {
     const result = fromFact(signature.result);
     // Keep the declared result available even when arguments fail: its own missing facts still matter.
     const value = target.kind === 'check' ? { kind: 'check' as const } : result.value;
-    return { ...mergeChecks(selected, checked, result, { problems: signature.problems, deferred: [] }), ...(value ? { value } : {}) };
+    const findings = mergeChecks(selected, checked, result, { problems: signature.problems, deferred: [] });
+    return retainNames({ ...findings, ...(value ? { value } : {}) }, findings);
   }
   private select(node: Item, scope?: ValueScope): Check<{ declaration: Item; type?: TypeId }> {
     if (node.kind === 'grouped-expression') return this.select(node.inner, scope);
@@ -242,7 +244,8 @@ export class ExpressionChecker implements ExpressionChecking {
     const shape = this.meaning(type.value);
     if (!shape.value) return mergeChecks(shape);
     if (shape.value.kind !== 'declared') return problem('invalid-member', node.member, 'Member selection needs a nonoptional declared receiver type.');
-    return this.lookup.member(this.declarations.inspection.read(shape.value.declaration), node.member.segments[0]!, node.member, type.value);
+    return retainNames(this.lookup.member(this.declarations.inspection.read(shape.value.declaration), node.member.segments[0]!, node.member, type.value),
+      type, shape);
   }
   private list(node: Item<'list-expression'>, scope?: ValueScope, expected?: TypeId): Check<TypeId> {
     const shape = expected ? this.meaning(expected) : undefined;
@@ -250,8 +253,8 @@ export class ExpressionChecker implements ExpressionChecking {
     if (shape?.value?.kind === 'optional') return this.list(node, scope, shape.value.inner);
     if (shape?.value?.kind === 'union') {
       const choices = shape.value.alternatives.map(type => this.list(node, scope, type));
-      const accepted = choices.flatMap(choice => choice.value ? [choice.value] : []);
-      return accepted.length ? answer(this.declarations.types.unionOf(accepted)) : mergeChecks(...choices);
+      const accepted = choices.filter((choice): choice is Check<TypeId> & { readonly value: TypeId } => choice.value !== undefined);
+      return accepted.length ? answer(this.declarations.types.unionOf(accepted.map(choice => choice.value)), ...accepted) : mergeChecks(...choices);
     }
     if (shape?.value?.kind === 'tuple') {
       const elements = shape.value.elements;
@@ -268,7 +271,7 @@ export class ExpressionChecker implements ExpressionChecking {
     if (findings.problems.length || findings.deferred.length) return findings;
     if (!elementType && !elements.length) return pending('expected-type', node, 'An empty list needs an expected element or tuple type.');
     const inferred = elementType ?? this.declarations.types.unionOf(elements.map(element => element.value!));
-    return answer(this.declarations.types.intern({ kind: 'builtin', declaration: list.declaration, arguments: [inferred] }));
+    return answer(this.declarations.types.intern({ kind: 'builtin', declaration: list.declaration, arguments: [inferred] }), findings);
   }
   private record(node: Item<'record-expression'>, scope?: ValueScope, expected?: TypeId): Check<TypeId> {
     const written = node.declaredType ? fromFact(this.declarations.typeOf(node.declaredType.id)) : undefined;
@@ -351,7 +354,7 @@ function locationKey(at: TypeProblem['at']): string {
 function empty(): Check { return { problems: [], deferred: [] }; }
 function answer<T>(value: T | undefined, ...checks: readonly Check<unknown>[]): Check<T> {
   const result = mergeChecks(...checks);
-  return value !== undefined && !result.problems.length && !result.deferred.length ? { value, ...result } : result;
+  return value !== undefined && !result.problems.length && !result.deferred.length ? retainNames({ value, ...result }, result) : result;
 }
 function problem(code: string, node: Pick<Item, 'origin'>, message: string, related: readonly Item[] = []): Check {
   return { problems: [{ code, message, at: node.origin, related: related.map(item => item.origin) }], deferred: [] };

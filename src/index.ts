@@ -32,6 +32,7 @@ export { ScenarioChecker } from './compiler/scenario-checker.js';
 export type { ScenarioChecking, ScenarioCapture, ScenarioStep } from './compiler/scenario-checker.js';
 export { InteractionChecker } from './compiler/interaction-checker.js';
 export type { InteractionChecking, Communication } from './compiler/interaction-checker.js';
+export type { CheckedSourceName, CheckedSourceNames } from './compiler/checked-source-names.js';
 export { Compiler } from './compiler/compiler.js';
 export type { CompilationInput, Compilation, Specification } from './compiler/compiler.js';
 export { ConfigurationReader } from './project/connection/configuration.js';

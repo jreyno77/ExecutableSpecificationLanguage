@@ -4,6 +4,7 @@ import type { Item } from '../model/inspection-item.js';
 import { QueryError, type NodeId } from '../model/model.js';
 import type { TypeCatalog } from './type-catalog.js';
 import type { TypeId } from './types.js';
+import { retainNames, selectName } from './name-evidence.js';
 
 export interface Communication {
   readonly sender: NodeId;
@@ -46,9 +47,12 @@ export class InteractionChecker implements InteractionChecking {
       const node = name === undefined ? undefined : names.get(name), binding = reference.resolution;
       if (!node || binding.status === 'bound' && binding.target !== node.id) return undefined;
       const found = duplicates.get(name!) ?? values.get(node.id);
-      return found && { ...found, problems: found.problems.map(cause => ({ ...cause,
+      if (!found) return undefined;
+      const result = retainNames({ ...found, problems: found.problems.map(cause => ({ ...cause,
         related: [...new Set([...cause.related, reference.origin])],
-      })) };
+      })) }, found);
+      const origin = reference.segmentOrigins.at(-1), spelling = reference.segments.at(-1);
+      return found.value && origin && spelling !== undefined ? selectName(result, origin, spelling, node.id) : result;
     };
     const endpoint = (reference: Item<'reference'>): Check<NodeId> => {
       const binding = reference.resolution;
@@ -61,7 +65,10 @@ export class InteractionChecker implements InteractionChecking {
       if (node?.kind !== 'participant' || !values.has(node.id)) return problem('invalid-participant', reference,
         'A message endpoint must name an already introduced local participant.');
       const type = values.get(node.id)!;
-      return type.value ? { value: node.id, problems: [], deferred: [] } : mergeChecks(type);
+      if (!type.value) return mergeChecks(type);
+      const result = retainNames({ value: node.id, problems: [], deferred: [] }, type);
+      const origin = reference.segmentOrigins.at(-1);
+      return origin ? selectName(result, origin, name!, node.id) : result;
     };
     const checks: Check<unknown>[] = [...duplicates.values()];
     for (const parameter of interaction.parameters) {
@@ -93,9 +100,10 @@ export class InteractionChecker implements InteractionChecking {
       }
       const checked = mergeChecks(...findings);
       const communication: Check<Communication> = sender.value && receiver.value && operation.value && !checked.problems.length && !checked.deferred.length
-        ? { ...checked, value: { sender: sender.value, receiver: receiver.value, operation: operation.value, ...(reply ? { reply } : {}) } } : checked;
+        ? retainNames({ ...checked, value: { sender: sender.value, receiver: receiver.value, operation: operation.value, ...(reply ? { reply } : {}) } }, checked) : checked;
       checks.push(checked);
-      if (member.capture) values.set(member.capture.id, communication.value && reply ? { ...checked, value: reply } : checked);
+      if (member.capture) values.set(member.capture.id, communication.value && reply
+        ? retainNames({ ...checked, value: reply }, checked) : checked);
       if (member.id === selected) return communication;
     }
     if (selected) throw new QueryError('unexpected-kind', selected, 'Expected a message belonging to this interaction.');

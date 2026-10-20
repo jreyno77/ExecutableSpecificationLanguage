@@ -1,6 +1,7 @@
 import type { Origin } from '../model/model.js';
 import type { ProblemLocation } from './resolution/problem.js';
 import type { TypeFact } from './type-description.js';
+import { retainNames } from './name-evidence.js';
 
 export interface Diagnostic {
   readonly code: string;
@@ -17,7 +18,8 @@ export interface Check<T = never> {
 
 /** Combining checks retains the original causes, including independent missing prerequisites. */
 export function mergeChecks(...checks: readonly Check<unknown>[]): Check {
-  return { problems: [...new Set(checks.flatMap(check => check.problems))], deferred: [...new Set(checks.flatMap(check => check.deferred))] };
+  return retainNames({ problems: [...new Set(checks.flatMap(check => check.problems))],
+    deferred: [...new Set(checks.flatMap(check => check.deferred))] }, ...checks);
 }
 export function fromFact<T>(fact: TypeFact<T>): Check<T> {
   return fact.status === 'known' ? { value: fact.value, problems: [], deferred: [] }

@@ -5,6 +5,7 @@ import type { Inspection } from '../model/inspection.js';
 import type { Item } from '../model/inspection-item.js';
 import { QueryError, type NodeId } from '../model/model.js';
 import type { TypeId } from './types.js';
+import { retainNames, selectName } from './name-evidence.js';
 
 export interface ScenarioCapture { readonly name: NodeId; readonly type: TypeId }
 export interface ScenarioStep { readonly available: readonly ScenarioCapture[]; readonly capture?: ScenarioCapture }
@@ -32,13 +33,20 @@ export function checkScenario(inspection: Inspection, expressions: ExpressionChe
   const scope: ValueScope = reference => {
     const binding = reference.resolution;
     let result: Check<TypeId> | undefined;
+    let declaration: NodeId | undefined;
     if (binding.status === 'bound' && inspection.read(binding.target).kind === 'fixture') result = fixtures.check(binding.target);
     if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && reference.segments.length === 1) {
-      result = captures.get(reference.segments[0]!)?.result;
+      const capture = captures.get(reference.segments[0]!);
+      result = capture?.result;
+      declaration = capture?.name.id;
     }
-    return result && { ...result, problems: result.problems.map(cause => ({ ...cause,
+    if (!result) return undefined;
+    const related = retainNames({ ...result, problems: result.problems.map(cause => ({ ...cause,
       related: [...new Set([...cause.related, reference.origin])],
-    })) };
+    })) }, result);
+    const origin = reference.segmentOrigins.at(-1), spelling = reference.segments.at(-1);
+    return result.value && declaration && origin && spelling !== undefined
+      ? selectName(related, origin, spelling, declaration) : related;
   };
   if (example.kind === 'example') return shortExample(expressions, example, scope);
   const checks: Check[] = [];
@@ -61,7 +69,8 @@ export function checkScenario(inspection: Inspection, expressions: ExpressionChe
     const previous = captures.get(step.capture.decoded);
     if (previous) checks.push(problem('duplicate-capture', step.capture, 'This scenario already captures ' + step.capture.decoded + '.', [previous.name]));
     else {
-      const result = produced.value && !checked.problems.length && !checked.deferred.length ? { ...checked, value: produced.value } : checked;
+      const result = produced.value && !checked.problems.length && !checked.deferred.length
+        ? retainNames({ ...checked, value: produced.value }, checked) : checked;
       captures.set(step.capture.decoded, { name: step.capture, result });
       if (available && result.value) steps!.set(step.id, { available, capture: { name: step.capture.id, type: result.value } });
     }
