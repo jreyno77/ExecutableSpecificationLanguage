@@ -97,12 +97,36 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         querySnapshot = captured;
         const queryAdmission = admission ?? new BuildAdmission(checked.manifest, signal);
         for (const { id: outputId, output } of opened) {
-          for (const id of new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))) {
+          const ids = [...new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))];
+          if (!ids.length) continue;
+          if (output.readAll) {
             const admitted = await queryAdmission.capture(outputProject);
             if (!admitted.complete) return { ...result, problems: admitted.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-            const read = await output.read(id);
-            if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-            read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+            const stopped = {};
+            let refused: ProjectSnapshot | undefined;
+            try {
+              const reads = await output.readAll(ids, captured, async () => {
+                const admitted = await queryAdmission.capture(outputProject);
+                if (!admitted.complete) { refused = admitted; throw stopped; }
+              });
+              const observed = await queryAdmission.capture(outputProject);
+              if (!observed.complete) return { ...result, problems: observed.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              for (const read of reads) {
+                if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+                read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+              }
+            } catch (error) {
+              if (error !== stopped || !refused) throw error;
+              return { ...result, problems: refused.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+            }
+          } else {
+            for (const id of ids) {
+              const admitted = await queryAdmission.capture(outputProject);
+              if (!admitted.complete) return { ...result, problems: admitted.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              const read = await output.read(id);
+              if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+            }
           }
         }
         const fresh = await context.readSnapshot();

@@ -56,27 +56,36 @@ class DiagramOutput implements OutputAdapter {
         ? [outputProblem('output-options-changed', statePath, 'Output options require an explicit migration.')] : [] };
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Malformed or unsupported diagram generation state.')] }; }
   }
-  async read(id: string, snapshot: ProjectSnapshot) {
+  async readAll(ids: readonly string[], snapshot: ProjectSnapshot) {
+    const subjects = [...ids];
+    if (!subjects.length) return [];
     const engine = new NativeDiagrams();
     try {
-      const documents = await DiagramDocuments.read(snapshot, engine), result = documents.read(id), stored = this.stored(snapshot);
-      const artifacts = [...result.artifacts];
-      // State can locate captured unreadable bytes; it cannot supply a native range or search fact.
-      for (const prior of stored.state?.documents.filter(document => document.subjects.some(subject => subject.id === id)) ?? []) {
-        if (!artifacts.some(artifact => artifact.file.path === prior.path)) {
-          const file = snapshot.files.find(file => file.path === prior.path);
-          if (file && documents.problems.some(problem => problem.at.kind === 'dependency' && problem.at.path.includes(prior.path))) artifacts.push({ at: diagramLocator(file.path, 'd2-unreadable', { subject: id }), file });
-        }
-      }
-      const paths = new Set(artifacts.filter(artifact => /\.d2$/i.test(artifact.file.path)).map(artifact => artifact.file.path)), problems = [...result.problems, ...stored.problems];
-      for (const path of paths) {
-        const file = snapshot.files.find(file => file.path === svgPath(path));
-        if (file && !artifacts.some(artifact => artifact.file.path === file.path)) artifacts.push({ at: diagramLocator(file.path, 'svg', { subject: id }), file });
-        const metadata = file && renderedSource(file.bytes), source = snapshot.files.find(file => file.path === path)!;
-        if (!metadata || metadata.source !== path || metadata.digest !== hash(source.bytes)) problems.push(outputProblem('stale-diagram-render', svgPath(path), 'The SVG does not describe the current source bytes.'));
-      }
-      return { ...result, artifacts, problems };
+      const documents = await DiagramDocuments.read(snapshot, engine), stored = this.stored(snapshot);
+      return subjects.map(id => structuredClone(this.readSubject(id, snapshot, documents, stored)));
     } finally { await engine.dispose(); }
+  }
+  async read(id: string, snapshot: ProjectSnapshot) {
+    return (await this.readAll([id], snapshot))[0]!;
+  }
+  private readSubject(id: string, snapshot: ProjectSnapshot, documents: DiagramDocuments, stored: { state?: DiagramState; problems: Diagnostic[] }) {
+    const result = documents.read(id);
+    const artifacts = [...result.artifacts];
+    // State can locate captured unreadable bytes; it cannot supply a native range or search fact.
+    for (const prior of stored.state?.documents.filter(document => document.subjects.some(subject => subject.id === id)) ?? []) {
+      if (!artifacts.some(artifact => artifact.file.path === prior.path)) {
+        const file = snapshot.files.find(file => file.path === prior.path);
+        if (file && documents.problems.some(problem => problem.at.kind === 'dependency' && problem.at.path.includes(prior.path))) artifacts.push({ at: diagramLocator(file.path, 'd2-unreadable', { subject: id }), file });
+      }
+    }
+    const paths = new Set(artifacts.filter(artifact => /\.d2$/i.test(artifact.file.path)).map(artifact => artifact.file.path)), problems = [...result.problems, ...stored.problems];
+    for (const path of paths) {
+      const file = snapshot.files.find(file => file.path === svgPath(path));
+      if (file && !artifacts.some(artifact => artifact.file.path === file.path)) artifacts.push({ at: diagramLocator(file.path, 'svg', { subject: id }), file });
+      const metadata = file && renderedSource(file.bytes), source = snapshot.files.find(file => file.path === path)!;
+      if (!metadata || metadata.source !== path || metadata.digest !== hash(source.bytes)) problems.push(outputProblem('stale-diagram-render', svgPath(path), 'The SVG does not describe the current source bytes.'));
+    }
+    return { ...result, artifacts, problems };
   }
   async search(id: string, snapshot: ProjectSnapshot) {
     const engine = new NativeDiagrams();
