@@ -26,7 +26,7 @@ export class BuildContext implements ProjectContext {
       imports: [...new Set([...(output.id === 'acceptance' ? ['vitest'] : []), ...((output.options.imports ?? []) as { from?: string }[])
         .flatMap(item => item.from && !/^[./]|:/.test(item.from) ? [item.from] : [])])],
     }));
-    const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => structuredClone(acquisition) }
+    const nativeProject = acquisition ? { root: project.root, readSnapshot: async () => acquisition }
       : { get root() { return project.root; }, readSnapshot: () => this.acquireSnapshot() };
     this.native = [...new Map(options.map(value => [JSON.stringify(value), value])).values()].map(value => new TypeScriptContext(nativeProject, value));
     if (checked.profile?.target === 'java') this.native.push(new JavaContext(nativeProject, { configFile: checked.profile.configFile! }));
