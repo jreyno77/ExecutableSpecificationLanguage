@@ -58,7 +58,7 @@ export async function javaStarter(configuration: Configuration, root: string, ja
       '.gitignore': '.gradle/\nbuild/\n', 'src/main/java/.gitkeep': '', 'src/test/java/.gitkeep': '',
     }).map(([path, text]) => ({ kind: 'write', path, bytes: new TextEncoder().encode(text) }));
     changes.push(...await javaWrapper());
-    return { value: { configuration: { ...structuredClone(configuration), project: { root }, packages, outputs }, changes }, problems: [], deferred: [] };
+    return { value: { configuration: { ...structuredClone(configuration), project: { ...structuredClone(configuration.project), root }, packages, outputs }, changes }, problems: [], deferred: [] };
   } catch (error) { return { problems: [javaProblem('native-runtime-unavailable', String(error), root)], deferred: [] }; }
 }
 

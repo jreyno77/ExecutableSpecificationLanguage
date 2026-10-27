@@ -1,5 +1,5 @@
 import type { OutputRegistration } from '../output/output.js';
-import { canonical, failure, success } from '../../model/identity-baseline.js';
+import { canonical, failure } from '../../model/identity-baseline.js';
 import { AcceptanceProjection, type AcceptanceTarget } from './acceptance-projection.js';
 import { hash } from '../connection/project-files.js';
 import { TypeScriptCapture, diagnostic } from './typescript-capture.js';
@@ -8,7 +8,8 @@ import ts from 'typescript';
 import { AcceptanceBindings, acceptanceOptions as options } from './acceptance-bindings.js';
 import { acceptanceState, acceptanceStatePath, initialFixtureSelection } from './acceptance-state.js';
 import { AcceptancePreservation } from './acceptance-preservation.js';
-import { validDiff } from '../output/output-contract.js';
+import { includedPlan, validDiff } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { AcceptanceDocuments, nativeFixture, isNativeTest } from './acceptance-documents.js';
 import { nativeCompatibility } from './acceptance-compatibility.js';
 import { removeAcceptance } from './acceptance-removal.js';
@@ -89,6 +90,8 @@ export const acceptanceOutput: OutputRegistration = {
         new Set([request.current.specification.entry, ...context?.workspaceModules ?? []]), fixture, driverNames), files = projection.files();
       if (bindings.problems.length) return { problems: bindings.problems, deferred: [] };
       if (projection.problems.length) return { problems: projection.problems, deferred: [] };
+      const excluded = files.find(file => protectsExcludedPath(basedOn, file.path));
+      if (excluded) return failure('output-conflict', 'The output destination intersects an excluded capture path.', [excluded.path]);
       const preservation = new AcceptancePreservation(basedOn, settings, stored.value, files, projection.artifacts, request.current.baseline.artifacts, driver, 'diff' in request ? request.diff : undefined);
       if (stored.value && ['create', 'insert'].includes(request.operation) && stored.value.files.some(file => {
         const after = preservation.state.files.find(item => item.id === file.id); return !after || file.hash !== after.hash;
@@ -120,7 +123,7 @@ export const acceptanceOutput: OutputRegistration = {
       }
       const bytes = Buffer.from(canonical(preservation.state, 2) + '\n');
       if (!basedOn.files.some(file => file.path === acceptanceStatePath && file.version === hash(bytes))) preservation.changes.push({ kind: 'write', path: acceptanceStatePath, bytes });
-      return success({ outputId: 'acceptance', basedOn, changes: preservation.changes, artifacts: preservation.state.files.flatMap(file => file.artifacts),
+      return includedPlan({ outputId: 'acceptance', basedOn, changes: preservation.changes, artifacts: preservation.state.files.flatMap(file => file.artifacts),
         obligations: [...projection.obligations, ...preservation.unfinished(projection.implementations)] });
     },
     async read(id, snapshot) { const state = acceptanceState(snapshot, settings), documents = new AcceptanceDocuments(snapshot, settings, state.value, state.problems);

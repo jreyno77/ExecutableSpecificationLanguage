@@ -1,5 +1,6 @@
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { Configuration } from './configuration.js';
+import { excludePathsSchema, excludesPath, pathPolicy } from './project-exclusions.js';
 import { promises as fs, type BigIntStats } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -7,6 +8,7 @@ import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 export interface ProjectRoot { readonly path: string; readonly identity: string }
 export interface ProjectFile { readonly path: string; readonly bytes: Uint8Array; readonly version: string }
 export interface ProjectSnapshot {
+  readonly excludePaths?: readonly string[];
   readonly readOnlyFiles?: readonly ProjectFile[];
   readonly nativeInputs?: readonly { readonly uri: string; readonly version: string }[];
   readonly root: ProjectRoot;
@@ -41,16 +43,28 @@ export class ProjectConnector {
     const failure = (code: string, message: string): Check<ProjectConnection> => ({ problems: [diagnostic(code, message,
       ['manifest', configuration.sourceId, 'project', 'root'])], deferred: [] });
     if (!configuration.project) return success({ status: 'unconnected', reason: 'not-configured' });
+    const checked = excludePathsSchema.optional().safeParse(configuration.project.excludePaths);
+    if (!checked.success) return { problems: checked.error.issues.map(issue => {
+      const details = issue.code === 'custom' ? issue.params : undefined;
+      const at = (parts: readonly (string | number)[]) => ({ kind: 'dependency' as const,
+        path: ['manifest', configuration.sourceId, 'project', 'excludePaths', ...parts] });
+      return { code: 'invalid-setting', message: issue.message, at: at(issue.path as (string | number)[]),
+        related: details?.related ? [at(details.related)] : [] };
+    }), deferred: [] };
+    const policy = pathPolicy({ excludePaths: checked.data });
     if (!nativePath(configuration.project.root)) return failure('invalid-project-root', 'Provide a valid native project path without ambient drive state.');
     const selected = resolve(this.directory, configuration.project.root);
-    const result = await connectDirectory(selected, this.exclusions);
+    const result = await connectProjectDirectory(selected, this.exclusions, policy);
     return { ...result, problems: result.problems.map(problem => ({ ...problem,
       at: { kind: 'dependency', path: ['manifest', configuration.sourceId, 'project', 'root'] } })) };
   }
 }
 
 /** Connects an explicit native directory; the manifest-facing connector supplies its own diagnostic location. */
-export async function connectDirectory(selected: string, exclusions: readonly string[]): Promise<Check<ProjectConnection>> {
+export function connectDirectory(selected: string, exclusions: readonly string[]): Promise<Check<ProjectConnection>> {
+  return connectProjectDirectory(selected, exclusions);
+}
+async function connectProjectDirectory(selected: string, exclusions: readonly string[], policy: Pick<ProjectSnapshot, 'excludePaths'> = {}): Promise<Check<ProjectConnection>> {
   if (!nativePath(selected) || !isAbsolute(selected)) throw new TypeError('Provide an absolute native project directory.');
   const success = (value: ProjectConnection): Check<ProjectConnection> => ({ value, problems: [], deferred: [] });
   const failure = (code: string, message: string): Check<ProjectConnection> => ({ problems: [diagnostic(code, message, ['project', selected])], deferred: [] });
@@ -66,14 +80,15 @@ export async function connectDirectory(selected: string, exclusions: readonly st
     if (!info.isDirectory()) return failure('root-not-directory', `Project root ${selected} is not a directory.`);
     if (existing !== selected) return success({ status: 'unconnected', reason: 'missing-root', root: selected });
     if (!usableIdentity(info)) return failure('unsupported-root', `Project root ${selected} has no usable filesystem identity.`);
-    return success({ status: 'connected', context: new ConnectedProject(selected, { path, identity: identity(path, info) }, [...exclusions]) });
+    return success({ status: 'connected', context: new ConnectedProject(selected, { path, identity: identity(path, info) }, [...exclusions], pathPolicy(policy)) });
   } catch (error) {
     return failure(osError(error) === 'ENOTDIR' ? 'root-not-directory' : 'root-unavailable', `Cannot connect to project root ${selected}: ${osError(error)}.`);
   }
 }
 
 class ConnectedProject implements ProjectContext {
-  constructor(private readonly selected: string, private readonly captured: ProjectRoot, private readonly exclusions: readonly string[]) {}
+  constructor(private readonly selected: string, private readonly captured: ProjectRoot, private readonly exclusions: readonly string[],
+    private readonly policy: Pick<ProjectSnapshot, 'excludePaths'>) {}
   get root(): ProjectRoot { return { ...this.captured }; }
   readSnapshot(): Promise<ProjectSnapshot> { return this.snapshot(false); }
   captureSnapshot(): Promise<ProjectSnapshot> { return this.snapshot(true); }
@@ -115,7 +130,7 @@ class ConnectedProject implements ProjectContext {
               continue;
             }
             names.add(name);
-            if (this.exclusions.includes(name)) branch.excluded.push([...parts, name].join('/'));
+            if (this.exclusions.includes(name) || excludesPath(this.policy, [...parts, name].join('/'))) branch.excluded.push([...parts, name].join('/'));
             else children.push([...parts, name]);
           }
           release(); release = undefined;
@@ -175,7 +190,7 @@ class ConnectedProject implements ProjectContext {
     files.sort((a, b) => ordinal(a.path, b.path));
     excluded.sort(ordinal);
     problems.sort((a, b) => ordinal(location(a), location(b)) || ordinal(a.code, b.code) || ordinal(a.message, b.message));
-    return { root: this.root, complete: problems.length === 0, files, excludeNames: [...this.exclusions], excluded, problems };
+    return { root: this.root, complete: problems.length === 0, files, excludeNames: [...this.exclusions], excluded, problems, ...pathPolicy(this.policy) };
   }
 }
 

@@ -5,14 +5,15 @@ import type { FileChange } from '../connection/project-writer.js';
 import type { JavaFile } from './java-declarations.js';
 import { JavaPreservation, type JavaBaseline } from './java-preservation.js';
 import type { z } from 'zod';
-import { canonical, failure, success } from '../../model/identity-baseline.js';
+import { canonical, failure } from '../../model/identity-baseline.js';
 import { JavaProject } from './java-project.js';
 import { javaAcceptanceOptions, javaProblem, optionProblems } from './java-settings.js';
 import { JavaExamples } from './java-examples.js';
 import { JavaAnalysis, javaSymbol } from './java-analysis.js';
 import { generatedJavaCorrespondence, survivingJavaBindings } from './java-bindings.js';
 import { hash } from '../connection/project-files.js';
-import { validDiff } from '../output/output-contract.js';
+import { includedPlan, validDiff } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { readJavaOutputState, javaTupleTypes } from './java-output-state.js';
 import type { JavaMappingState } from './java-mappings.js';
 
@@ -59,6 +60,8 @@ class JavaAcceptanceOutput implements OutputAdapter {
     if(prerequisites.length) return {problems:prerequisites,deferred:[]};
     const shared=javaTupleTypes(snapshot); if(shared.problems.length) return {problems:shared.problems,deferred:[]};
     const projection=new JavaExamples(request.current,this.options,actual.facts,shared.tuples,snapshot,this.context),files=projection.files(); projection.mappings.check(stored.value?.mappings); const problems=[...projection.problems];
+    const excluded=files.find(file=>protectsExcludedPath(snapshot,file.path));
+    if(excluded) return failure('output-conflict','The output destination intersects an excluded capture path.',[excluded.path]);
     if(stored.value) return this.update(stored.value.files,files,projection,snapshot,analysis);
     for (const file of files) if(snapshot.files.some(current=>current.path===file.path)&&!(this.options.driver&&file.path===projection.driver.path)) problems.push(javaProblem('output-conflict','Existing native test source needs preservation.',file.path));
     if(problems.length) return {problems,deferred:[]};
@@ -124,7 +127,7 @@ class JavaAcceptanceOutput implements OutputAdapter {
   }
   private changed(snapshot: ProjectSnapshot,files: readonly JavaBaseline[],changes: readonly FileChange[],mappings:JavaMappingState|undefined,obligations:readonly Diagnostic[]=[]): Check<OutputPlan> {
     const state=Buffer.from(canonical({format:1,options:this.options,files,...mappings?{mappings}:{}},2)+'\n');
-    return success({outputId:this.id,basedOn:snapshot,...obligations.length?{obligations}:{},artifacts:files.flatMap(file=>file.artifacts),changes:[...changes,
+    return includedPlan({outputId:this.id,basedOn:snapshot,...obligations.length?{obligations}:{},artifacts:files.flatMap(file=>file.artifacts),changes:[...changes,
       {kind:'write' as const,path:'.expec/outputs/java-acceptance.json',bytes:state}].filter(change=>change.kind!=='write'
         ||!snapshot.files.some(file=>file.path===change.path&&Buffer.from(file.bytes).equals(Buffer.from(change.bytes))))});
   }

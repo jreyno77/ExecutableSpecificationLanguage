@@ -1,3 +1,4 @@
+import { validPathPolicy } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import type { Diagnostic } from '../../compiler/checking.js';
 import type { OptionProblem } from '../connection/configuration.js';
@@ -40,6 +41,7 @@ export function javaSnapshot(snapshot: ProjectSnapshot): void {
     && Array.isArray(snapshot.excludeNames) && snapshot.excludeNames.every(value => javaPath(value) && !value.includes('/'))
     && new Set(snapshot.excludeNames).size === snapshot.excludeNames.length && Array.isArray(snapshot.excluded)
     && snapshot.excluded.every(javaPath) && new Set(snapshot.excluded).size === snapshot.excluded.length, 'Provide a well-formed captured Java project.');
+  requireJava(validPathPolicy(snapshot), 'Malformed or contradictory capture path policy.');
   requireJava(snapshot.files.every(file => file && javaPath(file.path) && file.bytes instanceof Uint8Array
     && typeof file.version === 'string' && /^[a-f0-9]{64}$/.test(file.version)) && new Set(snapshot.files.map(file => file.path)).size === snapshot.files.length,
   'Captured Java files need unique portable paths, bytes and version labels.');

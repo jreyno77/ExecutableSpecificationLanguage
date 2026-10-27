@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import type { OutputRegistration, OutputAdapter, OutputPlan, OutputPreviewDocument, OutputRequest } from './output.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
@@ -94,7 +96,7 @@ class DiagramOutput implements OutputAdapter {
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return refused([...snapshot.problems, outputProblem('incomplete-project', '', 'A complete project snapshot is required.')]);
-    if (new Set(snapshot.files.map(file => pathKey(file.path))).size !== snapshot.files.length
+    if (!validPathPolicy(snapshot) || new Set(snapshot.files.map(file => pathKey(file.path))).size !== snapshot.files.length
       || snapshot.files.some(file => !literal(file.path) || !(file.bytes instanceof Uint8Array) || file.version !== hash(file.bytes))) return refused([outputProblem('invalid-project-snapshot', '', 'Snapshot paths and versions must be valid and unique.')]);
     const stored = this.stored(snapshot); if (stored.problems.length) return refused(stored.problems);
     const engine = new NativeDiagrams();
@@ -117,7 +119,7 @@ class DiagramOutput implements OutputAdapter {
       if (request.operation === 'delete') {
         const owned = previous?.documents.find(document => document.subjects.some(subject => subject.id === request.id));
         if (!owned) {
-          if (previous?.deleted.includes(request.id)) return success({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.associations(previous, documents) });
+          if (previous?.deleted.includes(request.id)) return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.associations(previous, documents) });
           return refused([outputProblem('output-not-found', '', 'No owned diagram subject ' + request.id)]);
         }
         if (owned.subjects.find(subject => subject.id === request.id)?.owner) return refused([outputProblem('nested-delete', owned.path, 'Remove a nested declaration through specification update.')]);
@@ -172,7 +174,7 @@ class DiagramOutput implements OutputAdapter {
       for (const [path, value] of desired) {
         const prior = previous?.documents.find(document => document.path === path);
         if (!prior && snapshot.files.some(file => pathKey(file.path) === pathKey(path) || pathKey(file.path) === pathKey(svgPath(path)))) problems.push(conflict(path, 'An existing diagram is not owned by this output.'));
-        if ([path, svgPath(path), statePath].some(path => path.split('/').some(part => snapshot.excludeNames.includes(part)))) problems.push(conflict(path, 'Output destination is excluded.'));
+        if ([path, svgPath(path), statePath].some(path => protectsExcludedPath(snapshot, path) || path.split('/').some(part => snapshot.excludeNames.includes(part)))) problems.push(conflict(path, 'Output destination is excluded.'));
         for (const subject of value.drawing.subjects) for (const definition of documents.definitions.filter(definition => definition.id === subject.id)) {
           if (!previous?.documents.some(document => document.path === definition.file.path && document.subjects.some(value => value.id === subject.id))) problems.push(conflict(definition.file.path, 'Another unowned definition claims the same identity.'));
         }
@@ -208,7 +210,7 @@ class DiagramOutput implements OutputAdapter {
       for (const prior of previous?.documents ?? []) if (!desired.has(prior.path)) changes.push({ kind: 'remove', path: prior.path }, { kind: 'remove', path: svgPath(prior.path) });
       const bytes = Buffer.from(canonical(next, 2) + '\n');
       if (!snapshot.files.some(file => file.path === statePath && hash(file.bytes) === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
-      return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: this.associations(next, confirmed) });
+      return includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts: this.associations(next, confirmed) });
     } finally { await engine.dispose(); }
   }
   private associations(state: DiagramState, observed: DiagramDocuments): ArtifactAssociation[] {

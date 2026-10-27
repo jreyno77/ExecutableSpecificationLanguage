@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { TestRunner } from 'vitest';
 
 import ts from 'typescript';
+import { DOMParser } from '@xmldom/xmldom';
 import { pathToFileURL } from 'node:url';
 import { NativePackageDriver } from '../project/dependencies/native-packages.js';
 import { copyInstalledPackages } from '../project/typescript/typescript-context.js';
@@ -125,6 +126,12 @@ export class ConnectedBuildDriver {
   }
   async nativeSources(): Promise<ts.SourceFile[]> {
     return (await this.filesUnder('project/src')).filter(file => file.path.endsWith('.ts')).map(file => ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true));
+  }
+  async diagramLabels(): Promise<string[]> {
+    const document = new DOMParser().parseFromString(await readFile(this.path('project/diagrams/structure.svg'), 'utf8'), 'image/svg+xml');
+    if (document.documentElement?.localName !== 'svg') throw Error('The actual generated structure must be SVG.');
+    return [...Array.from(document.getElementsByTagName('text')), ...Array.from(document.getElementsByTagName('tspan'))]
+      .map(node => node.textContent ?? '').filter(Boolean);
   }
   async invoke(name: string): Promise<string> {
     const sources = await this.nativeSources(), source = sources.find(source => source.statements.some(node => ts.isFunctionDeclaration(node) && node.name?.text === name));

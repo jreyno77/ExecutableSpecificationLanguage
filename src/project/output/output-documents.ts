@@ -1,3 +1,4 @@
+import { pathPolicy, validPathPolicy } from '../connection/project-exclusions.js';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent } from 'mdast';
 import { posix } from 'node:path';
@@ -48,11 +49,12 @@ export class ListDocuments {
   private readonly anchors = new Set<string>();
   readonly scope: ArtifactLocator[];
   constructor(readonly format: ListFormat, readonly id: string, readonly snapshot: ProjectSnapshot) {
+    if (!validPathPolicy(snapshot)) throw new TypeError('Malformed or contradictory capture path policy.');
     this.problems.push(...snapshot.problems);
     this.scope = [{ outputId: id, format: 'scope', value: { description: format === 'markdown'
       ? 'Markdown definitions and links' : 'expec-structure-1 documents for ' + id,
       paths: snapshot.files.filter(file => format === 'markdown' ? /\.(md|markdown)$/i.test(file.path) : file.path.endsWith('.structure.json')).map(file => file.path),
-      excludeNames: [...snapshot.excludeNames], excluded: [...snapshot.excluded] } }];
+      ...pathPolicy(snapshot), excludeNames: [...snapshot.excludeNames], excluded: [...snapshot.excluded] } }];
     const links: Link[] = [];
     for (const file of snapshot.files) {
       if (format === 'markdown' && /\.(md|markdown)$/i.test(file.path)) this.markdown(file, links);

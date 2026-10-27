@@ -1,5 +1,6 @@
 import { valid, validRange } from 'semver';
 import { z } from 'zod';
+import { excludePathsSchema, pathPolicy } from './project-exclusions.js';
 import { nativePath } from './source-files.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 
@@ -35,7 +36,8 @@ const sourceRequirements = z.strictObject({ path: text.refine(scopePath, 'Provid
 export const configurationSchema = z.strictObject({
   formatVersion: z.literal(1),
   version,
-  project: z.strictObject({ root: text }).optional(),
+  project: z.strictObject({ root: text, excludePaths: excludePathsSchema.optional() })
+    .transform(({ root, excludePaths }) => ({ root, ...pathPolicy({ excludePaths }) })).optional(),
   build: z.strictObject({ entries: z.array(text.refine(value => !/[*?\[\]{}]/.test(value), 'Provide a literal filename, without glob patterns.'))
     .min(1, 'Provide at least one source entry.').superRefine(unique(value => value)),
     sourceRoots: z.array(text.refine(value => !/[*?\[\]{}]/.test(value), 'Provide a literal directory without glob patterns.'))

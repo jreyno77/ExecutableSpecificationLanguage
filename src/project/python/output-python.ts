@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from '../output/output.js';
 import type { Check } from '../../compiler/checking.js';
@@ -109,11 +111,11 @@ class PythonOutput implements OutputAdapter {
     const changes: FileChange[] = inspected.value.rewritten.filter(file => hash(Buffer.from(file.text)) !== snapshot.files.find(item => item.path === file.file)?.version)
       .map(file => ({ kind: 'write', path: file.file, bytes: Buffer.from(file.text) }));
     changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts });
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts });
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return { problems: [...snapshot.problems, outputProblem('incomplete-project', '', 'Python generation needs a complete capture.')], deferred: [] };
-    if (snapshot.files.some(file => !pythonPath(file.path) || hash(file.bytes) !== file.version) || new Set(snapshot.files.map(file => process.platform === 'win32' ? file.path.toLowerCase() : file.path)).size !== snapshot.files.length)
+    if (!validPathPolicy(snapshot) || snapshot.files.some(file => !pythonPath(file.path) || hash(file.bytes) !== file.version) || new Set(snapshot.files.map(file => process.platform === 'win32' ? file.path.toLowerCase() : file.path)).size !== snapshot.files.length)
       return failure('invalid-project-snapshot', 'Captured Python paths and byte versions must be valid and distinct.');
     const stored = this.state(snapshot); if (stored.problems.length) return { problems: stored.problems, deferred: [] };
     if (request.operation === 'delete') return this.retire(request.id, stored.value, snapshot);
@@ -181,7 +183,7 @@ class PythonOutput implements OutputAdapter {
         if (!snapshot.files.some(item => item.path === path)) changes.push({ kind: 'write', path, bytes: Buffer.from('') });
       }
     }
-    for (const change of changes) if (change.kind === 'write' && change.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
+    for (const change of changes) if (change.kind === 'write' && (protectsExcludedPath(snapshot, change.path) || change.path.split('/').some(part => snapshot.excludeNames.includes(part)))) return failure('output-conflict', 'The captured project excludes an output destination.', [change.path]);
     if (this.options.imports.length) {
       const profile = pythonConfiguration(snapshot, this.options.configFile);
       if (!profile.value) return { problems: profile.problems, deferred: [] };
@@ -194,6 +196,6 @@ class PythonOutput implements OutputAdapter {
     }
     const bytes = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === statePath && file.version === hash(bytes))) changes.push({ kind: 'write', path: statePath, bytes });
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts, obligations: declarations.obligations });
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.artifacts, obligations: declarations.obligations });
   }
 }

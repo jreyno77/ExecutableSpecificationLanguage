@@ -1,3 +1,4 @@
+import { excludesPath, pathPolicy, validPathPolicy } from '../connection/project-exclusions.js';
 import ts from 'typescript';
 import fs from 'node:fs';
 import { isBuiltin } from 'node:module';
@@ -34,6 +35,7 @@ export function validateSnapshot(snapshot: ProjectSnapshot): void {
     && Array.isArray(snapshot.excludeNames) && snapshot.excludeNames.every(name => pathValid(name) && !name.includes('/'))
     && new Set(snapshot.excludeNames).size === snapshot.excludeNames.length && Array.isArray(snapshot.excluded)
     && snapshot.excluded.every(pathValid) && new Set(snapshot.excluded).size === snapshot.excluded.length, 'Malformed project snapshot.');
+  requireInput(validPathPolicy(snapshot), 'Malformed or contradictory capture path policy.');
   requireInput(snapshot.files.every(file => file && pathValid(file.path) && file.bytes instanceof Uint8Array
     && typeof file.version === 'string' && /^[a-f0-9]{64}$/.test(file.version))
     && new Set(snapshot.files.map(file => file.path)).size === snapshot.files.length, 'Malformed or duplicate captured file.');
@@ -195,7 +197,7 @@ export class TypeScriptCapture {
     const included = (absolute: string) => {
       const path = this.projectPath(posix.normalize(absolute));
       if (absolute === root) return true;
-      return path !== undefined && !key(path).split('/').some(part => names.has(part))
+      return path !== undefined && !excludesPath(this.snapshot, path) && !key(path).split('/').some(part => names.has(part))
         && !excluded.some(entry => key(path) === entry || key(path).startsWith(entry + '/'));
     };
     return included(source.fileName) && included(posix.resolve(posix.dirname(source.fileName), literal.text))
@@ -213,7 +215,7 @@ export class TypeScriptCapture {
   scope(): ArtifactLocator[] {
     const files = this.sources.map(file => this.projectPath(file.fileName)!).sort(ordinal);
     return [{ outputId: this.outputId, format: 'typescript-scope-1', value: { root: { ...this.snapshot.root }, configFile: this.configFile ?? null,
-      files, excludeNames: [...this.snapshot.excludeNames], excluded: [...new Set([...this.snapshot.excluded,
+      files, ...pathPolicy(this.snapshot), excludeNames: [...this.snapshot.excludeNames], excluded: [...new Set([...this.snapshot.excluded,
         ...this.snapshot.files.filter(file => /\.(?:[cm]?[jt]s|[jt]sx)$/i.test(file.path) && !files.includes(file.path)).map(file => file.path)])].sort(ordinal) } },
       ...[...new Set([...files, ...this.configurations])].filter(file => !this.snapshot.readOnlyFiles?.some(item => item.path === file)).sort(ordinal).map(file => ({ outputId: this.outputId, format: 'typescript-file-1', value: { file } })),
       ...(this.snapshot.readOnlyFiles ?? []).filter(file => this.nativeFiles.has(file.path)).map(file => ({ outputId: this.outputId, format: 'typescript-native-file-1', value: { file: file.path, version: file.version } }))];

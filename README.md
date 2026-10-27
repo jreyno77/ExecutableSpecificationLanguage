@@ -357,6 +357,16 @@ Paths in expec.json resolve from that file. `--config path/to/expec.json` select
 another manifest. `project.root` records the connected directory; declared
 `packages`, `libraries` and output options describe its requirements.
 
+To keep unrelated artifacts out of editable capture, set `project.excludePaths`
+to literal project-root-relative paths, such as
+`["dist", ".local-docs", "generation/tooling"]`. Paths select that entry and its
+descendants; `dist` leaves `nested/dist` included. Excluded paths and their
+parents cannot be generation write, move or removal endpoints. Root `.expec`
+coordination cannot be excluded. Declared specification and native dependency
+inputs keep their independent freshness checks. Omit the setting to retain the
+existing capture scope.
+
+
 Build preserves established identities and mapped implementations. An ambiguous
 rename requests a deliberate decision. Run `build --json` and copy the ID from
 the `identity-correspondence` message for the previous declaration. That

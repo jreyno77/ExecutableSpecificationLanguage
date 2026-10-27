@@ -1,3 +1,4 @@
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { IdentifiedSpecification } from '../../model/specification-identity.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
@@ -16,7 +17,7 @@ export async function checkKotlinImports(current: IdentifiedSpecification, snaps
     at: current.specification.inspection.read(current.node(id)).origin, message, related: [] });
   const roots = [...configured.value.sourceRoots.main, ...configured.value.sourceRoots.test];
   if (!roots.some(root => directory === root || directory.startsWith(root + '/'))
-    || directory.split('/').some(part => snapshot.excludeNames.includes(part))
+    || protectsExcludedPath(snapshot, directory) || directory.split('/').some(part => snapshot.excludeNames.includes(part))
     || snapshot.excluded.some(path => directory === path || directory.startsWith(path + '/'))) {
     finding(mappings[0]!.id, 'Native import proof requires an included output directory in a configured Kotlin source set.');
     return { problems, deferred: [] };

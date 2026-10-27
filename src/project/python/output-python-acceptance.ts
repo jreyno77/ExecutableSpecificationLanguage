@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { packageRoot } from '../../resources.js';
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
@@ -76,7 +78,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
       for (const file of previous.files) if (!next.files.some(item => item.file === file.file)) changes.push({ kind: 'remove', path: file.file });
       const bytes = Buffer.from(canonical(next, 2) + '\n');
       if (hash(bytes) !== snapshot.files.find(file => file.path === statePath)?.version) changes.push({ kind: 'write', path: statePath, bytes });
-      return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts });
+      return includedPlan({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: next.artifacts });
     };
     return { id: 'python-acceptance',
       async plan(request, snapshot) {
@@ -141,7 +143,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
         files.unshift({ path: options.testRoot + '/dsl/comparison.py', text: await readFile(new URL('project/python/resources/comparison.py', packageRoot), 'utf8') });
         for (const file of files.filter(file => !previous.value?.files.some(item => item.file === file.path))) {
           if (snapshot.files.some(existing => existing.path === file.path)) return failure('output-conflict', 'Existing Python acceptance files require native preserving reconciliation.', [file.path]);
-          if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes this acceptance destination.', [file.path]);
+          if (protectsExcludedPath(snapshot, file.path) || file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('output-conflict', 'The captured project excludes this acceptance destination.', [file.path]);
         }
         const changes = files.map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }));
         for (const layer of ['dsl', 'driver', 'acceptance']) {
@@ -163,7 +165,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
           const oldIds = new Set([...previous.value.artifacts.map(item => item.specId), ...previous.value.groups.map(group => group.id)]);
           const nextIds = new Set([...next.artifacts.map(item => item.specId), ...next.groups.map(group => group.id)]);
           next.deleted = [...new Set([...previous.value.deleted, ...oldIds])].filter(id => !nextIds.has(id));
-          if (canonical(previous.value) === canonical(next)) return success({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
+          if (canonical(previous.value) === canonical(next)) return includedPlan({ outputId: 'python-acceptance', basedOn: snapshot, changes: [], artifacts: previous.value.artifacts, obligations: examples.obligations });
           if (request.operation === 'create' && (!previous.value.deleted.some(id => nextIds.has(id)) || [...oldIds].some(id => !nextIds.has(id))
             || [...nextIds].some(id => !oldIds.has(id) && !previous.value!.deleted.includes(id))))
             return failure('use-update', 'Use update for changed existing Python examples.');
@@ -171,7 +173,7 @@ export const pythonAcceptanceOutput: OutputRegistration = {
           return result.value ? success({ ...result.value, obligations: examples.obligations }) : result;
         }
         changes.push({ kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
-        return success({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: examples.artifacts, obligations: examples.obligations });
+        return includedPlan({ outputId: 'python-acceptance', basedOn: snapshot, changes, artifacts: examples.artifacts, obligations: examples.obligations });
       },
       async read(id, snapshot) {
         const previous = state(snapshot), result = await query(previous).read(id, snapshot);

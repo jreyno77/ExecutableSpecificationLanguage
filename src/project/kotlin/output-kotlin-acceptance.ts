@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from '../output/output.js';
 import type { Check } from '../../compiler/checking.js';
@@ -163,7 +165,7 @@ class KotlinAcceptance implements OutputAdapter {
     if (stored.value?.files.some(file => file.artifacts.some(item => !known.has(item.specId))) || [stored.value?.fixture, stored.value?.driver, ...stored.value?.bindings ?? []].some(item => item && !known.has(item.specId))) return failure('unknown-output-identity', 'Current identity must recognize earlier native tests.');
     const changes: FileChange[] = [], proposed = new Map(snapshot.files.map(file => [file.path, file]));
     for (const file of files) {
-      if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('excluded-kotlin-input', 'The output path intersects an excluded capture path.', file.path);
+      if (protectsExcludedPath(snapshot, file.path) || file.path.split('/').some(part => snapshot.excludeNames.includes(part))) return failure('excluded-kotlin-input', 'The output path intersects an excluded capture path.', file.path);
       const actual = snapshot.files.find(item => item.path === file.path), previous = stored.value?.files.find(item => item.path === file.path);
       if (actual && !previous) return failure('output-conflict', 'Current native acceptance text needs declaration-level ownership.', file.path);
       if (previous && !actual) return failure('output-conflict', 'Previously owned native acceptance text is missing.', file.path);
@@ -208,7 +210,7 @@ class KotlinAcceptance implements OutputAdapter {
     const owned = new Set(files.flatMap(file => file.artifacts.map(item => item.specId)));
     const next = { format: 1, options: canonical(this.settings), context: request.current.baseline.context,
       contracts: [...fingerprints].filter(([id]) => owned.has(id)).map(([id, fingerprint]) => ({ id, fingerprint })), subjects: request.current.baseline.elements.map(item => item.id), names, imports, ...fixture && files[0] ? { fixture: { specId: files[0].id, locator: { ...this.settings.fixture!, outputId: this.id } } } : {}, ...driver && files[0] ? { driver: { specId: files[0].id, locator: { ...this.settings.driver!, outputId: this.id } }, bindings } : {}, files: files.map(file => ({ id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts, ...file.support ? { support: true as const } : {} })) };
-    return success({ outputId: this.id, basedOn: snapshot, changes: [...changes,
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [...changes,
       { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }].filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes))),
       artifacts: [...files.flatMap(file => file.artifacts), ...next.bindings ?? []], obligations: rendered.obligations });
   }
@@ -217,7 +219,7 @@ class KotlinAcceptance implements OutputAdapter {
     if (!stored) return failure('not-found', 'No owned generated Kotlin test exists.');
     if (stored.options !== canonical(this.settings)) return failure('output-options-changed', 'Reopen the recorded options before deleting a generated test.');
     const intact = await this.integrity(snapshot, stored); if (intact.problems.length) return intact;
-    if (stored.deleted.includes(id)) return success({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.artifacts(stored) });
+    if (stored.deleted.includes(id)) return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: this.artifacts(stored) });
     const prefix = this.settings.testRoot + '/' + this.settings.package.replaceAll('.', '/') + '/acceptance/';
     const selected = stored.files.filter(file => file.path.startsWith(prefix) && file.artifacts.some(item => item.specId === id && item.locator.format === 'kotlin-symbol-1'));
     if (selected.length !== 1) return failure('not-found', 'Select exactly one owned generated example or examples group.');
@@ -229,7 +231,7 @@ class KotlinAcceptance implements OutputAdapter {
       id: next.id, path: next.path, generated: next.text, hash: hash(Buffer.from(next.text)), artifacts: [...next.artifacts],
     })));
     const next = { ...stored, deleted: [...new Set([...stored.deleted, ...retired.value.removed])].sort(), files };
-    return success({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
       { kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }], artifacts: this.artifacts(next), obligations: preserved.value.obligations });
   }
   async read(id: string, snapshot: ProjectSnapshot) {

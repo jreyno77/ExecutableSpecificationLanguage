@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import { validDiff } from './output-contract.js';
 import type { OutputRegistration } from './output.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
@@ -70,7 +72,7 @@ class ListOutput implements OutputAdapter {
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return rejected([...snapshot.problems, outputProblem('incomplete-project', '', 'A complete project snapshot is required.')]);
-    if (new Set(snapshot.files.map(file => pathKey(file.path))).size !== snapshot.files.length || snapshot.files.some(file => !literal(file.path)
+    if (!validPathPolicy(snapshot) || new Set(snapshot.files.map(file => pathKey(file.path))).size !== snapshot.files.length || snapshot.files.some(file => !literal(file.path)
       || !(file.bytes instanceof Uint8Array) || hash(file.bytes) !== file.version)) return rejected([outputProblem('invalid-project-snapshot', '', 'Snapshot paths and byte versions must be valid and unique.')]);
     const stored = this.state(snapshot);
     if (stored.problems.length) return rejected(stored.problems);
@@ -106,7 +108,7 @@ class ListOutput implements OutputAdapter {
         const path = paths[index]!;
         if (!validName(declaration.name)) problems.push(outputProblem('unsupported-artifact-name', path, 'The authored declaration name cannot be a literal native file name.'));
         if (paths.some((other, otherIndex) => otherIndex !== index && pathKey(other) === pathKey(path))) problems.push(conflict(path, 'Declarations map to the same native file path.'));
-        if (path.split('/').some(part => snapshot.excludeNames.includes(part)) || snapshot.excludeNames.includes('.expec')) problems.push(conflict(path, 'The configured snapshot excludes an output destination.'));
+        if (protectsExcludedPath(snapshot, path) || path.split('/').some(part => snapshot.excludeNames.includes(part)) || snapshot.excludeNames.includes('.expec')) problems.push(conflict(path, 'The configured snapshot excludes an output destination.'));
         if (snapshot.files.some(file => pathKey(path).startsWith(pathKey(file.path) + '/') || pathKey(file.path).startsWith(pathKey(path) + '/'))) problems.push(conflict(path, 'An existing file occupies a destination parent or descendant.'));
         for (const subject of flatten(declaration)) locations.set(subject.specId!, { path, name: subject.name });
       }
@@ -150,7 +152,7 @@ class ListOutput implements OutputAdapter {
     const bytes = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === this.statePath && hash(file.bytes) === hash(bytes))) changes.push({ kind: 'write', path: this.statePath, bytes });
     const artifacts: ArtifactAssociation[] = next.documents.flatMap(document => document.subjects.map(subject => ({ specId: subject.id, locator: artifact(this.id, this.format, document.path, subject.id) })));
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts });
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts });
   }
 }
 function validName(name: string): boolean { return literal(name) && !name.includes('/'); }
