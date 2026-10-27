@@ -45,7 +45,7 @@ export class LangiumReader {
     const result = this.services.parser.LangiumParser.parse<Source>(source.text);
     for (const error of result.parserErrors) {
       const relatedRanges: SourceRange[] = [];
-      const eof = !Number.isFinite(error.token.startOffset);
+      const eof = !Number.isFinite(error.token.startOffset) || error.token.startOffset < 0;
       if (eof) {
         const open: typeof lexed.tokens = [];
         for (const token of lexed.tokens) {
@@ -56,7 +56,8 @@ export class LangiumReader {
         if (delimiter) relatedRanges.push(coordinates.range(delimiter.startOffset, delimiter.endOffset! + 1));
       }
       diagnostics.push({ category: error.name === 'MismatchedTokenException' ? 'expected-token' : 'unexpected-token', explanation: error.message,
-        primaryRange: coordinates.range(error.token.startOffset, (error.token.endOffset ?? source.text.length - 1) + 1), relatedRanges });
+        primaryRange: eof ? coordinates.range(source.text.length, source.text.length)
+          : coordinates.range(error.token.startOffset, (error.token.endOffset ?? source.text.length - 1) + 1), relatedRanges });
     }
     if (diagnostics.length) return reject();
     const ranges = new WeakMap<AstNode, SourceRange>();

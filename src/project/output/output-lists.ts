@@ -22,7 +22,21 @@ function registration(id: string, format: ListFormat): OutputRegistration {
     const problems = Object.keys(options).filter(key => key !== 'directory').map(key => ({ path: [key], message: 'Unknown output option.' }));
     if (typeof options.directory !== 'string' || !literal(options.directory) || options.directory.split('/').some(part => part.toLowerCase() === '.expec')) problems.push({ path: ['directory'], message: 'Provide a literal relative directory outside .expec.' });
     return problems;
-  }, open: options => new ListOutput(id, format, options.directory as string) };
+  }, open: options => new ListOutput(id, format, options.directory as string),
+  preview: async (current, options) => {
+    const declarations = listDeclarations(current), locations = new Map(current.baseline.elements.map(record => [record.id, { path: '', name: record.address.name ?? record.address.kind }]));
+    const paths = declarations.map(declaration => options.directory + '/' + declaration.name + (format === 'markdown' ? '.md' : '.structure.json'));
+    const problems: Diagnostic[] = [];
+    for (const [index, declaration] of declarations.entries()) {
+      const path = paths[index]!;
+      if (!validName(declaration.name)) problems.push(outputProblem('unsupported-artifact-name', path, 'The authored declaration name cannot be a literal native file name.'));
+      if (paths.some((other, otherIndex) => otherIndex !== index && pathKey(other) === pathKey(path))) problems.push(outputProblem('output-conflict', path, 'Declarations map to the same native file path.'));
+      for (const subject of flatten(declaration)) locations.set(subject.specId!, { path, name: subject.name });
+    }
+    return problems.length ? { problems, deferred: [] } : success(declarations.map((declaration, index) => ({ path: paths[index]!,
+      mediaType: format === 'markdown' ? 'text/markdown' : 'application/json', bytes: renderList(format, id, paths[index]!, declaration, locations) })));
+  } };
+
 }
 export const contractListOutput = registration('contract-list', 'markdown');
 export const structureListOutput = registration('structure-list', 'structure');

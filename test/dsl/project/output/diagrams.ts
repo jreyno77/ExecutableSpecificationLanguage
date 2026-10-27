@@ -58,6 +58,14 @@ export class DiagramExamples {
     });
     expect(texts.some(text => text.includes(label))).toBe(true);
   }
+  expectVisibleSvgLabel(label: string): void {
+    const labels = [...this.driver.texts].filter(([path]) => path.endsWith('.svg')).flatMap(([, text]) => {
+      const xml = new DOMParser({ onError: (_level, message) => { throw new Error(message); } }).parseFromString(text, 'image/svg+xml');
+      expect(xml.documentElement?.localName).toBe('svg');
+      return ['text', 'tspan'].flatMap(name => Array.from(xml.getElementsByTagNameNS('http://www.w3.org/2000/svg', name), node => node.textContent?.trim()));
+    });
+    expect(labels).toContain(label);
+  }
   expectExternalProxy(name: string, module: string): void { expect(this.object(name)?.label).toContain('«external'); expect(this.object(name)?.label).toContain('from ' + module); }
   expectNoProjectImplementationClaim(name: string): void { expect(this.object(name)?.label).toContain('«external'); }
   private sequence(title: string) { return [...this.driver.native.values()].find(result => (result.diagram.root as Text).label.includes(title)); }

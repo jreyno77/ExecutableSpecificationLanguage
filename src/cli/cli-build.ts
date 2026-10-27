@@ -4,32 +4,33 @@ import { pathToFileURL } from 'node:url';
 import type { Diagnostic } from '../compiler/checking.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { BuildContext } from './cli-context.js';
+import { BuildAdmission } from './cli-host.js';
 import { BuildJournal, pendingStage } from './cli-journal.js';
 import { readTransition, retainTransition, transitionChange } from './cli-transition.js';
 import { identities, identityPath, pendingPath, transitionPath, readIdentity, readDecisions } from './cli-identity.js';
 import type { CommandResult } from './cli-project.js';
 import { Outputs, type Output, type OutputPlan } from '../project/output/output.js';
-import type { ProjectContext } from '../project/connection/project-connection.js';
+import type { ProjectContext, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { FileProjectWriter, type FileChange } from '../project/connection/project-writer.js';
 
 export async function build(checked: CheckedManifest, project: ProjectContext, outputs: Outputs,
-  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string): Promise<CommandResult & { obligations: Diagnostic[] }> {
+  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string, admission?: BuildAdmission): Promise<CommandResult & { obligations: Diagnostic[] }> {
   const result: CommandResult & { obligations: Diagnostic[] } = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [], obligations: [] };
   const retain = (obligations: readonly Diagnostic[]) => { for (const obligation of obligations)
     if (!result.obligations.some(before => isDeepStrictEqual(before, obligation))) result.obligations.push(obligation); };
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
-  const initial = await project.readSnapshot(), stage = pendingStage(initial);
+  const initial = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
-  const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs);
+  const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs, undefined, admission);
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
   if (!('value' in recovered)) return { ...result, problems: recovered.problems };
   if (recovered.value) {
     result.stages.push(...recovered.value.stages); retain(recovered.value.obligations ?? []);
     if (recovered.value.exitCode) return { ...result, problems: recovered.value.problems };
   }
-  const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs);
+  const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs, undefined, admission);
   const snapshot = await transitionContext.readSnapshot();
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const read = readIdentity(snapshot, checked);
@@ -60,20 +61,22 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     try {
       const profiles = selected.filter(output => testIds.has(output.id) === (name === 'tests'));
       if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
-      const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs]), basedOn = await context.readSnapshot();
+      const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs], undefined, admission), basedOn = await context.readSnapshot();
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
       const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
+      let querySnapshot: ProjectSnapshot | undefined;
+      const outputProject: ProjectContext = { get root() { return context.root; },
+        readSnapshot: () => querySnapshot ? Promise.resolve(querySnapshot) : context.readSnapshot() };
       for (const profile of profiles) {
-        const output = outputs.open(profile.id, profile.options, context, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
+        const output = outputs.open(profile.id, profile.options, outputProject, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
         if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-        opened.push({ id: profile.id, output: output.value });
         const unfinished = !transition || transition.remaining.includes(name);
         const before = unfinished ? (transition ? transition.before : read.value.baseline) : current.baseline;
         const compared = unfinished ? difference : identity.compare(current.baseline, current);
         if (!compared.value) return { ...result, problems: compared.problems };
         const plan = await output.value.plan(before ? { operation: 'update', current, diff: compared.value } : { operation: 'create', current }, basedOn);
         if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-        plans.push(plan.value);
+        plans.push(plan.value); opened.push({ id: profile.id, output: output.value });
       }
       const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
       if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
@@ -88,15 +91,49 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (name === 'contracts' && selected.some(profile => testIds.has(profile.id))) {
         failureStage = 'tests';
         changes.flatMap(endpoints).forEach(path => protectedPaths.add(path));
-        const completed = await context.readSnapshot();
-        if (!completed.complete) return { ...result, problems: completed.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+        const captured = await context.readSnapshot();
+        if (!captured.complete) return { ...result, problems: captured.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+        // Preserve adapter lifetime while querying one post-application scope.
+        querySnapshot = captured;
+        const queryAdmission = admission ?? new BuildAdmission(checked.manifest, signal);
         for (const { id: outputId, output } of opened) {
           const ids = [...new Set(current.baseline.artifacts.filter(item => item.locator.outputId === outputId).map(item => item.specId))];
-          for (const read of await output.readAll(ids, completed)) {
-            if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
-            read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+          if (!ids.length) continue;
+          if (output.readAll) {
+            const admitted = await queryAdmission.capture(outputProject);
+            if (!admitted.complete) return { ...result, problems: admitted.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+            const stopped = {};
+            let refused: ProjectSnapshot | undefined;
+            try {
+              const reads = await output.readAll(ids, captured, async () => {
+                const admitted = await queryAdmission.capture(outputProject);
+                if (!admitted.complete) { refused = admitted; throw stopped; }
+              });
+              const observed = await queryAdmission.capture(outputProject);
+              if (!observed.complete) return { ...result, problems: observed.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              for (const read of reads) {
+                if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+                read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+              }
+            } catch (error) {
+              if (error !== stopped || !refused) throw error;
+              return { ...result, problems: refused.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+            }
+          } else {
+            for (const id of ids) {
+              const admitted = await queryAdmission.capture(outputProject);
+              if (!admitted.complete) return { ...result, problems: admitted.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              const read = await output.read(id);
+              if (read.problems.length || !read.coverage.complete) return { ...result, problems: [...read.problems, cliProblem('incomplete-output', 'Complete contract artifact evidence is required before test generation.', checked.manifest)], stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+              read.artifacts.forEach(artifact => protectedPaths.add(artifact.file.path));
+            }
           }
         }
+        const fresh = await context.readSnapshot();
+        if (!fresh.complete) return { ...result, problems: fresh.problems, stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
+        if (!isDeepStrictEqual(captured, fresh)) return { ...result,
+          problems: [cliProblem('stale-project', 'The project changed while inspecting contract artifacts.', checked.manifest)],
+          stages: [...result.stages, { name: 'tests', status: 'stopped' }] };
       }
     } catch (error) {
       return { ...result, status: 'failed', exitCode: 1, problems: [cliProblem('host-failure', String(error), checked.manifest)],

@@ -28,6 +28,21 @@ export const markdownOutput: OutputRegistration = {
       ? [] : [{ path: ['directory'], message: 'Provide a literal relative directory outside .expec.' }]),
   ],
   open: options => new MarkdownOutput(options.directory as string),
+  preview: async (current, options) => {
+    let pages;
+    try { pages = new MarkdownDocumentation(current, options.directory as string).render(); }
+    catch (error) {
+      if (!(error instanceof UnsupportedLanguage)) throw error;
+      return { problems: [{ code: 'unsupported-output', message: error.message, at: error.item.origin, related: [] }], deferred: [] };
+    }
+    const problems: Diagnostic[] = [];
+    for (const page of pages) {
+      const name = current.baseline.elements.find(record => record.id === page.id)!.address.name;
+      if (!literal(page.path) || name !== null && (!literal(name) || name.includes('/'))) problems.push(outputProblem('unsupported-artifact-name', page.path, 'The authored name cannot be a literal native filename.'));
+      if (pages.some(other => other.id !== page.id && key(other.path) === key(page.path))) problems.push(conflict(page.path, 'Declarations map to the same native path.'));
+    }
+    return problems.length ? { problems, deferred: [] } : success(pages.map(page => ({ path: page.path, mediaType: 'text/markdown', bytes: page.region })));
+  },
 };
 
 /** Owns only generated regions; current project bytes remain the source of handwritten content. */

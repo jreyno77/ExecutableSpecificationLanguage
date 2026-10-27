@@ -481,3 +481,28 @@ describe('native rendering and the installed adapter establish actual delivery',
 
 });
 
+
+
+describe('literal diagram methods and guarded native patterns', { timeout: 30_000 }, () => {
+  it('regenerates an optional method while preserving handwritten diagram bytes', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify('component Screen { public select\ncapability select(label: Text) returns Nothing }');
+    await diagrams.create({ views: ['structure'] });
+    await diagrams.append('design/structure.d2', '\n# Keep this handwritten note.\r\n');
+    diagrams.revise('component Screen { public select\ncapability select(label: Text?) returns Nothing }');
+    await diagrams.update();
+    diagrams.expectSignature('Screen.select', 'select(label: Text?) → Nothing');
+    diagrams.expectVisibleSvgLabel('select(label: Text?)');
+    diagrams.expectFileEndsWithBytes('design/structure.d2', '\n# Keep this handwritten note.\r\n');
+    diagrams.expectNoProblem('unsupported-diagram-syntax');
+  });
+  it('keeps true unquoted native globs outside guarded regeneration', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify('component Screen {}');
+    await diagrams.create({ views: ['structure'] });
+    await diagrams.append('design/structure.d2', '\n*: {style.fill: red}\n');
+    await diagrams.update();
+    diagrams.expectProblem('unsupported-diagram-syntax');
+    diagrams.expectNoProjectChanges();
+  });
+});

@@ -16,7 +16,14 @@ export class SettlingNativeExamples {
   }
   static async clean(): Promise<void> { for (const example of this.active.splice(0)) await example.driver.dispose(); }
   package(name: string, metadata: object, entries: Record<string, string>): Promise<void> { return this.driver.project.package(name, metadata, entries); }
+  settleStatusOnceWhenFirstOpened(path = this.driver.selected): void { this.driver.firstFault(path, 'open-status'); }
   settleStatusOnceDuringInitialRead(path = this.driver.selected): void { this.driver.firstFault(path, 'status'); }
+  changeModeWhenFirstOpened(): void { this.driver.firstFault(this.driver.selected, 'open-mode'); }
+  changeSizeWhenFirstOpened(): void { this.driver.firstFault(this.driver.selected, 'open-size'); }
+  changeModificationTimeWhenFirstOpened(): void { this.driver.firstFault(this.driver.selected, 'open-mtime'); }
+  changeIdentityWhenFirstOpened(): void { this.driver.firstFault(this.driver.selected, 'open-identity'); }
+  changeStatusAgainDuringInitialRead(): void { this.driver.addFirstReadStatusChange(); }
+  changeStatusOnlyAtInitialNamedAfter(): void { this.driver.addInitialNamedStatusChange(); }
   observeInitialFileReads(path: string): void { this.driver.select(path); }
   replaceBytesBeforeSettlingReadPreservingSizeAndModificationTime(path: string, text: string): void { this.driver.select(path); this.driver.replaceBytes(text); }
   pinOnlyStatusTimeToCandidateDuringSettlingRead(path: string): void { this.driver.select(path); this.driver.pinStatus(); }

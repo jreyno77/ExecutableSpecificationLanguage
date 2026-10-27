@@ -29,7 +29,7 @@ export class ConnectedBuild {
     expect(calls.filter(call => call.expression.getText() === name).map(call => call.arguments.map(arg => arg.getText()))).toEqual([args.map(String)]);
     expect(calls.filter(call => call.expression.getText() === 'expectData').map(call => call.arguments[1]?.getText())).toEqual([String(expected)]);
   }
-  async expectGeneratedExampleNames(expected: string[]): Promise<void> {
+  async expectGeneratedExampleNames(expected: string[], { inAnyFileOrder = false }: { inAnyFileOrder?: boolean } = {}): Promise<void> {
     const files = await this.driver.filesUnder('project/test/acceptance'), names: string[] = [];
     for (const file of files) {
       const source = ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true);
@@ -38,7 +38,7 @@ export class ConnectedBuild {
         node.forEachChild(visit);
       }; visit(source);
     }
-    expect(names).toEqual(expected);
+    expect(inAnyFileOrder ? [...names].sort() : names).toEqual(inAnyFileOrder ? [...expected].sort() : expected);
   }
   async expectGeneratedImport(directory: string, from: string): Promise<void> {
     const files = await this.driver.filesUnder('project/' + directory);
@@ -189,9 +189,28 @@ export class ConnectedBuild {
   interruptAfterOutputWrite(path: string): void { this.driver.signalAfterOutputWrite = path; }
   failActualWrite(path: string, after = 0): void { this.driver.failure = { operation: 'write', path, after }; }
   failPendingRemoval(after = 0): void { this.driver.failure = { operation: 'remove', path: '.expec/build-pending.json', after }; }
-  clearActualWriteFailure(): void { delete this.driver.failure; }
+  cancelAfterPendingRemoval(): void { this.driver.signalAfterPendingRemoval = true; }
+  clearActualWriteFailure(): void { delete this.driver.failure; delete this.driver.signalAfterPendingRemoval; }
+  expectStoppedCleanupWithAppliedRemoval(): void {
+    expect(this.driver.report.stages).toEqual([expect.objectContaining({ name: 'recovery', status: 'stopped',
+      receipt: expect.objectContaining({ status: 'stopped', outcomes: [expect.objectContaining({ change: { kind: 'remove', path: '.expec/build-pending.json' }, state: 'applied', after: [{ path: '.expec/build-pending.json', state: 'absent' }] })] }) })]);
+  }
   async expectTransitionRetained(): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-transition.json'))).isFile()).toBe(true); }
   expectNoTransition(): Promise<void> { return this.expectNoDestinationFile('project/.expec/build-transition.json'); }
+  async expectPendingConfirmationOnly(): Promise<void> {
+    const record = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));
+    expect(record).toMatchObject({ format: 2, stage: 'tests', plans: [{ outputId: 'acceptance', obligations: [] }] });
+    expect(record.plans).toHaveLength(1);
+    expect(record.plans[0].changes).toHaveLength(1);
+    const change = record.plans[0].changes[0];
+    expect(change).toMatchObject({ kind: 'write', path: '.expec/outputs/616363657074616e6365.json' });
+    const original = record.graph.files.find((file: any) => file.path === change.path);
+    const before = JSON.parse(Buffer.from(original.bytes, 'base64').toString()), after = JSON.parse(Buffer.from(change.bytes, 'base64').toString());
+    expect(after.files.some((file: any, index: number) => file.confirmed !== before.files[index].confirmed)).toBe(true);
+    const withoutConfirmation = (state: any) => ({ ...state, files: state.files.map(({ confirmed: _confirmed, ...file }: any) => file) });
+    expect(withoutConfirmation(after)).toEqual(withoutConfirmation(before));
+    expect(await readFile(this.driver.path('project/' + change.path))).toEqual(Buffer.from(change.bytes, 'base64'));
+  }
   async expectPendingBuildRetained(): Promise<void> { expect((await stat(this.driver.path('project/.expec/build-pending.json'))).isFile()).toBe(true); }
   async rememberPendingIdentities(names = ['First', 'Second']): Promise<void> {
     const pending = JSON.parse(await readFile(this.driver.path('project/.expec/build-pending.json'), 'utf8'));

@@ -18,6 +18,20 @@ describe('initial native evidence after one status-time settling event', () => {
     project.expectOwnedDescriptorsClosed();
   });
 
+  it('captures declaration bytes after one persistent first-open status change', async () => {
+    const project = await SettlingNativeExamples.catalog('export interface ServerConnection { listen(): void }');
+    project.settleStatusOnceWhenFirstOpened('node_modules/catalog/index.d.ts');
+
+    await project.capture({ imports: ['catalog'] });
+
+    project.expectComplete();
+    project.expectReadOnlyText('node_modules/catalog/index.d.ts', 'export interface ServerConnection { listen(): void }');
+    project.expectVersionIsHashOfActualBytes('node_modules/catalog/index.d.ts');
+    project.expectInitialAcquisitionReads('node_modules/catalog/index.d.ts', 2);
+    project.expectNoEditablePackageFiles();
+    project.expectOwnedDescriptorsClosed();
+  });
+
   it('does not reread a declaration whose first read is fully stable', async () => {
     const project = await SettlingNativeExamples.catalog('export interface Book {}');
     project.observeInitialFileReads('node_modules/catalog/index.d.ts');
@@ -61,7 +75,7 @@ describe('initial native evidence after one status-time settling event', () => {
     project.expectIncomplete(); project.expectProblemAt('stale-project', 'node_modules/catalog/index.d.ts');
   });
 
-  it('refuses a status change before the first descriptor is opened', async () => {
+  it('refuses first-open status that does not persist through the initial read', async () => {
     const project = await SettlingNativeExamples.catalog('export interface Book {}');
     project.changeStatusBetweenObservationAndOpen('node_modules/catalog/index.d.ts');
     await project.capture({ imports: ['catalog'] });

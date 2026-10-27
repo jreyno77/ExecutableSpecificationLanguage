@@ -92,4 +92,46 @@ describe('reading several output subjects from one project', () => {
       coverage: { scope, complete: true, limitations: ['Unavailable declaration'] } }];
     await expect(books.output.readAll(['book'])).rejects.toThrow(TypeError);
   });
+  it('stops legacy reads when their owner refuses the next read', async () => {
+    const books = reading(), seen: string[] = [], refusal = new Error('Save the edited Book before continuing');
+    let admissions = 0;
+    books.adapter.read = async (id, captured) => { seen.push(id); return read(captured); };
+
+    await expect(books.output.readAll(['first', 'second'], books.capture(), async () => {
+      if (++admissions === 2) throw refusal;
+    })).rejects.toBe(refusal);
+
+    expect(seen).toEqual(['first']);
+    expect(books.work()).toEqual({ captures: 0, writes: 0 });
+  });
+  it('does not invoke a native batch when its owner refuses admission', async () => {
+    const books = reading(), refusal = new Error('The author cancelled this query');
+    let batches = 0;
+    books.adapter.readAll = async (ids, captured) => { batches++; return ids.map(() => read(captured)); };
+
+    await expect(books.output.readAll(['book'], books.capture(), async () => { throw refusal; })).rejects.toBe(refusal);
+
+    expect(batches).toBe(0);
+    expect(books.work()).toEqual({ captures: 0, writes: 0 });
+  });
+  it('admits one native batch and retains each requested answer', async () => {
+    const books = reading(); let admissions = 0;
+    books.adapter.readAll = async (ids, captured) => ids.map(() => read(captured));
+
+    const results = await books.output.readAll(['first', 'second'], books.capture(), async () => { admissions++; });
+
+    expect(results.map(title)).toEqual(['Dune', 'Dune']);
+    expect(admissions).toBe(1);
+    expect(books.work()).toEqual({ captures: 0, writes: 0 });
+  });
+  it('does not ask for admission when there are no requested subjects', async () => {
+    const books = reading(); let admissions = 0;
+    books.adapter.readAll = async () => { throw Error('No adapter work expected'); };
+
+    expect(await books.output.readAll([], undefined, async () => { admissions++; })).toEqual([]);
+
+    expect(admissions).toBe(0);
+    expect(books.work()).toEqual({ captures: 0, writes: 0 });
+  });
+
 });

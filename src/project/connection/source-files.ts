@@ -16,6 +16,7 @@ export class SourceFiles {
   readonly problems: Diagnostic[] = [];
   readonly captured = new Map<string, File>();
   private readonly roots: Root[] = [];
+  private primary?: Root;
   private readonly excluded: Root[] = [];
   private readonly failures = new Map<string, FileProblem>();
   constructor(private readonly directory: string, private readonly configuration: Configuration) {}
@@ -38,7 +39,11 @@ export class SourceFiles {
         if (!stat.isDirectory() || !usable(stat)) throw new FileProblem('invalid-source-root', 'A source root must be a directory with usable filesystem identity.');
         const collection = ownership === 'excluded' ? this.excluded : this.roots, previous = collection.find(root => sameIdentity(root.stat, stat));
         if (previous) this.problem('invalid-source-root', 'Source root ' + selected + ' repeats ' + previous.selected + '.', at, [previous.at]);
-        else collection.push({ selected, path, stat, at });
+        else {
+          const root = { selected, path, stat, at };
+          collection.push(root);
+          if (ownership === 'workspace' && selected === resolve(this.directory)) this.primary = root;
+        }
       } catch (error) { this.report(error, 'source-root-unavailable', selected, at); }
     }
   }
@@ -67,26 +72,38 @@ export class SourceFiles {
       if (!before.isFile() || !usable(before)) throw new FileProblem('source-not-file', 'Source is not a regular file with usable identity: ' + path);
       const alias = [...this.captured.values()].find(file => sameIdentity(file.stat, before));
       if (alias) throw new FileProblem('source-alias', 'Source ' + path + ' aliases ' + alias.path + ' with a different module location.');
-      const handle = await fs.open(path, 'r');
-      let bytes: Buffer;
-      try {
-        if (!same(before, await handle.stat({ bigint: true }))) throw changed(path);
-        bytes = await handle.readFile();
-        if (!same(before, await handle.stat({ bigint: true })) || !same(before, await fs.lstat(path, { bigint: true }))) throw changed(path);
-        await this.verifyAncestors(ancestors);
-      } finally { await handle.close(); }
+      const { bytes, stat } = await this.readBytes(path, before, ancestors, true);
+
       let text: string;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
       catch { throw new FileProblem('source-encoding', 'Source is not valid UTF-8: ' + path); }
       const capture = Object.freeze({ source: Object.freeze({ sourceId: pathToFileURL(path).href, text }),
-        version: 'sha256:' + createHash('sha256').update(bytes).digest('hex') });
-      this.captured.set(path, { path, capture, stat: before, ancestors, uses: [at] });
+        version: 'sha256:' + createHash('sha256').update(bytes).digest('hex'),
+        ...(this.primary && inside(this.primary.path, path) ? { localPath: relative(this.primary.path, path).split(sep).join('/') } : {}) });
+      this.captured.set(path, { path, capture, stat, ancestors, uses: [at] });
       return capture;
     } catch (error) {
       const failure = this.report(error, 'source-unavailable', path, at);
       this.failures.set(path, failure);
       return undefined;
     }
+  }
+  private async readBytes(path: string, before: BigIntStats, ancestors: [string, BigIntStats][], initial: boolean): Promise<{ bytes: Buffer; stat: BigIntStats }> {
+    const handle = await fs.open(path, 'r');
+    let bytes: Buffer, candidate: BigIntStats;
+    try {
+      if (!same(before, await handle.stat({ bigint: true }))) throw changed(path);
+      bytes = await handle.readFile(); candidate = await handle.stat({ bigint: true });
+      if (!same(before, candidate) && (!initial || !ctimeOnly(before, candidate))) throw changed(path);
+      if (!same(candidate, await fs.lstat(path, { bigint: true }))) throw changed(path);
+      await this.verifyAncestors(ancestors);
+    } finally { await handle.close(); }
+    if (same(before, candidate)) return { bytes, stat: candidate };
+    const settled = await fs.lstat(path, { bigint: true });
+    if (!same(candidate, settled)) throw changed(path);
+    const fresh = await this.readBytes(path, settled, ancestors, false);
+    if (!bytes.equals(fresh.bytes)) throw changed(path);
+    return fresh;
   }
   async verify(): Promise<void> {
     for (const root of [...this.roots, ...this.excluded]) {
@@ -145,6 +162,9 @@ function usable(stat: BigIntStats): boolean { return stat.dev >= 0n && stat.ino 
 function sameIdentity(a: BigIntStats, b: BigIntStats): boolean { return a.dev === b.dev && a.ino === b.ino; }
 function same(a: BigIntStats, b: BigIntStats): boolean {
   return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+function ctimeOnly(a: BigIntStats, b: BigIntStats): boolean {
+  return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs !== b.ctimeNs;
 }
 function changed(path: string): FileProblem { return new FileProblem('source-changed', 'Source changed during capture: ' + path); }
 function osError(error: unknown): string {

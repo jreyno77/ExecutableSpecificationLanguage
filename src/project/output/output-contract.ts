@@ -1,7 +1,7 @@
 import type { IdentifiedSpecification, SpecDiff } from '../../model/specification-identity.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import { canonical, identifier, locatorSchema } from '../../model/identity-baseline.js';
-import type { OutputPlan } from './output.js';
+import type { OutputPlan, OutputPreviewDocument } from './output.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
 import type { RelationshipObservation } from '../../model/relationship-reconciliation.js';
@@ -100,4 +100,24 @@ export function validDiff(diff: SpecDiff, current: IdentifiedSpecification): boo
       || before && !after && (record || !current.baseline.retired.includes(change.id))) return false;
   }
   return true;
+}
+
+/** Validates provider drafts without consulting a project or interpreting document bytes. */
+export function checkPreview(result: Check<readonly OutputPreviewDocument[]>): void {
+  require(result && Array.isArray(result.problems) && Array.isArray(result.deferred), 'Malformed output preview.');
+  diagnostics(result.problems);
+  require(result.deferred.every(item => item && typeof item.reason === 'string' && item.origin && typeof item.origin.kind === 'string'
+    && typeof item.requires === 'string'), 'Malformed preview requirements.');
+  if (result.value === undefined) {
+    require(result.problems.length || result.deferred.length, 'A refused output preview must explain why.'); return;
+  }
+  require(Array.isArray(result.value) && !result.problems.length && !result.deferred.length, 'A successful preview requires documents and clean findings.');
+  const paths = new Set<string>();
+  for (const document of result.value) {
+    require(document && literal(document.path) && typeof document.mediaType === 'string'
+      && /^[A-Za-z0-9!#$&^_.+-]+[/][A-Za-z0-9!#$&^_.+-]+$/.test(document.mediaType) && document.bytes instanceof Uint8Array
+      && Object.keys(document).every(key => ['path', 'mediaType', 'bytes'].includes(key)), 'Malformed output preview document.');
+    const key = process.platform === 'win32' ? document.path.toLowerCase() : document.path;
+    require(!paths.has(key), 'Duplicate output preview path.'); paths.add(key);
+  }
 }

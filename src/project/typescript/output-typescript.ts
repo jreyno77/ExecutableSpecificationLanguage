@@ -30,6 +30,11 @@ export const typescriptOutput: OutputRegistration = {
     return result.success ? [] : result.error.issues.map(issue => ({ path: issue.path as (string | number)[], message: issue.message }));
   },
   open: (options, context) => new TypeScriptOutput(typescriptOptions.parse(options), context),
+  preview: async (current, options, context) => {
+    const declarations = new TypeScriptDeclarations(current, typescriptOptions.parse(options), context), files = declarations.render();
+    return declarations.problems.length ? { problems: declarations.problems, deferred: [] }
+      : success(files.map(file => ({ path: file.path, mediaType: 'text/typescript', bytes: Buffer.from(file.text) })));
+  },
 };
 
 const renderingOptions = (options: TypeScriptOptions) => { const { adoptExisting: _permission, ...rendering } = options; return canonical(rendering); };

@@ -1,4 +1,4 @@
-import type { OutputRegistration, OutputAdapter, OutputPlan, OutputRequest } from './output.js';
+import type { OutputRegistration, OutputAdapter, OutputPlan, OutputPreviewDocument, OutputRequest } from './output.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ArtifactAssociation } from '../../model/specification-identity.js';
@@ -20,6 +20,26 @@ export const umlOutput: OutputRegistration = {
     ...(options.views !== undefined && (!Array.isArray(options.views) || !options.views.length || new Set(options.views).size !== options.views.length
       || options.views.some(view => view !== 'structure' && view !== 'interactions')) ? [{ path: ['views'], message: 'Select structure and/or interactions once.' }] : []),
   ], open: options => new DiagramOutput(options.directory as string, options.views as ('structure' | 'interactions')[] ?? ['structure']),
+  preview: async (current, options) => {
+    const views = options.views as ('structure' | 'interactions')[] ?? ['structure'];
+    if (views.includes('interactions') && ![...current.specification.inspection.query('interaction')].length)
+      return { problems: [outputProblem('missing-interaction', '', 'No authored interaction is available.')], deferred: [] };
+    const drawings = [...views.includes('structure') ? [structure(current)] : [], ...views.includes('interactions') ? interactions(current) : []];
+    const sources = Object.fromEntries(drawings.map(drawing => [options.directory + (drawing.view === 'structure' ? '/structure.d2' : '/interactions/' + hash(Buffer.from(drawing.id!)) + '.d2'), drawing.text]));
+    const engine = new NativeDiagrams(), documents: OutputPreviewDocument[] = [];
+    try {
+      for (const [path, text] of Object.entries(sources)) {
+        const document = await engine.read(path, sources);
+        if (document.problems.length) return { problems: document.problems, deferred: [] };
+        if (document.limitations.length) return { problems: [outputProblem('unsupported-diagram-syntax', path, document.limitations.join('; '))], deferred: [] };
+        let svg: string;
+        try { svg = await engine.render(document); }
+        catch (error) { return { problems: [outputProblem('native-render-failed', path, String(error))], deferred: [] }; }
+        documents.push({ path, mediaType: 'text/vnd.d2', bytes: Buffer.from(text) }, { path: svgPath(path), mediaType: 'image/svg+xml', bytes: Buffer.from(svg) });
+      }
+      return success(documents);
+    } finally { await engine.dispose(); }
+  },
 };
 const refused = (problems: readonly Diagnostic[]): Check<OutputPlan> => ({ problems, deferred: [] });
 const conflict = (path: string, message: string) => outputProblem('output-conflict', path, message);
@@ -36,27 +56,36 @@ class DiagramOutput implements OutputAdapter {
         ? [outputProblem('output-options-changed', statePath, 'Output options require an explicit migration.')] : [] };
     } catch { return { problems: [outputProblem('invalid-output-state', statePath, 'Malformed or unsupported diagram generation state.')] }; }
   }
-  async read(id: string, snapshot: ProjectSnapshot) {
+  async readAll(ids: readonly string[], snapshot: ProjectSnapshot) {
+    const subjects = [...ids];
+    if (!subjects.length) return [];
     const engine = new NativeDiagrams();
     try {
-      const documents = await DiagramDocuments.read(snapshot, engine), result = documents.read(id), stored = this.stored(snapshot);
-      const artifacts = [...result.artifacts];
-      // State can locate captured unreadable bytes; it cannot supply a native range or search fact.
-      for (const prior of stored.state?.documents.filter(document => document.subjects.some(subject => subject.id === id)) ?? []) {
-        if (!artifacts.some(artifact => artifact.file.path === prior.path)) {
-          const file = snapshot.files.find(file => file.path === prior.path);
-          if (file && documents.problems.some(problem => problem.at.kind === 'dependency' && problem.at.path.includes(prior.path))) artifacts.push({ at: diagramLocator(file.path, 'd2-unreadable', { subject: id }), file });
-        }
-      }
-      const paths = new Set(artifacts.filter(artifact => /\.d2$/i.test(artifact.file.path)).map(artifact => artifact.file.path)), problems = [...result.problems, ...stored.problems];
-      for (const path of paths) {
-        const file = snapshot.files.find(file => file.path === svgPath(path));
-        if (file && !artifacts.some(artifact => artifact.file.path === file.path)) artifacts.push({ at: diagramLocator(file.path, 'svg', { subject: id }), file });
-        const metadata = file && renderedSource(file.bytes), source = snapshot.files.find(file => file.path === path)!;
-        if (!metadata || metadata.source !== path || metadata.digest !== hash(source.bytes)) problems.push(outputProblem('stale-diagram-render', svgPath(path), 'The SVG does not describe the current source bytes.'));
-      }
-      return { ...result, artifacts, problems };
+      const documents = await DiagramDocuments.read(snapshot, engine), stored = this.stored(snapshot);
+      return subjects.map(id => structuredClone(this.readSubject(id, snapshot, documents, stored)));
     } finally { await engine.dispose(); }
+  }
+  async read(id: string, snapshot: ProjectSnapshot) {
+    return (await this.readAll([id], snapshot))[0]!;
+  }
+  private readSubject(id: string, snapshot: ProjectSnapshot, documents: DiagramDocuments, stored: { state?: DiagramState; problems: Diagnostic[] }) {
+    const result = documents.read(id);
+    const artifacts = [...result.artifacts];
+    // State can locate captured unreadable bytes; it cannot supply a native range or search fact.
+    for (const prior of stored.state?.documents.filter(document => document.subjects.some(subject => subject.id === id)) ?? []) {
+      if (!artifacts.some(artifact => artifact.file.path === prior.path)) {
+        const file = snapshot.files.find(file => file.path === prior.path);
+        if (file && documents.problems.some(problem => problem.at.kind === 'dependency' && problem.at.path.includes(prior.path))) artifacts.push({ at: diagramLocator(file.path, 'd2-unreadable', { subject: id }), file });
+      }
+    }
+    const paths = new Set(artifacts.filter(artifact => /\.d2$/i.test(artifact.file.path)).map(artifact => artifact.file.path)), problems = [...result.problems, ...stored.problems];
+    for (const path of paths) {
+      const file = snapshot.files.find(file => file.path === svgPath(path));
+      if (file && !artifacts.some(artifact => artifact.file.path === file.path)) artifacts.push({ at: diagramLocator(file.path, 'svg', { subject: id }), file });
+      const metadata = file && renderedSource(file.bytes), source = snapshot.files.find(file => file.path === path)!;
+      if (!metadata || metadata.source !== path || metadata.digest !== hash(source.bytes)) problems.push(outputProblem('stale-diagram-render', svgPath(path), 'The SVG does not describe the current source bytes.'));
+    }
+    return { ...result, artifacts, problems };
   }
   async search(id: string, snapshot: ProjectSnapshot) {
     const engine = new NativeDiagrams();

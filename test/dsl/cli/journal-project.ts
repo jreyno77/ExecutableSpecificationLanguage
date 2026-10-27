@@ -8,6 +8,27 @@ export class JournalProject {
   private constructor(private readonly driver: JournalDriver) {}
   static async create(files: Record<string, string> = {}): Promise<JournalProject> { return new JournalProject(await JournalDriver.create(files)); }
   static async fromLegacyFixture(): Promise<JournalProject> { return new JournalProject(await JournalDriver.fromLegacy()); }
+  static async completedConfirmation(options?: { unapplied?: boolean; nonConfirmation?: boolean; changedIdentity?: boolean; publicWrite?: boolean }): Promise<JournalProject> {
+    return new JournalProject(await JournalDriver.completedConfirmation(options));
+  }
+  recoverCancelled(): Promise<void> { return this.driver.recoverCancelled(); }
+  changeDuringCleanup(path: string, text: string): void { this.driver.changeDuringCleanup(path, text); }
+  cancelAfterPendingRemoval(): void { this.driver.cancelAfterPendingRemoval(); }
+  changeAfterPendingRemoval(path: string, text: string): void { this.driver.changeAfterPendingRemoval(path, text); }
+  expectStoppedCleanupWithAppliedRemoval(): void {
+    expect(this.driver.report).toMatchObject({ status: 'invalid', exitCode: 1, stages: [{ name: 'recovery', status: 'stopped',
+      receipt: { status: 'stopped', outcomes: [{ change: { kind: 'remove', path: '.expec/build-pending.json' }, state: 'applied', after: [{ state: 'absent' }] }] } }] });
+  }
+  async expectFilesExceptPendingUnchanged(): Promise<void> {
+    const before = { ...this.driver.remembered }; delete before['.expec/build-pending.json'];
+    expect(await this.driver.files()).toEqual(before);
+  }
+  async expectIdentityUnchanged(): Promise<void> { expect((await this.driver.read('.expec/identity.json')).toString('base64')).toBe(this.driver.remembered['.expec/identity.json']); }
+  expectRecovered(): void { expect(this.driver.report).toMatchObject({ status: 'recovered', exitCode: 0, problems: [] }); }
+  async expectOnlyPendingRemoved(): Promise<void> {
+    await this.expectFilesExceptPendingUnchanged();
+    expect(this.driver.report.stages).toMatchObject([{ name: 'recovery', status: 'applied', receipt: { outcomes: [{ change: { kind: 'remove', path: '.expec/build-pending.json' }, state: 'applied' }] } }]);
+  }
   plan(changes: FileChange[]): OutputPlan { return this.driver.plan(changes); }
   apply(plan: OutputPlan, completion?: FileChange): Promise<void> { return this.driver.apply([plan], completion); }
   recover(): Promise<void> { return this.driver.recover(); }

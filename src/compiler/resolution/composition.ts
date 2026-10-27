@@ -1,3 +1,4 @@
+import { retainNames } from '../name-evidence.js';
 import { IndexedModel } from '../../model/model-index.js';
 import { propertyNames, type Model, type ModelNode, type ModuleModel, type NodeId, type ReferenceResolution } from '../../model/model.js';
 import type { Modules } from './modules.js';
@@ -14,6 +15,8 @@ export class Composition {
   readonly bindings = new Map<NodeId, ReferenceResolution>();
   readonly problems: ResolutionProblem[] = [];
   private readonly extensions = new Set<NodeId>();
+  private names: object = {};
+  get sourceNames(): object { return this.names; }
   private readonly originals: readonly ModelNode[];
   private readonly sources = new Map<NodeId, SourceIndex>();
   model!: Model;
@@ -42,7 +45,8 @@ export class Composition {
     const scopes = this.scopes();
     for (const extension of extensions) {
       const outcome = this.select(extension.target, true, scopes);
-      if (outcome.status !== 'bound') { this.retain(outcome); this.omit(extension.id); }
+      this.retain(outcome);
+      if (outcome.status !== 'bound') { this.omit(extension.id); }
       else {
         this.omitted.add(extension.id);
         this.omit(extension.target);
@@ -61,6 +65,7 @@ export class Composition {
       .compositionTarget(reference, extension);
   }
   private retain(outcome: ReferenceResolution): void {
+    this.names = retainNames(this.names, outcome);
     if (outcome.status === 'invalid') this.problems.push(...outcome.problems);
   }
   private omit(id: NodeId): void {

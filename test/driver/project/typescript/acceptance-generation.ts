@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { runInNewContext } from 'node:vm';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { vi } from 'vitest';
@@ -214,6 +215,43 @@ export const test = base.extend('shopping', () => new Shopping(new BasketDriver(
     const file = (locator.value as { file: string }).file, source = ts.createSourceFile(file, await this.text(file), ts.ScriptTarget.Latest, true);
     const node = source.statements.filter(ts.isClassDeclaration).flatMap(item => item.members).find(item => ts.isMethodDeclaration(item) && item.name.getText() === name);
     if (!node || !ts.isMethodDeclaration(node)) throw Error('Mapped native method is absent.'); return node;
+  }
+  async fixtureProperty(name: string): Promise<{ path: string; source: ts.SourceFile; property: ts.PropertyDeclaration }> {
+    const artifact = this.current.baseline.artifacts.find(item => item.specId === this.subject(name) && item.locator.format === 'typescript-symbol-1'
+      && (item.locator.value as { file: string }).file.includes('/dsl/'));
+    if (!artifact) throw Error('No actual DSL fixture association: ' + name);
+    const path = (artifact.locator.value as { file: string }).file, source = ts.createSourceFile(path, await this.text(path), ts.ScriptTarget.Latest, true);
+    const property = source.statements.filter(ts.isClassDeclaration).flatMap(node => node.members)
+      .find(node => ts.isPropertyDeclaration(node) && node.name.getText(source) === name);
+    if (!property || !ts.isPropertyDeclaration(property)) throw Error('Actual DSL fixture is absent: ' + name);
+    return { path, source, property };
+  }
+  async fixtureValue(name: string): Promise<unknown> {
+    const { property } = await this.fixtureProperty(name);
+    if (!property.initializer) throw Error('Actual fixture has no initializer: ' + name);
+    // Observe the emitted data expression, independently of its authored .expec source.
+    return JSON.parse(JSON.stringify(runInNewContext('(' + property.initializer.getText() + ')', Object.create(null), { timeout: 1000 })));
+  }
+  async replaceFixtureInitializer(name: string, text: string): Promise<void> {
+    const { path, source, property } = await this.fixtureProperty(name);
+    if (!property.initializer) throw Error('Arrange an initialized fixture.');
+    await this.file(path, source.text.slice(0, property.initializer.getStart(source)) + text + source.text.slice(property.initializer.end));
+  }
+  async fixtureComment(name: string, comment: string): Promise<void> {
+    const { path, source, property } = await this.fixtureProperty(name), start = property.getStart(source);
+    await this.file(path, source.text.slice(0, start) + comment + '\n  ' + source.text.slice(start));
+  }
+  async fixtureCommentText(name: string): Promise<string> {
+    const { source, property } = await this.fixtureProperty(name);
+    return source.text.slice(property.pos, property.getStart(source));
+  }
+  async conflictAtFixtureInitializer(name: string): Promise<boolean> {
+    const { path, source, property } = await this.fixtureProperty(name), initializer = property.initializer;
+    if (!initializer) throw Error('Arrange an initialized conflicting fixture.');
+    return this.written.problems.some(problem => problem.code === 'handwritten-fixture-conflict' && problem.at.kind === 'dependency'
+      && problem.at.path[1] === path && problem.at.path[2] === initializer.getStart(source)
+      && problem.at.path[3] === initializer.end - initializer.getStart(source)
+      && source.text.slice(Number(problem.at.path[2]), Number(problem.at.path[2]) + Number(problem.at.path[3])) === initializer.getText(source));
   }
   async rememberBody(name: string): Promise<void> { this.bodyBefore = (await this.driverMethod(name)).body!.getText(); }
   async sameBody(name: string): Promise<boolean> { return (await this.driverMethod(name)).body!.getText() === this.bodyBefore; }

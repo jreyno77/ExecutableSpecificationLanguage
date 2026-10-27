@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { resolve } from 'node:path';
+import { validateReadOnlyFacts } from '../project/connection/project-readonly.js';
 import type { Check, Diagnostic } from '../compiler/checking.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
-import { identities, identityBytes, identityPath, pendingPath } from './cli-identity.js';
+import { identities, identityBytes, identityPath, pendingPath, readIdentity, transitionPath } from './cli-identity.js';
 import type { CommandResult } from './cli-project.js';
 import type { BuildContext } from './cli-context.js';
 import { nativeInputs } from '../project/connection/native-inputs.js';
@@ -13,7 +15,10 @@ import { hash, literal } from '../project/connection/project-files.js';
 import type { ProjectContext, ProjectSnapshot } from '../project/connection/project-connection.js';
 import { FileProjectWriter, type FileChange, type WriteResult } from '../project/connection/project-writer.js';
 import type { IdentityBaseline } from '../model/specification-identity.js';
+import { acceptanceOptions } from '../project/typescript/acceptance-bindings.js';
+import { acceptanceState, acceptanceStatePath, confirmationOnly } from '../project/typescript/acceptance-state.js';
 
+const pathKey = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
 const bytes = z.string().refine(value => Buffer.from(value, 'base64').toString('base64') === value), path = z.string().refine(literal);
 const change = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('write'), path, bytes }), z.strictObject({ kind: z.literal('remove'), path }),
   z.strictObject({ kind: z.literal('move'), from: path, to: path, bytes })]);
@@ -26,6 +31,8 @@ const legacyJournalSchema = z.strictObject({ format: z.literal(1), stage: z.enum
   plans: z.array(z.strictObject({ outputId: z.string(), changes: z.array(change), artifacts: z.array(z.unknown()), obligations: z.array(z.unknown()) })), ledger: bytes });
 const journalSchema = z.discriminatedUnion('format', [legacyJournalSchema, legacyJournalSchema.extend({ format: z.literal(2), graph: compactGraphSchema })]);
 type Journal = z.infer<typeof journalSchema>;
+const retainedFacts = z.strictObject({ root: graphSchema.shape.root, excluded: z.array(path), excludeNames: z.array(z.string()),
+  readOnly: z.array(z.tuple([path, z.string().regex(/^[a-f0-9]{64}$/)])), native: graphSchema.shape.nativeInputs });
 const preimagePaths = (changes: readonly (FileChange | z.infer<typeof change>)[]) => new Set([identityPath,
   ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path])]);
 const graphOf = (snapshot: ProjectSnapshot, required: ReadonlySet<string>): z.infer<typeof compactGraphSchema> => ({ root: { ...snapshot.root },
@@ -114,7 +121,9 @@ export class BuildJournal {
     try {
       const parsed = journalSchema.safeParse(readJson(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes), (_code, message) => problems.push(this.problem(message))));
       if (!parsed.success || problems.length) throw Error('Malformed pending build record.');
-      const journal = parsed.data, original = originalOf(journal, snapshot);
+      const journal = parsed.data, completed = await this.completedConfirmation(journal, snapshot);
+      if (completed) return { value: completed, problems: [], deferred: [] };
+      const original = originalOf(journal, snapshot);
       snapshot = await this.context.during(original).readSnapshot();
       const read = identities().read({ sourceId: pendingPath, text: JSON.stringify(journal.candidate) });
       if (!read.value || journal.manifest !== this.checked.manifest || journal.facts !== facts(snapshot) || !snapshot.complete) throw Error('Pending inputs, native evidence or baseline changed.');
@@ -141,6 +150,55 @@ export class BuildJournal {
       if (!confirmed && prefix < 0) throw Error('Project bytes are not an unchanged pending prefix; retain the record and resolve the conflicting edit explicitly.');
       return { value: await this.finish(journal, original, snapshot, confirmed ? all.length : prefix, confirmed, file.version), problems: [], deferred: [] };
     } catch (error) { return { problems: [...problems, this.problem(String(error))], deferred: [] }; }
+  }
+  private async completedConfirmation(journal: Journal, captured: ProjectSnapshot): Promise<CommandResult | undefined> {
+    const plan = journal.plans[0], change = plan?.changes[0];
+    if (journal.format !== 2 || journal.stage !== 'tests' || journal.plans.length !== 1 || plan?.outputId !== 'acceptance'
+      || plan.obligations.length || plan.changes.length !== 1 || change?.kind !== 'write' || change.path !== acceptanceStatePath) return;
+    const selected = this.checked.configuration!.outputs.find(output => output.id === 'acceptance');
+    if (!selected) return;
+    const settings = acceptanceOptions.parse(selected.options), graph = journal.graph, required = preimagePaths([change]);
+    if (journal.manifest !== this.checked.manifest || canonical(graph.root) !== canonical(captured.root)
+      || canonical(graph.excluded) !== canonical(captured.excluded) || canonical(graph.excludeNames) !== canonical(captured.excludeNames)
+      || new Set(graph.files.map(file => file.path)).size !== graph.files.length
+      || graph.files.some(file => [pendingPath, transitionPath, '.expec/write.lock'].some(path => pathKey(file.path) === path || pathKey(file.path).startsWith(path + '/'))
+        || graph.excluded.some(path => pathKey(file.path) === pathKey(path) || pathKey(file.path).startsWith(pathKey(path) + '/'))
+        || file.path.split('/').some(part => graph.excludeNames.some(name => pathKey(name) === pathKey(part)))
+        || (file.bytes !== undefined) !== required.has(file.path) || file.bytes !== undefined && hash(Buffer.from(file.bytes, 'base64')) !== file.version)) return;
+    const recorded = retainedFacts.safeParse(JSON.parse(journal.facts));
+    if (!recorded.success || canonical({ ...recorded.data, root: graph.root, excluded: [...graph.excluded].sort(),
+      excludeNames: [...graph.excludeNames].sort(), native: [...graph.nativeInputs].sort((a, b) => a.uri.localeCompare(b.uri)) }) !== journal.facts
+      || !validateReadOnlyFacts(graph.files, recorded.data.readOnly.map(([path]) => ({ path })))) return;
+    const evidence = nativeInputs({ ...captured, nativeInputs: graph.nativeInputs });
+    const retained = new Map([...graph.files.map(file => [file.path, file.version] as const), ...recorded.data.readOnly]
+      .map(([path, version]) => [pathKey(resolve(graph.root.path, path)), version]));
+    if (!evidence?.has(pathKey(resolve(journal.manifest)))
+      || [...evidence].some(([path, version]) => retained.has(path) && retained.get(path) !== version)) return;
+    const priorIdentity = graph.files.find(file => file.path === identityPath), priorState = graph.files.find(file => file.path === acceptanceStatePath);
+    if (!priorIdentity?.bytes || !priorState?.bytes) return;
+    const candidate = identities().read({ sourceId: pendingPath, text: JSON.stringify(journal.candidate) }).value;
+    if (!candidate || encode(identityBytes(this.checked, captured.root, candidate)) !== journal.ledger) return;
+    const stateSnapshot = (body: Uint8Array) => ({ ...captured, files: captured.files.map(file => file.path === acceptanceStatePath
+      ? { ...file, bytes: body, version: hash(body) } : file) });
+    const before = acceptanceState(stateSnapshot(Buffer.from(priorState.bytes, 'base64')), settings), plannedBytes = Buffer.from(change.bytes, 'base64');
+    const after = acceptanceState(stateSnapshot(plannedBytes), settings);
+    const links = (artifacts: readonly unknown[]) => canonical(artifacts.map(item => canonical(item)).sort());
+    if (!before.value || before.problems.length || !after.value || after.problems.length || !confirmationOnly(before.value, after.value, graph.files)
+      || links(plan.artifacts) !== links(after.value.files.flatMap(file => file.artifacts))
+      || links(plan.artifacts) !== links(candidate.artifacts.filter(item => item.locator.outputId === 'acceptance'))) return;
+    const fresh = await this.context.readSnapshot(), identity = readIdentity(fresh, this.checked).value?.baseline;
+    const normalized = (baseline: IdentityBaseline) => canonical({ ...baseline, artifacts: baseline.artifacts.map(item => canonical(item)).sort() });
+    if (!fresh.complete || fresh.problems.length || canonical(fresh.root) !== canonical(graph.root)
+      || canonical(fresh.excluded) !== canonical(graph.excluded) || canonical(fresh.excludeNames) !== canonical(graph.excludeNames)
+      || fresh.files.some(file => pathKey(file.path) === transitionPath)
+      || fresh.files.find(file => file.path === pendingPath)?.version !== captured.files.find(file => file.path === pendingPath)?.version
+      || fresh.files.find(file => file.path === identityPath)?.version !== priorIdentity.version
+      || fresh.files.find(file => file.path === acceptanceStatePath)?.version !== hash(plannedBytes)
+      || !identity || normalized(identity) !== normalized(candidate)) return;
+    checkPlan({ value: { ...plan, basedOn: fresh, changes: [{ ...change, bytes: plannedBytes }] } as OutputPlan, problems: [], deferred: [] }, fresh, 'acceptance');
+    const receipt = await new FileProjectWriter(this.context).apply({ basedOn: fresh, changes: [{ kind: 'remove', path: pendingPath }] }, this.signal);
+    return { status: receipt.status === 'stopped' ? 'invalid' : 'recovered', exitCode: receipt.status === 'stopped' ? 1 : 0,
+      problems: receipt.problems, stages: [{ name: 'recovery', status: receipt.status, receipt }] };
   }
   private async finish(journal: Journal, original: ProjectSnapshot, snapshot: ProjectSnapshot, prefix: number, confirmed: boolean, pendingVersion: string): Promise<CommandResult> {
     const stageContext = this.context.during(original), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],

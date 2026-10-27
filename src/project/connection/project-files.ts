@@ -66,7 +66,13 @@ export class ProjectFiles {
       this.parents.set(relative, info);
     }
   }
-  async read(path: string): Promise<ObservedFile> {
+  read(path: string): Promise<ObservedFile> { return this.readFile(path, false); }
+  /** Read-only capture confirms one settled status transition without weakening writer reads. */
+  async capture(path: string, previous?: ObservedFile): Promise<ObservedFile> {
+    const current = await this.readFile(path, true);
+    return previous ? this.checked(path, previous, current) : current;
+  }
+  private async readFile(path: string, confirm: boolean): Promise<ObservedFile> {
     await this.ancestors(path);
     let info: BigIntStats;
     try { info = await fs.lstat(this.path(path), { bigint: true }); } catch (error) {
@@ -76,20 +82,42 @@ export class ProjectFiles {
     if (!info.isFile() || info.isSymbolicLink()) fail(this.root, 'unsupported-change', path, 'Only ordinary files can be changed.');
     await this.spelling(path);
     const handle = await fs.open(this.path(path), 'r');
+    let bytes: Buffer, candidate: BigIntStats;
     try {
       if (!stable(info, await handle.stat({ bigint: true }))) fail(this.root, 'stale-project', path, 'File identity changed while opening it.');
-      const bytes = await handle.readFile();
-      if (!stable(info, await handle.stat({ bigint: true })) || !stable(info, await fs.lstat(this.path(path), { bigint: true }))) {
+      bytes = await handle.readFile(); candidate = await handle.stat({ bigint: true });
+      if (!stable(info, candidate) && (!confirm || !statusOnly(info, candidate))
+        || !stable(candidate, await fs.lstat(this.path(path), { bigint: true }))) {
         fail(this.root, 'stale-project', path, 'File changed while reading it.');
       }
-      return { value: { path, state: 'file', bytes, version: hash(bytes) }, info };
     } finally { await handle.close(); }
+    if (confirm && !stable(info, candidate)) {
+      await this.ancestors(path); await this.spelling(path);
+      if (!stable(candidate, await fs.lstat(this.path(path), { bigint: true }))) {
+        fail(this.root, 'stale-project', path, 'File changed before its confirmation read.');
+      }
+      const fresh = await fs.open(this.path(path), 'r');
+      try {
+        if (!stable(candidate, await fresh.stat({ bigint: true }))) fail(this.root, 'stale-project', path, 'File changed before its confirmation read.');
+        const confirmed = await fresh.readFile();
+        if (!stable(candidate, await fresh.stat({ bigint: true })) || !stable(candidate, await fs.lstat(this.path(path), { bigint: true }))
+          || !bytes.equals(confirmed)) fail(this.root, 'stale-project', path, 'File changed during its confirmation read.');
+        bytes = confirmed;
+      } finally { await fresh.close(); }
+    }
+    if (confirm) {
+      await this.ancestors(path); await this.spelling(path);
+      if (!stable(candidate, await fs.lstat(this.path(path), { bigint: true }))) fail(this.root, 'stale-project', path, 'File changed before publishing its capture.');
+    }
+    return { value: { path, state: 'file', bytes, version: hash(bytes) }, info: confirm ? candidate : info };
   }
   async observe(path: string): Promise<FileObservation> {
     try { return (await this.read(path)).value; } catch { return { path, state: 'unknown' }; }
   }
   async verify(path: string, previous: ObservedFile): Promise<ObservedFile> {
-    const current = await this.read(path);
+    return this.checked(path, previous, await this.read(path));
+  }
+  private checked(path: string, previous: ObservedFile, current: ObservedFile): ObservedFile {
     if (!sameObservation(previous.value, current.value) || previous.info && (!current.info || !sameIdentity(previous.info, current.info))) {
       fail(this.root, 'stale-project', path, 'An affected file changed after it was checked.');
     }
@@ -180,4 +208,7 @@ export function sameObservation(a: FileObservation, b: FileObservation): boolean
 }
 function stable(a: BigIntStats, b: BigIntStats): boolean {
   return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+function statusOnly(a: BigIntStats, b: BigIntStats): boolean {
+  return sameIdentity(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs !== b.ctimeNs;
 }

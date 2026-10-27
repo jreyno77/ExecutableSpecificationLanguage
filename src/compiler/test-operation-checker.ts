@@ -4,6 +4,7 @@ import type { FixtureChecking } from './fixture-checker.js';
 import type { Item } from '../model/inspection-item.js';
 import { QueryError, type NodeId, type Origin } from '../model/model.js';
 import type { TypeCatalog } from './type-catalog.js';
+import { retainNames, selectName } from './name-evidence.js';
 import type { TypeId } from './types.js';
 
 export interface TestOperationChecking { check(operation: NodeId): Check }
@@ -28,14 +29,23 @@ export class TestOperationChecker implements TestOperationChecking {
     const scope: ValueScope = reference => {
       const binding = reference.resolution;
       let value: Check<TypeId> | undefined;
+      let declaration: NodeId | undefined;
       if (binding.status === 'deferred' && binding.requirement.reason === 'ordered-scope' && reference.segments.length === 1) {
-        value = locals.get(reference.segments[0]!)?.result;
+        const local = locals.get(reference.segments[0]!);
+        value = local?.result;
+        declaration = local?.declaration.id;
       } else if (binding.status === 'bound') {
         const parameter = signature.parameters.find(parameter => parameter.declaration === binding.target);
-        if (parameter) value = fromFact(parameter.type);
+        if (parameter) { value = fromFact(parameter.type); declaration = parameter.declaration; }
         else if (inspection.read(binding.target).kind === 'fixture') value = this.fixtures.check(binding.target);
       }
-      return value && { ...value, problems: value.problems.map(cause => ({ ...cause, related: [...new Set([...cause.related, reference.origin])] })) };
+      if (!value) return undefined;
+      const result = retainNames({ ...value, problems: value.problems.map(cause => ({ ...cause,
+        related: [...new Set([...cause.related, reference.origin])],
+      })) }, value);
+      const origin = reference.segmentOrigins.at(-1), spelling = reference.segments.at(-1);
+      return value.value && declaration && origin && spelling !== undefined
+        ? selectName(result, origin, spelling, declaration) : result;
     };
     let returned: Item<'return'> | undefined;
     for (const statement of node.body.content.members) {

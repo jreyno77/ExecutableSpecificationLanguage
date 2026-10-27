@@ -3,6 +3,19 @@ import { TypeScriptExamples } from '../../../dsl/project/typescript/typescript-o
 
 afterEach(() => TypeScriptExamples.dispose());
 
+async function layoutProject() {
+  const project = await TypeScriptExamples.connect();
+  await project.file('tsconfig.layout.json', JSON.stringify({
+    compilerOptions: {
+      target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
+      moduleDetection: 'legacy', jsx: 'preserve', strict: true, types: [], noEmit: true,
+      lib: ['ES2022'],
+    },
+    include: ['**/*.ts'],
+  }));
+  return project;
+}
+
 describe('source folders in the connected TypeScript project', () => {
   it('keeps source folders and imports across them', async () => {
     const project = await TypeScriptExamples.connect();
@@ -59,12 +72,12 @@ describe('source folders in the connected TypeScript project', () => {
   });
 
   it('relocates an implemented class and its consumer without duplicating it', async () => {
-    const project = await TypeScriptExamples.connect();
+    const project = await layoutProject();
     await project.workspace({
       'main.expec': 'include "./specs/core/workspace.expec"',
       'specs/core/workspace.expec': 'class WorkspaceCore { public title\ncapability title() returns Text }',
     });
-    await project.create({ sourceRoot: 'specs', directory: 'src' });
+    await project.create({ sourceRoot: 'specs', directory: 'src', configFile: 'tsconfig.layout.json' });
     project.expectGeneratedFile('src/core/WorkspaceCore.ts');
     const identity = project.declarationIdentity('WorkspaceCore');
     await project.file('src/core/WorkspaceCore.ts', 'export class WorkspaceCore { title(): string { return "My project"; } }');
@@ -73,7 +86,7 @@ describe('source folders in the connected TypeScript project', () => {
       'main.expec': 'include "./specs/editor/workspace.expec"',
       'specs/editor/workspace.expec': 'class WorkspaceCore { public title\ncapability title() returns Text }',
     }, ['WorkspaceCore']);
-    project.open({ sourceRoot: 'specs', directory: 'src' });
+    project.open({ sourceRoot: 'specs', directory: 'src', configFile: 'tsconfig.layout.json' });
     await project.update();
     project.expectGeneratedFiles(['src/editor/WorkspaceCore.ts', 'src/consumer.ts']);
     project.expectNoGeneratedFile('src/core/WorkspaceCore.ts');
@@ -203,21 +216,21 @@ describe('source folders in the connected TypeScript project', () => {
   });
 
   it('adds a consumer using the final name of a renamed adopted class', async () => {
-    const project = await TypeScriptExamples.connect();
+    const project = await layoutProject();
     await project.workspace({
       'main.expec': 'include "./specs/core/workspace.expec"',
       'specs/core/workspace.expec': 'class WorkspaceCore {}',
     });
     await project.file('lib/handwritten.ts', 'export class NativeWorkspace {}');
     project.mapClass('WorkspaceCore', 'lib/handwritten.ts', 'NativeWorkspace');
-    await project.create({ sourceRoot: 'specs', directory: 'src', adoptExisting: true });
+    await project.create({ sourceRoot: 'specs', directory: 'src', configFile: 'tsconfig.layout.json', adoptExisting: true });
     project.expectWriteStatus('applied');
     await project.changeWorkspace({
       'main.expec': 'include "./specs/ui/tabs.expec"',
       'specs/core/workspace.expec': 'class EditorCore {}',
       'specs/ui/tabs.expec': 'use EditorCore from "../core/workspace.expec"\ntype OutputTabs { core: EditorCore }',
     }, [['WorkspaceCore', 'EditorCore']]);
-    project.open({ sourceRoot: 'specs', directory: 'src', adoptExisting: true });
+    project.open({ sourceRoot: 'specs', directory: 'src', configFile: 'tsconfig.layout.json', adoptExisting: true });
     await project.update();
     project.expectNativeImport('OutputTabs', 'EditorCore', '../../lib/handwritten.js');
     project.expectNoNativeDeclaration('NativeWorkspace');
