@@ -10,6 +10,7 @@ import { validateReadOnly } from '../connection/project-readonly.js';
 
 const root = '/__expec_project__', libraries = '/__expec_typescript__';
 const sourcePattern = /\.(?:[cm]?ts|tsx)$/i;
+const ownedNativeSnapshot: unique symbol = Symbol('owned-native-snapshot');
 /** Optional private acquisition host; pure project queries supply no effectful host. */
 export interface NativeInputs {
   read(path: string): string | undefined;
@@ -53,9 +54,9 @@ export class TypeScriptCapture {
   readonly resolveModule: (name: string, from: string) => ts.SourceFile | undefined;
   private readonly nativeFiles = new Set<string>();
   private readonly directoryEntries = new Map<string, { files: string[]; directories: string[] }>();
-  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs) {
+  constructor(snapshot: ProjectSnapshot, readonly outputId: string, readonly configFile?: string, libraryText = new Map<string, string>(), inputs?: NativeInputs, ownership?: typeof ownedNativeSnapshot) {
     validateSnapshot(snapshot);
-    this.snapshot = structuredClone(snapshot); this.problems = [...this.snapshot.problems];
+    this.snapshot = ownership === ownedNativeSnapshot ? snapshot : structuredClone(snapshot); this.problems = [...this.snapshot.problems];
     for (const file of [...this.snapshot.files, ...this.snapshot.readOnlyFiles ?? []]) {
       const path = this.absolute(file.path);
       try { this.texts.set(path, new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(file.bytes)); }
@@ -221,6 +222,14 @@ export class TypeScriptCapture {
     const location = (item: ts.Diagnostic) => diagnostic('', '', item.file ? this.projectPath(item.file.fileName) ?? '<standard-library>' : this.configFile ?? '<default-profile>', item.start, item.length).at;
     return { code: 'typescript-' + error.code, message: ts.flattenDiagnosticMessageText(error.messageText, '\n'), at: location(error), related: error.relatedInformation?.map(location) ?? [] };
   }
+}
+
+/** Borrows a private owned acquisition synchronously; no capture or service escapes. */
+export function nativeInputProblemsFromOwnedSnapshot(snapshot: ProjectSnapshot, configFile: string | undefined,
+  libraryText: Map<string, string>, inputs: NativeInputs): readonly Diagnostic[] {
+  const capture = new TypeScriptCapture(snapshot, 'native-inputs', configFile, libraryText, inputs, ownedNativeSnapshot);
+  try { return capture.problems.filter(problem => !capture.editableImportProblems.has(problem)); }
+  finally { capture.service.dispose(); }
 }
 
 function hasModuleDeclaration(node: ts.Node): boolean {
