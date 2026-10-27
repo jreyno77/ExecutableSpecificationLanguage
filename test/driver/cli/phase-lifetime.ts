@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TestRunner } from 'vitest';
 import { requireCompiledCheckout } from '../compiled-checkout.js';
 
 export async function generationCaptureLifetime(source: string): Promise<{
@@ -10,8 +11,10 @@ export async function generationCaptureLifetime(source: string): Promise<{
   requireCompiledCheckout();
   const checkout = fileURLToPath(new URL('../../../', import.meta.url));
   const fixture = fileURLToPath(new URL('../../resources/cli/phase-lifetime.mjs', import.meta.url));
-  const { stdout } = await promisify(execFile)(process.execPath, ['--expose-gc', fixture, checkout, source], {
-    cwd: checkout, windowsHide: true, signal: AbortSignal.timeout(20_000), maxBuffer: 1024 * 1024,
+  const owner = TestRunner.getCurrentTest()?.context.signal, deadline = AbortSignal.timeout(20_000);
+  const execution = promisify(execFile)(process.execPath, ['--expose-gc', fixture, checkout, source], {
+    cwd: checkout, windowsHide: true, signal: owner ? AbortSignal.any([owner, deadline]) : deadline, maxBuffer: 1024 * 1024,
   });
-  return JSON.parse(stdout);
+  const closed = new Promise<void>(resolve => execution.child.once('close', () => resolve()));
+  try { return JSON.parse((await execution).stdout); } finally { await closed; }
 }
