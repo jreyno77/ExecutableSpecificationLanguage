@@ -1,3 +1,5 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import type { OutputAdapter, OutputPlan, OutputRegistration, OutputRequest } from './output.js';
@@ -84,9 +86,9 @@ class MarkdownOutput implements OutputAdapter {
   }
   async plan(request: OutputRequest, snapshot: ProjectSnapshot): Promise<Check<OutputPlan>> {
     if (!snapshot.complete || snapshot.problems.length) return refused([...snapshot.problems, outputProblem('incomplete-project', '', 'A complete project snapshot is required.')]);
-    if (new Set(snapshot.files.map(file => key(file.path))).size !== snapshot.files.length || snapshot.files.some(file => !literal(file.path)
+    if (!validPathPolicy(snapshot) || new Set(snapshot.files.map(file => key(file.path))).size !== snapshot.files.length || snapshot.files.some(file => !literal(file.path)
       || !(file.bytes instanceof Uint8Array) || hash(file.bytes) !== file.version)) return refused([outputProblem('invalid-project-snapshot', '', 'Snapshot paths and byte versions must be valid and unique.')]);
-    if (statePath.split('/').some(part => snapshot.excludeNames.includes(part)) || snapshot.files.some(file => key(statePath).startsWith(key(file.path) + '/') || key(file.path).startsWith(key(statePath) + '/'))) return refused([conflict(statePath, 'The ownership-state destination is excluded or occupied by a file.')]);
+    if (protectsExcludedPath(snapshot, statePath) || statePath.split('/').some(part => snapshot.excludeNames.includes(part)) || snapshot.files.some(file => key(statePath).startsWith(key(file.path) + '/') || key(file.path).startsWith(key(statePath) + '/'))) return refused([conflict(statePath, 'The ownership-state destination is excluded or occupied by a file.')]);
     const stored = this.state(snapshot);
     if (stored.problems.length) return refused(stored.problems);
     const previous = stored.value, documents = this.documents(snapshot), problems: Diagnostic[] = [];
@@ -138,7 +140,7 @@ class MarkdownOutput implements OutputAdapter {
         const root = current.baseline.elements.find(record => record.id === page.id)!, name = root.address.name;
         if (!literal(page.path) || name !== null && (!literal(name) || name.includes('/'))) problems.push(outputProblem('unsupported-artifact-name', page.path, 'The authored name cannot be a literal native filename.'));
         if (pages.some(other => other.id !== page.id && key(other.path) === key(page.path))) problems.push(conflict(page.path, 'Declarations map to the same native path.'));
-        if (snapshot.excludeNames.includes('.expec') || page.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(page.path, 'The snapshot excludes an output destination.'));
+        if (protectsExcludedPath(snapshot, page.path) || snapshot.excludeNames.includes('.expec') || page.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(page.path, 'The snapshot excludes an output destination.'));
         if (snapshot.files.some(file => key(page.path).startsWith(key(file.path) + '/') || key(file.path).startsWith(key(page.path) + '/'))) problems.push(conflict(page.path, 'A file occupies a destination parent or descendant.'));
         const before = previous?.documents.find(document => document.subjects[0]!.id === page.id), existing = snapshot.files.find(file => key(file.path) === key(page.path));
         if (existing && before?.path !== existing.path) problems.push(conflict(existing.path, 'The destination is not this document’s owned file.'));
@@ -183,7 +185,7 @@ class MarkdownOutput implements OutputAdapter {
     if (problems.length) return refused(problems);
     const state = Buffer.from(canonical(next, 2) + '\n');
     if (!snapshot.files.some(file => file.path === statePath && hash(file.bytes) === hash(state))) changes.push({ kind: 'write', path: statePath, bytes: state });
-    return success({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.documents.flatMap(document => document.subjects.map(subject =>
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts: next.documents.flatMap(document => document.subjects.map(subject =>
       ({ specId: subject.id, locator: artifact(this.id, 'markdown', document.path, subject.id) }))) });
   }
 }

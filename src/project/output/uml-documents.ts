@@ -1,3 +1,4 @@
+import { pathPolicy, validPathPolicy } from '../connection/project-exclusions.js';
 import type { Diagnostic } from '../../compiler/checking.js';
 import type { ProjectFile, ProjectSnapshot } from '../connection/project-connection.js';
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
@@ -20,7 +21,7 @@ export class DiagramDocuments {
   readonly uses: Use[] = [];
   readonly problems: Diagnostic[] = [];
   readonly limitations: string[] = [];
-  constructor(readonly snapshot: ProjectSnapshot) { this.problems.push(...snapshot.problems); }
+  constructor(readonly snapshot: ProjectSnapshot) { if (!validPathPolicy(snapshot)) throw new TypeError('Malformed or contradictory capture path policy.'); this.problems.push(...snapshot.problems); }
   add(document: NativeRead, file: ProjectFile): void {
     this.documents.set(file.path, document); this.problems.push(...document.problems); this.limitations.push(...document.limitations);
     if (!document.problems.length) this.collect(document, file);
@@ -103,7 +104,7 @@ export class DiagramDocuments {
   coverage(): RelationshipObservation['coverage'] {
     const limitations = [...this.limitations, ...this.problems.map(problem => problem.message), ...this.snapshot.complete ? [] : ['Project snapshot is incomplete.']];
     return { complete: !limitations.length, limitations, scope: [diagramLocator('', 'scope', { description: 'Flat root D2 objects, immediate class members and explicit edges',
-      paths: this.snapshot.files.filter(file => /\.d2$/i.test(file.path)).map(file => file.path), excludeNames: [...this.snapshot.excludeNames], excluded: [...this.snapshot.excluded] })] };
+      paths: this.snapshot.files.filter(file => /\.d2$/i.test(file.path)).map(file => file.path), ...pathPolicy(this.snapshot), excludeNames: [...this.snapshot.excludeNames], excluded: [...this.snapshot.excluded] })] };
   }
   read(subject: string): ProjectRead {
     const definitions = this.definitions.filter(definition => definition.id === subject), paths = new Set(definitions.map(definition => definition.file.path));

@@ -39,7 +39,7 @@ export async function pythonStarter(configuration: Configuration, root: string, 
     'expec.python.json': JSON.stringify({ format: 1, python, uv, sourceRoots: { main: ['src'], test: ['test'] }, environment: '.venv' }, null, 2) + '\n',
     'src/__init__.py': '', 'test/__init__.py': '', '.gitignore': '.venv/\n__pycache__/\n.pytest_cache/\n.mypy_cache/\n.uv-cache/\n',
   };
-  return { value: { configuration: { ...structuredClone(configuration), project: { root }, packages, outputs },
+  return { value: { configuration: { ...structuredClone(configuration), project: { ...structuredClone(configuration.project), root }, packages, outputs },
     changes: Object.entries(files).map(([path, text]) => ({ kind: 'write', path, bytes: new TextEncoder().encode(text) })) }, problems: [], deferred: [] };
 }
 

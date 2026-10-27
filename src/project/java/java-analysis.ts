@@ -1,3 +1,4 @@
+import { pathPolicy } from '../connection/project-exclusions.js';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -59,7 +60,7 @@ export class JavaAnalysis {
     if (problems.length || !input.config || !input.report) { this.forget(generation); return { facts, problems, scope }; }
     const capturedFiles = (files: ProjectSnapshot['files'] | undefined) => files?.map(({ path, bytes, version }) => ({ path, version, bytes: Buffer.from(bytes).toString('base64') }));
     const key = hash(Buffer.from(canonical({ configFile, root: { path: snapshot.root.path, identity: snapshot.root.identity },
-      complete: snapshot.complete, excludeNames: snapshot.excludeNames, excluded: snapshot.excluded,
+      complete: snapshot.complete, ...pathPolicy(snapshot), excludeNames: snapshot.excludeNames, excluded: snapshot.excluded,
       files: capturedFiles(snapshot.files), readOnlyFiles: capturedFiles(snapshot.readOnlyFiles),
       nativeInputs: snapshot.nativeInputs?.map(({ uri, version }) => ({ uri, version })), currentNativeInputs: input.nativeInputs })));
     const saved = this.completed.get(key);

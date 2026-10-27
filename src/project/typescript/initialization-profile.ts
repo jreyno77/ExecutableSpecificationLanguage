@@ -14,7 +14,7 @@ export function initialConfiguration(configuration: Configuration, root: string)
     reject('unsupported-initialization-toolchain', root, 'This starter requires an agreeing exact TypeScript 5.9.3 build requirement and an available compiler alias.');
   }
   if (!compiler.length) packages.push({ alias: 'typescript', name: 'npm:typescript', version: '5.9.3', phases: ['build'] });
-  return { ...structuredClone(configuration), packages, project: { root }, outputs: structuredClone(output ? configuration.outputs
+  return { ...structuredClone(configuration), packages, project: { ...structuredClone(configuration.project), root }, outputs: structuredClone(output ? configuration.outputs
     : [...configuration.outputs, { id: 'typescript', options: { directory: 'src', configFile: 'tsconfig.json' } }]) };
 }
 export function starter(version: string): readonly FileChange[] {

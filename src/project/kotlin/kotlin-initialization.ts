@@ -46,6 +46,6 @@ export async function kotlinStarter(configuration: Configuration, root: string, 
   }).map(([path, text]) => ({ kind: 'write', path, bytes: new TextEncoder().encode(text) }));
   for (const file of ['gradlew', 'gradlew.bat', 'gradle-wrapper.jar', 'gradle-wrapper.properties']) changes.push({ kind: 'write',
     path: file.startsWith('gradle-wrapper') ? 'gradle/wrapper/' + file : file, bytes: new Uint8Array(await fs.readFile(join(kotlinResources, 'wrapper', file))) });
-  return { configuration: { ...structuredClone(configuration), packages, project: { root }, outputs: structuredClone(output ? configuration.outputs
+  return { configuration: { ...structuredClone(configuration), packages, project: { ...structuredClone(configuration.project), root }, outputs: structuredClone(output ? configuration.outputs
     : [...configuration.outputs, { id: 'kotlin', options: { directory: 'src/main/kotlin', package: 'generated' } }]) }, changes };
 }

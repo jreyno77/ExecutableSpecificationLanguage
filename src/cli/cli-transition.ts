@@ -8,6 +8,7 @@ import { hash } from '../project/connection/project-files.js';
 import { readJson } from '../project/connection/json-data.js';
 import { cliProblem, type CheckedManifest } from './cli-check.js';
 import { identities, readIdentity, transitionPath } from './cli-identity.js';
+import { pathPolicy } from '../project/connection/project-exclusions.js';
 
 type Stage = 'contracts' | 'tests';
 const schema = z.strictObject({ format: z.literal(1), manifest: z.string(), root: z.strictObject({ path: z.string(), identity: z.string() }),
@@ -23,7 +24,7 @@ const inputs = (checked: CheckedManifest, tests: ReadonlySet<string>) => canonic
   captures: checked.captures.map(capture => [capture.source.sourceId, capture.version]).sort(),
   packages: [...checked.packageInputs ?? []].sort((a, b) => a.uri.localeCompare(b.uri)), tests: [...tests].sort() });
 const native = (snapshot: ProjectSnapshot): [string, string][] => (snapshot.readOnlyFiles ?? []).map(file => [file.path, file.version] as [string, string]).sort(([a], [b]) => a.localeCompare(b));
-const exclusions = (snapshot: ProjectSnapshot) => canonical({ excluded: [...snapshot.excluded].sort(), names: [...snapshot.excludeNames].sort() });
+const exclusions = (snapshot: ProjectSnapshot) => canonical({ excluded: [...snapshot.excluded].sort(), names: [...snapshot.excludeNames].sort(), ...pathPolicy(snapshot) });
 const specification = (baseline: IdentityBaseline) => canonical({ ...baseline, artifacts: [] });
 
 /** Keeps an actual specification transition until each selected stage confirms it. */

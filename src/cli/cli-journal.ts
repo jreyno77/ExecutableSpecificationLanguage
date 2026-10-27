@@ -17,6 +17,7 @@ import { FileProjectWriter, type FileChange, type WriteResult } from '../project
 import type { IdentityBaseline } from '../model/specification-identity.js';
 import { acceptanceOptions } from '../project/typescript/acceptance-bindings.js';
 import { acceptanceState, acceptanceStatePath, confirmationOnly } from '../project/typescript/acceptance-state.js';
+import { excludePathsSchema, excludesPath, pathPolicy, protectsExcludedPath, validPathPolicy } from '../project/connection/project-exclusions.js';
 
 const pathKey = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
 const bytes = z.string().refine(value => Buffer.from(value, 'base64').toString('base64') === value), path = z.string().refine(literal);
@@ -24,7 +25,7 @@ const change = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('w
   z.strictObject({ kind: z.literal('move'), from: path, to: path, bytes })]);
 const graphSchema = z.strictObject({ root: z.strictObject({ path: z.string(), identity: z.string() }),
   files: z.array(z.strictObject({ path, bytes, version: z.string().regex(/^[a-f0-9]{64}$/) })),
-  excluded: z.array(path), excludeNames: z.array(z.string()), nativeInputs: z.array(z.strictObject({ uri: z.string(), version: z.string() })) });
+  excluded: z.array(path), excludeNames: z.array(z.string()), excludePaths: excludePathsSchema.nonempty().optional(), nativeInputs: z.array(z.strictObject({ uri: z.string(), version: z.string() })) });
 const compactGraphSchema = graphSchema.extend({ files: z.array(z.strictObject({ path, bytes: bytes.optional(), version: z.string().regex(/^[a-f0-9]{64}$/) })) });
 const legacyJournalSchema = z.strictObject({ format: z.literal(1), stage: z.enum(['contracts', 'tests']), manifest: z.string(),
   candidate: z.unknown(), facts: z.string(), graph: graphSchema,
@@ -32,21 +33,21 @@ const legacyJournalSchema = z.strictObject({ format: z.literal(1), stage: z.enum
 const journalSchema = z.discriminatedUnion('format', [legacyJournalSchema, legacyJournalSchema.extend({ format: z.literal(2), graph: compactGraphSchema })]);
 type Journal = z.infer<typeof journalSchema>;
 const retainedFacts = z.strictObject({ root: graphSchema.shape.root, excluded: z.array(path), excludeNames: z.array(z.string()),
-  readOnly: z.array(z.tuple([path, z.string().regex(/^[a-f0-9]{64}$/)])), native: graphSchema.shape.nativeInputs });
+  excludePaths: graphSchema.shape.excludePaths, readOnly: z.array(z.tuple([path, z.string().regex(/^[a-f0-9]{64}$/)])), native: graphSchema.shape.nativeInputs });
 const preimagePaths = (changes: readonly (FileChange | z.infer<typeof change>)[]) => new Set([identityPath,
   ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path])]);
 const graphOf = (snapshot: ProjectSnapshot, required: ReadonlySet<string>): z.infer<typeof compactGraphSchema> => ({ root: { ...snapshot.root },
   files: snapshot.files.filter(file => file.path !== pendingPath && file.path !== '.expec/write.lock').map(file => ({ path: file.path, version: file.version,
     ...(required.has(file.path) ? { bytes: Buffer.from(file.bytes).toString('base64') } : {}) })),
-  excluded: [...snapshot.excluded], excludeNames: [...snapshot.excludeNames], nativeInputs: (snapshot.nativeInputs ?? []).map(input => ({ ...input })) });
+  excluded: [...snapshot.excluded], excludeNames: [...snapshot.excludeNames], ...pathPolicy(snapshot), nativeInputs: (snapshot.nativeInputs ?? []).map(input => ({ ...input })) });
 /** Owns one original graph; untouched bodies come only from independently verified raw acquisition. */
 function originalOf(journal: Journal, current: ProjectSnapshot): ProjectSnapshot {
   const graph = journal.graph, required = preimagePaths(journal.plans.flatMap(plan => plan.changes));
   if (new Set(graph.files.map(file => file.path)).size !== graph.files.length
     || graph.files.some(file => file.path === pendingPath || file.path === '.expec/write.lock')) throw Error('Invalid original file table.');
   if (journal.format === 2 && (!current.complete || current.problems.length
-    || canonical({ root: current.root, excluded: current.excluded, excludeNames: current.excludeNames })
-      !== canonical({ root: graph.root, excluded: graph.excluded, excludeNames: graph.excludeNames }))) throw Error('Raw original acquisition changed.');
+    || canonical({ root: current.root, excluded: current.excluded, excludeNames: current.excludeNames, ...pathPolicy(current) })
+      !== canonical({ root: graph.root, excluded: graph.excluded, excludeNames: graph.excludeNames, ...pathPolicy(graph) }))) throw Error('Raw original acquisition changed.');
   const observed = new Map(current.files.map(file => [file.path, file]));
   const files = graph.files.map(file => {
     if (journal.format === 2 && (file.bytes !== undefined) !== required.has(file.path)) throw Error('Missing or extra original preimage.');
@@ -61,8 +62,8 @@ function originalOf(journal: Journal, current: ProjectSnapshot): ProjectSnapshot
     return { path: file.path, version: file.version, bytes: body };
   });
   const original: ProjectSnapshot = { root: { ...graph.root }, files, excluded: [...graph.excluded], excludeNames: [...graph.excludeNames],
-    nativeInputs: graph.nativeInputs.map(input => ({ ...input })), complete: true, problems: [] };
-  if (!nativeInputs(original)) throw Error('Invalid original native input evidence.');
+    ...pathPolicy(graph), nativeInputs: graph.nativeInputs.map(input => ({ ...input })), complete: true, problems: [] };
+  if (!nativeInputs(original) || !validPathPolicy(original)) throw Error('Invalid original native input or path-policy evidence.');
   return original;
 }
 export function pendingStage(snapshot: ProjectSnapshot): 'contracts' | 'tests' {
@@ -75,7 +76,7 @@ const encode = (value: Uint8Array) => Buffer.from(value).toString('base64');
 const versions = (snapshot: ProjectSnapshot) => snapshot.files.filter(file => file.path !== pendingPath && file.path !== '.expec/write.lock')
   .map(file => [file.path, file.version] as [string, string]).sort(([a], [b]) => a.localeCompare(b));
 const facts = (snapshot: ProjectSnapshot) => canonical({ root: snapshot.root, excluded: [...snapshot.excluded].sort(), excludeNames: [...snapshot.excludeNames].sort(),
-  readOnly: (snapshot.readOnlyFiles ?? []).map(file => [file.path, file.version]).sort(), native: [...snapshot.nativeInputs ?? []].sort((a, b) => a.uri.localeCompare(b.uri)) });
+  ...pathPolicy(snapshot), readOnly: (snapshot.readOnlyFiles ?? []).map(file => [file.path, file.version]).sort(), native: [...snapshot.nativeInputs ?? []].sort((a, b) => a.uri.localeCompare(b.uri)) });
 const changes = (journal: Journal): FileChange[] => journal.plans.flatMap(plan => plan.changes.map(change => change.kind === 'remove' ? change : { ...change, bytes: Buffer.from(change.bytes, 'base64') }));
 const sameFiles = (expected: Map<string, string>, actual: Map<string, string>) => expected.size === actual.size && [...expected].every(([path, version]) => actual.get(path) === version);
 const advance = (files: Map<string, string>, change: FileChange): void => {
@@ -138,7 +139,7 @@ export class BuildJournal {
         checkPlan({ value: { ...plan, basedOn: snapshot, changes: decoded } as OutputPlan, problems: [], deferred: [] }, snapshot, plan.outputId);
         for (const change of decoded) for (const path of change.kind === 'move' ? [change.from, change.to] : [change.path]) {
           const key = process.platform === 'win32' ? path.toLowerCase() : path;
-          if ([identityPath, pendingPath, ...endpoints].some(before => key === before || key.startsWith(before + '/') || before.startsWith(key + '/'))) throw Error('Pending endpoints overlap protected state.');
+          if (protectsExcludedPath(snapshot, path) || [identityPath, pendingPath, ...endpoints].some(before => key === before || key.startsWith(before + '/') || before.startsWith(key + '/'))) throw Error('Pending endpoints overlap protected state.');
           endpoints.push(key);
         }
       }
@@ -160,13 +161,15 @@ export class BuildJournal {
     const settings = acceptanceOptions.parse(selected.options), graph = journal.graph, required = preimagePaths([change]);
     if (journal.manifest !== this.checked.manifest || canonical(graph.root) !== canonical(captured.root)
       || canonical(graph.excluded) !== canonical(captured.excluded) || canonical(graph.excludeNames) !== canonical(captured.excludeNames)
+      || canonical(pathPolicy(graph)) !== canonical(pathPolicy(captured))
       || new Set(graph.files.map(file => file.path)).size !== graph.files.length
       || graph.files.some(file => [pendingPath, transitionPath, '.expec/write.lock'].some(path => pathKey(file.path) === path || pathKey(file.path).startsWith(path + '/'))
         || graph.excluded.some(path => pathKey(file.path) === pathKey(path) || pathKey(file.path).startsWith(pathKey(path) + '/'))
+        || excludesPath(graph, file.path)
         || file.path.split('/').some(part => graph.excludeNames.some(name => pathKey(name) === pathKey(part)))
         || (file.bytes !== undefined) !== required.has(file.path) || file.bytes !== undefined && hash(Buffer.from(file.bytes, 'base64')) !== file.version)) return;
     const recorded = retainedFacts.safeParse(JSON.parse(journal.facts));
-    if (!recorded.success || canonical({ ...recorded.data, root: graph.root, excluded: [...graph.excluded].sort(),
+    if (!recorded.success || canonical(pathPolicy(recorded.data)) !== canonical(pathPolicy(graph)) || canonical({ ...recorded.data, root: graph.root, excluded: [...graph.excluded].sort(),
       excludeNames: [...graph.excludeNames].sort(), native: [...graph.nativeInputs].sort((a, b) => a.uri.localeCompare(b.uri)) }) !== journal.facts
       || !validateReadOnlyFacts(graph.files, recorded.data.readOnly.map(([path]) => ({ path })))) return;
     const evidence = nativeInputs({ ...captured, nativeInputs: graph.nativeInputs });
@@ -190,6 +193,7 @@ export class BuildJournal {
     const normalized = (baseline: IdentityBaseline) => canonical({ ...baseline, artifacts: baseline.artifacts.map(item => canonical(item)).sort() });
     if (!fresh.complete || fresh.problems.length || canonical(fresh.root) !== canonical(graph.root)
       || canonical(fresh.excluded) !== canonical(graph.excluded) || canonical(fresh.excludeNames) !== canonical(graph.excludeNames)
+      || canonical(pathPolicy(fresh)) !== canonical(pathPolicy(graph))
       || fresh.files.some(file => pathKey(file.path) === transitionPath)
       || fresh.files.find(file => file.path === pendingPath)?.version !== captured.files.find(file => file.path === pendingPath)?.version
       || fresh.files.find(file => file.path === identityPath)?.version !== priorIdentity.version
@@ -204,7 +208,7 @@ export class BuildJournal {
     const stageContext = this.context.during(original), writer = new FileProjectWriter(stageContext), result: CommandResult = { status: 'invalid', exitCode: 1, problems: [], stages: [],
       obligations: journal.plans.flatMap(plan => plan.obligations) as Diagnostic[] };
     const owned = (snapshot: ProjectSnapshot) => canonical({ root: snapshot.root, excluded: [...snapshot.excluded].sort(), excludeNames: [...snapshot.excludeNames].sort(),
-      files: snapshot.files.filter(file => file.path !== '.expec/write.lock').map(file => [file.path, file.version]).sort() });
+      ...pathPolicy(snapshot), files: snapshot.files.filter(file => file.path !== '.expec/write.lock').map(file => [file.path, file.version]).sort() });
     const incomplete = (snapshot: ProjectSnapshot): ProjectSnapshot => ({ ...snapshot, complete: false,
       problems: [...snapshot.problems, this.problem('Project or native inputs changed while checking the completed stage; pending intent is retained.')] });
     const completionContext: ProjectContext = { root: this.context.root, readSnapshot: async () => {

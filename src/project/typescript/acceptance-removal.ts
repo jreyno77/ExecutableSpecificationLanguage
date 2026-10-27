@@ -6,7 +6,8 @@ import type { FileChange } from '../connection/project-writer.js';
 import type { AcceptanceOptions } from './acceptance-bindings.js';
 import { acceptanceStatePath, testIdentities, type AcceptanceState } from './acceptance-state.js';
 import { AcceptanceDocuments } from './acceptance-documents.js';
-import { canonical, failure, success } from '../../model/identity-baseline.js';
+import { canonical, failure } from '../../model/identity-baseline.js';
+import { includedPlan } from '../output/output-contract.js';
 import { hash } from '../connection/project-files.js';
 import { tokens } from './typescript-edits.js';
 
@@ -15,7 +16,7 @@ export function removeAcceptance(id: string, snapshot: ProjectSnapshot, options:
   if (!previous) return failure('output-not-found', 'No acceptance ownership exists.');
   const owner = previous.files.find(file => file.artifacts.some(item => item.specId === id));
   if (!owner) return previous.deleted.includes(id)
-    ? success({ outputId: 'acceptance', basedOn: snapshot, changes: [], artifacts: previous.files.flatMap(file => file.artifacts) })
+    ? includedPlan({ outputId: 'acceptance', basedOn: snapshot, changes: [], artifacts: previous.files.flatMap(file => file.artifacts) })
     : failure('output-not-found', 'No acceptance artifact exists for this identity.');
   const association = owner.artifacts.find(item => item.specId === id)!;
   if (!['typescript-file-1', 'vitest-test-1'].includes(association.locator.format)) return failure('nested-delete', 'Remove operations through an explicit specification update.');
@@ -41,6 +42,6 @@ export function removeAcceptance(id: string, snapshot: ProjectSnapshot, options:
     }
     next.deleted = [...new Set(next.deleted)].sort();
     changes.push({ kind: 'write', path: acceptanceStatePath, bytes: Buffer.from(canonical(next, 2) + '\n') });
-    return success({ outputId: 'acceptance', basedOn: snapshot, changes, artifacts: next.files.flatMap(file => file.artifacts) });
+    return includedPlan({ outputId: 'acceptance', basedOn: snapshot, changes, artifacts: next.files.flatMap(file => file.artifacts) });
   } finally { documents.close(); }
 }

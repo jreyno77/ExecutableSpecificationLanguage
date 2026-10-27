@@ -1,3 +1,4 @@
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import { isAbsolute } from 'node:path';
 import type { Diagnostic } from '../../compiler/checking.js';
@@ -21,6 +22,7 @@ export function samePythonRelease(left: string, right: string): boolean {
   const first = normalize(left); return first !== undefined && first === normalize(right);
 }
 export function pythonConfiguration(snapshot: ProjectSnapshot, path = 'expec.python.json'): { value?: PythonProfile; problems: Diagnostic[] } {
+  if (!validPathPolicy(snapshot)) return { problems: [outputProblem('invalid-project-snapshot', path, 'Malformed or contradictory capture path policy.')] };
   const problems: Diagnostic[] = [], file = snapshot.files.find(file => file.path === path);
   if (!file) return { problems: [outputProblem('missing-python-config', path, 'Provide ' + path + ' and run an explicit Python install.')] };
   let value: unknown;
@@ -37,9 +39,9 @@ export function pythonConfiguration(snapshot: ProjectSnapshot, path = 'expec.pyt
       || key(root) === key(parsed.data.environment) || key(root).startsWith(key(parsed.data.environment) + '/') || key(parsed.data.environment).startsWith(key(root) + '/')) {
       problems.push(outputProblem('invalid-python-config', path, 'Source roots and the environment must be distinct nonoverlapping directories.'));
     }
-    if (root.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-python-input', root, 'A selected source root is excluded from the project capture.'));
+    if (protectsExcludedPath(snapshot, root) || root.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-python-input', root, 'A selected source root is excluded from the project capture.'));
   }
-  for (const required of [path, pythonReportPath, 'pyproject.toml', 'uv.lock']) if (required.split('/').some(part => snapshot.excludeNames.includes(part))) {
+  for (const required of [path, pythonReportPath, 'pyproject.toml', 'uv.lock']) if (protectsExcludedPath(snapshot, required) || required.split('/').some(part => snapshot.excludeNames.includes(part))) {
     problems.push(outputProblem('excluded-python-input', required, 'The Python profile requires this captured configuration input.'));
   }
   return problems.length ? { problems } : { value: parsed.data, problems };

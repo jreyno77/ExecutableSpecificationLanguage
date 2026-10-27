@@ -1,3 +1,4 @@
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { promises as fs, type BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -74,7 +75,7 @@ export async function javaInputs(snapshot: ProjectSnapshot, file: string, checkR
       } catch (error) { problem('install-required', String(error), javaReport); }
     }
     const roots = [...config.sourceRoots.main, ...config.sourceRoots.test];
-    for (const path of [file, javaReport, ...roots]) if (path.split('/').some(part => snapshot.excludeNames.includes(part)))
+    for (const path of [file, javaReport, ...roots]) if (protectsExcludedPath(snapshot, path) || path.split('/').some(part => snapshot.excludeNames.includes(part)))
       problem('excluded-source', 'A required Java path is excluded by the supplied connection.', path);
     for (const entry of snapshot.excluded) if (roots.some(root => root === '.' || entry === root || entry.startsWith(root + '/')))
       problem('excluded-source', 'Selected Java source contains an excluded directory.', entry);

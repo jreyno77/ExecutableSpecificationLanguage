@@ -1,10 +1,12 @@
+import { includedPlan } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from '../output/output.js';
 import type { Check } from '../../compiler/checking.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
 import { KotlinDeclarations, kotlinOptions, type KotlinFile, type KotlinOptions } from './kotlin-declarations.js';
 import { outputProblem } from '../output/output-documents.js';
-import { canonical, success } from '../../model/identity-baseline.js';
+import { canonical } from '../../model/identity-baseline.js';
 import { hash } from '../connection/project-files.js';
 import { KotlinProject } from './kotlin-project.js';
 import { adoptKotlin } from './kotlin-adoption.js';
@@ -75,7 +77,7 @@ class KotlinOutput implements OutputAdapter {
     for (const file of files) {
       const existing = snapshot.files.find(existing => existing.path === file.path), before = previous?.files.find(before => before.path === file.path);
       if (request.operation === 'create' && existing && !before && !file.adopted) problems.push(outputProblem('output-conflict', file.path, 'Existing native file needs explicit ownership before changing it.'));
-      if (file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
+      if (protectsExcludedPath(snapshot, file.path) || file.path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(outputProblem('excluded-kotlin-input', file.path, 'The captured scope excludes this output destination.'));
     }
     const next = { format: 1, deleted: previous?.deleted.filter(id => !files.some(file => file.artifacts.some(item => item.specId === id))) ?? [], options: canonical(this.options), subjects: request.current.baseline.elements.map(item => item.id), mappings, files: files.map(file => ({ ...(file.adopted ? { adopted: true } : {}), ...documentation(file, previous?.files.find(old => old.id === file.id)), id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts })) };
     if (problems.length) return { problems, deferred: [] };
@@ -85,7 +87,7 @@ class KotlinOutput implements OutputAdapter {
     if (preserved?.problems.length) problems.push(...preserved.problems);
     const changes = [...(preserved?.value?.changes ?? files.filter(file => !file.adopted).map(file => ({ kind: 'write' as const, path: file.path, bytes: Buffer.from(file.text) }))), { kind: 'write' as const, path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }]
       .filter(change => change.kind !== 'write' || !snapshot.files.some(file => file.path === change.path && file.version === hash(change.bytes)));
-    return problems.length ? { problems, deferred: [] } : success({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts),
+    return problems.length ? { problems, deferred: [] } : includedPlan({ outputId: this.id, basedOn: snapshot, changes, artifacts: files.flatMap(file => file.artifacts),
       obligations: [...declarations.obligations, ...preserved?.value?.obligations ?? []] });
   }
   private async delete(id: string, snapshot: ProjectSnapshot, previous?: KotlinOutputState): Promise<Check<OutputPlan>> {
@@ -93,7 +95,7 @@ class KotlinOutput implements OutputAdapter {
       return { problems: [outputProblem('output-not-found', '', 'No owned Kotlin declaration exists for ' + id)], deferred: [] };
     }
     if (previous.options !== canonical(this.options)) return { problems: [outputProblem('output-options-changed', statePath, 'Reopen the recorded Kotlin options before deleting an owned declaration.')], deferred: [] };
-    if (previous.deleted.includes(id)) return success({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: previous.files.flatMap(file => file.artifacts) });
+    if (previous.deleted.includes(id)) return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [], artifacts: previous.files.flatMap(file => file.artifacts) });
     const retired = await retireKotlin(snapshot, previous.files, id);
     if (!retired.value) return { problems: retired.problems, deferred: retired.deferred };
     const preserved = await preserveKotlin(snapshot, previous.files, retired.value.files, new Set());
@@ -101,7 +103,7 @@ class KotlinOutput implements OutputAdapter {
     const next = { ...previous, deleted: [...new Set([...previous.deleted, ...retired.value.removed])].sort(), files: retired.value.files.map(file => ({
       id: file.id, path: file.path, generated: file.text, hash: hash(Buffer.from(file.text)), artifacts: file.artifacts, ...file.adopted ? { adopted: true } : {}, ...documentation(file, previous.files.find(old => old.id === file.id)),
     })) };
-    return success({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
+    return includedPlan({ outputId: this.id, basedOn: snapshot, changes: [...preserved.value.changes,
       { kind: 'write', path: statePath, bytes: Buffer.from(canonical(next, 2) + '\n') }],
       artifacts: next.files.flatMap(file => file.artifacts), obligations: preserved.value.obligations });
   }

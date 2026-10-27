@@ -1,3 +1,4 @@
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import { z } from 'zod';
 import { isAbsolute } from 'node:path';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
@@ -37,10 +38,11 @@ export const kotlinBuildInput = (path: string, config: string) => path === confi
 
 /** Interprets captured metadata only. Acquisition and native filesystem reads are separate. */
 export function kotlinConfiguration(snapshot: ProjectSnapshot, configFile: string): Check<KotlinConfiguration> {
+  if (!validPathPolicy(snapshot)) return { problems: [problem(snapshot.root, 'invalid-project-snapshot', '', 'Malformed or contradictory capture path policy.')], deferred: [] };
   const problems: Diagnostic[] = [];
   const report = (code: string, file: string, message: string) => problems.push(problem(snapshot.root, code, file, message));
   const checkExcluded = (root: string) => {
-    const segment = root.split('/').find(part => snapshot.excludeNames.includes(part));
+    const segment = protectsExcludedPath(snapshot, root) || root.split('/').find(part => snapshot.excludeNames.includes(part));
     const omitted = snapshot.excluded.find(path => path === root || path.startsWith(root + '/') || root.startsWith(path + '/'));
     if (segment || omitted) report('excluded-kotlin-input', omitted ?? root,
       'Selected Kotlin input ' + root + ' intersects excluded path ' + (omitted ?? root) + '. Choose an unexcluded input location or a capture policy that includes it.');

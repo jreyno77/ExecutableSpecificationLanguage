@@ -14,6 +14,7 @@ import { JavaContext } from '../project/java/java-context.js';
 import { KotlinContext } from '../project/kotlin/kotlin-context.js';
 import { PythonContext } from '../project/python/python-context.js';
 import type { BuildAdmission } from './cli-host.js';
+import { pathPolicy } from '../project/connection/project-exclusions.js';
 
 /** Reacquires each selected native configuration and the actual compilation inputs. */
 export class BuildContext implements ProjectContext {
@@ -66,7 +67,8 @@ export class BuildContext implements ProjectContext {
       problems.push(...captured.problems); complete &&= captured.complete; evidence.push(...captured.nativeInputs ?? []);
       if (this.admission?.stopped) return { ...snapshot, complete: false, problems };
       if ((!this.acquisition && !sameEditableFiles(snapshot.files, captured.files)) || !isDeepStrictEqual(snapshot.root, captured.root)
-        || !isDeepStrictEqual(snapshot.excluded, captured.excluded) || !isDeepStrictEqual(snapshot.excludeNames, captured.excludeNames)) problems.push(cliProblem('stale-project', 'Native configurations observed different project bytes.', this.checked.manifest));
+        || !isDeepStrictEqual(snapshot.excluded, captured.excluded) || !isDeepStrictEqual(snapshot.excludeNames, captured.excludeNames)
+        || !isDeepStrictEqual(pathPolicy(snapshot), pathPolicy(captured))) problems.push(cliProblem('stale-project', 'Native configurations observed different project bytes.', this.checked.manifest));
       for (const file of captured.readOnlyFiles ?? []) {
         const previous = native.get(file.path);
         if (previous && (previous.version !== file.version || !Buffer.from(previous.bytes).equals(file.bytes))) problems.push(cliProblem('stale-project', 'Native configurations disagree at ' + file.path, this.checked.manifest));

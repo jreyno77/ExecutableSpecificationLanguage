@@ -1,3 +1,4 @@
+import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import type { IdentifiedSpecification, SpecDiff } from '../../model/specification-identity.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
 import { canonical, identifier, locatorSchema } from '../../model/identity-baseline.js';
@@ -32,7 +33,19 @@ function sameSnapshot(left: ProjectSnapshot, right: ProjectSnapshot): boolean {
     return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).equals(Buffer.from(other.buffer, other.byteOffset, other.byteLength));
   });
 }
+/** Built-in planners report selected unobserved destinations before provider admission. */
+export function includedPlan(plan: OutputPlan): Check<OutputPlan> {
+  for (const change of plan.basedOn.excludePaths?.length ? plan.changes : []) {
+    for (const path of change.kind === 'move' ? [change.from, change.to] : [change.path]) {
+      if (protectsExcludedPath(plan.basedOn, path)) return { problems: [{ code: 'output-conflict',
+        message: 'The output endpoint intersects an excluded capture path.',
+        at: { kind: 'dependency', path: ['project', path] }, related: [] }], deferred: [] };
+    }
+  }
+  return { value: plan, problems: [], deferred: [] };
+}
 export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, id: string): void {
+  require(validPathPolicy(snapshot), 'Malformed or contradictory capture path policy.');
   require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.problems) && Array.isArray(result.deferred), 'Malformed output plan.'); diagnostics(result.problems);
   require(!result.deferred.length, 'An output plan cannot defer compiler requirements.');
@@ -47,7 +60,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   for (const change of plan.changes) {
     require(change && ['write', 'remove', 'move'].includes(change.kind), 'Unknown output file operation.');
     for (const path of change.kind === 'move' ? [change.from, change.to] : [change.path]) {
-      require(literal(path) && !packagePath(path) && !protectsNativeInput(snapshot, path) && !snapshot.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
+      require(literal(path) && !protectsExcludedPath(snapshot, path) && !packagePath(path) && !protectsNativeInput(snapshot, path) && !snapshot.excluded.some(entry => packagePath(entry) && entry.startsWith(path + '/')) && !path.split('/').some(part => snapshot.excludeNames.includes(part)) && path !== '.expec'
         && path !== marker && !path.startsWith(marker + '/'), 'Output file path is not writable within this snapshot.');
       const key = process.platform === 'win32' ? path.toLowerCase() : path;
       require(!endpoints.some(other => key === other || key.startsWith(other + '/') || other.startsWith(key + '/')), 'Output changes overlap.'); endpoints.push(key);
@@ -60,6 +73,7 @@ export function checkPlan(result: Check<OutputPlan>, snapshot: ProjectSnapshot, 
   }
 }
 export function checkRead(result: ProjectRead, snapshot: ProjectSnapshot, id: string): void {
+  require(validPathPolicy(snapshot), 'Malformed or contradictory capture path policy.');
   require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.artifacts), 'Malformed output read.'); diagnostics(result.problems); coverage(result.coverage, snapshot, id);
   for (const artifact of result.artifacts) {
@@ -70,6 +84,7 @@ export function checkRead(result: ProjectRead, snapshot: ProjectSnapshot, id: st
   }
 }
 export function checkSearch(result: ProjectSearch, snapshot: ProjectSnapshot, id: string, subject: string): void {
+  require(validPathPolicy(snapshot), 'Malformed or contradictory capture path policy.');
   require(nativeInputs(snapshot), 'Malformed native input evidence.');
   require(result && Array.isArray(result.definitions), 'Malformed output search.'); diagnostics(result.problems); result.definitions.forEach(at => locator(at, id));
   for (const direction of ['incoming', 'outgoing'] as const) {

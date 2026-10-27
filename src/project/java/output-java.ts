@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { OutputAdapter, OutputContext, OutputPlan, OutputRegistration, OutputRequest } from '../output/output.js';
 import type { Check } from '../../compiler/checking.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
-import { canonical, failure, success } from '../../model/identity-baseline.js';
+import { canonical, failure } from '../../model/identity-baseline.js';
 import { JavaProject } from './java-project.js';
 import { javaOptions, javaProblem, optionProblems } from './java-settings.js';
 import { JavaDeclarations } from './java-declarations.js';
@@ -10,7 +10,8 @@ import { hash } from '../connection/project-files.js';
 import { JavaAnalysis } from './java-analysis.js';
 import { readJavaOutputState } from './java-output-state.js';
 import { JavaPreservation, type JavaBaseline } from './java-preservation.js';
-import { validDiff } from '../output/output-contract.js';
+import { includedPlan, validDiff } from '../output/output-contract.js';
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import type { JavaMappingState } from './java-mappings.js';
 import type { Diagnostic } from '../../compiler/checking.js';
 import type { FileChange } from '../connection/project-writer.js';
@@ -62,6 +63,8 @@ class JavaOutput implements OutputAdapter {
     projection.mappings.check(stored.value?.mappings);
     const problems = [...projection.problems];
     if (problems.length) return { problems, deferred: [] };
+    const excluded = files.find(file => protectsExcludedPath(snapshot, file.path));
+    if (excluded) return failure('output-conflict', 'The output destination intersects an excluded capture path.', [excluded.path]);
     if (stored.value) {
       const preservation = new JavaPreservation(snapshot, analysis);
       const changed = await preservation.update(stored.value.files, files);
@@ -85,7 +88,7 @@ class JavaOutput implements OutputAdapter {
   private changed(snapshot: ProjectSnapshot, files: readonly JavaBaseline[], changes: readonly FileChange[], obligations: readonly Diagnostic[] = [], mappings?:JavaMappingState): Check<OutputPlan> {
     const state = Buffer.from(canonical({ format: 1, options: this.options, files, ...mappings?{mappings}:{} }, 2) + '\n');
     const proposed: FileChange[] = [...changes, { kind: 'write', path: statePath, bytes: state }];
-    return success({ outputId: this.id, basedOn: snapshot, ...obligations.length ? { obligations } : {}, artifacts: files.flatMap(file => file.artifacts), changes: proposed.filter(change => {
+    return includedPlan({ outputId: this.id, basedOn: snapshot, ...obligations.length ? { obligations } : {}, artifacts: files.flatMap(file => file.artifacts), changes: proposed.filter(change => {
       if (change.kind !== 'write') return true;
       const previous = snapshot.files.find(file => file.path === change.path);
       return !previous || !Buffer.from(previous.bytes).equals(Buffer.from(change.bytes));

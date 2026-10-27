@@ -1,3 +1,4 @@
+import { protectsExcludedPath } from '../connection/project-exclusions.js';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { visit } from 'jsonc-parser';
@@ -167,7 +168,7 @@ class TypeScriptOutput implements OutputAdapter {
     // A newly referenced file must exist before the native capture rechecks its importer.
     const changes: FileChange[] = [...preservation.changes].sort((left, right) => creates(right) - creates(left));
     for (const path of [...next.files.map(file => file.path), ...changes.flatMap(change => change.kind === 'move' ? [change.from, change.to] : [change.path]), statePath]) {
-      if (!literal(path) || path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(path, 'The captured scope excludes the output destination.'));
+      if (!literal(path) || protectsExcludedPath(snapshot, path) || path.split('/').some(part => snapshot.excludeNames.includes(part))) problems.push(conflict(path, 'The captured scope excludes the output destination.'));
       const existing = snapshot.files.find(file => key(file.path) === key(path));
       if (existing && path !== statePath && next.files.some(file => file.path === existing.path) && !previous?.files.some(file => file.path === existing.path) && !next.files.some(file => file.path === existing.path && file.adopted?.length)) problems.push(outputProblem(this.options.adoptExisting ? 'unowned-project-artifact' : 'output-conflict', existing.path, 'Existing native file is not owned by this output.'));
       if (snapshot.files.some(file => key(path).startsWith(key(file.path) + '/') || key(file.path).startsWith(key(path) + '/'))) problems.push(conflict(path, 'An existing file occupies a destination parent or descendant.'));

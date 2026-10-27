@@ -1,3 +1,4 @@
+import { pathPolicy } from '../connection/project-exclusions.js';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { BuildContext } from '../../cli/cli-context.js';
@@ -17,7 +18,7 @@ const definition = z.strictObject({ file: z.string().refine(pythonPath),
 /** Non-source application state outside the declared roots may change during a test. */
 function executableInputs(snapshot: ProjectSnapshot, profile: PythonProfile, configFile: string) {
   const roots = [...profile.sourceRoots.main, ...profile.sourceRoots.test];
-  return { root: snapshot.root, excludeNames: snapshot.excludeNames, nativeInputs: snapshot.nativeInputs,
+  return { root: snapshot.root, ...pathPolicy(snapshot), excludeNames: snapshot.excludeNames, nativeInputs: snapshot.nativeInputs,
     files: snapshot.files.filter(file => /\.pyi?$/.test(file.path) || roots.some(root => file.path.startsWith(root + '/')) || file.path.startsWith('.expec/')
       || [configFile, pythonReportPath, 'pyproject.toml', 'uv.lock'].includes(file.path)) };
 }

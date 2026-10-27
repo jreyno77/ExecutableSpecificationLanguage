@@ -73,6 +73,14 @@ export class ConnectedBuild {
   async rememberDirectory(path: string): Promise<void> { this.directories.set(path, await this.driver.filesUnder('project/' + path)); }
   async expectRememberedDirectoryUnchanged(path: string): Promise<void> { expect(await this.driver.filesUnder('project/' + path)).toEqual(this.directories.get(path)); }
   async outputs(outputs: { id: string; options: object }[]): Promise<void> { this.driver.manifest.outputs = outputs; await this.driver.saveManifest(); }
+  async excludePaths(paths: string[]): Promise<void> {
+    this.driver.manifest.project = { ...(this.driver.manifest.project as { root: string }), excludePaths: [...paths] };
+    await this.driver.saveManifest();
+  }
+  async expectDiagramLabels(labels: string[]): Promise<void> {
+    const actual = await this.driver.diagramLabels();
+    for (const label of labels) expect(actual.some(text => text.includes(label)), 'Actual SVG label ' + label).toBe(true);
+  }
   destinationFile(name: string, text: string): Promise<void> { return this.driver.write(name, text); }
   runInteractive(args: string[], answers: string[]): Promise<void> { return this.driver.run(args, '', answers); }
   afterInitializationBeforeManifestWrite(change: Record<string, unknown>): void { this.driver.manifestChange = change; }
