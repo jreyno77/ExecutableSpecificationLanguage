@@ -7,7 +7,7 @@ describe('native stage snapshot ownership', () => {
     const captured = await stage.capture();
     stage.expectSource(captured, 'export interface Book { title: string }');
     stage.expectProblems(captured, []);
-    stage.expectNativeSnapshotCopies(2);
+    stage.expectNativeSnapshotCopies(1);
   });
 
   it('reuses native evidence without copying the private provider again', async () => {
