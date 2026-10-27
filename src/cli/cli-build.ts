@@ -21,17 +21,19 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
-  const initial = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
+  let initial: ProjectSnapshot | undefined = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot());
+  const stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
   const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs, undefined, admission);
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
+  initial = undefined;
   if (!('value' in recovered)) return { ...result, problems: recovered.problems };
   if (recovered.value) {
     result.stages.push(...recovered.value.stages); retain(recovered.value.obligations ?? []);
     if (recovered.value.exitCode) return { ...result, problems: recovered.value.problems };
   }
   const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs, undefined, admission);
-  const snapshot = await transitionContext.readSnapshot();
+  let snapshot: ProjectSnapshot | undefined = await transitionContext.readSnapshot();
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const read = readIdentity(snapshot, checked);
   if (!read.value) return { ...result, problems: read.problems };
@@ -54,7 +56,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     && selected.some(output => testIds.has(output.id)) && selected.some(output => !testIds.has(output.id))) {
     transition = retainTransition(checked, snapshot, testIds, read.value.baseline, current);
   }
-  const retainedInputs = transition ? (snapshot.readOnlyFiles ?? []).map(file => ({ uri: pathToFileURL(join(snapshot.root.path, file.path)).href, version: file.version })) : [];
+  const inputRoot = snapshot.root.path;
+  const retainedInputs = transition ? (snapshot.readOnlyFiles ?? []).map(file => ({ uri: pathToFileURL(join(inputRoot, file.path)).href, version: file.version })) : [];
+  snapshot = undefined;
   const protectedPaths = new Set<string>();
   for (const name of ['contracts', 'tests'] as const) {
     let failureStage: string = name;
