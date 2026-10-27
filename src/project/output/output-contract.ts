@@ -66,7 +66,7 @@ export function checkRead(result: ProjectRead, snapshot: ProjectSnapshot, id: st
     locator(artifact.at, id);
     const file = snapshot.files.find(file => file.path === artifact.file?.path);
     require(file && artifact.file.bytes instanceof Uint8Array && file.version === artifact.file.version
-      && Buffer.from(file.bytes).equals(artifact.file.bytes), 'An output read must report complete files actually captured in its snapshot.');
+      && Buffer.compare(file.bytes, artifact.file.bytes) === 0, 'An output read must report complete files actually captured in its snapshot.');
   }
 }
 export function checkSearch(result: ProjectSearch, snapshot: ProjectSnapshot, id: string, subject: string): void {

@@ -21,17 +21,19 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   const configuration = checked.configuration!, selected = configuration.outputs;
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
-  const initial = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot()), stage = pendingStage(initial);
+  let initial: ProjectSnapshot | undefined = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot());
+  const stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
   const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs, undefined, admission);
   const recovered = await new BuildJournal(checked, allContext, signal).recover(initial);
+  initial = undefined;
   if (!('value' in recovered)) return { ...result, problems: recovered.problems };
   if (recovered.value) {
     result.stages.push(...recovered.value.stages); retain(recovered.value.obligations ?? []);
     if (recovered.value.exitCode) return { ...result, problems: recovered.value.problems };
   }
   const transitionContext = new BuildContext(project, checked, selected, decisions.value.inputs, undefined, admission);
-  const snapshot = await transitionContext.readSnapshot();
+  let snapshot: ProjectSnapshot | undefined = await transitionContext.readSnapshot();
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const read = readIdentity(snapshot, checked);
   if (!read.value) return { ...result, problems: read.problems };
@@ -54,7 +56,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
     && selected.some(output => testIds.has(output.id)) && selected.some(output => !testIds.has(output.id))) {
     transition = retainTransition(checked, snapshot, testIds, read.value.baseline, current);
   }
-  const retainedInputs = transition ? (snapshot.readOnlyFiles ?? []).map(file => ({ uri: pathToFileURL(join(snapshot.root.path, file.path)).href, version: file.version })) : [];
+  const inputRoot = snapshot.root.path;
+  const retainedInputs = transition ? (snapshot.readOnlyFiles ?? []).map(file => ({ uri: pathToFileURL(join(inputRoot, file.path)).href, version: file.version })) : [];
+  snapshot = undefined;
   const protectedPaths = new Set<string>();
   for (const name of ['contracts', 'tests'] as const) {
     let failureStage: string = name;
@@ -63,7 +67,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
       const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs], undefined, admission), basedOn = await context.readSnapshot();
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
+      const writer = new FileProjectWriter(context), plans: Omit<OutputPlan, 'basedOn'>[] = [], opened: { id: string; output: Output }[] = [];
       let querySnapshot: ProjectSnapshot | undefined;
       const outputProject: ProjectContext = { get root() { return context.root; },
         readSnapshot: () => querySnapshot ? Promise.resolve(querySnapshot) : context.readSnapshot() };
@@ -76,7 +80,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         if (!compared.value) return { ...result, problems: compared.problems };
         const plan = await output.value.plan(before ? { operation: 'update', current, diff: compared.value } : { operation: 'create', current }, basedOn);
         if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-        plans.push(plan.value); opened.push({ id: profile.id, output: output.value });
+        const { outputId, changes, artifacts, obligations } = plan.value;
+        plans.push({ outputId, changes, artifacts, ...(obligations === undefined ? {} : { obligations }) });
+        opened.push({ id: profile.id, output: output.value });
       }
       const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
       if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
