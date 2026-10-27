@@ -63,7 +63,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
       if (!profiles.length) { result.stages.push({ name, status: 'not-run' }); continue; }
       const context = new BuildContext(project, checked, profiles, [...decisions.value.inputs, ...retainedInputs], undefined, admission), basedOn = await context.readSnapshot();
       if (!basedOn.complete) return { ...result, problems: basedOn.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-      const writer = new FileProjectWriter(context), plans: OutputPlan[] = [], opened: { id: string; output: Output }[] = [];
+      const writer = new FileProjectWriter(context), plans: Omit<OutputPlan, 'basedOn'>[] = [], opened: { id: string; output: Output }[] = [];
       let querySnapshot: ProjectSnapshot | undefined;
       const outputProject: ProjectContext = { get root() { return context.root; },
         readSnapshot: () => querySnapshot ? Promise.resolve(querySnapshot) : context.readSnapshot() };
@@ -76,7 +76,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         if (!compared.value) return { ...result, problems: compared.problems };
         const plan = await output.value.plan(before ? { operation: 'update', current, diff: compared.value } : { operation: 'create', current }, basedOn);
         if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };
-        plans.push(plan.value); opened.push({ id: profile.id, output: output.value });
+        const { outputId, changes, artifacts, obligations } = plan.value;
+        plans.push({ outputId, changes, artifacts, ...(obligations === undefined ? {} : { obligations }) });
+        opened.push({ id: profile.id, output: output.value });
       }
       const changes = plans.flatMap(plan => [...plan.changes]), collisions = conflicts(changes, protectedPaths);
       if (collisions.length) return { ...result, problems: collisions.map(path => cliProblem('output-path-conflict', 'Conflicting output endpoint: ' + path, checked.manifest)), stages: [...result.stages, { name, status: 'stopped' }] };
