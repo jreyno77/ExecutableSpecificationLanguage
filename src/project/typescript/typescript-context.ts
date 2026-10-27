@@ -1,6 +1,6 @@
 import type { ProjectContext, ProjectRoot, ProjectSnapshot } from '../connection/project-connection.js';
 import { NativeDeclarations } from './native-declarations.js';
-import { TypeScriptCapture, diagnostic, pathValid, requireInput } from './typescript-capture.js';
+import { nativeInputProblemsFromOwnedSnapshot, diagnostic, pathValid, requireInput } from './typescript-capture.js';
 import { packagePath, validateReadOnly } from '../connection/project-readonly.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
@@ -29,15 +29,11 @@ export class TypeScriptContext implements ProjectContext {
     const problems = [...snapshot.problems], native = reused ? retained.native : new NativeDeclarations(snapshot.root, this.options.imports ?? []);
     if (!snapshot.excludeNames.includes('node_modules') || snapshot.files.some(file => packagePath(file.path))) problems.push(diagnostic('unsupported-native-input', 'Native dependencies must remain excluded from editable capture.', 'node_modules'));
     if (!problems.length && !reused) {
-      const capture = new TypeScriptCapture({ ...snapshot, readOnlyFiles: [] }, 'native-inputs', this.options.configFile, this.libraries, native);
-      try {
-        for (const problem of capture.problems) {
-          if (capture.editableImportProblems.has(problem)) continue;
-          if (problem.code === 'native-input-unavailable') problems.push(problem);
-          else if (/^typescript-(2307|2688|2726|2727|6053|6231|5083|2792|7016)$/.test(problem.code) || problem.code === 'missing-project-config') problems.push({ ...problem, code: 'native-input-unavailable' });
-          else if (['unsupported-native-input', 'unsupported-project-config', 'typescript-library-unavailable', 'invalid-project-encoding'].includes(problem.code)) problems.push(problem);
-        }
-      } finally { capture.service.dispose(); }
+      for (const problem of nativeInputProblemsFromOwnedSnapshot({ ...snapshot, readOnlyFiles: [] }, this.options.configFile, this.libraries, native)) {
+        if (problem.code === 'native-input-unavailable') problems.push(problem);
+        else if (/^typescript-(2307|2688|2726|2727|6053|6231|5083|2792|7016)$/.test(problem.code) || problem.code === 'missing-project-config') problems.push({ ...problem, code: 'native-input-unavailable' });
+        else if (['unsupported-native-input', 'unsupported-project-config', 'typescript-library-unavailable', 'invalid-project-encoding'].includes(problem.code)) problems.push(problem);
+      }
     }
     const fresh = await this.project.readSnapshot();
     if (!isDeepStrictEqual(key, inputKey(fresh))) problems.push(diagnostic('stale-project', 'Project inputs changed during native capture.', ''));
