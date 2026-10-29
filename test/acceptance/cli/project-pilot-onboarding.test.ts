@@ -26,6 +26,7 @@ interaction "save"() {
 }`);
     await pilot.buildOutputs();
     await pilot.expectDocumentedSignature('Storage', 'save', [], 'Receipt');
+    await pilot.expectDocumentationHome('main', 'pages/main.md');
     pilot.expectNativeMessages('save', ['screen -> storage: receipt: Receipt = save()', 'storage -> screen: show(receipt)']);
     pilot.expectNativeSvgLabels(['screen', 'storage', 'save()', 'show(receipt)']);
     pilot.expectDeclaredCommunicationOnly();

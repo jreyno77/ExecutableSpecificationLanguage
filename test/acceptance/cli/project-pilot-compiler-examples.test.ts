@@ -15,6 +15,7 @@ describe('the language develops useful compiler acceptance', () => {
     await pilot.rememberImplementation();
     await pilot.build();
     await pilot.expectCompilerContract();
+    await pilot.expectDocumentationHome('main', 'pages/main.md');
     await pilot.useCompilerDriver('suppress-real-problems');
     await pilot.runGeneratedTests();
     pilot.expectMissingDiagnosticFails();

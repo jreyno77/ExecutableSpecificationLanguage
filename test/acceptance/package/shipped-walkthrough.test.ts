@@ -84,4 +84,5 @@ it('builds Markdown and UML from the shipped contracts without claiming executio
   await author.copySpecification(); await author.createDocumentProject();
   await author.command(['build']); author.expectSuccess();
   await author.expectDocumentedContract('StoreGame', 'save', 'PlayerStateSnapshot', 'Nothing');
+  await author.expectDocumentedHome('main', 'pages/main.md');
 }, 120_000);
