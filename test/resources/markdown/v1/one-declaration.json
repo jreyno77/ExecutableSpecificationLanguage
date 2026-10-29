@@ -1,0 +1,75 @@
+{
+  "format": "out27-legacy-markdown-fixture-1",
+  "provenance": {
+    "sourceCommit": "bb463e2",
+    "capturedUsing": "unmodified existing compiled public API before OUT-27 implementation",
+    "productionSHA256": {
+      "src/project/output/markdown-document.ts": "814f585a3788af71f7d70d4468e5e2da15084aaf6a58499565d9988d977b37d8",
+      "src/project/output/output-markdown.ts": "165ec67cc118430a7ea30afdc26c89e3b0f658ccb41f588510530bbcd6d723a6",
+      "dist/index.js": "807dfcb7b4338337f716d3f4912cb6b5176dfe89c6edfe657c2584513d571bed"
+    }
+  },
+  "source": {
+    "sourceId": "fixture.expec",
+    "text": "concept Library {}"
+  },
+  "baseline": {
+    "artifacts": [],
+    "context": "sha256:881bd498bee4e84caf787e65b744cd2840ca050ca66904f369910dcf24715c1f",
+    "elements": [
+      {
+        "address": {
+          "kind": "concept",
+          "module": "fixture.expec",
+          "name": "Library",
+          "owner": null
+        },
+        "capture": "sha256:d42ab9de25318c344872322e6ba7a8af80401d600f368a3e2a9b9872610ab410",
+        "id": "legacy-markdown-1",
+        "occurrence": 0,
+        "origin": {
+          "kind": "source",
+          "module": "fixture.expec",
+          "node": {
+            "ordinal": 0,
+            "sourceId": "fixture.expec"
+          },
+          "range": {
+            "end": {
+              "column": 19,
+              "line": 1,
+              "offset": 18
+            },
+            "sourceId": "fixture.expec",
+            "start": {
+              "column": 1,
+              "line": 1,
+              "offset": 0
+            }
+          }
+        },
+        "references": [],
+        "structure": "sha256:d2c89901f9c6c75f44455f1a35d4334ceb1737291a1712cfb8d548f3771fb535"
+      }
+    ],
+    "entry": "fixture.expec",
+    "format": 1,
+    "modules": [
+      "fixture.expec"
+    ],
+    "projection": "expec-structure-1",
+    "retired": []
+  },
+  "files": [
+    {
+      "path": "docs/Library.md",
+      "text": "<!-- expec-section:7b226f75747075744964223a226d61726b646f776e222c22737065634964223a226c65676163792d6d61726b646f776e2d31227d -->\n\n# Library\n\n<a id=\"expec-6c65676163792d6d61726b646f776e2d31\"></a>\n\nStatically checked specification. Runtime behavior is not verified by this document.\n\n```expec\nconcept Library\n```\n\nSource: fixture.expec:1:1\n\nPublic capabilities: \n\nInternal declarations: \n\n<!-- expec-end:6c65676163792d6d61726b646f776e2d31 -->\n\n## Your notes\n\nEdit this area for your own notes. Content above it is generated from .expec.\n\n",
+      "sha256": "f0067a2a49897231d2099c0195ef27cf381c4bc23dcda0b68b31d274334aa9f0"
+    },
+    {
+      "path": ".expec/outputs/6d61726b646f776e.json",
+      "text": "{\n  \"context\": \"sha256:881bd498bee4e84caf787e65b744cd2840ca050ca66904f369910dcf24715c1f\",\n  \"deleted\": [],\n  \"directory\": \"docs\",\n  \"documents\": [\n    {\n      \"hash\": \"065f3339c09489d7c2f3d2df47fb7206ae9c4a50e75cc6e30e43fee3a0280d74\",\n      \"path\": \"docs/Library.md\",\n      \"subjects\": [\n        {\n          \"id\": \"legacy-markdown-1\",\n          \"structure\": \"sha256:d2c89901f9c6c75f44455f1a35d4334ceb1737291a1712cfb8d548f3771fb535\"\n        }\n      ]\n    }\n  ],\n  \"format\": 1,\n  \"notes\": \"## Your notes\\n\\nEdit this area for your own notes. Content above it is generated from .expec.\\n\\n\",\n  \"outputId\": \"markdown\",\n  \"renderFormat\": 1\n}\n",
+      "sha256": "4cffe1cbe5b933696552f4f3c7eca1455080d5a6880286c64f475d2f2ee62733"
+    }
+  ]
+}

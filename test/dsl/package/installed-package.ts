@@ -1,5 +1,6 @@
 import { expect, onTestFinished } from 'vitest';
 import { DOMParser } from '@xmldom/xmldom';
+import { fromMarkdown } from 'mdast-util-from-markdown';
 import { PackageDriver } from '../../driver/package/installed-package.js';
 
 /** Consumer intentions and observations, independent of packaging and process mechanics. */
@@ -319,10 +320,27 @@ export class PackageExamples {
     for (const part of parts) expect(artifact!.text).toContain(part);
     expect(artifact!.text).not.toContain('Tests passed');
   }
+  expectInstalledDocumentationHome(path: string, pages: string[]): void {
+    const home = this.driver.report.documentation!.home;
+    expect(home.path).toBe(path); expect(home.text).toBe(home.disk);
+    const document = fromMarkdown(home.text);
+    expect(document.children.filter(node => node.type === 'heading' && node.depth === 1))
+      .toMatchObject([{ type: 'heading', children: [{ type: 'text', value: 'Home' }] }]);
+    const links = document.children.flatMap(node => node.type === 'list' ? node.children.flatMap(item =>
+      item.children.flatMap(content => content.type === 'paragraph' ? content.children.flatMap(child => child.type === 'link' ? [child.url] : []) : [])) : []);
+    expect(links).toEqual(pages);
+  }
   expectInstalledDocumentConsumer(file: string, definition: string): void {
-    const search = this.driver.report.documentation!.search;
+    const docs = this.driver.report.documentation!, search = docs.search;
     expect(search.problems).toEqual([]);
     expect(search.definitions).toContainEqual(expect.objectContaining({ value: expect.objectContaining({ path: definition }) }));
+    const locator = search.definitions.find(item => item.format === 'expec-markdown-section-1'
+      && item.value && !Array.isArray(item.value) && typeof item.value === 'object' && 'path' in item.value && item.value.path === definition);
+    expect(locator).toMatchObject({ outputId: 'markdown', format: 'expec-markdown-section-1', value: {
+      path: definition, anchor: expect.stringMatching(/^expec-(?:[a-f0-9]{2})+$/),
+    } });
+    const { anchor } = locator!.value as { anchor: string };
+    expect(docs.guide).toBe('[Game](' + definition.split('/').map(encodeURIComponent).join('/') + '#' + anchor + ')');
     expect(search.incoming).toMatchObject({ unresolved: [], coverage: { complete: true, limitations: [] } });
     expect(search.incoming.uses).toContainEqual({
       target: { kind: 'project', id: file },

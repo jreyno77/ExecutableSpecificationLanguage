@@ -1,5 +1,6 @@
 import { expect, onTestFinished } from 'vitest';
 import { DOMParser } from '@xmldom/xmldom';
+import { fromMarkdown } from 'mdast-util-from-markdown';
 import { ShippedWalkthroughDriver } from '../../driver/package/shipped-walkthrough.js';
 
 export class ShippedWalkthrough {
@@ -17,8 +18,12 @@ export class ShippedWalkthrough {
   expectDocumentedDesignFiles(): void { expect([...this.driver.files.keys()]).toEqual(['main.expec', 'expec.json']); }
   createDocumentProject(): Promise<void> { return this.driver.createConnectedDirectory(); }
   async expectDocumentedContract(owner: string, operation: string, input: string, result: string): Promise<void> {
-    const markdown = await this.driver.text('game/docs/' + owner + '.md');
-    expect(markdown).toContain(`capability ${operation}(snapshot: ${input}) returns ${result}`);
+    const markdown = await this.driver.text('game/docs/pages/main.md');
+    expect(markdown).toContain('\n# main\n');
+    expect(markdown).toContain('\n## ' + owner + '\n');
+    const heading = '\n## ' + owner + '\n', start = markdown.indexOf(heading), end = markdown.indexOf('\n## ', start + heading.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(markdown.slice(start, end < 0 ? undefined : end)).toContain(`capability ${operation}(snapshot: ${input}) returns ${result}`);
     expect(markdown).toContain('Statically checked specification. Runtime behavior is not verified by this document.');
     const diagram = await this.driver.nativeDesign(), consumer = diagram.shapes.find(shape => shape.label.endsWith('\n' + owner)),
       data = diagram.shapes.find(shape => shape.label.endsWith('\n' + input));
@@ -34,6 +39,15 @@ export class ShippedWalkthrough {
     const labels = [...svg.getElementsByTagName('text')].map(element => element.textContent).join('\n');
     expect(labels).toContain(owner); expect(labels).toContain(input); expect(labels).toContain(operation);
     expect(this.driver.report.stages.some(stage => stage.name === 'execution')).toBe(false);
+  }
+  async expectDocumentedHome(source: string, page: string): Promise<void> {
+    const home = fromMarkdown(await this.driver.text('game/docs/Home.md'));
+    expect(home.children.filter(node => node.type === 'heading' && node.depth === 1))
+      .toMatchObject([{ type: 'heading', children: [{ type: 'text', value: 'Home' }] }]);
+    const links = home.children.flatMap(node => node.type === 'list' ? node.children.flatMap(item =>
+      item.children.flatMap(content => content.type === 'paragraph' ? content.children.flatMap(child => child.type === 'link'
+        ? [{ label: child.children.filter(node => node.type === 'text').map(node => node.value).join(''), path: child.url }] : []) : [])) : []);
+    expect(links).toEqual([{ label: source, path: page }]);
   }
   async command(args: string[]): Promise<void> { await this.driver.command(args); }
   expectSuccess(): void { expect(this.driver.result.code, JSON.stringify({ status: this.driver.report.status, problems: this.driver.report.problems }) + this.driver.result.stderr).toBe(0); }

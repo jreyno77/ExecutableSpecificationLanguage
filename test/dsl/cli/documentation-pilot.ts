@@ -25,7 +25,15 @@ export class DocumentationPilot {
     this.diagrams = JSON.parse(this.driver.result.stdout);
   }
   async expectDocumentedSignature(owner: string, name: string, inputs: string[], result: string): Promise<void> {
-    expect(await this.driver.text('project/reference/' + owner + '.md')).toContain(name + '(' + inputs.join(', ') + ') returns ' + result);
+    const markdown = await this.driver.text('project/reference/pages/main.md'), heading = '\n## ' + owner + '\n';
+    const start = markdown.indexOf(heading), end = markdown.indexOf('\n## ', start + heading.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(markdown.slice(start, end < 0 ? undefined : end)).toContain(name + '(' + inputs.join(', ') + ') returns ' + result);
+  }
+  async expectDocumentationHome(source: string, page: string): Promise<void> {
+    const home = await this.driver.text('project/reference/Home.md');
+    expect(home).toContain('\n# Home\n');
+    expect(home).toContain('- [' + source + '](' + page + ')');
   }
   expectNativeMessages(title: string, messages: string[]): void {
     const diagram = this.diagrams.filter(item => item.label.startsWith(title + '\n'));

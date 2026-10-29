@@ -20,16 +20,18 @@ const line = (text: string, label: string): string => {
 
 /** Reader actions and independently authored observations over generated/current Markdown. */
 export class MarkdownExamples {
-  readonly driver = new MarkdownDriver();
-  constructor() { active.add(this); }
+  readonly driver: MarkdownDriver;
+  constructor(driver = new MarkdownDriver()) { this.driver = driver; active.add(this); }
   source(text: string): void { this.driver.source(text); }
   sourceFile(path: string, text: string): void { this.driver.sourceFile(path, text); }
+  removeSourceFile(path: string): void { this.driver.removeSourceFile(path); }
   package(alias: string, phases: ('build' | 'runtime' | 'test')[]): void { this.driver.packages.push({ alias, phases }); }
   externalFunction(module: string, name: string, parameters: string[], result: string, _body: { body: 'unavailable' }): void { this.driver.externalFunction(module, name, parameters, result); }
   async generate(): Promise<void> { await this.driver.mutate('create'); }
   async generateWith(...ids: string[]): Promise<void> { for (const id of ids) await this.driver.mutate('create', id); }
   async generateFrom(entry: string): Promise<void> { this.driver.entry = entry; await this.generate(); }
   async update(): Promise<void> { await this.driver.mutate('update'); }
+  async updateFrom(entry: string): Promise<void> { this.driver.entry = entry; await this.update(); }
   async insert(): Promise<void> { await this.driver.mutate('insert'); }
   renameIdentity(from: string, to: string): void { this.driver.rename(from, to); }
   moveIdentity(from: string, to: string): void { this.driver.rename(from, to); }
@@ -42,6 +44,20 @@ export class MarkdownExamples {
   async replaceFileText(path: string, before: string, after: string): Promise<void> { await this.driver.replace(path, before, after); }
   async replaceNotes(name: string, notes: string): Promise<void> { await this.driver.replaceNotes(name, notes); }
   async appendLinkInNotes(owner: string, label: string, target: string): Promise<void> { await this.driver.linkInNotes(owner, label, target); }
+  async writeReferenceLink(path: string, label: string, target: string): Promise<void> {
+    const href = posix.relative(posix.dirname(path), this.driver.fileFor(target)).split('/').map(encodeURIComponent).join('/') + '#expec-' + Buffer.from(this.driver.id(target)).toString('hex');
+    await this.driver.write(path, '[' + label + '][target]\n\n[target]: ' + href);
+  }
+  async replaceNoteLinkWithText(owner: string, label: string, target: string): Promise<void> {
+    const path = this.driver.fileFor(owner), targetPath = this.driver.fileFor(target), href = path === targetPath ? '' : posix.relative(posix.dirname(path), targetPath).split('/').map(encodeURIComponent).join('/');
+    const before = '[' + label + '](' + href + '#expec-' + Buffer.from(this.driver.id(target)).toString('hex') + ')';
+    const notes = this.driver.notes(owner);
+    if (!notes.includes(before)) throw new Error('No handwritten note link: ' + before);
+    await this.driver.replaceNotes(owner, notes.replace(before, label));
+  }
+  expectDistinctDeclarations(first: string, second: string): void {
+    expect(this.driver.id(first)).not.toBe(this.driver.id(second)); this.expectDeclarationCount(first, 1); this.expectDeclarationCount(second, 1);
+  }
   async removeOutputState(): Promise<void> { await this.driver.removeState(); }
   async read(name: string): Promise<void> { await this.driver.read(name); }
   async search(name: string): Promise<void> { await this.driver.search(name); }
@@ -75,14 +91,45 @@ export class MarkdownExamples {
   expectSignature(name: string, inputs: string[], result: string): void { this.expectSignatureIn('markdown', name, inputs, result); }
   expectPromise(name: string, text: string): void { expect(plain(this.section(name))).toContain(text); }
   expectStatus(name: string, status: string): void { expect(plain(this.section(name))).toContain(status); }
-  expectResult(name: string, result: string): void { expect(line(this.section(name), 'Result')).toBe(result); }
+  expectResult(name: string, result: string): void { expect(line(this.section(name), 'Returns')).toBe(result); }
   expectConstruction(name: string, inputs: string[]): void { expect(codes(this.section(name))).toContain('construction(' + inputs.join(', ') + ')'); }
   expectPackageRequirement(name: string, alias: string, phase: string): void { expect(line(this.section(name), 'Packages')).toBe(alias + ' — ' + phase); }
   expectPublicCapabilities(name: string, capabilities: string[]): void { expect(line(this.section(name), 'Public capabilities')).toBe(capabilities.join(', ')); }
   expectInternalDeclarations(name: string, declarations: string[]): void { expect(line(this.section(name), 'Internal declarations')).toBe(declarations.join(', ')); }
-  expectType(name: string, signature: string, fields: string[]): void {
-    expect(codes(this.section(name))).toContain(signature + ' {\n' + fields.map(field => '  ' + field).join('\n') + '\n}');
+  private expectFieldEntries(name: string, fields: string[]): void {
+    const subject = this.driver.id(name), actual = nodes(this.section(name)).flatMap(node => {
+      if (node.type !== 'html') return [];
+      const marker = /^<!-- expec-fragment:([a-f0-9]+) -->$/.exec(node.value);
+      if (!marker) return [];
+      const metadata = JSON.parse(Buffer.from(marker[1]!, 'hex').toString()), record = this.driver.current.baseline.elements.find(record => record.id === metadata.specId);
+      return record?.address.owner === subject && record.address.kind === 'field' ? [record.address.name] : [];
+    });
+    expect(actual).toEqual(fields.map(field => field.slice(0, field.indexOf(':'))));
+    for (const field of fields) {
+      const at = field.indexOf(':'), key = field.slice(0, at), [type, initial] = field.slice(at + 1).trim().split(' = '), section = this.section(name + '.' + key);
+      const paragraphs = fromMarkdown(section).children.filter(node => node.type === 'paragraph').map(node => plain(section.slice(node.position!.start.offset, node.position!.end.offset))).filter(Boolean);
+      if (key === 'code' && paragraphs[0] === 'code') {
+        const values = (type!.match(/"(?:\\.|[^"\\])*"/g) ?? []).map(value => JSON.parse(value) as string);
+        expect(values.length).toBeGreaterThan(0); expect(paragraphs).toContain('Codes: ' + values.join(', '));
+      } else expect(paragraphs[0]).toBe(key + ': ' + type);
+      if (initial !== undefined) expect(paragraphs).toContain('Default: ' + initial);
+      else expect(paragraphs.some(value => value.startsWith('Default:'))).toBe(false);
+    }
   }
+  expectType(name: string, signature: string, fields: string[]): void {
+    expect(codes(this.section(name))[0]).toBe(signature); this.expectFieldEntries(name, fields);
+  }
+  expectContractDeclaration(name: string): void {
+    expect(codes(this.section(name))[0]).toMatch(/^(?:function|capability) /); this.expectPageScope(name);
+  }
+  private expectPageScope(name: string): void {
+    expect(this.driver.textAt(this.driver.fileFor(name))).toContain('Statically checked specification. Runtime behavior is not verified by this document.');
+  }
+  expectAuthoredExample(name: string): void { expect(codes(this.section(name))[0]).toMatch(/^(?:example|scenario) /); this.expectPageScope(name); }
+  expectImplementationRequired(name: string): void { expect(plain(this.section(name))).toContain('Implementation required.'); expect(codes(this.section(name))[0]).not.toMatch(/\{\s*$/); this.expectPageScope(name); }
+  expectAuthoredOperationBody(name: string): void { expect(codes(this.section(name))[0]).toMatch(/\{[\s\S]*\}$/); expect(plain(this.section(name))).not.toContain('Implementation required.'); this.expectPageScope(name); }
+  expectProseExpectation(name: string): void { expect(plain(this.section(name))).toContain('Prose expectation:'); this.expectPageScope(name); }
+
   expectAlias(name: string, signature: string, target: string): void { expect(codes(this.section(name))).toContain('type ' + signature + ' = ' + target); }
   expectOpaque(name: string, status: string): void { expect(plain(this.section(name))).toContain(status); }
   expectConditions(name: string, conditions: string[]): void {
@@ -91,8 +138,7 @@ export class MarkdownExamples {
   expectError(name: string, declared: string[], fields: string[]): void {
     expect(plain(this.section(name))).toContain('Error type');
     expect(line(this.section(name), 'Codes')).toBe(declared.join(', '));
-    const actual = codes(this.section(name))[0]!.split('\n').slice(1, -1).map(line => line.trim()).filter(line => !line.startsWith('code:'));
-    expect(actual).toEqual(fields);
+    this.expectFieldEntries(name, ['code: ' + declared.map(value => JSON.stringify(value)).join(' | '), ...fields]);
   }
   expectFailures(name: string, names: string[]): void { expect(line(this.section(name), 'May fail with')).toBe(names.join(', ')); }
   expectFailureStatement(name: string, text: string): void { expect(plain(this.section(name))).toContain(text); }
@@ -103,7 +149,7 @@ export class MarkdownExamples {
       if (!plain(fragment).includes(label)) return false;
       return nodes(fragment).some(link => {
         if (link.type !== 'link') return false;
-        const [file, hash] = link.url.split('#'), actual = posix.normalize(posix.join(posix.dirname(path), decodeURIComponent(file!)));
+        const [file, hash] = link.url.split('#'), actual = posix.normalize(posix.join(posix.dirname(path), decodeURIComponent(file || posix.basename(path))));
         return hash === 'expec-' + Buffer.from(this.driver.id(target)).toString('hex') && this.driver.paths().includes(actual)
           && this.driver.textAt(actual).includes('<a id="' + hash + '"></a>');
       });
@@ -133,7 +179,13 @@ export class MarkdownExamples {
     expect(actual).toEqual(messages);
   }
   expectCapture(name: string, capture: string, type: string): void { expect(line(this.section(name), 'Captures')).toContain(capture + ': ' + type); }
-  expectOrigin(name: string, locator: string, lineNumber: number): void { expect(line(this.section(name), 'Source')).toContain(locator + ':' + lineNumber + ':'); }
+  expectOrigin(name: string, locator: string, lineNumber: number): void {
+    const id = this.driver.id(name), record = this.driver.current.baseline.elements.find(record => record.id === id)!;
+    expect(this.driver.textAt(this.driver.fileFor(name))).toContain('Source: ' + locator);
+    expect(record.origin.kind).toBe('source'); if (record.origin.kind !== 'source') throw Error('Expected actual source provenance.');
+    expect(record.origin.node.sourceId).toBe(locator); expect(record.origin.range.start.line).toBe(lineNumber);
+    expect(this.section(name)).toContain(this.driver.marker(name));
+  }
   expectExternalReference(name: string, locator: string, status: string): void {
     expect(plain(this.all())).toContain(name + ' — ' + locator + ' — ' + status);
   }
@@ -142,7 +194,7 @@ export class MarkdownExamples {
     expect(this.driver.paths().filter(path => path.startsWith('docs/specification/')).reduce((sum, path) => sum + this.driver.textAt(path).split(marker).length - 1, 0)).toBe(count);
   }
   expectNoDeclaration(name: string): void {
-    const id = this.driver.originalIds.get(name)!;
+    const id = this.driver.originalIds.get(name) ?? this.driver.id(name);
     expect(this.all()).not.toContain('specId":"' + id + '"');
     const owner = name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : undefined;
     expect(owner ? this.section(owner) : this.all()).not.toContain('<a id="expec-' + Buffer.from(id).toString('hex') + '"></a>');

@@ -29,14 +29,25 @@ try {
   const game = [...compilation.value.inspection.query('concept')].find(item => item.name === 'Game');
   if (!game) throw Error('Consumer source must declare Game.');
   const id = identified.value.id(game.id), output = opened.value, written = await output.create(identified.value);
-  await appendFile(join(root, 'reference/Game.md'), input.note);
+  const locator = written.artifacts?.find(artifact => artifact.specId === id)?.locator;
+  const value = locator?.value;
+  if (locator?.outputId !== 'markdown' || locator.format !== 'expec-markdown-section-1'
+    || !value || typeof value !== 'object' || Array.isArray(value) || typeof value.path !== 'string'
+    || typeof value.anchor !== 'string' || !/^expec-(?:[a-f0-9]{2})+$/.test(value.anchor))
+    throw Error("The installed Markdown output must return Game's native section locator.");
+  await appendFile(join(root, value.path), input.note);
   const read = await output.read(id);
-  await writeFile(join(root, 'guide.md'), '[Game](reference/Game.md)');
-  const search = await output.search(id);
+  const guide = '[Game](' + value.path.split('/').map(encodeURIComponent).join('/') + '#' + value.anchor + ')';
+  await writeFile(join(root, 'guide.md'), guide);
+  const search = await output.search(id), captured = await context.readSnapshot();
+  if (!captured.complete || captured.problems.length) throw Error(JSON.stringify(captured.problems));
+  const home = captured.files.find(file => file.path === 'reference/Home.md');
+  if (!home) throw Error('The installed Markdown output must generate Home.');
   process.stdout.write(JSON.stringify({ packageUrl, documentation: {
     written, read: { ...read, artifacts: await Promise.all(read.artifacts.map(async ({ at, file }) => ({
       at, path: file.path, text: new TextDecoder().decode(file.bytes), disk: await readFile(join(root, file.path), 'utf8'),
-    }))) }, search,
+    }))) }, search, guide: await readFile(join(root, 'guide.md'), 'utf8'),
+    home: { path: home.path, text: new TextDecoder().decode(home.bytes), disk: await readFile(join(root, home.path), 'utf8') },
   } }));
 } catch (error) {
   process.stdout.write(JSON.stringify({ packageUrl, error: { code: error.code, message: error.message, url: error.url } }));

@@ -486,7 +486,8 @@ concept StoreGame {
 ```
 
 Run `node node_modules/executable-specification-language/dist/cli-entry.js build`.
-Read `game/docs/StoreGame.md` and open `game/design/structure.svg`; the editable
+Start at `game/docs/Home.md` and read the source specification at
+`game/docs/pages/main.md`. Open `game/design/structure.svg`; the editable
 diagram source is beside it. The input points toward its consumer, StoreGame.
 These documents describe checked contracts; they do not prove runtime behavior,
 ownership or lifetime. Explicit communication scenarios can supply sequence views.

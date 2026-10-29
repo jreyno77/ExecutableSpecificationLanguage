@@ -58,11 +58,12 @@ describe('Installed package consumers', () => {
     await consumer.documentProject('concept Game { public save\ncapability save() returns Nothing }', '\nReader note.\n');
 
     consumer.expectInstalledPackageUsed();
-    consumer.expectInstalledDocumentation('reference/Game.md', [
-      '# Game', 'capability save() returns Nothing', 'Reader note.',
+    consumer.expectInstalledDocumentation('reference/pages/main.md', [
+      '# main', '\n## Game\n', '\n### save\n', 'capability save() returns Nothing', 'Reader note.',
       'Statically checked specification. Runtime behavior is not verified by this document.',
     ]);
-    consumer.expectInstalledDocumentConsumer('guide.md', 'reference/Game.md');
+    consumer.expectInstalledDocumentConsumer('guide.md', 'reference/pages/main.md');
+    consumer.expectInstalledDocumentationHome('reference/Home.md', ['pages/main.md']);
     await consumer.checkTypeScriptConsumer();
     consumer.expectDeclarationsAccepted();
   });

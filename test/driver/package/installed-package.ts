@@ -88,6 +88,7 @@ interface ConsumerReport {
   };
   documentation?: {
     written: OutputWrite;
+    guide: string; home: { path: string; text: string; disk: string };
     read: Omit<ProjectRead, 'artifacts'> & { artifacts: { path: string; text: string; disk: string }[] };
     search: ProjectSearch;
   };

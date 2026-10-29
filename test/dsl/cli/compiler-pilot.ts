@@ -38,7 +38,15 @@ ${examples}
   }
   async build(): Promise<void> { await this.driver.cli(['build']); this.expectExit(0); }
   async expectCompilerContract(): Promise<void> {
-    expect(await this.driver.text('project/reference/Compiler.md')).toContain('compile(input: CompilationInput) returns Compilation');
+    const markdown = await this.driver.text('project/reference/pages/main.md'), heading = '\n## Compiler\n';
+    const start = markdown.indexOf(heading), end = markdown.indexOf('\n## ', start + heading.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(markdown.slice(start, end < 0 ? undefined : end)).toContain('compile(input: CompilationInput) returns Compilation');
+  }
+  async expectDocumentationHome(source: string, page: string): Promise<void> {
+    const home = await this.driver.text('project/reference/Home.md');
+    expect(home).toContain('\n# Home\n');
+    expect(home).toContain('- [' + source + '](' + page + ')');
   }
   useCompilerDriver(observation: 'suppress-real-problems' | 'actual-packaged-compiler'): Promise<void> {
     return this.driver.useDriver(observation === 'suppress-real-problems');

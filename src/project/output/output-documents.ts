@@ -8,6 +8,7 @@ import type { ArtifactLocator, RelationshipObservation } from '../../model/speci
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
 import { anchor, flatten, type ListedDeclaration } from './output-projection.js';
 import { identifier } from '../../model/identity-baseline.js';
+import { navigationEnd, navigationStart, pageEnd, readPageMetadata, type MarkdownPageMetadata } from './markdown-page.js';
 
 export type ListFormat = 'markdown' | 'structure';
 export const outputProblem = (code: string, path: string, message: string): Diagnostic => ({ code, message, at: { kind: 'dependency', path: ['project', path] }, related: [] });
@@ -38,14 +39,22 @@ export function renderList(format: ListFormat, id: string, path: string, declara
   return Buffer.from(section(declaration, 1));
 }
 type Definition = { id: string; at: ArtifactLocator; file: ProjectFile; ancestors: string[] };
-type Link = { at: ArtifactLocator; path: string; projectId: string; source: string | undefined; owners: string[]; destination: string; byId: boolean };
+type Link = { at: ArtifactLocator; path: string; projectId: string; source: string | undefined; owners: string[]; destination: string; byId: boolean; navigation?: boolean };
 type Edge = Link & { target?: RelationshipObservation['uses'][number]['target']; reason?: string };
+type TextRegion = { start: number; end: number };
+export interface MarkdownPageDefinition extends MarkdownPageMetadata {
+  readonly file: ProjectFile;
+  readonly start: number;
+  readonly end: number;
+  readonly navigation: readonly TextRegion[];
+}
 
 /** Discovers definitions and uses in actual target-native project bytes. */
 export class ListDocuments {
   readonly definitions: Definition[] = [];
   readonly problems: Diagnostic[] = [];
   readonly edges: Edge[] = [];
+  readonly pages: MarkdownPageDefinition[] = [];
   private readonly anchors = new Set<string>();
   readonly scope: ArtifactLocator[];
   constructor(readonly format: ListFormat, readonly id: string, readonly snapshot: ProjectSnapshot) {
@@ -60,6 +69,12 @@ export class ListDocuments {
       if (format === 'markdown' && /\.(md|markdown)$/i.test(file.path)) this.markdown(file, links);
       if (format === 'structure' && file.path.endsWith('.structure.json')) this.structure(file, links);
     }
+    const pages = new Map<string, MarkdownPageDefinition[]>();
+    for (const page of this.pages) {
+      const key = JSON.stringify([page.outputId, page.kind, page.key]), group = pages.get(key) ?? [];
+      group.push(page); pages.set(key, group);
+    }
+    for (const group of pages.values()) if (group.length > 1) for (const page of group) this.issue(page.file.path, 'Multiple native documents claim this page.');
     for (const link of links) this.edges.push(this.resolve(link));
     const groups = new Map<string, Definition[]>();
     for (const definition of this.definitions) { const group = groups.get(definition.id) ?? []; group.push(definition); groups.set(definition.id, group); }
@@ -68,8 +83,9 @@ export class ListDocuments {
   private issue(path: string, message: string): void { this.problems.push(outputProblem('invalid-output-document', path, message)); }
   private markdown(file: ProjectFile, links: Link[]): void {
     const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; outputId: string; fragment: boolean; anchors: number; depth?: number }[] = [];
-    const references = new Map<string, string>(), pending: { node: RootContent; owners: string[] }[] = [];
-    let root: string | undefined, waiting = false;
+    const references = new Map<string, string>(), pending: { node: RootContent; owners: string[]; navigation: boolean }[] = [];
+    let root: string | undefined, waiting = false, pageCount = 0, hasPage = false;
+    let page: { metadata: MarkdownPageMetadata; start: number; navigation: TextRegion[] } | undefined, navigating: number | undefined;
     const rememberAnchor = (): void => {
       const current = stack.at(-1);
       if (current) {
@@ -83,12 +99,40 @@ export class ListDocuments {
       if (node.type === 'paragraph' && node.children.length === 2 && node.children[0]?.type === 'html' && node.children[1]?.type === 'html'
         && node.children[0].value === `<a id="${anchor(stack.at(-1)?.id ?? '')}">` && node.children[1].value === '</a>') { rememberAnchor(); return; }
       if (node.type === 'html') {
+        if (node.value.startsWith('<!-- expec-page:')) {
+          hasPage = true;
+          try {
+            const metadata = readPageMetadata(node.value);
+            if (!metadata || page || pageCount || stack.length || waiting) throw new Error('A native document needs one unnested page envelope.');
+            page = { metadata, start: node.position?.start.offset ?? 0, navigation: [] }; pageCount++;
+          } catch { this.issue(file.path, 'Malformed or unbalanced native page metadata.'); }
+          return;
+        }
+        if (node.value.startsWith('<!-- expec-page-end:')) {
+          if (!page || stack.length || waiting || navigating !== undefined || node.value !== pageEnd(page.metadata.key)) this.issue(file.path, 'Unbalanced native page metadata.');
+          else {
+            this.pages.push({ ...page.metadata, file, start: page.start, end: node.position?.end.offset ?? text.length, navigation: page.navigation });
+            page = undefined;
+          }
+          return;
+        }
+        if (node.value === navigationStart) {
+          if (!page || stack.length || waiting || navigating !== undefined) this.issue(file.path, 'Navigation requires an unnested native page region.');
+          else navigating = node.position?.start.offset ?? 0;
+          return;
+        }
+        if (node.value === navigationEnd) {
+          if (!page || stack.length || waiting || navigating === undefined) this.issue(file.path, 'Unbalanced native navigation metadata.');
+          else { page.navigation.push({ start: navigating, end: node.position?.end.offset ?? text.length }); navigating = undefined; }
+          return;
+        }
         const start = /^<!-- expec-(section|fragment):([a-f0-9]+) -->$/.exec(node.value), end = /^<!-- expec-end:([a-f0-9]+) -->$/.exec(node.value);
         if (start) {
           try {
             const data = JSON.parse(Buffer.from(start[2]!, 'hex').toString('utf8')), fragment = start[1] === 'fragment';
             if (typeof data.outputId !== 'string' || !data.outputId.trim() || !identifier.safeParse(data.specId).success || Object.keys(data).sort().join(',') !== 'outputId,specId') throw new Error('Invalid metadata');
-            if (waiting || stack.at(-1)?.fragment || fragment && !stack.length || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
+            if (waiting || navigating !== undefined || page && data.outputId !== page.metadata.outputId || stack.at(-1)?.fragment
+              || fragment && !stack.length || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
             const ancestors = stack.map(item => item.id); stack.push({ id: data.specId, outputId: data.outputId, fragment, anchors: 0 }); waiting = !fragment;
             if (data.outputId === this.id) {
               root ??= data.specId;
@@ -113,16 +157,19 @@ export class ListDocuments {
         } else if (current.depth !== undefined && node.depth <= current.depth) this.issue(file.path, 'Heading escapes its identity section.');
       }
       if (node.type === 'definition') references.set(node.identifier.toUpperCase(), node.url);
-      if (node.type === 'link' || node.type === 'linkReference') pending.push({ node, owners: stack.length ? stack.filter(item => item.outputId === this.id).map(item => item.id) : root ? [root] : [] });
+      if (node.type === 'link' || node.type === 'linkReference') pending.push({ node,
+        owners: stack.length ? stack.filter(item => item.outputId === this.id).map(item => item.id) : hasPage ? [] : root ? [root] : [], navigation: navigating !== undefined });
       if ('children' in node) for (const child of node.children) visit(child as RootContent);
     };
     tree.children.forEach(visit);
     if (stack.length || waiting) this.issue(file.path, 'Unclosed identity section.');
-    for (const { node, owners } of pending) {
+    if (page || navigating !== undefined) this.issue(file.path, 'Unclosed native page or navigation region.');
+    for (const { node, owners, navigation } of pending) {
       const destination = node.type === 'link' ? node.url : node.type === 'linkReference' ? references.get(node.identifier.toUpperCase()) : undefined;
       if (destination === undefined) continue;
       if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(destination)) continue;
-      links.push({ at: { outputId: this.id, format: 'markdown-link', value: { path: file.path, offset: node.position?.start.offset ?? 0 } }, path: file.path, projectId: file.path, source: owners.at(-1), owners, destination, byId: false });
+      links.push({ at: { outputId: this.id, format: 'markdown-link', value: { path: file.path, offset: node.position?.start.offset ?? 0 } }, path: file.path, projectId: file.path,
+        source: owners.at(-1), owners, destination, byId: false, navigation });
     }
   }
   private structure(file: ProjectFile, links: Link[]): void {
@@ -164,6 +211,8 @@ export class ListDocuments {
       const file = this.snapshot.files.find(file => file.path === path);
       if (!file) return unresolved('Missing project link: ' + link.destination);
       if (this.format === 'markdown' && fragment && !this.anchors.has(path + '#' + fragment)) return unresolved('Missing project anchor: ' + link.destination);
+      if (link.navigation) return { ...link, target: { kind: 'project', id: path + (fragment ? '#' + fragment : '') } };
+      if (!fragment && this.pages.some(page => page.file.path === path)) return { ...link, target: { kind: 'project', id: path } };
       selected = this.definitions.filter(definition => definition.file.path === path && (fragment ? anchor(definition.id) === fragment : !definition.ancestors.length));
       if (!selected.length && fragment && this.anchors.has(path + '#' + fragment)) return { ...link, target: { kind: 'project', id: path + '#' + fragment } };
       if (!selected.length && !fragment) return { ...link, target: { kind: 'project', id: path } };

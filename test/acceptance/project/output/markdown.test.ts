@@ -1,5 +1,6 @@
 import { describe, it } from 'vitest';
 import { MarkdownExamples } from '../../../dsl/project/output/markdown.js';
+import { MarkdownWikiExamples } from '../../../dsl/project/output/markdown-wiki.js';
 
 describe('a reader can understand the promised software', () => {
   it('documents the same contract as the summary without waiting for code output', async () => {
@@ -16,8 +17,8 @@ concept StoreGame {
     docs.expectSignatureIn('markdown', 'StoreGame.saveGame', ['snapshot: Snapshot'], 'Nothing');
     docs.expectSignatureIn('contract-list', 'StoreGame.saveGame', ['snapshot: Snapshot'], 'Nothing');
     docs.expectPromise('StoreGame.saveGame', 'Save the snapshot to a Supabase database.');
-    docs.expectStatus('StoreGame.saveGame', 'Declared contract — project implementation not assessed.');
-    docs.expectFiles(['docs/specification/StoreGame.md', 'docs/specification/Snapshot.md']);
+    docs.expectContractDeclaration('StoreGame.saveGame');
+    docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/main.md']);
   });
 
   it('keeps omitted results different from an explicit no-value result', async () => {
@@ -26,7 +27,7 @@ concept StoreGame {
     await docs.generate();
     docs.expectResult('unspecified', 'Result unspecified');
     docs.expectResult('noValue', 'Nothing (no value)');
-    docs.expectStatus('unspecified', 'Declared contract — project implementation not assessed.');
+    docs.expectContractDeclaration('unspecified');
   });
 
   it('shows construction, packages and internal declarations without making them public', async () => {
@@ -72,7 +73,7 @@ opaque type Secret`);
     docs.source('function double(value: Number) returns Number {\nrequires value >= 0\nensures result == value * 2\n}');
     await docs.generate();
     docs.expectConditions('double', ['requires value >= 0', 'ensures result == value * 2']);
-    docs.expectStatus('double', 'Declared contract — project implementation not assessed.');
+    docs.expectContractDeclaration('double');
     docs.expectNoRuntimeVerification();
   });
 
@@ -127,10 +128,10 @@ examples for Shopping {
     await docs.generate();
     docs.expectSteps('add an available book', ['given bookIsAvailable("Dune")', 'given startWithEmptyBasket()', 'when addBook("Dune")', 'then quantity("Dune") == 1']);
     docs.expectExample('one copy', { actual: 'quantity("Dune")', expected: '1' });
-    docs.expectStatus('add an available book', 'Example — statically checked; not executed.');
-    docs.expectStatus('quantity', 'No authored body — implementation obligation; connected project not assessed.');
+    docs.expectAuthoredExample('add an available book');
+    docs.expectImplementationRequired('quantity');
     docs.expectCallLink('quantity("Dune")', 'quantity');
-    docs.expectSubjectInFile('add an available book', 'docs/specification/Shopping.md');
+    docs.expectSubjectInFile('add an available book', 'docs/specification/pages/main.md');
   });
 
   it('changes the authored expected quantity without replacing the observation', async () => {
@@ -140,7 +141,7 @@ examples for Shopping {
     docs.source('concept Shopping {}\nexamples for Shopping { observation quantity(title: Text) returns Number\nexample "one copy": quantity("Dune") => 2 }');
     await docs.update();
     docs.expectExample('one copy', { actual: 'quantity("Dune")', expected: '2' });
-    docs.expectStatus('one copy', 'Example — statically checked; not executed.');
+    docs.expectAuthoredExample('one copy');
   });
 
   it('does not evaluate an arithmetically false example', async () => {
@@ -148,7 +149,7 @@ examples for Shopping {
     docs.source('examples { example "square": 8 * 8 => 65 }');
     await docs.generate();
     docs.expectExample('square', { actual: '8 * 8', expected: '65' });
-    docs.expectStatus('square', 'Example — statically checked; not executed.');
+    docs.expectAuthoredExample('square');
     docs.expectNoRuntimeVerification();
   });
 
@@ -158,7 +159,7 @@ examples for Shopping {
     await docs.write('test-results.json', '{"title":"durable basket","status":"passed"}');
     await docs.generate();
     docs.expectProse('durable basket', 'Survives restart.');
-    docs.expectStatus('durable basket', 'Authored intent — no executable assertion supplied for this text.');
+    docs.expectProseExpectation('durable basket');
     docs.expectNoRuntimeVerification();
     docs.expectNoFilesIn(['test/dsl', 'test/driver']);
   });
@@ -179,8 +180,8 @@ examples for Shopping {
 }`);
     await docs.generate();
     docs.expectStatements('expectQuantity', ['let actual = quantity(title)', 'assert actual == expected']);
-    docs.expectStatus('expectQuantity', 'Authored operation body — statically checked; not executed.');
-    docs.expectStatus('quantity', 'No authored body — implementation obligation; connected project not assessed.');
+    docs.expectAuthoredOperationBody('expectQuantity');
+    docs.expectImplementationRequired('quantity');
     docs.expectCallLink('quantity(title)', 'quantity');
     docs.expectNoRuntimeVerification();
   });
@@ -210,8 +211,8 @@ examples {
     docs.source('examples { action noWork() returns Nothing {}\naction implementMe() returns Nothing }');
     await docs.generate();
     docs.expectStatements('noWork', []);
-    docs.expectStatus('noWork', 'Authored operation body — statically checked; not executed.');
-    docs.expectStatus('implementMe', 'No authored body — implementation obligation; connected project not assessed.');
+    docs.expectAuthoredOperationBody('noWork');
+    docs.expectImplementationRequired('implementMe');
   });
 
   it('renders recursive operation calls as links without expanding an infinite document', async () => {
@@ -243,7 +244,7 @@ examples { action save() returns Receipt
     docs.expectStatus('save game', 'Declared communication — not an observed execution.');
     docs.expectSteps('saved', ['when receipt = save()', 'then receipt.saved == true']);
     docs.expectCapture('saved', 'receipt', 'Receipt');
-    docs.expectSubjectInFile('save game', 'docs/specification/interactions/save game.md');
+    docs.expectSubjectInFile('save game', 'docs/specification/pages/main.md');
   });
 });
 
@@ -255,10 +256,10 @@ describe('composition remains one documented source view', () => {
     docs.sourceFile('book.expec', 'type Book { title: Text }');
     docs.sourceFile('game.examples.expec', 'examples { example "one": 1 => 1 }');
     await docs.generateFrom('entry.expec');
-    docs.expectFiles(['docs/specification/Game.md', 'docs/specification/Book.md']);
+    docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/entry.md', 'docs/specification/pages/game.md', 'docs/specification/pages/book.md', 'docs/specification/pages/game.examples.md']);
     docs.expectDeclarationCount('Game', 1);
     docs.expectExample('one', { actual: '1', expected: '1' });
-    docs.expectSubjectInFile('one', 'docs/specification/Game.md');
+    docs.expectSubjectInFile('one', 'docs/specification/pages/game.examples.md');
     docs.expectOrigin('one', 'game.examples.expec', 1);
   });
 
@@ -269,6 +270,8 @@ describe('composition remains one documented source view', () => {
     await docs.generate();
     docs.expectExternalReference('send', 'vendor', 'External implementation not assessed');
     docs.expectNoFile('docs/specification/send.md');
+    docs.expectNoFile('docs/specification/pages/vendor.md');
+    docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/main.md']);
     docs.expectStatements('notify', ['do send("hello")']);
   });
 
@@ -281,22 +284,26 @@ describe('composition remains one documented source view', () => {
     docs.preserveIdentityOfExamplesContaining('one');
     await docs.update();
     docs.expectLocationUnchanged('one');
-    docs.expectDistinctExamplePages('zero', 'one');
+    docs.expectSubjectInFile('zero', 'docs/specification/pages/main.md');
+    docs.expectSubjectInFile('one', 'docs/specification/pages/main.md');
+    docs.expectDistinctDeclarations('zero', 'one');
     docs.expectExample('zero', { actual: '0', expected: '0' });
   });
 });
 
 describe('generated documentation coexists with handwritten notes', () => {
-  it('inserts another document while keeping the existing document and notes unchanged', async () => {
-    const docs = new MarkdownExamples();
+  it('inserts another declaration while keeping its existing section and source-page notes unchanged', async () => {
+    const docs = new MarkdownWikiExamples();
     docs.source('concept Game {}');
     await docs.generate();
-    await docs.append('docs/specification/Game.md', '\nKeep this note.\n');
-    docs.rememberFileBytes('docs/specification/Game.md');
+    await docs.append('docs/specification/pages/main.md', '\nKeep this note.\n');
+    docs.rememberSectionBytes('Game');
+    docs.rememberPageNotesBytes('main.expec');
     docs.source('concept Game {}\nconcept Storage {}');
     await docs.insert();
-    docs.expectFiles(['docs/specification/Game.md', 'docs/specification/Storage.md']);
-    docs.expectFileBytesUnchanged('docs/specification/Game.md');
+    docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/main.md']);
+    docs.expectRememberedSectionBytes('Game');
+    docs.expectRememberedPageNotesBytes('main.expec');
     docs.expectApplied();
   });
 
@@ -318,14 +325,14 @@ describe('generated documentation coexists with handwritten notes', () => {
     const docs = new MarkdownExamples();
     docs.source('concept StoreGame {}');
     await docs.generate();
-    await docs.append('docs/specification/StoreGame.md', '\nOperator note: backups are nightly.\n');
-    await docs.replaceFileText('docs/specification/StoreGame.md', '# StoreGame', '# My current StoreGame');
+    await docs.append('docs/specification/pages/main.md', '\nOperator note: backups are nightly.\n');
+    await docs.replaceFileText('docs/specification/pages/main.md', '## StoreGame', '## My current StoreGame');
     await docs.read('StoreGame');
-    docs.expectReadBytesEqualFile('docs/specification/StoreGame.md');
-    docs.expectReadContains('# My current StoreGame');
+    docs.expectReadBytesEqualFile('docs/specification/pages/main.md');
+    docs.expectReadContains('## My current StoreGame');
     docs.expectReadContains('Operator note: backups are nightly.');
     await docs.update();
-    docs.expectOwnershipConflict('docs/specification/StoreGame.md');
+    docs.expectOwnershipConflict('docs/specification/pages/main.md');
     docs.expectNoWrites();
   });
 
@@ -336,10 +343,10 @@ describe('generated documentation coexists with handwritten notes', () => {
     docs.source('concept Game { capability save() returns Nothing }');
     await docs.planUpdate();
     docs.expectNoWrites();
-    await docs.append('docs/specification/Game.md', '\nA note written after planning.\n');
+    await docs.append('docs/specification/pages/main.md', '\nA note written after planning.\n');
     await docs.applyPlannedChangesWithRealWriter();
     docs.expectStaleWriteConflict();
-    docs.expectFileContains('docs/specification/Game.md', 'A note written after planning.');
+    docs.expectFileContains('docs/specification/pages/main.md', 'A note written after planning.');
     docs.expectNoConfirmedAssociations();
   });
 
@@ -347,73 +354,82 @@ describe('generated documentation coexists with handwritten notes', () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}');
     await docs.generate();
-    await docs.appendBytes('docs/specification/Game.md', [0xff, 0xfe]);
+    await docs.appendBytes('docs/specification/pages/main.md', [0xff, 0xfe]);
     await docs.read('Game');
-    docs.expectReadBytesEqualFile('docs/specification/Game.md');
+    docs.expectReadBytesEqualFile('docs/specification/pages/main.md');
     docs.expectReadEndsWithBytes([0xff, 0xfe]);
-    docs.expectProblem('invalid-output-document', 'docs/specification/Game.md');
+    docs.expectProblem('invalid-output-document', 'docs/specification/pages/main.md');
     await docs.search('Game');
-    docs.expectIncompleteCoverageAt('docs/specification/Game.md');
+    docs.expectIncompleteCoverageAt('docs/specification/pages/main.md');
     await docs.update();
-    docs.expectProblem('invalid-output-document', 'docs/specification/Game.md');
+    docs.expectProblem('invalid-output-document', 'docs/specification/pages/main.md');
     docs.expectNoWrites();
   });
 
-  it('moves an owned page and notes while updating owned incoming links', async () => {
+  it('moves an owned source page and notes while updating owned incoming links', async () => {
     const docs = new MarkdownExamples();
-    docs.source('type Snapshot { title: Text }\nfunction save(snapshot: Snapshot) returns Nothing');
-    await docs.generate();
-    await docs.append('docs/specification/Snapshot.md', '\nKeep titles short.\n');
-    docs.source('type PlayerState { title: Text }\nfunction save(snapshot: PlayerState) returns Nothing');
+    docs.sourceFile('snapshot.expec', 'type Snapshot { title: Text }');
+    docs.sourceFile('save.expec', 'use Snapshot from "./snapshot.expec"\nfunction save(snapshot: Snapshot) returns Nothing');
+    await docs.generateFrom('save.expec');
+    await docs.replaceNotes('Snapshot', '## Your notes\r\n\r\nKeep titles short.\r\n');
+    docs.removeSourceFile('snapshot.expec');
+    docs.sourceFile('player-state.expec', 'type PlayerState { title: Text }');
+    docs.sourceFile('save.expec', 'use PlayerState from "./player-state.expec"\nfunction save(snapshot: PlayerState) returns Nothing');
     docs.renameIdentity('Snapshot', 'PlayerState');
     await docs.update();
-    docs.expectNoFile('docs/specification/Snapshot.md');
-    docs.expectFileContains('docs/specification/PlayerState.md', 'Keep titles short.');
-    docs.expectLinkTo('save', 'Input', 'PlayerState');
+    docs.expectNoFile('docs/specification/pages/snapshot.md');
+    docs.expectNotesBytes('PlayerState', '## Your notes\r\n\r\nKeep titles short.\r\n');
+    docs.expectLinkTo('save.snapshot', 'snapshot', 'PlayerState');
     docs.expectIdentityUnchanged('Snapshot', 'PlayerState');
   });
 
-  it('protects a handwritten incoming link from a rename', async () => {
+  it('protects a handwritten whole-page incoming link from a source-file rename', async () => {
     const docs = new MarkdownExamples();
-    docs.source('type Snapshot { title: Text }');
-    await docs.generate();
-    await docs.write('notes/usage.md', '[Snapshot](../docs/specification/Snapshot.md)');
-    docs.source('type PlayerState { title: Text }');
+    docs.sourceFile('snapshot.expec', 'type Snapshot { title: Text }');
+    await docs.generateFrom('snapshot.expec');
+    await docs.write('notes/usage.md', '[Snapshot](../docs/specification/pages/snapshot.md)');
+    docs.removeSourceFile('snapshot.expec');
+    docs.sourceFile('player-state.expec', 'type PlayerState { title: Text }');
     docs.renameIdentity('Snapshot', 'PlayerState');
-    await docs.update();
+    await docs.updateFrom('player-state.expec');
     docs.expectConflictAt('notes/usage.md');
     docs.expectNoWrites();
   });
 
-  it('moves a nested declaration between owners without moving either page’s notes', async () => {
+  it('moves a nested declaration between source files without moving either page’s notes', async () => {
     const docs = new MarkdownExamples();
-    docs.source('concept Draft { capability save() returns Nothing }\nconcept Game {}');
-    await docs.generate();
-    await docs.append('docs/specification/Draft.md', '\nDraft notes.\n');
-    await docs.append('docs/specification/Game.md', '\nGame notes.\n');
-    docs.source('concept Draft {}\nconcept Game { capability save() returns Nothing }');
+    docs.sourceFile('entry.expec', 'include "./draft.expec"\ninclude "./game.expec"');
+    docs.sourceFile('draft.expec', 'concept Draft { capability save() returns Nothing }');
+    docs.sourceFile('game.expec', 'concept Game {}');
+    await docs.generateFrom('entry.expec');
+    await docs.replaceNotes('Draft', '## Your notes\r\n\r\nDraft 📚 notes.\r\n');
+    await docs.replaceNotes('Game', '## Your notes\n\nGame notes.\n');
+    docs.sourceFile('draft.expec', 'concept Draft {}');
+    docs.sourceFile('game.expec', 'concept Game { capability save() returns Nothing }');
     docs.moveIdentity('Draft.save', 'Game.save');
     await docs.update();
     docs.expectNoDeclaration('Draft.save');
-    docs.expectSubjectInFile('Game.save', 'docs/specification/Game.md');
+    docs.expectSubjectInFile('Game.save', 'docs/specification/pages/game.md');
     docs.expectIdentityUnchanged('Draft.save', 'Game.save');
-    docs.expectFileContains('docs/specification/Draft.md', 'Draft notes.');
-    docs.expectFileContains('docs/specification/Game.md', 'Game notes.');
+    docs.expectNotesBytes('Draft', '## Your notes\r\n\r\nDraft 📚 notes.\r\n');
+    docs.expectNotesBytes('Game', '## Your notes\n\nGame notes.\n');
   });
 
-  it('refuses to delete a page containing handwritten notes', async () => {
+  it('protects handwritten notes on explicit deletion and retains them when the source becomes empty', async () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}');
     await docs.generate();
-    await docs.append('docs/specification/Game.md', '\nKeep this design decision.\n');
+    await docs.append('docs/specification/pages/main.md', '\nKeep this design decision.\n');
     await docs.delete('Game');
-    docs.expectProblem('handwritten-document-content', 'docs/specification/Game.md');
+    docs.expectProblem('handwritten-document-content', 'docs/specification/pages/main.md');
     docs.expectNoWrites();
     docs.source('');
     docs.retireIdentity('Game');
     await docs.update();
-    docs.expectProblem('handwritten-document-content', 'docs/specification/Game.md');
-    docs.expectNoWrites();
+    docs.expectApplied();
+    docs.expectNoDeclaration('Game');
+    docs.expectFileContains('docs/specification/pages/main.md', 'Keep this design decision.');
+    docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/main.md']);
   });
 
   it('deletes an unused page with untouched empty notes and repeats unchanged', async () => {
@@ -421,7 +437,7 @@ describe('generated documentation coexists with handwritten notes', () => {
     docs.source('concept Game {}');
     await docs.generate();
     await docs.delete('Game');
-    docs.expectNoFile('docs/specification/Game.md');
+    docs.expectNoFile('docs/specification/pages/main.md');
     docs.expectApplied();
     await docs.delete('Game');
     docs.expectUnchanged();
@@ -431,23 +447,23 @@ describe('generated documentation coexists with handwritten notes', () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game { public save, start\ncapability save() returns Nothing\ncapability start() returns Nothing }');
     await docs.generate();
-    await docs.append('docs/specification/Game.md', '\nLaunch notes.\n');
+    await docs.append('docs/specification/pages/main.md', '\nLaunch notes.\n');
     docs.source('concept Game { public start\ncapability start() returns Nothing }');
     docs.retireIdentity('Game.save');
     await docs.update();
     docs.expectPublicCapabilities('Game', ['start']);
     docs.expectNoDeclaration('Game.save');
-    docs.expectFileContains('docs/specification/Game.md', 'Launch notes.');
+    docs.expectFileContains('docs/specification/pages/main.md', 'Launch notes.');
   });
 
   it('does not adopt a copied document or repair missing ownership state', async () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}');
     await docs.generate();
-    await docs.copy('docs/specification/Game.md', 'notes/Game-copy.md');
+    await docs.copy('docs/specification/pages/main.md', 'notes/Game-copy.md');
     await docs.removeOutputState();
     await docs.read('Game');
-    docs.expectReadFiles(['docs/specification/Game.md', 'notes/Game-copy.md']);
+    docs.expectReadFiles(['docs/specification/pages/main.md', 'notes/Game-copy.md']);
     docs.expectAmbiguousDefinition();
     await docs.update();
     docs.expectOwnershipConflict();
@@ -459,11 +475,11 @@ describe('generated documentation coexists with handwritten notes', () => {
     docs.source('concept Game {}');
     docs.failActualWriteOfOutputState();
     await docs.generate();
-    docs.expectStoppedReceiptWithCreatedFile('docs/specification/Game.md');
+    docs.expectStoppedReceiptWithCreatedFile('docs/specification/pages/main.md');
     docs.expectNoConfirmedAssociations();
     docs.restoreFileWrites();
     await docs.generate();
-    docs.expectOwnershipConflict('docs/specification/Game.md');
+    docs.expectOwnershipConflict('docs/specification/pages/main.md');
   });
 });
 
@@ -483,26 +499,28 @@ describe('search asks what the documentation currently says', () => {
     docs.expectNoDuplicateDefinitionAcrossOutputNamespaces();
   });
 
-  it('finds new unmodeled consumers and handwritten outgoing links after opening', async () => {
+  it('finds new unmodeled consumers and real page-note links after opening', async () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}\nconcept Storage {}');
     await docs.generate();
-    await docs.write('notes/launcher.md', '[game][target]\n\n[target]: ../docs/specification/Game.md');
-    await docs.append('docs/specification/Game.md', '\nSee [Storage](Storage.md).\n');
+    await docs.writeReferenceLink('notes/launcher.md', 'game', 'Game');
+    await docs.appendLinkInNotes('Game', 'Storage', 'Storage');
     await docs.search('Game');
     docs.expectIncomingFromProjectFile('notes/launcher.md');
-    docs.expectOutgoingTo('Storage');
-    docs.expectCompleteWithinMarkdownScope();
-    await docs.replaceFileText('docs/specification/Game.md', '[Storage](Storage.md)', 'Storage');
-    await docs.search('Game');
     docs.expectNoOutgoingTo('Storage');
+    docs.expectCompleteWithinMarkdownScope();
+    await docs.search('Storage');
+    docs.expectIncomingFromProjectFile('docs/specification/pages/main.md');
+    await docs.replaceNoteLinkWithText('Game', 'Storage', 'Storage');
+    await docs.search('Storage');
+    docs.expectNoIncomingFromProjectFile('docs/specification/pages/main.md');
   });
 
   it('does not turn fenced examples or authored prose into reference edges', async () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}\nfunction intent() { promises "[Game](Game.md)" }');
     await docs.generate();
-    await docs.write('notes/sample.md', '```md\n[Game](../docs/specification/Game.md)\n```');
+    await docs.write('notes/sample.md', '```md\n[Game](../docs/specification/pages/main.md)\n```');
     await docs.search('Game');
     docs.expectNoIncomingFrom('intent');
     docs.expectNoIncomingFromProjectFile('notes/sample.md');
@@ -513,7 +531,7 @@ describe('search asks what the documentation currently says', () => {
     const docs = new MarkdownExamples();
     docs.source('type Snapshot { title: Text }\ntype Config { value: Number }\nconcept Game { public save, start\ncapability save(snapshot: Snapshot) returns Nothing\ncapability start(config: Config) returns Nothing }');
     await docs.generate();
-    await docs.append('docs/specification/Game.md', '\nSee [Config](Config.md).\n');
+    await docs.appendLinkInNotes('Game', 'Config', 'Config');
     await docs.search('Game.save');
     docs.expectOutgoingTo('Snapshot');
     docs.expectNoOutgoingTo('Config');
@@ -530,7 +548,7 @@ describe('search asks what the documentation currently says', () => {
     docs.source('concept Game {}');
     docs.retireIdentity('Game.save');
     await docs.update();
-    docs.expectConflictAt('docs/specification/Game.md');
+    docs.expectConflictAt('docs/specification/pages/main.md');
     docs.expectNoWrites();
   });
 
@@ -538,7 +556,7 @@ describe('search asks what the documentation currently says', () => {
     const docs = new MarkdownExamples();
     docs.source('concept Game {}');
     await docs.generate();
-    await docs.write('notes/html.md', '<a href="../docs/specification/Game.md">Game</a>');
+    await docs.write('notes/html.md', '<a href="../docs/specification/pages/main.md">Game</a>');
     await docs.search('Game');
     docs.expectIncompleteCoverageAt('notes/html.md');
     await docs.delete('Game');
@@ -555,7 +573,7 @@ it('keeps an input independently readable and searchable without another heading
   await docs.generate();
   docs.expectCompactLeaf('save.snapshot', 'snapshot: Snapshot');
   await docs.read('save.snapshot');
-  docs.expectReadBytesEqualFile('docs/specification/save.md');
+  docs.expectReadBytesEqualFile('docs/specification/pages/main.md');
   await docs.search('save.snapshot');
   docs.expectDefinitionInOutput('markdown', 'save.snapshot');
   docs.expectOutgoingTo('Snapshot');
@@ -597,10 +615,10 @@ it('does not claim complete leaf coverage after its actual anchor is removed', a
   await docs.generate();
   await docs.removeActualAnchor('save.count');
   await docs.search('save.count');
-  docs.expectIncompleteCoverageAt('docs/specification/save.md');
-  docs.expectProblem('invalid-output-document', 'docs/specification/save.md');
+  docs.expectIncompleteCoverageAt('docs/specification/pages/main.md');
+  docs.expectProblem('invalid-output-document', 'docs/specification/pages/main.md');
   await docs.update();
-  docs.expectOwnershipConflict('docs/specification/save.md');
+  docs.expectOwnershipConflict('docs/specification/pages/main.md');
   docs.expectNoWrites();
 });
 
@@ -610,10 +628,10 @@ it('does not accept two actual anchors claiming one leaf definition', async () =
   await docs.generate();
   await docs.duplicateActualAnchor('save.count');
   await docs.search('save.count');
-  docs.expectIncompleteCoverageAt('docs/specification/save.md');
-  docs.expectProblem('invalid-output-document', 'docs/specification/save.md');
+  docs.expectIncompleteCoverageAt('docs/specification/pages/main.md');
+  docs.expectProblem('invalid-output-document', 'docs/specification/pages/main.md');
   await docs.update();
-  docs.expectOwnershipConflict('docs/specification/save.md');
+  docs.expectOwnershipConflict('docs/specification/pages/main.md');
   docs.expectNoWrites();
 });
 

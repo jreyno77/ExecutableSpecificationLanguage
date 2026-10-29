@@ -1,0 +1,148 @@
+{
+  "format": "out27-legacy-markdown-fixture-1",
+  "provenance": {
+    "sourceCommit": "bb463e2",
+    "capturedUsing": "unmodified existing compiled public API before OUT-27 implementation",
+    "productionSHA256": {
+      "src/project/output/markdown-document.ts": "814f585a3788af71f7d70d4468e5e2da15084aaf6a58499565d9988d977b37d8",
+      "src/project/output/output-markdown.ts": "165ec67cc118430a7ea30afdc26c89e3b0f658ccb41f588510530bbcd6d723a6",
+      "dist/index.js": "807dfcb7b4338337f716d3f4912cb6b5176dfe89c6edfe657c2584513d571bed"
+    }
+  },
+  "source": {
+    "sourceId": "fixture.expec",
+    "text": "type Book { title: Text }\nconcept Library {}"
+  },
+  "baseline": {
+    "artifacts": [],
+    "context": "sha256:881bd498bee4e84caf787e65b744cd2840ca050ca66904f369910dcf24715c1f",
+    "elements": [
+      {
+        "address": {
+          "kind": "record-type-declaration",
+          "module": "fixture.expec",
+          "name": "Book",
+          "owner": null
+        },
+        "capture": "sha256:6bc0e7b4ecd51ed21ecb35d993ff96c605c762a918b6c504b940dd8e89a036b6",
+        "id": "legacy-markdown-1",
+        "occurrence": 0,
+        "origin": {
+          "kind": "source",
+          "module": "fixture.expec",
+          "node": {
+            "ordinal": 0,
+            "sourceId": "fixture.expec"
+          },
+          "range": {
+            "end": {
+              "column": 26,
+              "line": 1,
+              "offset": 25
+            },
+            "sourceId": "fixture.expec",
+            "start": {
+              "column": 1,
+              "line": 1,
+              "offset": 0
+            }
+          }
+        },
+        "references": [],
+        "structure": "sha256:f926d58df8cca49abdd8ef58e956f4df13b5ddabf23607e412d1c4179fee6318"
+      },
+      {
+        "address": {
+          "kind": "field",
+          "module": "fixture.expec",
+          "name": "title",
+          "owner": "legacy-markdown-1"
+        },
+        "capture": "sha256:056913a014c2f8842705b43dbffc1cf55127e6150c4e1750d3b4e926799a13af",
+        "id": "legacy-markdown-2",
+        "occurrence": 0,
+        "origin": {
+          "kind": "source",
+          "module": "fixture.expec",
+          "node": {
+            "ordinal": 2,
+            "sourceId": "fixture.expec"
+          },
+          "range": {
+            "end": {
+              "column": 24,
+              "line": 1,
+              "offset": 23
+            },
+            "sourceId": "fixture.expec",
+            "start": {
+              "column": 13,
+              "line": 1,
+              "offset": 12
+            }
+          }
+        },
+        "references": [],
+        "structure": "sha256:b33343585b08207902ff5d801acc0c586a7db3b61efdb42e926dea6c32b71854"
+      },
+      {
+        "address": {
+          "kind": "concept",
+          "module": "fixture.expec",
+          "name": "Library",
+          "owner": null
+        },
+        "capture": "sha256:d42ab9de25318c344872322e6ba7a8af80401d600f368a3e2a9b9872610ab410",
+        "id": "legacy-markdown-3",
+        "occurrence": 0,
+        "origin": {
+          "kind": "source",
+          "module": "fixture.expec",
+          "node": {
+            "ordinal": 7,
+            "sourceId": "fixture.expec"
+          },
+          "range": {
+            "end": {
+              "column": 19,
+              "line": 2,
+              "offset": 44
+            },
+            "sourceId": "fixture.expec",
+            "start": {
+              "column": 1,
+              "line": 2,
+              "offset": 26
+            }
+          }
+        },
+        "references": [],
+        "structure": "sha256:d2c89901f9c6c75f44455f1a35d4334ceb1737291a1712cfb8d548f3771fb535"
+      }
+    ],
+    "entry": "fixture.expec",
+    "format": 1,
+    "modules": [
+      "fixture.expec"
+    ],
+    "projection": "expec-structure-1",
+    "retired": []
+  },
+  "files": [
+    {
+      "path": "docs/Book.md",
+      "text": "<!-- expec-section:7b226f75747075744964223a226d61726b646f776e222c22737065634964223a226c65676163792d6d61726b646f776e2d31227d -->\n\n# Book\n\n<a id=\"expec-6c65676163792d6d61726b646f776e2d31\"></a>\n\nStatically checked specification. Runtime behavior is not verified by this document.\n\n```expec\ntype Book {\n  title: Text\n}\n```\n\nSource: fixture.expec:1:1\n\n<!-- expec-fragment:7b226f75747075744964223a226d61726b646f776e222c22737065634964223a226c65676163792d6d61726b646f776e2d32227d -->\n\n<a id=\"expec-6c65676163792d6d61726b646f776e2d32\"></a>\n\nField: ` title: Text ` — Source: fixture.expec:1:13\n\nType: Text\n\n<!-- expec-end:6c65676163792d6d61726b646f776e2d32 -->\n\n<!-- expec-end:6c65676163792d6d61726b646f776e2d31 -->\n\n## Your notes\n\nEdit this area for your own notes. Content above it is generated from .expec.\n\n",
+      "sha256": "ae45fd9ebcc430fcf80de7cc47042368ea0c19c4257a702cc6f43e3b61e80d82"
+    },
+    {
+      "path": "docs/Library.md",
+      "text": "<!-- expec-section:7b226f75747075744964223a226d61726b646f776e222c22737065634964223a226c65676163792d6d61726b646f776e2d33227d -->\n\n# Library\n\n<a id=\"expec-6c65676163792d6d61726b646f776e2d33\"></a>\n\nStatically checked specification. Runtime behavior is not verified by this document.\n\n```expec\nconcept Library\n```\n\nSource: fixture.expec:2:1\n\nPublic capabilities: \n\nInternal declarations: \n\n<!-- expec-end:6c65676163792d6d61726b646f776e2d33 -->\n\n## Your notes\n\nEdit this area for your own notes. Content above it is generated from .expec.\n\n",
+      "sha256": "7ebd469e693e15a5c21bda8fed82207d8d597390abc301cd76c817fa8375a6b6"
+    },
+    {
+      "path": ".expec/outputs/6d61726b646f776e.json",
+      "text": "{\n  \"context\": \"sha256:881bd498bee4e84caf787e65b744cd2840ca050ca66904f369910dcf24715c1f\",\n  \"deleted\": [],\n  \"directory\": \"docs\",\n  \"documents\": [\n    {\n      \"hash\": \"b0ccf2d368d1ce1f6fd3e4626a081dbf8f42bfc3e7e757c75c2c83da74100fdd\",\n      \"path\": \"docs/Book.md\",\n      \"subjects\": [\n        {\n          \"id\": \"legacy-markdown-1\",\n          \"structure\": \"sha256:f926d58df8cca49abdd8ef58e956f4df13b5ddabf23607e412d1c4179fee6318\"\n        },\n        {\n          \"id\": \"legacy-markdown-2\",\n          \"structure\": \"sha256:b33343585b08207902ff5d801acc0c586a7db3b61efdb42e926dea6c32b71854\"\n        }\n      ]\n    },\n    {\n      \"hash\": \"10e18cccf4d0976c0f59990bd1d0c652f6018597c8f16480768d125c8c216f50\",\n      \"path\": \"docs/Library.md\",\n      \"subjects\": [\n        {\n          \"id\": \"legacy-markdown-3\",\n          \"structure\": \"sha256:d2c89901f9c6c75f44455f1a35d4334ceb1737291a1712cfb8d548f3771fb535\"\n        }\n      ]\n    }\n  ],\n  \"format\": 1,\n  \"notes\": \"## Your notes\\n\\nEdit this area for your own notes. Content above it is generated from .expec.\\n\\n\",\n  \"outputId\": \"markdown\",\n  \"renderFormat\": 1\n}\n",
+      "sha256": "bdaf4bdf4f076ce5dbe6615c9d27a274fd6c70f5a8efb048bd4ffde1b57ee076"
+    }
+  ]
+}

@@ -17,8 +17,8 @@ export class MarkdownPlans {
     this.output = this.registry.open('markdown', { directory }, { root: this.snapshot.root, readSnapshot: async () => this.snapshot },
       { apply: async () => { throw new Error('Pure plan example must not invoke a writer'); } }).value!;
   }
-  source(text: string, retire: string[] = []): void {
-    const checked = new Compiler().compile({ locator: 'fixture.expec', source: { sourceId: 'fixture.expec', text }, dependencies: { modules: [], packages: [] } });
+  source(text: string, retire: string[] = [], sourceId = 'fixture.expec'): void {
+    const checked = new Compiler().compile({ locator: sourceId, source: { sourceId, text }, dependencies: { modules: [], packages: [] } });
     if (!checked.value) throw new Error('Invalid unit source: ' + JSON.stringify(checked));
     const prior = this.current, result = this.identity.associate(checked.value, prior?.baseline, retire.map(name => ({ retire: this.id(name) })));
     if (!result.value) throw new Error('Invalid unit identity: ' + JSON.stringify(result));
