@@ -1,10 +1,11 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, appendFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const settings = JSON.parse(await readFile(new URL('./outputs.json', import.meta.url), 'utf8'));
 const { runCli } = await import(pathToFileURL(settings.library).href);
 const registration = item => ({ id: item.id, validate: () => [], open() { let owned = new Set(); return { id: item.id,
   async plan(request, basedOn) {
+    if (item.trace) await appendFile(settings.traceFile, JSON.stringify({ outputId: item.id, operation: request.operation, diff: request.diff }) + '\n');
     if (item.malformedPlan) return { problems: [], deferred: [] };
     if (item.afterPlan) { await mkdir(dirname(item.afterPlan.path), {recursive:true}); await writeFile(item.afterPlan.path, item.afterPlan.text); }
     owned = new Set(request.current.baseline.elements.filter(element => element.address.owner === null && (!item.subject || element.address.name === item.subject)).map(element => element.id));

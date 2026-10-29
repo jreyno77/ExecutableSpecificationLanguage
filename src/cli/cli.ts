@@ -40,7 +40,7 @@ export interface CliHost {
 }
 const commands = ['check', 'build', 'test', 'init', 'install'];
 const help = 'expec check|build|test|install [--config expec.json] [--json]\n'
-  + 'expec build [--decisions changes.json]\nexpec init --root directory --target typescript|java|kotlin [--java-home path] [--yes] [--config expec.json] [--json]\n'
+  + 'expec build [--replan] [--decisions changes.json]\nexpec init --root directory --target typescript|java|kotlin [--java-home path] [--yes] [--config expec.json] [--json]\n'
   + 'expec init --root directory --target python --python interpreter --uv executable [--yes] [--config expec.json] [--json]\n'
   + 'expec install --offline [--config expec.json] [--json] (Python only)\n'
   + 'expec --help\nexpec --version\n';
@@ -91,7 +91,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
     let values: ReturnType<typeof parseArgs>['values'];
     try {
       const parsed = parseArgs({ args, allowPositionals: true, tokens: true, strict: true, options: {
-        config: { type: 'string' }, json: { type: 'boolean' }, decisions: { type: 'string' },
+        config: { type: 'string' }, json: { type: 'boolean' }, decisions: { type: 'string' }, replan: { type: 'boolean' },
         root: { type: 'string' }, target: { type: 'string' }, yes: { type: 'boolean' },
         'java-home': { type: 'string' },
         python: { type: 'string' }, uv: { type: 'string' }, offline: { type: 'boolean' },
@@ -116,6 +116,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
       command = parsed.positionals[0] ?? '';
       if (parsed.positionals.length !== 1 || !commands.includes(command)) throw Error('Choose check, build, test, init or install.');
       if (values.offline !== undefined && command !== 'install') throw Error('--offline is only available for install.');
+      if (values.replan !== undefined && command !== 'build') throw Error('--replan is only available for build.');
       if (values.decisions !== undefined && command !== 'build') throw Error('--decisions is only available for build.');
       if (['root', 'target', 'yes', 'java-home'].some(key => values[key] !== undefined) && command !== 'init') throw Error('--root, --target, --java-home and --yes are only available for init.');
       if (values['java-home'] !== undefined && !['java', 'kotlin'].includes(values.target as string)) throw Error('--java-home is only available for Java or Kotlin targets.');
@@ -166,11 +167,12 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
         return report(result.status, result.exitCode, { ...details, ...result });
       }
       if (command === 'build') {
-        if (!checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
+        if (!checked.configuration!.outputs.length && (values.replan !== true || !checked.configuration!.project)) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
         let connection = await new ProjectConnector(manifest, checked.profile?.target === 'java' ? { excludeNames: javaCliExclusions }
           : checked.profile?.target === 'kotlin' ? { excludeNames: kotlinExclusions }
           : checked.profile?.target === 'python' ? { excludeNames: pythonExclusions } : undefined).connect(checked.configuration!);
         if (!connection.value) return report('invalid', 1, { ...details, problems: connection.problems });
+        if (connection.value.status === 'unconnected' && !checked.configuration!.outputs.length) return report('built', 0, { ...details, stages: [{ name: 'contracts', status: 'not-run' }, { name: 'tests', status: 'not-run' }] });
         if (connection.value.status === 'unconnected') {
           const initialized = await initialize(checked, selected, undefined, false, interactive, controller.signal);
           if (initialized.exitCode) return report(initialized.status, initialized.exitCode, { ...details, ...initialized });
@@ -184,7 +186,7 @@ export async function runCli(input: readonly string[], additional: CliOutputs = 
         }
         if (connection.value?.status === 'connected') {
           const admission = new BuildAdmission(manifest, controller.signal, hosted.checkWrite);
-          const result = await build(checked, connection.value.context, outputs, new Set(['acceptance', 'java-acceptance', 'kotlin-acceptance', 'python-acceptance', ...supplied.tests.map(output => output.id)]), controller.signal, typeof values.decisions === 'string' ? resolve(cwd, values.decisions) : undefined, admission);
+          const result = await build(checked, connection.value.context, outputs, new Set(['acceptance', 'java-acceptance', 'kotlin-acceptance', 'python-acceptance', ...supplied.tests.map(output => output.id)]), controller.signal, typeof values.decisions === 'string' ? resolve(cwd, values.decisions) : undefined, admission, values.replan === true);
           return report(result.status, result.exitCode, { ...details, ...result, problems: [...result.problems,
             ...admission.problems.filter(problem => !result.problems.some(previous => isDeepStrictEqual(previous, problem)))] });
         }
