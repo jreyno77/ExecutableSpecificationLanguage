@@ -17,6 +17,7 @@ export class MarkdownDriver {
   private sequence = 0;
   private context?: ProjectContext;
   private opened = new Map<string, Output>();
+  private openedMembership = new Map<string, string>();
   private dirty = true;
   private decisions: { from: string; to?: string; examples?: boolean }[] = [];
   text = '';
@@ -42,6 +43,7 @@ export class MarkdownDriver {
   constructor() { this.outputs.register(markdownOutput); this.outputs.register(contractListOutput); }
   source(text: string): void { this.text = text; this.sources.clear(); this.entry = 'main.expec'; this.dirty = true; }
   sourceFile(path: string, text: string): void { this.sources.set(path, text); this.dirty = true; }
+  removeSourceFile(path: string): void { this.sources.delete(path); this.dirty = true; }
   externalFunction(module: string, name: string, parameters: string[], result: string): void {
     this.external.set(module, [{ kind: 'function', name, parameters: parameters.map(parameter => {
       const [name, type] = parameter.split(':').map(part => part.trim());
@@ -61,11 +63,12 @@ export class MarkdownDriver {
     return this.context;
   }
   async output(id = 'markdown'): Promise<Output> {
+    const membership = { workspaceModules: this.sources.size ? [...this.sources.keys()] : [this.entry] }, signature = JSON.stringify(membership);
     const existing = this.opened.get(id);
-    if (existing) return existing;
-    const context = await this.connect(), opened = this.outputs.open(id, { directory: id === 'markdown' ? 'docs/specification' : 'docs/contracts' }, context, new FileProjectWriter(context));
+    if (existing && this.openedMembership.get(id) === signature) return existing;
+    const context = await this.connect(), opened = this.outputs.open(id, { directory: id === 'markdown' ? 'docs/specification' : 'docs/contracts' }, context, new FileProjectWriter(context), membership);
     if (!opened.value) throw new Error('Invalid output fixture: ' + JSON.stringify(opened));
-    this.opened.set(id, opened.value); return opened.value;
+    this.opened.set(id, opened.value); this.openedMembership.set(id, signature); return opened.value;
   }
   private compile(): Specification {
     const models = [...(this.sources.size ? this.sources : new Map([[this.entry, this.text]]))].map(([locator, text]) => {
@@ -176,16 +179,19 @@ export class MarkdownDriver {
     const text = this.textAt(this.fileFor(name, outputId)), start = text.indexOf(text.includes(this.marker(name, outputId)) ? this.marker(name, outputId) : this.marker(name, outputId, 'fragment')), end = text.indexOf(this.end(name), start);
     if (end < 0) throw new Error('Missing rendered section end for ' + name); return text.slice(start, end);
   }
-  notes(name: string): string {
-    const text = this.textAt(this.fileFor(name)), end = text.indexOf(this.end(name)) + this.end(name).length;
-    return text.slice(end).replace(/^\r?\n\r?\n/, '');
+  private notesStart(name: string): { path: string; text: string; end: number } {
+    const path = this.fileFor(name), text = this.textAt(path), pageEnd = /<!-- expec-page-end:[a-f0-9]+ -->/.exec(text);
+    const marker = pageEnd?.[0] ?? this.end(name), end = (pageEnd?.index ?? text.indexOf(marker)) + marker.length;
+    return { path, text, end };
   }
-  async replaceNotes(name: string, text: string): Promise<void> {
-    const path = this.fileFor(name), current = this.textAt(path), end = current.indexOf(this.end(name)) + this.end(name).length;
-    await this.write(path, current.slice(0, end) + '\n\n' + text);
+  notes(name: string): string {
+    const { text, end } = this.notesStart(name); return text.slice(end).replace(/^\r?\n\r?\n/, '');
+  }
+  async replaceNotes(name: string, notes: string): Promise<void> {
+    const { path, text, end } = this.notesStart(name); await this.write(path, text.slice(0, end) + '\n\n' + notes);
   }
   async linkInNotes(owner: string, label: string, target: string): Promise<void> {
-    const path = this.fileFor(owner), targetPath = this.fileFor(target), href = relative(dirname(path), targetPath).split(sep).map(encodeURIComponent).join('/');
+    const path = this.fileFor(owner), targetPath = this.fileFor(target), href = path === targetPath ? '' : relative(dirname(path), targetPath).split(sep).map(encodeURIComponent).join('/');
     await this.append(path, '\n[' + label + '](' + href + '#expec-' + Buffer.from(this.id(target)).toString('hex') + ')\n');
   }
   failStateWrite(): void {

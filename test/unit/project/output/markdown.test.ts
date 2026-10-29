@@ -40,29 +40,30 @@ describe('readable authored syntax', () => {
     const result = await caller.output.search(caller.id('intent'));
     expect(result.definitions).toHaveLength(1); expect(result.outgoing.uses).toEqual([]);
     expect(result.outgoing.coverage.complete).toBe(true);
-    expect(caller.text('docs/intent.md')).toContain('````expec');
+    expect(caller.text('docs/pages/fixture.md')).toContain("\\`\\`\\`");
+    expect(caller.text('docs/pages/fixture.md')).toContain("\\<\\!-- expec-section:bad --\\>");
   });
 });
 
 describe('generated regions preserve actual surrounding bytes', () => {
   it('preserves a Unicode prefix and mixed-line-ending notes through an update', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('docs/Game.md', '📚 Reader preface\r\n\r\n' + caller.text('docs/Game.md') + 'Nightly backups.\r\n');
+    caller.edit('docs/pages/fixture.md', '📚 Reader preface\r\n\r\n' + caller.text('docs/pages/fixture.md') + 'Nightly backups.\r\n');
     caller.source('concept Game { capability save() returns Nothing }');
     const plan = await caller.plan('update'); expect(plan.problems).toEqual([]); caller.apply(plan.value!);
-    expect(caller.text('docs/Game.md').startsWith('📚 Reader preface\r\n\r\n')).toBe(true);
-    expect(caller.text('docs/Game.md').endsWith('Nightly backups.\r\n')).toBe(true);
+    expect(caller.text('docs/pages/fixture.md').startsWith('📚 Reader preface\r\n\r\n')).toBe(true);
+    expect(caller.text('docs/pages/fixture.md').endsWith('Nightly backups.\r\n')).toBe(true);
   });
   it('preserves a UTF-8 BOM as handwritten prefix bytes', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('docs/Game.md', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), caller.bytes('docs/Game.md')]));
+    caller.edit('docs/pages/fixture.md', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), caller.bytes('docs/pages/fixture.md')]));
     caller.source('concept Game { capability save() returns Nothing }');
     const plan = await caller.plan('update'); expect(plan.problems).toEqual([]); caller.apply(plan.value!);
-    expect([...caller.bytes('docs/Game.md').slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect([...caller.bytes('docs/pages/fixture.md').slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   });
   it('does not rewrite exact replay after handwritten note edits', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('docs/Game.md', caller.text('docs/Game.md') + '\nNightly backups.\n');
+    caller.edit('docs/pages/fixture.md', caller.text('docs/pages/fixture.md') + '\nNightly backups.\n');
     expect((await caller.plan()).value?.changes).toEqual([]);
     expect((await caller.plan('update')).value?.changes).toEqual([]);
   });
@@ -71,30 +72,37 @@ describe('generated regions preserve actual surrounding bytes', () => {
     caller.source('concept Game { capability save() returns Nothing }');
     caller.source('concept Game { capability save() returns Nothing\ncapability start() returns Nothing }');
     const plan = await caller.plan('update'); expect(plan.problems).toEqual([]); caller.apply(plan.value!);
-    expect(caller.text('docs/Game.md')).toContain('capability save() returns Nothing');
-    expect(caller.text('docs/Game.md')).toContain('capability start() returns Nothing');
+    expect(caller.text('docs/pages/fixture.md')).toContain('capability save() returns Nothing');
+    expect(caller.text('docs/pages/fixture.md')).toContain('capability start() returns Nothing');
   });
   it('rejects a second root marker added outside the recorded generated region', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
     const metadata = Buffer.from(JSON.stringify({ outputId: 'markdown', specId: 'unowned-root' })).toString('hex');
-    caller.edit('docs/Game.md', caller.text('docs/Game.md') + '<!-- expec-section:' + metadata + ' -->\n\n# Extra\n\n<a id="expec-' + Buffer.from('unowned-root').toString('hex') + '"></a>\n\n<!-- expec-end:' + Buffer.from('unowned-root').toString('hex') + ' -->\n\n');
+    caller.edit('docs/pages/fixture.md', caller.text('docs/pages/fixture.md') + '<!-- expec-section:' + metadata + ' -->\n\n# Extra\n\n<a id="expec-' + Buffer.from('unowned-root').toString('hex') + '"></a>\n\n<!-- expec-end:' + Buffer.from('unowned-root').toString('hex') + ' -->\n\n');
     const plan = await caller.plan('update'); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('output-conflict');
   });
   it('refuses removal after even whitespace-only handwritten changes', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('docs/Game.md', caller.text('docs/Game.md') + ' ');
+    caller.edit('docs/pages/fixture.md', caller.text('docs/pages/fixture.md') + ' ');
     const plan = await caller.output.plan({ operation: 'delete', id: caller.id('Game') }, caller.snapshot);
     expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('handwritten-document-content');
   });
-  it('removes owned mutually referring pages in one coherent plan', async () => {
+  it('removes mutually referring declarations coherently while retaining their source page', async () => {
     const caller = new MarkdownPlans(); caller.source('type A { other: B? }\ntype B { other: A? }'); await caller.create();
+    const a = caller.id('A'), b = caller.id('B');
     caller.source('', ['A', 'B']);
     const plan = await caller.plan('update'); expect(plan.problems).toEqual([]);
-    expect(plan.value?.changes.filter(change => change.kind === 'remove').map(change => change.path)).toEqual(['docs/A.md', 'docs/B.md']);
+    expect(plan.value?.changes.filter(change => change.kind === 'remove').map(change => change.path)).toEqual([]);
+    caller.apply(plan.value!);
+    expect(caller.snapshot.files.map(file => file.path)).toContain('docs/Home.md');
+    expect(caller.snapshot.files.map(file => file.path)).toContain('docs/pages/fixture.md');
+    expect(caller.text('docs/pages/fixture.md')).not.toContain('expec-' + Buffer.from(a).toString('hex'));
+    expect(caller.text('docs/pages/fixture.md')).not.toContain('expec-' + Buffer.from(b).toString('hex'));
+    expect(plan.value?.artifacts).toEqual([]);
   });
   it('does not claim mutation ownership after a manually moved document', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('notes/Game.md', caller.bytes('docs/Game.md')); caller.remove('docs/Game.md');
+    caller.edit('notes/Game.md', caller.bytes('docs/pages/fixture.md')); caller.remove('docs/pages/fixture.md');
     expect((await caller.output.read(caller.id('Game'))).artifacts.map(item => item.file.path)).toEqual(['notes/Game.md']);
     const plan = await caller.plan('update'); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('output-conflict');
   });
@@ -109,12 +117,12 @@ describe('generated regions preserve actual surrounding bytes', () => {
     const plan = await caller.plan(); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('invalid-output-document');
   });
   it('keeps a missing recorded file different from a new absent document', async () => {
-    const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create(); caller.remove('docs/Game.md');
+    const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create(); caller.remove('docs/pages/fixture.md');
     expect((await caller.plan()).problems.map(problem => problem.code)).toContain('output-conflict');
   });
   it('rejects modified generated boundaries without rewriting notes', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create();
-    caller.edit('docs/Game.md', caller.text('docs/Game.md').replace('expec-end:', 'edited-end:'));
+    caller.edit('docs/pages/fixture.md', caller.text('docs/pages/fixture.md').replace('expec-end:', 'edited-end:'));
     const plan = await caller.plan('update'); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('output-conflict');
   });
   it('reports directory retargeting as a migration rather than silently moving documents', async () => {
@@ -132,9 +140,17 @@ describe('generated regions preserve actual surrounding bytes', () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); caller.snapshot = { ...caller.snapshot, excludeNames: ['.git', 'docs'] };
     const plan = await caller.plan(); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('output-conflict');
   });
-  it('does not automatically transliterate unsafe authored filenames', async () => {
-    const caller = new MarkdownPlans(); caller.source('concept `Game/Store` {}');
-    const plan = await caller.plan(); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('unsupported-artifact-name');
+  it('preserves an authored slash in a heading without turning it into a native filename', async () => {
+    const caller = new MarkdownPlans(); caller.source("concept `Game/Store` {}");
+    const plan = await caller.plan(); expect(plan.problems).toEqual([]); expect(plan.value).toBeDefined(); caller.apply(plan.value!);
+    expect(caller.text('docs/pages/fixture.md')).toContain('## Game/Store');
+    expect(caller.snapshot.files.some(file => file.path.includes('Game/Store'))).toBe(false);
+    expect((await caller.output.search(caller.id('Game/Store'))).definitions).toHaveLength(1);
+  });
+  it('refuses an unsafe actual source filename without silently transliterating it', async () => {
+    const caller = new MarkdownPlans(); caller.source('concept Game {}', [], 'Game?Store.expec');
+    const plan = await caller.plan(); expect(plan.value).toBeUndefined(); expect(plan.problems.map(problem => problem.code)).toContain('invalid-source-layout');
+    expect(caller.snapshot.files).toEqual([]);
   });
   it('does not adopt an equal-looking document without generation state', async () => {
     const caller = new MarkdownPlans(); caller.source('concept Game {}'); await caller.create(); caller.remove(caller.statePath());

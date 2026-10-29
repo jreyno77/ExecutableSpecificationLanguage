@@ -15,11 +15,12 @@ describe('authored output previews', () => {
     preview.expectSvgLabel('draft/uml/structure.svg', 'Book');
     preview.expectNoFindings('uml');
   });
-  it('previews documentation while retaining its declared-status wording', async () => {
+  it('previews a readable source page and Home with the document execution scope', async () => {
     const preview = PreviewExample.specify('type Book { title: Text }');
     await preview.show('markdown', { directory: 'draft/docs' });
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown', 'type Book');
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown',
+    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
+    preview.expectDocument('markdown', 'draft/docs/Home.md', 'text/markdown', '[book](pages/book.md)');
+    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown',
       'Statically checked specification. Runtime behavior is not verified by this document.');
   });
   it('reflects a changed field type in the same document', async () => {
@@ -36,7 +37,7 @@ describe('authored output previews', () => {
     await preview.show('markdown', { directory: 'draft/docs' });
     await preview.show('uml', { directory: 'draft/uml', views: ['structure'] });
     preview.expectDocument('typescript', 'draft/types/Book.ts', 'text/typescript', 'title: string;');
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown', 'type Book');
+    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
     preview.expectSvgLabel('draft/uml/structure.svg', 'Book');
     preview.expectSpecificationUnchanged();
   });
@@ -55,13 +56,13 @@ describe('authored output previews', () => {
     await preview.show('typescript', { directory: 'draft/types', names: [{ declaration: ['Missing'], name: 'Renamed' }] });
     preview.expectProblem('typescript', 'invalid-native-mapping', 'Name selector must select one eligible declaration: Missing');
     await preview.show('markdown', { directory: 'draft/docs' });
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown', 'type Book');
+    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
   });
   it('retains distinct output IDs sharing Markdown presentation', async () => {
     const preview = PreviewExample.specify('type Book { title: Text }');
     await preview.show('markdown', { directory: 'draft/docs' });
     await preview.show('contract-list', { directory: 'draft/contracts' });
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown', 'type Book');
+    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
     preview.expectDocument('contract-list', 'draft/contracts/Book.md', 'text/markdown', 'Book');
   });
   it('does not alter existing source or target bytes while producing drafts', async () => {
@@ -73,7 +74,7 @@ describe('authored output previews', () => {
     await preview.show('typescript', { directory: 'draft/types' });
     await preview.show('markdown', { directory: 'draft/docs' });
     preview.expectDocument('typescript', 'draft/types/Book.ts', 'text/typescript', 'title: string;');
-    preview.expectDocument('markdown', 'draft/docs/Book.md', 'text/markdown', 'type Book');
+    preview.expectDocument('markdown', 'draft/docs/pages/src/book.md', 'text/markdown', 'type Book');
     await preview.expectExistingFilesUnchanged();
     preview.expectNoTargetAccess();
   });
