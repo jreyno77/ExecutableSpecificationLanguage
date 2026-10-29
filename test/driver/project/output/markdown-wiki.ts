@@ -5,7 +5,9 @@ import { MarkdownDriver } from './markdown.js';
 export class MarkdownWikiDriver extends MarkdownDriver {
   previewDocuments: readonly OutputPreviewDocument[] = [];
   readonly settings: Record<string, unknown> = {};
-  membership() { return { workspaceModules: [...this.sources.size ? this.sources.keys() : [this.entry]] }; }
+  manifestLocation?: string;
+  membership() { return { workspaceModules: [...this.sources.size ? this.sources.keys() : [this.entry]],
+    ...this.manifestLocation === undefined ? {} : { manifestLocation: this.manifestLocation } }; }
   override async output(id = 'markdown'): Promise<Output> {
     if (id !== 'markdown') return super.output(id);
     const context = await this.connect(), result = this.outputs.open('markdown', { directory: 'docs/specification', ...this.settings }, context,

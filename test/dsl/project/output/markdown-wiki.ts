@@ -22,7 +22,22 @@ export class MarkdownWikiExamples extends MarkdownExamples {
   private rememberedProject = '';
   private rememberedNotes?: { source: string; bytes: Uint8Array };
   private rememberedSection?: { name: string; bytes: Uint8Array };
+  private readonly sourceIdentities = new Map<string, string>();
   constructor() { super(new MarkdownWikiDriver()); }
+  useNativeFileManifest(): void {
+    this.driver.manifestLocation = process.platform === 'win32' ? 'C:/workspace/expec.json' : '/c:/workspace/expec.json';
+  }
+  rememberSourceIdentity(name: string): void { this.sourceIdentities.set(name, this.driver.id(name)); }
+  expectRetainedSourceIdentity(name: string, source: string): void {
+    const id = this.sourceIdentities.get(name); expect(id).toBeDefined(); expect(this.driver.id(name)).toBe(id);
+    expect(this.driver.current.baseline.elements.find(record => record.id === id)?.origin).toMatchObject({
+      kind: 'source', module: source, node: { sourceId: source }, range: { sourceId: source },
+    });
+  }
+  expectSourcePageIdentity(source: string, path: string): void {
+    const state = JSON.parse(this.driver.textAt(this.driver.statePath()));
+    expect(state.pages).toContainEqual(expect.objectContaining({ kind: 'source', key: source, path }));
+  }
   private page(source: string) { return this.driver.textAt(sourcePath(source)); }
   private wikiSection(name: string) { return this.driver.section(name); }
   private navigation(source: string) {
