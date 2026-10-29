@@ -1,5 +1,5 @@
 import { posix, dirname, relative, resolve, isAbsolute, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import type { OutputContext } from './output.js';
 import { pageStart, pageEnd, navigationStart, navigationEnd } from './markdown-page.js';
 import type { Item } from '../../model/inspection-item.js';
@@ -66,8 +66,8 @@ export class MarkdownDocumentation {
       let within: string;
       if (/^[a-z][a-z0-9+.-]*:/i.test(source)) {
         const uri = new URL(source);
-        if (uri.protocol !== 'file:' || uri.search || uri.hash || pathToFileURL(fileURLToPath(uri)).href !== source || !context?.manifestLocation)
-          throw Error('Provide canonical file source provenance and a native manifest context.');
+        if (uri.protocol !== 'file:' || uri.href.includes('?') || uri.href.includes('#') || !context?.manifestLocation)
+          throw Error('Provide a local file source URI and a native manifest context.');
         within = relative(resolve(dirname(context.manifestLocation), sourceRoot), fileURLToPath(uri)).split(sep).join('/');
       } else within = posix.relative(posix.normalize(sourceRoot), source);
       if (!within || isAbsolute(within) || within.split('/').some(part => !part || part === '.' || part === '..') || /[\\:*?<>|\[\]{}#%"\x00-\x1f]/.test(within))
