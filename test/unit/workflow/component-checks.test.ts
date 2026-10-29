@@ -79,6 +79,17 @@ describe('checks for directly changed components', () => {
         java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false, consumers: [], prepareConsumer: false, shards: [1] });
   });
 
+  it('checks only shared output for the released Markdown migration fixtures', () => {
+    expect(checksFor('pull_request', [
+      'test/resources/markdown/v1/one-declaration.json',
+      'test/resources/markdown/v1/two-declarations-clean.json',
+    ])).toEqual({ core: ['test/unit/project/output', 'test/acceptance/project/output'],
+      java: false, kotlin: false, python: false, package: false, pilot: false, workflow: false,
+      consumers: [], prepareConsumer: false, shards: [1] });
+    expect(() => checksFor('pull_request', ['test/resources/markdown/unregistered/example.json']))
+      .toThrow('test/resources/markdown/unregistered/example.json');
+  });
+
   it('checks compiler folders without consumers', () => {
     expect(checksFor('pull_request', ['src/compiler/compiler.ts']))
       .toEqual({ core: ['test/unit/compiler', 'test/acceptance/compiler'],
