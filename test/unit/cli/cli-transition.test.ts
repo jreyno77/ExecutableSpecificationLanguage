@@ -89,3 +89,92 @@ describe('retained CLI output transition', () => {
     expect([...result.value!.inspection.query('scenario')]).toHaveLength(4);
   });
 });
+
+function corrected(project: ReturnType<typeof pending>) {
+  const sourceId = project.checked.captures[0]!.source.sourceId, text = 'function save(payload: Text) returns Nothing';
+  const compiled = new Compiler().compile({ locator: sourceId, source: { sourceId, text }, dependencies: { modules: [], packages: [] } });
+  if (!compiled.value) throw Error(JSON.stringify(compiled));
+  const checked = { ...project.checked, specification: compiled.value, captures: [{ source: { sourceId, text }, version: hash(Buffer.from(text)) }] };
+  const parameter = [...compiled.value.inspection.query('parameter')][0]!;
+  const correction = { replan: true as const, decisions: [{ id: project.id, to: parameter.id }] };
+  return { checked, read: (snapshot = project.snapshot, input: CheckedManifest = checked) => readTransition(input, snapshot, project.tests, correction) };
+}
+
+describe('explicit source-only transition supersession', () => {
+  it('keeps original test source and the actually confirmed document contract as distinct bases', () => {
+    const project = pending(), result = corrected(project).read();
+    expect(result.problems).toEqual([]); expect(result.value?.record.format).toBe(2);
+    expect(result.value?.remaining).toEqual(['contracts', 'tests']);
+    expect(result.value?.before?.elements.find(record => record.id === project.id)?.address.name).toBe('source');
+    expect(result.value?.contractBefore?.elements.find(record => record.id === project.id)?.address.name).toBe('document');
+    expect(result.value?.candidate.elements.find(record => record.id === project.id)?.address.name).toBe('payload');
+  });
+  it('still requires exact manifest text when new source intent is requested', () => {
+    const project = pending(), correction = corrected(project);
+    expect(correction.read(project.snapshot, { ...correction.checked, text: correction.checked.text + '\n' }).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('still requires the original connected project identity', () => {
+    const project = pending();
+    expect(corrected(project).read({ ...project.snapshot, root: { ...project.snapshot.root, identity: 'other-project' } }).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('still requires exact native declaration evidence', () => {
+    const project = pending();
+    expect(corrected(project).read({ ...project.snapshot, readOnlyFiles: [project.file('node_modules/types/index.d.ts', 'export interface Changed {}')] }).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('still requires the original exclusion policy', () => {
+    const project = pending();
+    expect(corrected(project).read({ ...project.snapshot, excludeNames: [...project.snapshot.excludeNames, 'notes'] }).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('still requires the original package input evidence', () => {
+    const project = pending(), correction = corrected(project);
+    expect(correction.read(project.snapshot, { ...correction.checked, packageInputs: [{ uri: 'file:///project/package.json', version: 'a'.repeat(64) }] }).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('does not turn unknown retained input fields into default evidence', () => {
+    const project = pending();
+    const changed = project.changeRecord(record => { const facts = JSON.parse(record.inputs); facts.reset = true; record.inputs = JSON.stringify(facts); });
+    expect(corrected(project).read(changed).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('does not replace malformed retained input JSON with an empty environment', () => {
+    const project = pending();
+    expect(corrected(project).read(project.changeRecord(record => { record.inputs = '{'; })).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('does not accept duplicated captured-source facts', () => {
+    const project = pending();
+    const changed = project.changeRecord(record => { const facts = JSON.parse(record.inputs); facts.captures.push(facts.captures[0]); record.inputs = JSON.stringify(facts); });
+    expect(corrected(project).read(changed).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('requires the real confirmed candidate before accepting revised intent', () => {
+    const project = pending();
+    const changed = { ...project.snapshot, files: project.snapshot.files.filter(file => file.path !== '.expec/identity.json') };
+    expect(corrected(project).read(changed).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('validates format-two pre-contract confirmation against the confirmed contract basis', () => {
+    const project = pending(), correction = corrected(project), replanned = correction.read();
+    expect(replanned.problems).toEqual([]); expect(replanned.value).toBeDefined();
+    const change = transitionChange(replanned.value!);
+    if (change.kind !== 'write') throw Error('Both selected stages must retain a transition');
+    const snapshot = { ...project.snapshot, files: project.snapshot.files.map(file => file.path === transitionPath ? project.file(transitionPath, change.bytes) : file) };
+    expect(readTransition(correction.checked, snapshot, project.tests).problems).toEqual([]);
+    const premature = { ...snapshot, files: snapshot.files.map(file => file.path === '.expec/identity.json'
+      ? project.file(file.path, identityBytes(correction.checked, snapshot.root, replanned.value!.candidate)) : file) };
+    expect(readTransition(correction.checked, premature, project.tests).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+  it('validates format-two post-contract confirmation against its new candidate', () => {
+    const project = pending(), correction = corrected(project), replanned = correction.read();
+    expect(replanned.problems).toEqual([]); expect(replanned.value).toBeDefined();
+    const change = transitionChange(replanned.value!, 'contracts');
+    if (change.kind !== 'write') throw Error('The test stage must remain');
+    const snapshot = { ...project.snapshot, files: project.snapshot.files.map(file => file.path === transitionPath ? project.file(transitionPath, change.bytes)
+      : file.path === '.expec/identity.json' ? project.file(file.path, identityBytes(correction.checked, project.snapshot.root, replanned.value!.candidate)) : file) };
+    const read = readTransition(correction.checked, snapshot, project.tests);
+    expect(read.problems).toEqual([]); expect(read.value?.remaining).toEqual(['tests']);
+    expect(read.value?.before?.elements.find(record => record.id === project.id)?.address.name).toBe('source');
+  });
+  it('rejects a malformed format-two contract baseline', () => {
+    const project = pending(), correction = corrected(project), replanned = correction.read();
+    expect(replanned.value).toBeDefined();
+    const record = { ...replanned.value!.record, contractBefore: { invalid: true } };
+    const snapshot = { ...project.snapshot, files: project.snapshot.files.map(file => file.path === transitionPath ? project.file(transitionPath, JSON.stringify(record)) : file) };
+    expect(readTransition(correction.checked, snapshot, project.tests).problems).toMatchObject([{ code: 'recovery-conflict' }]);
+  });
+});

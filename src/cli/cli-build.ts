@@ -14,7 +14,7 @@ import type { ProjectContext, ProjectSnapshot } from '../project/connection/proj
 import { FileProjectWriter, type FileChange } from '../project/connection/project-writer.js';
 
 export async function build(checked: CheckedManifest, project: ProjectContext, outputs: Outputs,
-  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string, admission?: BuildAdmission): Promise<CommandResult & { obligations: Diagnostic[] }> {
+  testIds: ReadonlySet<string>, signal: AbortSignal, decisionsFile?: string, admission?: BuildAdmission, replan = false): Promise<CommandResult & { obligations: Diagnostic[] }> {
   const result: CommandResult & { obligations: Diagnostic[] } = { status: 'invalid', exitCode: 1, project: project.root, problems: [], stages: [], obligations: [] };
   const retain = (obligations: readonly Diagnostic[]) => { for (const obligation of obligations)
     if (!result.obligations.some(before => isDeepStrictEqual(before, obligation))) result.obligations.push(obligation); };
@@ -22,6 +22,8 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   const decisions = await readDecisions(decisionsFile, checked);
   if (!decisions.value) return { ...result, problems: decisions.problems };
   let initial: ProjectSnapshot | undefined = await (admission ? admission.capture(project) : project.captureSnapshot ? project.captureSnapshot() : project.readSnapshot());
+  if (replan && initial.files.some(file => file.path === pendingPath)) return { ...result,
+    problems: [cliProblem('recovery-required', 'Recover the original pending write before requesting a new plan.', checked.manifest)] };
   const stage = pendingStage(initial);
   if (!initial.complete) return { ...result, problems: initial.problems };
   const allContext = new BuildContext(project, checked, selected.filter(output => testIds.has(output.id) === (stage === 'tests')), decisions.value.inputs, undefined, admission);
@@ -37,7 +39,7 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
   if (!snapshot.complete) return { ...result, problems: snapshot.problems };
   const read = readIdentity(snapshot, checked);
   if (!read.value) return { ...result, problems: read.problems };
-  const pending = readTransition(checked, snapshot, testIds);
+  const pending = readTransition(checked, snapshot, testIds, replan ? { replan: true, decisions: decisions.value.decisions } : undefined);
   if (!('value' in pending)) return { ...result, problems: pending.problems };
   let transition = pending.value;
   const identity = identities(), association = identity.associate(checked.specification!, transition?.candidate ?? read.value.baseline, transition ? [] : decisions.value.decisions);
@@ -75,8 +77,9 @@ export async function build(checked: CheckedManifest, project: ProjectContext, o
         const output = outputs.open(profile.id, profile.options, outputProject, writer, { workspaceModules: checked.workspaceModules ?? [], manifestLocation: checked.manifest });
         if (!output.value) return { ...result, problems: output.problems, stages: [...result.stages, { name, status: 'stopped' }] };
         const unfinished = !transition || transition.remaining.includes(name);
-        const before = unfinished ? (transition ? transition.before : read.value.baseline) : current.baseline;
-        const compared = unfinished ? difference : identity.compare(current.baseline, current);
+        const before = unfinished ? (transition ? name === 'contracts' && transition.record.format === 2
+          ? transition.contractBefore : transition.before : read.value.baseline) : current.baseline;
+        const compared = identity.compare(before, current);
         if (!compared.value) return { ...result, problems: compared.problems };
         const plan = await output.value.plan(before ? { operation: 'update', current, diff: compared.value } : { operation: 'create', current }, basedOn);
         if (!plan.value) return { ...result, problems: plan.problems, stages: [...result.stages, { name, status: 'stopped' }] };

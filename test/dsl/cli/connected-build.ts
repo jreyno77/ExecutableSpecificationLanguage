@@ -69,7 +69,14 @@ export class ConnectedBuild {
       }
     }
   }
-  registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; malformedPlan?: boolean; readFailure?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> { return this.driver.registerOutputs(outputs); }
+  registerOutputs(outputs: { id: string; stage: 'contracts' | 'tests'; subject?: string; file?: string; text?: string; trace?: boolean; malformedPlan?: boolean; readFailure?: string; afterPlan?: { path: string; text: string } }[]): Promise<void> { return this.driver.registerOutputs(outputs); }
+  async expectPlannedRename(outputId: string, id: string, before: string, after: string): Promise<void> {
+    const traces = (await readFile(this.driver.path('launcher/plans.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    const matching = traces.filter(trace => trace.outputId === outputId).flatMap(trace => trace.diff?.changes ?? []).filter(change => change.id === id);
+    expect(matching).toContainEqual(expect.objectContaining({ kinds: expect.arrayContaining(['rename']),
+      before: expect.objectContaining({ address: expect.objectContaining({ name: before }) }),
+      after: expect.objectContaining({ address: expect.objectContaining({ name: after }) }) }));
+  }
   async rememberDirectory(path: string): Promise<void> { this.directories.set(path, await this.driver.filesUnder('project/' + path)); }
   async expectRememberedDirectoryUnchanged(path: string): Promise<void> { expect(await this.driver.filesUnder('project/' + path)).toEqual(this.directories.get(path)); }
   async outputs(outputs: { id: string; options: object }[]): Promise<void> { this.driver.manifest.outputs = outputs; await this.driver.saveManifest(); }
