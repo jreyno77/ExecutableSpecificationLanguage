@@ -1,4 +1,4 @@
-import { LangiumModel, LangiumReader, type ReadResult, type SourceDocument } from '../../../src/index.js';
+import { LangiumModel, LangiumReader, type ReadResult, type SourceDocument, type SyntaxDiagnostic } from '../../../src/index.js';
 
 export class SourceReadingDriver {
   private readonly reader = new LangiumReader();
@@ -14,6 +14,15 @@ export class SourceReadingDriver {
   readSource(): void {
     if (!this.source) throw new Error('Supply a specification before reading it.');
     this.result = this.reader.read(this.source);
+  }
+  syntaxProblems(): readonly SyntaxDiagnostic[] {
+    if (this.result?.status !== 'rejected') throw new Error('Expected rejected source with syntax diagnostics.');
+    return this.result.diagnostics;
+  }
+  syntaxProblemText(problem: SyntaxDiagnostic): string {
+    if (!this.originalSource) throw new Error('Supply a specification before reading a diagnostic.');
+    return Array.from(this.originalSource.text)
+      .slice(problem.primaryRange.start.offset, problem.primaryRange.end.offset).join('');
   }
   conceptName(name: string) {
     if (this.result?.status !== 'accepted') throw new Error('The reader did not accept the supplied specification.');

@@ -3,7 +3,7 @@ grammar Expec
 // Statement boundaries belong to their containing list. A final newline before
 // a closing brace or the end of the document is optional, but siblings need one.
 entry Source:
-    BOM? NL* (roots+=TopLevel (NL+ roots+=TopLevel)* NL*)?;
+    BOM? NL* (roots+=TopLevel (NL roots+=TopLevel?)*)?;
 TopLevel:
     Use | Include | ExamplesAttachment | Concept | TypeDeclaration
     | OpaqueTypeDeclaration | Function | Extend | Examples | Interaction;
@@ -13,7 +13,7 @@ Include: 'include' locator=StringLiteral;
 ExamplesAttachment: 'examples' 'for' subject=Reference<false> 'from' locator=StringLiteral;
 Concept: kind=('concept' | 'component' | 'class' | 'interface') name=Name ConceptBody;
 fragment ConceptBody:
-    '{' NL* (members+=ConceptMember (NL+ members+=ConceptMember)* NL*)? '}';
+    '{' NL* (members+=ConceptMember (NL members+=ConceptMember?)*)? '}';
 ConceptMember:
     DependsOn | RequiresPackage | Public | Construction | Capability | Local | InlineExamples | Interaction;
 DependsOn: 'depends' 'on' references+=Reference<false> (',' references+=Reference<false>)*;
@@ -26,7 +26,7 @@ fragment Failures: ('fails' 'with' failures+=NamedType<false> (',' failures+=Nam
 fragment Parameters:
     '(' NL* (parameters+=Parameter (NL* ',' NL* parameters+=Parameter)* (NL* ',')? NL*)? ')';
 Parameter: name=Name NL* ':' NL* declaredType=TypeExpression<true> (NL* '=' NL* defaultValue=Expression<true>)?;
-ContractBody: '{' NL* (members+=ContractClause (NL+ members+=ContractClause)* NL*)? '}';
+ContractBody: '{' NL* (members+=ContractClause (NL members+=ContractClause?)*)? '}';
 ContractClause: Promises | Requires | Ensures;
 Promises: 'promises' content=StringLiteral;
 Requires: 'requires' content=Expression<false>;
@@ -34,7 +34,7 @@ Ensures: 'ensures' content=Expression<false>;
 Local: 'local' declaration=(Concept | TypeDeclaration | OpaqueTypeDeclaration);
 Extend: 'extend' target=Reference<false> ConceptBody;
 TypeDeclaration: RecordTypeDeclaration | AliasTypeDeclaration;
-RecordTypeDeclaration: (error?='error')? 'type' name=Name TypeParameters? '{' NL* (fields+=Field (NL+ fields+=Field)* NL*)? '}';
+RecordTypeDeclaration: (error?='error')? 'type' name=Name TypeParameters? '{' NL* (fields+=Field (NL fields+=Field?)*)? '}';
 AliasTypeDeclaration: 'type' name=Name TypeParameters? '=' targetType=TypeExpression<false>;
 OpaqueTypeDeclaration: 'opaque' 'type' name=Name TypeParameters?;
 fragment TypeParameters:
@@ -55,17 +55,17 @@ GroupedType: '(' NL* inner=TypeExpression<true> NL* ')';
 
 Examples: 'examples' ('for' subject=Reference<false>)? ExamplesBody;
 InlineExamples infers Examples: 'examples' ExamplesBody;
-fragment ExamplesBody: '{' NL* (members+=ExampleMember (NL+ members+=ExampleMember)* NL*)? '}';
+fragment ExamplesBody: '{' NL* (members+=ExampleMember (NL members+=ExampleMember?)*)? '}';
 ExampleMember: Fixture | Helper | Check | Scenario | Example;
 Fixture: 'fixture' name=Name ':' declaredType=TypeExpression<false> '=' value=Expression<false>;
 Helper infers Callable: kind=('setup' | 'action' | 'observation') name=Name Parameters ('returns' returnType=TypeExpression<false>)? Failures body=HelperBody?;
-HelperBody: '{' NL* (members+=HelperStatement (NL+ members+=HelperStatement)* NL*)? '}';
+HelperBody: '{' NL* (members+=HelperStatement (NL members+=HelperStatement?)*)? '}';
 HelperStatement: Let | Do | Return;
 Let: 'let' name=Name '=' value=Expression<false>;
 Do: 'do' expression=PostfixExpression<false>;
 Return: 'return' expression=Expression<false>;
 Check infers Callable: kind='check' name=Name Parameters Failures body=CheckBody?;
-CheckBody: '{' NL* (members+=CheckStatement (NL+ members+=CheckStatement)* NL*)? '}';
+CheckBody: '{' NL* (members+=CheckStatement (NL members+=CheckStatement?)*)? '}';
 CheckStatement: HelperStatement | Assert;
 Assert: 'assert' expression=Expression<false>;
 Scenario: 'scenario' title=StringLiteral '{' NL*
@@ -76,7 +76,7 @@ Then: 'then' content=(Expression<false> | ProseExpectation);
 Example: 'example' title=StringLiteral ':' actual=Expression<false> '=>' expected=(Expression<false> | ProseExpectation);
 ProseExpectation: 'satisfies' text=StringLiteral;
 
-Interaction: 'interaction' title=StringLiteral Parameters '{' NL* (members+=InteractionMember (NL+ members+=InteractionMember)* NL*)? '}';
+Interaction: 'interaction' title=StringLiteral Parameters '{' NL* (members+=InteractionMember (NL members+=InteractionMember?)*)? '}';
 InteractionMember: Participant | Message;
 Participant: 'participant' name=Name ':' declaredType=TypeExpression<false>;
 interface Message {

@@ -28,6 +28,23 @@ export class SourceReading {
     expect(problem.primaryRange).toEqual({ sourceId, ...expected.primaryRange });
     expect(problem.relatedRanges).toEqual(expected.relatedRanges.map(range => ({ sourceId, ...range })));
   }
+  expectFirstSyntaxProblemAt(token: string, at: { line: number; column: number }): void {
+    expect(this.driver.result?.status, 'the malformed source is rejected').toBe('rejected');
+    const problem = this.driver.syntaxProblems()[0];
+    if (!problem) throw new Error('The reader supplied no syntax diagnostic.');
+    expect(problem.category).toBe('expected-token');
+    expect(this.driver.syntaxProblemText(problem)).toBe(token);
+    expect(problem.primaryRange).toMatchObject({ sourceId: this.driver.originalSource!.sourceId,
+      start: at, end: { line: at.line, column: at.column + Array.from(token).length } });
+    expect(problem.explanation).toContain(token);
+    expect(problem.explanation).not.toMatch(/\bEOF\b|end of file/i);
+  }
+  expectSyntaxProblemTokens(expected: readonly string[]): void {
+    expect(this.driver.result?.status, 'independently malformed declarations are rejected').toBe('rejected');
+    const problems = this.driver.syntaxProblems();
+    expect(problems.map(problem => this.driver.syntaxProblemText(problem))).toEqual(expected);
+    for (const problem of problems) expect(problem.explanation.trim()).not.toBe('');
+  }
   expectOriginalSourcePreserved(): void {
     const result = this.acceptedResult();
     expect(result.document.source).toEqual(this.driver.originalSource);
