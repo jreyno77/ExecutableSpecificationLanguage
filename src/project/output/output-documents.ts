@@ -39,6 +39,8 @@ export function renderList(format: ListFormat, id: string, path: string, declara
   return Buffer.from(section(declaration, 1));
 }
 type Definition = { id: string; at: ArtifactLocator; file: ProjectFile; ancestors: string[] };
+type MarkdownSection = { id: string; outputId: string; fragment: boolean; anchors: number; depth?: number;
+  parent: MarkdownSection | undefined; owner: string | null | undefined; page: MarkdownPageMetadata | undefined; definition?: Definition };
 type Link = { at: ArtifactLocator; path: string; projectId: string; source: string | undefined; owners: string[]; destination: string; byId: boolean; navigation?: boolean };
 type Edge = Link & { target?: RelationshipObservation['uses'][number]['target']; reason?: string };
 type TextRegion = { start: number; end: number };
@@ -82,9 +84,9 @@ export class ListDocuments {
   }
   private issue(path: string, message: string): void { this.problems.push(outputProblem('invalid-output-document', path, message)); }
   private markdown(file: ProjectFile, links: Link[]): void {
-    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: { id: string; outputId: string; fragment: boolean; anchors: number; depth?: number }[] = [];
-    const references = new Map<string, string>(), pending: { node: RootContent; owners: string[]; navigation: boolean }[] = [];
-    let root: string | undefined, waiting = false, pageCount = 0, hasPage = false;
+    const text = Buffer.from(file.bytes).toString('utf8'), tree = fromMarkdown(text), stack: MarkdownSection[] = [], sections: MarkdownSection[] = [];
+    const references = new Map<string, string>(), pending: { node: RootContent; owner: MarkdownSection | undefined; navigation: boolean }[] = [];
+    let root: MarkdownSection | undefined, waiting = false, pageCount = 0, hasPage = false;
     let page: { metadata: MarkdownPageMetadata; start: number; navigation: TextRegion[] } | undefined, navigating: number | undefined;
     const rememberAnchor = (): void => {
       const current = stack.at(-1);
@@ -130,13 +132,19 @@ export class ListDocuments {
         if (start) {
           try {
             const data = JSON.parse(Buffer.from(start[2]!, 'hex').toString('utf8')), fragment = start[1] === 'fragment';
-            if (typeof data.outputId !== 'string' || !data.outputId.trim() || !identifier.safeParse(data.specId).success || Object.keys(data).sort().join(',') !== 'outputId,specId') throw new Error('Invalid metadata');
+            const explicitOwner = Object.hasOwn(data, 'owner');
+            if (typeof data.outputId !== 'string' || !data.outputId.trim() || !identifier.safeParse(data.specId).success
+              || Object.keys(data).sort().join(',') !== (explicitOwner ? 'outputId,owner,specId' : 'outputId,specId')
+              || explicitOwner && data.owner !== null && !identifier.safeParse(data.owner).success) throw new Error('Invalid metadata');
             if (waiting || navigating !== undefined || page && data.outputId !== page.metadata.outputId || stack.at(-1)?.fragment
               || fragment && !stack.length || stack.some(item => item.id === data.specId || item.outputId !== data.outputId)) throw new Error('Unbalanced metadata');
-            const ancestors = stack.map(item => item.id); stack.push({ id: data.specId, outputId: data.outputId, fragment, anchors: 0 }); waiting = !fragment;
+            const section: MarkdownSection = { id: data.specId, outputId: data.outputId, fragment, anchors: 0,
+              parent: stack.at(-1), owner: data.owner, page: page?.metadata };
+            sections.push(section); stack.push(section); waiting = !fragment;
             if (data.outputId === this.id) {
-              root ??= data.specId;
-              this.definitions.push({ id: data.specId, at: artifact(this.id, this.format, file.path, data.specId), file, ancestors });
+              root ??= section;
+              section.definition = { id: data.specId, at: artifact(this.id, this.format, file.path, data.specId), file, ancestors: [] };
+              this.definitions.push(section.definition);
             }
           } catch { this.issue(file.path, 'Malformed or unbalanced identity metadata.'); }
         } else if (end) {
@@ -157,19 +165,53 @@ export class ListDocuments {
         } else if (current.depth !== undefined && node.depth <= current.depth) this.issue(file.path, 'Heading escapes its identity section.');
       }
       if (node.type === 'definition') references.set(node.identifier.toUpperCase(), node.url);
-      if (node.type === 'link' || node.type === 'linkReference') pending.push({ node,
-        owners: stack.length ? stack.filter(item => item.outputId === this.id).map(item => item.id) : hasPage ? [] : root ? [root] : [], navigation: navigating !== undefined });
+      if (node.type === 'link' || node.type === 'linkReference') {
+        const current = stack.at(-1);
+        pending.push({ node, owner: current?.outputId === this.id ? current : stack.length || hasPage ? undefined : root,
+          navigation: navigating !== undefined });
+      }
       if ('children' in node) for (const child of node.children) visit(child as RootContent);
     };
     tree.children.forEach(visit);
     if (stack.length || waiting) this.issue(file.path, 'Unclosed identity section.');
     if (page || navigating !== undefined) this.issue(file.path, 'Unclosed native page or navigation region.');
-    for (const { node, owners, navigation } of pending) {
+    const ancestry = new Map<MarkdownSection, string[] | undefined>(), visiting = new Set<MarkdownSection>();
+    const ancestors = (section: MarkdownSection): string[] | undefined => {
+      if (ancestry.has(section)) return ancestry.get(section);
+      if (visiting.has(section)) { this.issue(file.path, 'Cyclic Markdown owner: ' + section.id); return undefined; }
+      visiting.add(section);
+      try {
+        let parent = section.parent;
+        if (section.owner === null) parent = undefined;
+        else if (section.owner !== undefined) {
+          if (section.page?.kind !== 'source') {
+            this.issue(file.path, 'A Markdown owner reference requires a native source page.');
+            ancestry.set(section, undefined); return undefined;
+          }
+          const candidates = sections.filter(candidate => candidate.id === section.owner
+            && candidate.outputId === section.outputId && candidate.page === section.page);
+          if (candidates.length !== 1) {
+            this.issue(file.path, 'Missing or ambiguous same-page Markdown owner: ' + section.owner);
+            ancestry.set(section, undefined); return undefined;
+          }
+          parent = candidates[0];
+        }
+        const inherited = parent ? ancestors(parent) : [];
+        const resolved = inherited === undefined ? undefined : parent ? [...inherited, parent.id] : [];
+        ancestry.set(section, resolved); return resolved;
+      } finally { visiting.delete(section); }
+    };
+    for (const section of sections) {
+      const resolved = ancestors(section);
+      if (section.definition && resolved) section.definition.ancestors = resolved;
+    }
+    for (const { node, owner, navigation } of pending) {
+      const owners = owner ? [...ancestry.get(owner) ?? [], owner.id] : [];
       const destination = node.type === 'link' ? node.url : node.type === 'linkReference' ? references.get(node.identifier.toUpperCase()) : undefined;
       if (destination === undefined) continue;
       if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(destination)) continue;
       links.push({ at: { outputId: this.id, format: 'markdown-link', value: { path: file.path, offset: node.position?.start.offset ?? 0 } }, path: file.path, projectId: file.path,
-        source: owners.at(-1), owners, destination, byId: false, navigation });
+        source: owner?.id, owners, destination, byId: false, navigation });
     }
   }
   private structure(file: ProjectFile, links: Link[]): void {

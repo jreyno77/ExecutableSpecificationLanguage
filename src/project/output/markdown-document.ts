@@ -12,7 +12,7 @@ import { language, UnsupportedLanguage } from '../../language/language-text.js';
 export const emptyNotes = '## Your notes\n\nEdit this area for your own notes. Content above it is generated from .expec.\n\n';
 export interface MarkdownPage { kind: 'home' | 'source'; key: string; path: string; region: Uint8Array; subjects: string[] }
 export class MarkdownLayoutError extends Error { constructor(readonly sourceId: string, message: string) { super(message); } }
-export const sectionStart = (id: string): string => '<!-- expec-section:' + Buffer.from(JSON.stringify({ outputId: 'markdown', specId: id })).toString('hex') + ' -->';
+export const sectionStart = (id: string, owner?: string | null): string => '<!-- expec-section:' + Buffer.from(JSON.stringify({ outputId: 'markdown', specId: id, ...(owner === undefined ? {} : { owner }) })).toString('hex') + ' -->';
 export const sectionEnd = (id: string): string => '<!-- expec-end:' + Buffer.from(id).toString('hex') + ' -->';
 export const markdownText = (text: string): string => text.replace(/[\\`*_[\]<>#!|]/g, '\\$&').replace(/[\r\n]/g, ' ');
 const fence = (text: string): string => {
@@ -26,13 +26,15 @@ export class MarkdownDocumentation {
   private readonly records;
   private readonly items = new Map<string, Item>();
   private readonly children = new Map<string, string[]>();
+  private readonly nativeOwners = new Map<string, string>();
+  private readonly examples = new Map<string, string[]>();
   private readonly page = new Map<string, { key: string; path: string }>();
-  private readonly sources = new Map<string, { module: string; path: string; roots: string[] }>();
+  private readonly sources = new Map<string, { module: string; path: string; roots: string[]; glossary: string[] }>();
   constructor(private readonly current: IdentifiedSpecification, private readonly directory: string, sourceRoot = '.', context?: OutputContext) {
     this.inspection = current.specification.inspection;
     this.records = current.baseline.elements.filter(record => record.origin.kind === 'source');
     const add = (source: string, module: string) => {
-      if (!this.sources.has(source)) this.sources.set(source, { module, path: this.destination(source, sourceRoot, context), roots: [] });
+      if (!this.sources.has(source)) this.sources.set(source, { module, path: this.destination(source, sourceRoot, context), roots: [], glossary: [] });
     };
     const external = new Set<string>();
     for (const node of this.inspection.roots()) {
@@ -50,12 +52,16 @@ export class MarkdownDocumentation {
       if (record.origin.kind !== 'source') continue;
       const source = this.sources.get(record.origin.node.sourceId)!;
       this.page.set(record.id, { key: record.origin.node.sourceId, path: source.path });
+      if (this.isData(record.id)) source.glossary.push(record.id);
+      if (this.items.get(record.id)!.kind === 'examples' && record.address.owner)
+        this.examples.set(record.address.owner, [...this.examples.get(record.address.owner) ?? [], record.id]);
       const owner = record.address.owner ? this.records.find(candidate => candidate.id === record.address.owner) : undefined;
-      if (owner?.origin.kind === 'source' && owner.origin.node.sourceId === record.origin.node.sourceId)
+      if (owner?.origin.kind === 'source' && owner.origin.node.sourceId === record.origin.node.sourceId) {
+        this.nativeOwners.set(record.id, owner.id);
         this.children.set(owner.id, [...this.children.get(owner.id) ?? [], record.id]);
-      else source.roots.push(record.id);
+      } else source.roots.push(record.id);
     }
-    for (const source of this.sources.values()) source.roots.sort((a, b) => {
+    for (const source of this.sources.values()) for (const subjects of [source.roots, source.glossary]) subjects.sort((a, b) => {
       const left = this.items.get(a)!.origin, right = this.items.get(b)!.origin;
       return left.kind === 'source' && right.kind === 'source' ? left.range.start.offset - right.range.start.offset : 0;
     });
@@ -82,22 +88,36 @@ export class MarkdownDocumentation {
     const sources = [...this.sources].sort((a, b) => a[1].path < b[1].path ? -1 : a[1].path > b[1].path ? 1 : 0);
     for (const [key, source] of sources) {
       const subjects: string[] = [];
+      const roots = source.roots.filter(id => !this.isData(id));
+      const architecture = (id: string) => ['concept', 'component', 'class', 'interface', 'function'].includes(this.items.get(id)!.kind);
+      const ordered = [...roots.filter(architecture), ...roots.filter(id => !architecture(id))];
       const visible = source.path.slice((this.directory + '/pages/').length).replace(/\.md$/, '');
       const toc = (id: string, depth = 0): string[] => {
         const node = this.items.get(id)!;
         const leaf = ['field', 'parameter', 'type-parameter', 'participant'].includes(node.kind);
-        return [...leaf ? [] : ['  '.repeat(depth) + '- [' + markdownText(this.label(node)) + '](#' + anchor(id) + ')'], ...(this.children.get(id) ?? []).flatMap(child => toc(child, depth + (leaf ? 0 : 1)))];
+        return [...leaf ? [] : ['  '.repeat(depth) + '- [' + markdownText(this.heading(id)) + '](#' + anchor(id) + ')'], ...(this.children.get(id) ?? []).filter(child => !this.isData(child)).flatMap(child => toc(child, depth + (leaf ? 0 : 1)))];
       };
+      const contents = [...ordered.flatMap(id => toc(id)), ...source.glossary.length ? ['- [Glossary](#' + anchor(source.glossary[0]!) + ')'] : []];
       const back = posix.relative(posix.dirname(source.path), homePath);
       let text = pageStart({ outputId: 'markdown', kind: 'source', key }) + '\n\n# ' + markdownText(visible) + '\n\n'
-        + navigationStart + '\n\n[Home](' + back + ')\n\n## Contents\n\n' + source.roots.flatMap(id => toc(id)).join('\n') + '\n\n' + navigationEnd + '\n\n';
-      for (const id of source.roots) text += this.section(id, 2, subjects);
+        + navigationStart + '\n\n[Home](' + back + ')\n\n## Contents\n\n' + contents.join('\n') + '\n\n' + navigationEnd + '\n\n';
+      for (const id of ordered) text += this.section(id, 2, subjects);
+      if (source.glossary.length) {
+        text += '## Glossary\n\n';
+        for (const id of source.glossary) text += this.section(id, 3, subjects);
+      }
       text += pageEnd(key) + '\n\n';
       pages.push({ kind: 'source', key, path: source.path, region: Buffer.from(text), subjects });
     }
     return [renderMarkdownHome(this.directory, pages), ...pages];
   }
 
+  private isData(id: string): boolean { return ['record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration'].includes(this.items.get(id)!.kind); }
+  private heading(id: string): string { const node = this.items.get(id)!; return this.isData(id) ? this.qualifiedLabel(node) : this.label(node); }
+  private marker(id: string, displayedOwner?: string): string {
+    const owner = this.nativeOwners.get(id);
+    return sectionStart(id, owner === displayedOwner ? undefined : owner ?? null);
+  }
   private label(node: Item): string { return 'name' in node ? node.name : 'title' in node ? node.title.value : node.kind === 'examples' ? 'Examples' : node.kind === 'construction' ? 'Construction' : node.kind; }
   private link(target: NodeId, from: string): string {
     const node = this.inspection.read(target), label = markdownText(this.label(node));
@@ -107,12 +127,15 @@ export class MarkdownDocumentation {
     const url = (page.path === from ? '' : posix.relative(posix.dirname(from), page.path).split('/').map(encodeURIComponent).join('/')) + '#' + anchor(this.current.id(target));
     return '[' + label + '](' + url + ')';
   }
-  private callLink(target: NodeId, from: string): string {
-    const node = this.inspection.read(target), names: string[] = [];
+  private qualifiedLabel(node: Item): string {
+    const names: string[] = [];
     for (let owner: Item | undefined = node; owner; owner = this.inspection.parent(owner.id)) {
       if ('name' in owner) names.unshift(owner.name);
     }
-    const label = markdownText(names.join('.'));
+    return names.join('.');
+  }
+  private callLink(target: NodeId, from: string): string {
+    const node = this.inspection.read(target), label = markdownText(this.qualifiedLabel(node));
     return this.page.has(this.current.id(target))
       ? this.link(target, from).replace('[' + markdownText(this.label(node)) + ']', '[' + label + ']') : label;
   }
@@ -162,30 +185,34 @@ export class MarkdownDocumentation {
     if (node.kind === 'tuple-type') return '\\[' + node.elements.map(part => this.typeText(part, path)).join(', ') + '\\]';
     return inline(language(node));
   }
-  private fragment(id: string, node: Item<'field' | 'parameter' | 'type-parameter' | 'participant'>, path: string): string {
+  private fragment(id: string, node: Item<'field' | 'parameter' | 'type-parameter' | 'participant'>, path: string, displayedOwner?: string): string {
     const record = this.records.find(record => record.id === id), owner = record?.address.owner ? this.items.get(record.address.owner) : undefined;
     const code = node.kind === 'field' && node.name === 'code' && owner?.kind === 'record-type-declaration' && owner.error
       ? this.current.specification.types.error(this.current.specification.types.declaredType(owner.id)) : undefined;
     const literalCodes = (type: Item): boolean => type.kind === 'literal-type' || type.kind === 'grouped-type' && literalCodes(type.inner)
       || type.kind === 'union-type' && type.alternatives.every(literalCodes);
     if (code && code.status !== 'known') throw new UnsupportedLanguage(owner!);
-    return sectionStart(id).replace('expec-section:', 'expec-fragment:') + '\n\n<a id="' + anchor(id) + '"></a>\n\n'
+    return this.marker(id, displayedOwner).replace('expec-section:', 'expec-fragment:') + '\n\n<a id="' + anchor(id) + '"></a>\n\n'
       + '**' + markdownText(node.name) + '**' + ('declaredType' in node ? code && literalCodes(node.declaredType) ? '' : ': ' + this.typeText(node.declaredType, path) : ' — Type parameter') + '\n\n'
       + (code?.status === 'known' ? 'Codes: ' + code.value.codes.map(markdownText).join(', ') + '\n\n' : '')
       + ('defaultValue' in node && node.defaultValue ? 'Default: ' + inline(language(node.defaultValue)) + '\n\n'
         + (this.references(node.defaultValue, path).length ? 'Default references: ' + this.references(node.defaultValue, path).join(', ') + '\n\n' : '') : '')
       + this.calls(node, path) + sectionEnd(id) + '\n\n';
   }
-  private section(id: string, depth: number, subjects: string[]): string {
+  private section(id: string, depth: number, subjects: string[], displayedOwner?: string): string {
     const node = this.items.get(id)!, path = this.page.get(id)!.path;
     subjects.push(id);
-    if (node.kind === 'field' || node.kind === 'parameter' || node.kind === 'type-parameter' || node.kind === 'participant') return this.fragment(id, node, path);
-    let text = sectionStart(id) + '\n\n' + '#'.repeat(Math.min(depth, 6)) + ' ' + markdownText(this.label(node)) + '\n\n<a id="' + anchor(id) + '"></a>\n\n';
+    if (node.kind === 'field' || node.kind === 'parameter' || node.kind === 'type-parameter' || node.kind === 'participant') return this.fragment(id, node, path, displayedOwner);
+    let text = this.marker(id, displayedOwner) + '\n\n' + '#'.repeat(Math.min(depth, 6)) + ' ' + markdownText(this.heading(id)) + '\n\n<a id="' + anchor(id) + '"></a>\n\n';
     const callable = ['function', 'capability', 'setup', 'action', 'observation', 'check'].includes(node.kind);
     const declaration = language(node);
     text += fence(callable && (node.kind === 'function' || node.kind === 'capability') || node.kind === 'record-type-declaration'
       ? declaration.split('\n')[0]!.replace(/ \{(?:\})?$/, '') : declaration);
-    if (node.kind === 'examples' && node.subject?.resolution.status === 'bound') text += 'Examples for: ' + this.link(node.subject.resolution.target, path) + '\n\n';
+    if (node.kind === 'examples') {
+      const owner = this.records.find(record => record.id === id)?.address.owner;
+      const subject = node.subject?.resolution.status === 'bound' ? node.subject.resolution.target : owner ? this.current.node(owner) : undefined;
+      if (subject) text += 'Examples for: ' + this.link(subject, path) + '\n\n';
+    }
     const links = (label: string, nodes: readonly Item[]): string => {
       const values = [...new Set(nodes.flatMap(node => this.references(node, path)))];
       return values.length ? label + ': ' + values.join(', ') + '\n\n' : '';
@@ -248,7 +275,9 @@ export class MarkdownDocumentation {
     }
     text += this.calls(node, path);
     if ('parameters' in node && node.parameters.length) text += '**Inputs**\n\n';
-    for (const child of this.children.get(id) ?? []) text += this.section(child, depth + 1, subjects);
+    for (const child of this.children.get(id) ?? []) if (!this.isData(child)) text += this.section(child, depth + 1, subjects, id);
+    const elsewhere = (this.examples.get(id) ?? []).filter(example => this.page.get(example)!.path !== path);
+    if (elsewhere.length) text += 'Examples: ' + elsewhere.map(example => this.link(this.current.node(example), path)).join(', ') + '\n\n';
     return text + sectionEnd(id) + '\n\n';
   }
 }
