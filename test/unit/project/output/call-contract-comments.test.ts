@@ -16,8 +16,8 @@ class Calculator {
     calls Transformer.transform
   }
 }`;
-function contract() {
-  const checked = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text: source }, dependencies: { modules: [], packages: [] } });
+function contract(text = source) {
+  const checked = new Compiler().compile({ locator: 'main', source: { sourceId: 'main.expec', text }, dependencies: { modules: [], packages: [] } });
   expect(checked.syntax).toEqual([]); expect(checked.problems).toEqual([]); expect(checked.deferred).toEqual([]);
   if (!checked.value) throw Error('The authored callable contract must compile.');
   let next = 0;
@@ -50,6 +50,39 @@ describe('native declaration renderers retain authored call contracts', () => {
     const files = declarations.render();
     expect(declarations.problems).toEqual([]);
     expect(files.find(file => file.path.endsWith('/Calculator.kt'))!.text).toContain('calls Transformer.transform');
+    expect(declarations.obligations).toEqual([]);
+  });
+
+  it('keeps Kotlin behavioral obligations while treating a call relationship as statically resolved', () => {
+    const current = contract(source.replace('calls Transformer.transform', `calls Transformer.transform
+    requires value >= 0
+    ensures result >= value
+    promises "Returns the transformed value"`));
+    const declarations = new KotlinDeclarations(current, kotlinOptions.parse({ package: 'sample' }));
+    const files = declarations.render();
+    expect(declarations.problems).toEqual([]);
+    expect(files.find(file => file.path.endsWith('/Calculator.kt'))!.text).toContain('calls Transformer.transform');
+    expect(declarations.obligations.map(item => ({ code: item.code, message: item.message }))).toEqual([
+      { code: 'verification-required', message: 'Verify Calculator.add: requires value >= 0' },
+      { code: 'verification-required', message: 'Verify Calculator.add: ensures result >= value' },
+      { code: 'verification-required', message: 'Verify Calculator.add: Returns the transformed value' },
+    ]);
+  });
+
+  it('keeps Python behavioral obligations while treating a call relationship as statically resolved', () => {
+    const current = contract(source.replace('calls Transformer.transform', `calls Transformer.transform
+    requires value >= 0
+    ensures result >= value
+    promises "Returns the transformed value"`));
+    const declarations = new PythonDeclarations(current, pythonOptions.parse({ module: 'sample.contracts' }));
+    const rendered = declarations.render();
+    expect(declarations.problems).toEqual([]);
+    expect(rendered.text).toContain('calls Transformer.transform');
+    expect(declarations.obligations.map(item => ({ code: item.code, message: item.message }))).toEqual([
+      { code: 'verification-required', message: 'Verify add: requires value >= 0' },
+      { code: 'verification-required', message: 'Verify add: ensures result >= value' },
+      { code: 'verification-required', message: 'Verify add: promises "Returns the transformed value"' },
+    ]);
   });
 
   it('retains the same authored clause in Python documentation without a native launch', () => {
@@ -57,5 +90,6 @@ describe('native declaration renderers retain authored call contracts', () => {
     const rendered = declarations.render();
     expect(declarations.problems).toEqual([]);
     expect(rendered.text).toContain('calls Transformer.transform');
+    expect(declarations.obligations).toEqual([]);
   });
 });
