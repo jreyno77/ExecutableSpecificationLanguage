@@ -109,7 +109,7 @@ export class PythonDeclarations {
       message: 'Specify the result of ' + item.name + '; object is only a native placeholder.' });
     for (const failure of item.failures) this.obligations.push({ code: 'failure-verification-required', at: failure.origin, related: [],
       message: 'Verify declared failure ' + language(failure) + ' for ' + item.name + '.' });
-    const clauses = item.body.kind === 'available' ? item.body.content.members.filter(clause => ['requires', 'ensures', 'promises'].includes(clause.kind)) : [];
+    const clauses = item.body.kind === 'available' ? item.body.content.members.filter(clause => ['requires', 'ensures', 'promises', 'calls'].includes(clause.kind)) : [];
     for (const clause of clauses) this.obligations.push({ code: 'verification-required', at: clause.origin, related: [],
       message: 'Verify ' + item.name + ': ' + language(clause) });
     const documentation = clauses.map(clause => language(clause).split('\n').map(line => '# Expec contract: ' + line + '\n').join('')).join('');

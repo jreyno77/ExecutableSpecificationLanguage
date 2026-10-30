@@ -39,6 +39,7 @@ export function language(node: Item): string {
         + (node.failures.length ? ' fails with ' + node.failures.map(language).join(', ') : '')
         + (node.body.kind === 'available' ? ' {\n' + node.body.content.members.map(member => '  ' + language(member)).join('\n') + '\n}' : '');
     case 'promises': return 'promises ' + JSON.stringify(node.text);
+    case 'calls': return 'calls ' + node.references.map(language).join(', ');
     case 'requires': case 'ensures': return node.kind + ' ' + language(node.content);
     case 'let': return 'let ' + name(node.name) + ' = ' + language(node.value);
     case 'do': case 'return': case 'assert': return node.kind + ' ' + language(node.expression);

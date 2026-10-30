@@ -31,6 +31,7 @@ export interface Specification {
   readonly names: CheckedSourceNames;
   message(message: NodeId): Check<Communication>;
   call(call: NodeId): Check<NodeId>;
+  calls(callable: NodeId): readonly NodeId[];
   step(step: NodeId): Check<ScenarioStep>;
 }
 
@@ -97,6 +98,18 @@ export class Compiler {
     const calls = new Map(expressions.calls);
     return { syntax: [], ...findings, ...(!findings.problems.length && !findings.deferred.length
       ? { value: { entry: resolution.entry, inspection, types, names: captureSourceNames(resolution.model, resolution, findings), message: interactions.message.bind(interactions),
+        calls(id: NodeId): readonly NodeId[] {
+          const node = inspection.read(id);
+          if (node.kind !== 'capability' && node.kind !== 'function') throw new QueryError('unexpected-kind', id, 'Expected a capability or function.');
+          if (node.body.kind === 'unavailable') throw new QueryError('not-analyzed', id, 'The callable body is unavailable.');
+          if (node.body.kind === 'absent') return Object.freeze([]);
+          const targets = node.body.content.members.flatMap(clause => clause.kind === 'calls'
+            ? clause.references.map(reference => {
+              if (reference.resolution.status !== 'bound') throw new Error('An accepted callable relationship must be resolved.');
+              return reference.resolution.target;
+            }) : []);
+          return Object.freeze([...new Set(targets)]);
+        },
         call(id: NodeId): Check<NodeId> {
           const node = ungroup(inspection.read(id));
           if (node.kind !== 'call-expression') throw new QueryError('unexpected-kind', id, 'Expected a call expression.');
