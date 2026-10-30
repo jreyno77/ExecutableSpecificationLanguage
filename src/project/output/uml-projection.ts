@@ -91,6 +91,18 @@ export function structure(current: IdentifiedSpecification): Drawing {
       + contents.map(line => '  ' + line).join('\n') + '\n}');
   };
   for (const root of inspection.roots()) if (root.origin.kind === 'source') declaration(root);
+  for (const kind of ['capability', 'function'] as const) for (const caller of inspection.query(kind)) {
+    if (caller.origin.kind !== 'source' || caller.body.kind === 'unavailable') continue;
+    const from = caller.kind === 'function' ? caller : ownerOf(caller);
+    if (!from || !kinds.has(from.kind)) continue;
+    for (const targetId of current.specification.calls(caller.id)) {
+      const target = inspection.read(targetId), to = target.kind === 'function' ? target : ownerOf(target);
+      if (!to || !kinds.has(to.kind)) throw new TypeError('A declared call needs architectural endpoints.');
+      declaration(from); declaration(to);
+      edges.push(metadata({ view: 'structure', edge: { subject: current.id(caller.id), owner: current.id(from.id), role: 'call', target: current.id(target.id) } }) + '\n'
+        + nativeKey(current.id(from.id)) + ' -> ' + nativeKey(current.id(to.id)) + ': ' + quote(caller.name + ' calls ' + name(target)));
+    }
+  }
   return { view: 'structure', subjects, text: metadata({ view: 'structure' }) + '\ndirection: down\n' + nodes.join('\n') + '\n' + edges.join('\n')
     + '\nexpec_legend: "Declared architecture:\\n+ public; − internal (not published).\\nDependencies are declared relationships." {shape: text}\n' };
 }

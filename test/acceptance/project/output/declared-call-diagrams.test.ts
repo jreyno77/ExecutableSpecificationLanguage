@@ -9,7 +9,6 @@ describe('diagrams of declared capability calls', { timeout: 30_000 }, () => {
   capability ship() returns Nothing
 }
 component ResultsRelay {
-  public export
   capability export() returns Nothing {
     calls Courier.ship
     promises "Delivers the result to the selected destination"
@@ -23,6 +22,23 @@ component ResultsRelay {
     await diagrams.search('Courier.ship');
     diagrams.expectIncomingDeclaredOccurrence('ResultsRelay.export');
     diagrams.expectCompleteWithinNativeProfile();
+  });
+
+  it('preserves an authored leading sign and public visibility in the rendered target', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`component Courier {
+  public \`-ship\`
+  capability \`-ship\`() returns Nothing
+}
+component Relay {
+  capability export() returns Nothing { calls Courier.\`-ship\` }
+}`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectRole({ from: 'Relay', to: 'Courier', role: 'call', label: 'export calls -ship' });
+    diagrams.expectOperationLabel('Courier.-ship', '-ship()');
+    diagrams.expectCapabilityVisibility('Courier.-ship', 'public');
+    await diagrams.search('Relay.export');
+    diagrams.expectOutgoingTo('Courier.-ship');
   });
 
   it('does not make a dependency-only relationship a call', async () => {
@@ -50,5 +66,31 @@ component Relay {
     diagrams.expectNativeExplicitEdgeCount(1);
     await diagrams.search('Worker.first');
     diagrams.expectOutgoingTo('Worker.second');
+  });
+
+  it('shows a supplied external target without asking for its unavailable implementation', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.externalComponent('vendor', 'Courier', 'ship');
+    diagrams.sourceFile('entry.expec', `use Courier from "vendor"
+component Relay {
+  capability export() returns Nothing { calls Courier.ship }
+}`);
+    await diagrams.createFrom('entry.expec', { views: ['structure'] });
+    diagrams.expectDeclaration('Courier', 'external component');
+    diagrams.expectExternalDeclaration('Courier', 'vendor');
+    diagrams.expectRole({ from: 'Relay', to: 'Courier', role: 'call', label: 'export calls ship' });
+    await diagrams.search('Relay.export');
+    diagrams.expectOutgoingTo('Courier.ship');
+    diagrams.expectCompleteWithinNativeProfile();
+  });
+
+  it('keeps a top-level function as its own architectural endpoint', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`function normalize() returns Number
+function add() returns Number { calls normalize }`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectRole({ from: 'add', to: 'normalize', role: 'call', label: 'add calls normalize' });
+    await diagrams.search('add');
+    diagrams.expectOutgoingTo('normalize');
   });
 });

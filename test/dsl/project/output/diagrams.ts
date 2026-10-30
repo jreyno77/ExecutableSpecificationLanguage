@@ -14,6 +14,7 @@ export class DiagramExamples {
   revise(text: string, retired: string[] = []): void { this.driver.pending = { text, retired }; }
   sourceFile(path: string, text: string): void { this.driver.sourceFiles[path] = text; }
   externalRecord(module: string, name: string, fields: string[]): void { this.driver.externalRecord(module, name, fields); }
+  externalComponent(module: string, name: string, operation: string): void { this.driver.externalComponent(module, name, operation); }
   async createFrom(entry: string, options: { views: string[] }): Promise<void> { await this.driver.createFrom(entry, options); }
   renameIdentity(before: string, after: string): void { this.driver.renames.set(before, after); }
   async create(options: { views: string[] }): Promise<void> { await this.driver.create(options); }
