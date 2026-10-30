@@ -9,7 +9,7 @@ describe('authored output previews', () => {
     preview.expectNoFindings('typescript');
   });
   it('previews the real diagram source and rendered image', async () => {
-    const preview = PreviewExample.specify('type Book { title: Text }');
+    const preview = PreviewExample.specify('component Book { capability title() returns Text }');
     await preview.show('uml', { directory: 'draft/uml', views: ['structure'] });
     preview.expectDocument('uml', 'draft/uml/structure.d2', 'text/vnd.d2', 'Book');
     preview.expectSvgLabel('draft/uml/structure.svg', 'Book');
@@ -32,13 +32,13 @@ describe('authored output previews', () => {
     preview.expectDocumentExcludes('typescript', 'draft/types/Book.ts', 'title: string;');
   });
   it('projects three outputs from the same accepted specification', async () => {
-    const preview = PreviewExample.specify('type Book { title: Text }');
+    const preview = PreviewExample.specify('type Book { title: Text }\ncomponent Library { capability add(book: Book) returns Nothing }');
     await preview.show('typescript', { directory: 'draft/types' });
     await preview.show('markdown', { directory: 'draft/docs' });
     await preview.show('uml', { directory: 'draft/uml', views: ['structure'] });
     preview.expectDocument('typescript', 'draft/types/Book.ts', 'text/typescript', 'title: string;');
     preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
-    preview.expectSvgLabel('draft/uml/structure.svg', 'Book');
+    preview.expectSvgLabel('draft/uml/structure.svg', 'Library');
     preview.expectSpecificationUnchanged();
   });
   it('follows renamed declarations without identity decisions', async () => {
@@ -102,8 +102,9 @@ describe('literal diagram method previews', () => {
   it('previews an optional capability parameter as a literal native method', async () => {
     const preview = PreviewExample.specify('component Screen { public select\ncapability select(label: Text?) returns Nothing }');
     await preview.show('uml', { directory: 'draft/uml', views: ['structure'] });
-    preview.expectDocument('uml', 'draft/uml/structure.d2', 'text/vnd.d2', '"select(label: Text?)"');
-    preview.expectSvgLabel('draft/uml/structure.svg', 'select(label: Text?)');
+    preview.expectDocument('uml', 'draft/uml/structure.d2', 'text/vnd.d2', '"select(label)"');
+    preview.expectSvgLabel('draft/uml/structure.svg', 'select(label)');
+    preview.expectDeclaredOptionalParameter('Screen', 'select', 'label');
     preview.expectNoFindings('uml');
   });
 });

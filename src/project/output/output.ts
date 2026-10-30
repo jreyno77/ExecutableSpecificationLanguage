@@ -28,7 +28,18 @@ export type OutputRequest =
 export interface OutputPlan extends ProjectChanges { readonly outputId: string; readonly artifacts: readonly ArtifactAssociation[]; readonly obligations?: readonly Diagnostic[] }
 export interface OutputWrite { readonly receipt?: WriteResult; readonly problems: readonly Diagnostic[]; readonly artifacts?: readonly ArtifactAssociation[]; readonly obligations?: readonly Diagnostic[] }
 /** Authored drafts, independent of connected-project preservation and write readiness. */
-export interface OutputPreviewDocument { readonly path: string; readonly mediaType: string; readonly bytes: Uint8Array }
+export interface DiagramPromise {
+  readonly id: string;
+  readonly label: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly promises: readonly string[];
+}
+/** Renderer-derived coordinates on the SVG's image surface, normalized to (0, 0). */
+export interface DiagramPreview { readonly width: number; readonly height: number; readonly promises: readonly DiagramPromise[] }
+export interface OutputPreviewDocument { readonly path: string; readonly mediaType: string; readonly bytes: Uint8Array; readonly diagram?: DiagramPreview }
 export interface OutputPreview { readonly outputId: string; readonly documents: readonly OutputPreviewDocument[] }
 export interface OutputAdapter {
   readonly id: string;
@@ -114,6 +125,7 @@ export class Outputs {
     if (result.value === undefined) return structuredClone({ problems: result.problems, deferred: result.deferred });
     return success({ outputId: id, documents: result.value.map(document => ({
       path: document.path, mediaType: document.mediaType, bytes: Uint8Array.from(document.bytes),
+      ...document.diagram === undefined ? {} : { diagram: structuredClone(document.diagram) },
     })) });
   }
   get profiles(): readonly OutputProfile[] { return [...this.registrations.values()].map(({ id, validate }) => ({ id, validate })); }

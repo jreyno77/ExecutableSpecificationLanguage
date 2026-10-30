@@ -3,6 +3,7 @@ import type { Diagnostic } from '../../compiler/checking.js';
 import { identifier, jsonData } from '../../model/identity-baseline.js';
 import { hash } from '../connection/project-files.js';
 import { outputProblem } from './output-documents.js';
+import { plainPromiseTitles } from './uml-annotations.js';
 
 export interface NativeRange { start: number; end: number; line: number; column: number }
 export interface NativeEdge { from: string[]; to: string[]; range: NativeRange; fromRange: NativeRange; toRange: NativeRange; left: boolean; right: boolean }
@@ -37,7 +38,7 @@ export class NativeDiagrams {
     if (!document.compiled || document.limitations.length || document.problems.length || !this.engine) throw new Error('Render requires a successfully read supported diagram.');
     const svg = await this.engine.render(document.compiled.diagram, { ...document.compiled.renderOptions, salt: hash(Buffer.from('uml/' + document.path)), animateInterval: 0 });
     if (!svg.includes('<svg')) throw new Error('The native renderer returned no SVG document.');
-    return svg;
+    return plainPromiseTitles(document, svg);
   }
   async dispose(): Promise<void> { if (this.engine) await this.engine.dispose(); }
   private statements(map: Record<string, unknown>, result: NativeRead, depth = 0): NativeStatement[] {
