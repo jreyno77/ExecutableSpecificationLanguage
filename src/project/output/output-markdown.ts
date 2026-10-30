@@ -243,7 +243,14 @@ function pageRegion(file: ProjectFile, page: OwnedPage): Region {
   return { prefix: file.bytes.slice(0, beginBytes), bytes: file.bytes.slice(beginBytes, endBytes), suffix: file.bytes.slice(endBytes), start, end };
 }
 function sectionBytes(bytes: Uint8Array, id: string): Uint8Array {
-  const text = Buffer.from(bytes).toString('utf8'), startMarker = [sectionStart(id), sectionStart(id).replace('expec-section:', 'expec-fragment:')].find(marker => text.includes(marker));
+  // Stored regions have passed native structure/hash validation; new regions come from the renderer.
+  const text = Buffer.from(bytes).toString('utf8');
+  const startMarker = [...text.matchAll(/<!-- expec-(?:section|fragment):([a-f0-9]+) -->/g)].find(match => {
+    try {
+      const metadata = JSON.parse(Buffer.from(match[1]!, 'hex').toString('utf8'));
+      return metadata.outputId === 'markdown' && metadata.specId === id;
+    } catch { return false; }
+  })?.[0];
   if (!startMarker) return Buffer.alloc(0);
   const start = text.indexOf(startMarker), end = text.indexOf(sectionEnd(id), start);
   return end < 0 ? Buffer.alloc(0) : Buffer.from(text.slice(start, end + sectionEnd(id).length));

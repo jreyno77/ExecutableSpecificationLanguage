@@ -14,8 +14,10 @@ concept ResultsRelay {
 }`);
   await docs.generateFrom('ResultsRelay.expec');
   docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/ResultsRelay.md']);
-  docs.expectPageSections('ResultsRelay.expec', ['Payload', 'DownloadError', 'ResultsRelay']);
-  docs.expectTableOfContents('ResultsRelay.expec', ['Payload', 'DownloadError', 'ResultsRelay', 'download']);
+  docs.expectPageSections('ResultsRelay.expec', ['ResultsRelay', 'Glossary']);
+  docs.expectGlossary('ResultsRelay.expec', ['Payload', 'DownloadError']);
+  docs.expectGlossaryNavigation('ResultsRelay.expec', 'Payload');
+  docs.expectTableOfContents('ResultsRelay.expec', ['ResultsRelay', 'download', 'Glossary']);
   docs.expectPromiseBullets('ResultsRelay.download', ['Persist the supplied result.', 'Allow cancellation.']);
   docs.expectInputEntries('ResultsRelay.download', [{ name: 'result', type: 'Payload' }]);
   docs.expectReturn('ResultsRelay.download', 'Nothing');
@@ -59,6 +61,7 @@ it('always creates Home and an empty entry page without inventing semantic subje
   await docs.generateFrom('empty.expec');
   docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/empty.md']);
   docs.expectHomeLinks(['pages/empty.md']);
+  docs.expectGlossary('empty.expec', []);
   docs.expectNoInventedSemanticSubjects();
 });
 
@@ -108,8 +111,9 @@ it('adds only new sections and generated navigation during an eligible insertion
   docs.sourceFile('library.expec', 'concept Library {}\ntype Book { title: Text }');
   await docs.insertFrom('library.expec');
   docs.expectRememberedSectionBytes('Library');
-  docs.expectPageSections('library.expec', ['Library', 'Book']);
-  docs.expectTableOfContents('library.expec', ['Library', 'Book']);
+  docs.expectPageSections('library.expec', ['Library', 'Glossary']);
+  docs.expectGlossary('library.expec', ['Book']);
+  docs.expectTableOfContents('library.expec', ['Library', 'Glossary']);
   docs.expectRememberedPageNotesBytes('library.expec');
   docs.expectAllGeneratedLinksResolve();
 });
@@ -206,7 +210,8 @@ it('public preview exposes the same readable source pages with its own valid ide
   docs.sourceFile('library.expec', 'type Book { title: Text }\nconcept Library {}');
   await docs.previewFrom('library.expec');
   docs.expectPreviewPages(['docs/specification/Home.md', 'docs/specification/pages/library.md']);
-  docs.expectPreviewSections('library.expec', ['Book', 'Library']);
+  docs.expectPreviewSections('library.expec', ['Library', 'Glossary']);
+  docs.expectPreviewGlossary('library.expec', ['Book']);
   docs.expectAllPreviewLinksResolve();
 });
 

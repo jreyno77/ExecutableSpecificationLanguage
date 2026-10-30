@@ -167,11 +167,22 @@ export class MarkdownDriver {
   }
   statePath(): string { return '.expec/outputs/' + Buffer.from('markdown').toString('hex') + '.json'; }
   async removeState(): Promise<void> { await fs.unlink(this.path(this.statePath())); }
-  marker(name: string, outputId = 'markdown', kind = 'section'): string { return '<!-- expec-' + kind + ':' + Buffer.from(JSON.stringify({ outputId, specId: this.id(name) })).toString('hex') + ' -->'; }
+  private markers(text: string, name: string, outputId: string, kind: string): string[] {
+    const id = this.id(name);
+    return [...text.matchAll(/<!-- expec-(section|fragment):([a-f0-9]+) -->/g)].filter(match => {
+      try {
+        const metadata = JSON.parse(Buffer.from(match[2]!, 'hex').toString());
+        return match[1] === kind && metadata.outputId === outputId && metadata.specId === id;
+      } catch { return false; }
+    }).map(match => match[0]);
+  }
+  marker(name: string, outputId = 'markdown', kind = 'section'): string {
+    return this.paths().filter(path => /\.md$/.test(path)).flatMap(path => this.markers(this.textAt(path), name, outputId, kind))[0]
+      ?? '<!-- expec-' + kind + ':' + Buffer.from(JSON.stringify({ outputId, specId: this.id(name) })).toString('hex') + ' -->';
+  }
   end(name: string): string { return '<!-- expec-end:' + Buffer.from(this.id(name)).toString('hex') + ' -->'; }
   fileFor(name: string, outputId = 'markdown'): string {
-    const marker = this.marker(name, outputId);
-    const files = this.paths().filter(path => /\.md$/.test(path) && (this.textAt(path).includes(marker) || this.textAt(path).includes(this.marker(name, outputId, 'fragment'))));
+    const files = this.paths().filter(path => /\.md$/.test(path) && ['section', 'fragment'].some(kind => this.markers(this.textAt(path), name, outputId, kind).length > 0));
     if (files.length !== 1) throw new Error('Expected one rendered file for ' + name + ': ' + files.join(', '));
     return files[0]!;
   }
