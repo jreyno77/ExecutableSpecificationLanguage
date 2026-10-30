@@ -94,6 +94,7 @@ concept Library {
  capability reset() returns Nothing
 }`);
   await docs.generate();
+  docs.expectInputsFollowSignature('Library.open');
   docs.expectInputEntries('Library.open', [{ name: 'note', type: 'Note?' }, { name: 'title', type: 'Text', default: '"Dune"' }]);
   docs.expectPublicCapabilities('Library', ['open']);
   docs.expectInternalDeclarations('Library', ['reset']);
@@ -244,4 +245,51 @@ it('keeps an empty specification and its Home free of generated boilerplate', as
   docs.expectNoClaim('Source:');
   docs.expectNoClaim('Statically checked specification. Runtime behavior is not verified by this document.');
   docs.expectNoInventedSemanticSubjects();
+});
+
+it('shows export inputs directly beneath its signature with their real type links', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('ResultsRelay.expec', `opaque type URL
+type ResultPayload { result: Text }
+error type ResultRelayExportError { code: "delivery-issue" }
+concept Courier { public ship
+ capability ship() returns Nothing }
+concept ResultsRelay {
+ public export
+ capability export(result: ResultPayload, targetLocation: URL) returns Nothing fails with ResultRelayExportError {
+  promises "The result has been sent to a provided target"
+  promises "Can be cancelled"
+  calls Courier.ship
+ }
+}`);
+  await docs.generateFrom('ResultsRelay.expec');
+  docs.expectInputsFollowSignature('ResultsRelay.export');
+  docs.expectInputEntries('ResultsRelay.export', [
+    { name: 'result', type: 'ResultPayload' },
+    { name: 'targetLocation', type: 'URL' },
+  ]);
+  docs.expectInputFragmentOwnsTypeLink('ResultsRelay.export.result', 'ResultPayload');
+  docs.expectInputFragmentOwnsTypeLink('ResultsRelay.export.targetLocation', 'URL');
+  docs.expectReturn('ResultsRelay.export', 'Nothing');
+  docs.expectFailures('ResultsRelay.export', ['ResultRelayExportError']);
+  docs.expectDeclaredCalls('ResultsRelay.export', ['Courier.ship']);
+  docs.expectAllGeneratedLinksResolve();
+  docs.expectNoRepeatedWarningsOrInputs('ResultsRelay.export');
+});
+
+it('labels contractual promises separately from declared failures', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('export.expec', `error type ExportFailure { code: "delivery-issue" }
+function exportResult() returns Nothing fails with ExportFailure {
+ promises "The result has been sent to a provided target"
+ promises "Can be cancelled"
+}`);
+  await docs.generateFrom('export.expec');
+  docs.expectContractualPromises('exportResult', [
+    'The result has been sent to a provided target',
+    'Can be cancelled',
+  ]);
+  docs.expectFailures('exportResult', ['ExportFailure']);
+  docs.expectReturn('exportResult', 'Nothing');
+  docs.expectNoRuntimeVerification();
 });

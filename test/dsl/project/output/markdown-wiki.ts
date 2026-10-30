@@ -142,6 +142,37 @@ export class MarkdownWikiExamples extends MarkdownExamples {
     const actual = nodes(this.wikiSection(name)).filter(node => node.type === 'listItem').map(node => plain(this.wikiSection(name).slice(node.position!.start.offset, node.position!.end.offset)));
     for (const promise of expected) expect(actual.filter(text => text === promise)).toHaveLength(1);
   }
+  expectInputsFollowSignature(name: string) {
+    const text = this.wikiSection(name);
+    const blocks = fromMarkdown(text).children.filter(node => node.type === 'code' || plain(text.slice(node.position!.start.offset, node.position!.end.offset)).trim());
+    const signature = blocks.findIndex(node => node.type === 'code'), inputs = blocks[signature + 1];
+    expect(signature).toBeGreaterThanOrEqual(0);
+    expect(inputs?.type).toBe('paragraph');
+    expect(inputs && plain(text.slice(inputs.position!.start.offset, inputs.position!.end.offset))).toBe('Inputs');
+    expect(inputs?.type === 'paragraph' && inputs.children.length === 1 && inputs.children[0]?.type === 'strong').toBe(true);
+    const result = blocks.find(node => plain(text.slice(node.position!.start.offset, node.position!.end.offset)).startsWith('Returns:'));
+    expect(result).toBeDefined();
+    const fragments = [...text.matchAll(/<!-- expec-fragment:([a-f0-9]+) -->/g)];
+    expect(fragments.length).toBeGreaterThan(0);
+    for (const fragment of fragments) {
+      const id = JSON.parse(Buffer.from(fragment[1]!, 'hex').toString()).specId as string;
+      const end = text.indexOf('<!-- expec-end:' + Buffer.from(id).toString('hex') + ' -->', fragment.index);
+      expect(fragment.index).toBeGreaterThan(inputs!.position!.end.offset!);
+      expect(end).toBeGreaterThan(fragment.index!); expect(end).toBeLessThan(result!.position!.start.offset!);
+    }
+  }
+  expectContractualPromises(name: string, expected: string[]) {
+    const text = this.wikiSection(name);
+    const blocks = fromMarkdown(text).children.filter(node => node.type !== 'html' && plain(text.slice(node.position!.start.offset, node.position!.end.offset)).trim());
+    const labels = blocks.filter(node => plain(text.slice(node.position!.start.offset, node.position!.end.offset)) === 'Contractual promises');
+    expect(labels).toHaveLength(1);
+    const label = labels[0]!;
+    expect(label.type === 'paragraph' && label.children.length === 1 && label.children[0]?.type === 'strong').toBe(true);
+    const index = blocks.indexOf(label), previous = blocks[index - 1], list = blocks[index + 1];
+    expect(previous && plain(text.slice(previous.position!.start.offset, previous.position!.end.offset))).toMatch(/^(May fail with:|No domain failures declared)/);
+    expect(list?.type).toBe('list');
+    expect(list?.type === 'list' ? list.children.map(item => plain(text.slice(item.position!.start.offset, item.position!.end.offset))) : []).toEqual(expected);
+  }
   expectInputEntries(name: string, expected: { name: string; type: string; default?: string }[]) {
     const owner = this.wikiSection(name), offsets = expected.map(parameter => owner.indexOf(this.driver.marker(name + '.' + parameter.name, 'markdown', 'fragment')));
     expect((owner.match(/<!-- expec-fragment:/g) ?? []).length).toBe(expected.length);
