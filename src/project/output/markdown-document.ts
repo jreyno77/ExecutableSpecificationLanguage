@@ -205,9 +205,12 @@ export class MarkdownDocumentation {
     if (node.kind === 'field' || node.kind === 'parameter' || node.kind === 'type-parameter' || node.kind === 'participant') return this.fragment(id, node, path, displayedOwner);
     let text = this.marker(id, displayedOwner) + '\n\n' + '#'.repeat(Math.min(depth, 6)) + ' ' + markdownText(this.heading(id)) + '\n\n<a id="' + anchor(id) + '"></a>\n\n';
     const callable = ['function', 'capability', 'setup', 'action', 'observation', 'check'].includes(node.kind);
+    const inputs = callable ? (this.children.get(id) ?? []).filter(child => this.items.get(child)!.kind === 'parameter') : [];
     const declaration = language(node);
     text += fence(callable && (node.kind === 'function' || node.kind === 'capability') || node.kind === 'record-type-declaration'
       ? declaration.split('\n')[0]!.replace(/ \{(?:\})?$/, '') : declaration);
+    if (inputs.length) text += '**Inputs**\n\n';
+    for (const input of inputs) text += this.section(input, depth + 1, subjects, id);
     if (node.kind === 'examples') {
       const owner = this.records.find(record => record.id === id)?.address.owner;
       const subject = node.subject?.resolution.status === 'bound' ? node.subject.resolution.target : owner ? this.current.node(owner) : undefined;
@@ -237,8 +240,8 @@ export class MarkdownDocumentation {
         return target ? this.link(target, path).replace('[' + markdownText(this.label(this.inspection.read(target))) + ']', '[' + markdownText(language(failure)) + ']') : inline(language(failure));
       }).join(', ') + '\n\n' : 'No domain failures declared\n\n';
       if (node.body.kind === 'available' && node.body.content.kind === 'contract-body') {
-        for (const clause of node.body.content.members) if (clause.kind === 'promises') text += '- ' + markdownText(clause.text) + '\n';
-        if (node.body.content.members.some(clause => clause.kind === 'promises')) text += '\n';
+        const promises = node.body.content.members.filter(clause => clause.kind === 'promises');
+        if (promises.length) text += '**Contractual promises**\n\n' + promises.map(clause => '- ' + markdownText(clause.text) + '\n').join('') + '\n';
         const targets = this.current.specification.calls(node.id);
         if (targets.length) text += 'Calls: ' + targets.map(target => this.callLink(target, path)).join(', ') + '\n\n';
         const conditions = node.body.content.members.filter(clause => clause.kind === 'requires' || clause.kind === 'ensures');
@@ -274,8 +277,8 @@ export class MarkdownDocumentation {
       text += '\n';
     }
     text += this.calls(node, path);
-    if ('parameters' in node && node.parameters.length) text += '**Inputs**\n\n';
-    for (const child of this.children.get(id) ?? []) if (!this.isData(child)) text += this.section(child, depth + 1, subjects, id);
+    if (!callable && 'parameters' in node && node.parameters.length) text += '**Inputs**\n\n';
+    for (const child of this.children.get(id) ?? []) if (!this.isData(child) && !inputs.includes(child)) text += this.section(child, depth + 1, subjects, id);
     const elsewhere = (this.examples.get(id) ?? []).filter(example => this.page.get(example)!.path !== path);
     if (elsewhere.length) text += 'Examples: ' + elsewhere.map(example => this.link(this.current.node(example), path)).join(', ') + '\n\n';
     return text + sectionEnd(id) + '\n\n';
