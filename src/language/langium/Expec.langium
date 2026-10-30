@@ -27,7 +27,8 @@ fragment Parameters:
     '(' NL* (parameters+=Parameter (NL* ',' NL* parameters+=Parameter)* (NL* ',')? NL*)? ')';
 Parameter: name=Name NL* ':' NL* declaredType=TypeExpression<true> (NL* '=' NL* defaultValue=Expression<true>)?;
 ContractBody: '{' NL* (members+=ContractClause (NL members+=ContractClause?)*)? '}';
-ContractClause: Promises | Requires | Ensures;
+ContractClause: Promises | Requires | Ensures | Calls;
+Calls: 'calls' references+=Reference<false> (',' references+=Reference<false>)*;
 Promises: 'promises' content=StringLiteral;
 Requires: 'requires' content=Expression<false>;
 Ensures: 'ensures' content=Expression<false>;
@@ -106,7 +107,7 @@ GroupedExpression: '(' NL* inner=Expression<true> NL* ')';
 Reference<ml>: segments+=Name ((<ml> NL+)? '.' (<ml> NL+)? segments+=Name)*;
 SingleReference infers Reference: segments+=Name;
 interface Name { decoded: string; quoted: boolean; }
-Name returns Name: decoded=(ID | QUOTED_NAME | 'error' | 'fails' | 'with');
+Name returns Name: decoded=(ID | QUOTED_NAME | 'error' | 'fails' | 'with' | 'calls');
 StringLiteral: value=STRING;
 NumberLiteral: token=NUMBER;
 BooleanLiteral: value?='true' | 'false';

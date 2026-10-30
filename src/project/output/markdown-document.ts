@@ -107,6 +107,15 @@ export class MarkdownDocumentation {
     const url = (page.path === from ? '' : posix.relative(posix.dirname(from), page.path).split('/').map(encodeURIComponent).join('/')) + '#' + anchor(this.current.id(target));
     return '[' + label + '](' + url + ')';
   }
+  private callLink(target: NodeId, from: string): string {
+    const node = this.inspection.read(target), names: string[] = [];
+    for (let owner: Item | undefined = node; owner; owner = this.inspection.parent(owner.id)) {
+      if ('name' in owner) names.unshift(owner.name);
+    }
+    const label = markdownText(names.join('.'));
+    return this.page.has(this.current.id(target))
+      ? this.link(target, from).replace('[' + markdownText(this.label(node)) + ']', '[' + label + ']') : label;
+  }
   private references(node: Item, path: string): string[] {
     const references: string[] = [];
     const visit = (node: Item): void => {
@@ -203,7 +212,9 @@ export class MarkdownDocumentation {
       if (node.body.kind === 'available' && node.body.content.kind === 'contract-body') {
         for (const clause of node.body.content.members) if (clause.kind === 'promises') text += '- ' + markdownText(clause.text) + '\n';
         if (node.body.content.members.some(clause => clause.kind === 'promises')) text += '\n';
-        const conditions = node.body.content.members.filter(clause => clause.kind !== 'promises');
+        const targets = this.current.specification.calls(node.id);
+        if (targets.length) text += 'Calls: ' + targets.map(target => this.callLink(target, path)).join(', ') + '\n\n';
+        const conditions = node.body.content.members.filter(clause => clause.kind === 'requires' || clause.kind === 'ensures');
         if (conditions.length) text += fence(conditions.map(language).join('\n'));
       }
     }

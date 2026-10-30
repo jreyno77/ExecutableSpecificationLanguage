@@ -44,6 +44,7 @@ export class DiagramDocuments {
   }
   private collect(document: NativeRead, file: ProjectFile): void {
     const roots = new Map<string, { target: Target; owners: string[] }>();
+    const operations = new Map<string, { owner: string; name: string }>();
     const at = (node: NativeStatement, format: string, extra: Record<string, JsonValue> = {}): ArtifactLocator => diagramLocator(file.path, format,
       { range: { ...node.range }, keyRange: { ...node.keyRange }, ...extra });
     if (document.interaction) this.definitions.push({ id: document.interaction, file, owners: [], at: diagramLocator(file.path, 'd2-document', { subject: document.interaction }) });
@@ -68,6 +69,9 @@ export class DiagramDocuments {
         if (data.member !== id) this.definitions.push({ id: data.member, file, owners: [id], at: at(member, 'd2-member', { subject: data.member, owner: key }) });
         for (const parameter of data.parameters as string[]) this.definitions.push({ id: parameter, file, owners: [data.member, id],
           at: at(member, 'd2-signature', { subject: parameter, containing: data.member }) });
+        if (typeof data.name === 'string' && member.key[0]?.replace(/^[+-]/, '').startsWith(data.name + '(')) {
+          operations.set(data.member, { owner: id, name: data.name });
+        }
       }
     }
     const endpoint = (key: string) => roots.get(key) ?? { target: project(file.path, key), owners: [] };
@@ -84,6 +88,18 @@ export class DiagramDocuments {
         if (node.metadata?.edge) {
           const role = record(node.metadata.edge), fromOwner = from.target.kind === 'specified' && from.target.id === role.owner,
             toOwner = to.target.kind === 'specified' && to.target.id === role.owner;
+          if (role.role === 'call') {
+            const callerId = typeof role.subject === 'string' ? role.subject : undefined;
+            const targetId = typeof role.target === 'string' ? role.target : undefined;
+            const caller = callerId ? operations.get(callerId) : undefined, target = targetId ? operations.get(targetId) : undefined;
+            if (!callerId || !targetId || !caller || !target || !fromOwner || caller.owner !== role.owner
+              || to.target.kind !== 'specified' || target.owner !== to.target.id || !edge.right || edge.left
+              || node.value !== caller.name + ' calls ' + target.name) {
+              this.issue(file.path, 'Call metadata does not match its actual operations, containers or label.'); continue;
+            }
+            this.uses.push({ source: specified(callerId), target: specified(targetId), owners: [callerId, caller.owner], at: location() });
+            continue;
+          }
           if (typeof role.subject !== 'string' || typeof role.owner !== 'string' || !['dependency', 'input', 'output', 'construction', 'field', 'alias', 'failure', 'failure-type-argument'].includes(String(role.role)) || !fromOwner && !toOwner) {
             this.issue(file.path, 'Typed role metadata does not match its actual endpoint.'); continue;
           }

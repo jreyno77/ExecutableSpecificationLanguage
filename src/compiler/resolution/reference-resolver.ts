@@ -29,6 +29,7 @@ const subjectKinds: ReadonlySet<NodeKind> = new Set([
   ...typeKinds, 'capability', 'function', 'setup', 'action', 'observation', 'check',
 ]);
 const capabilityKind: ReadonlySet<NodeKind> = new Set(['capability']);
+const callableKinds: ReadonlySet<NodeKind> = new Set(['capability', 'function']);
 const builtinKind: ReadonlySet<NodeKind> = new Set(['builtin-type']);
 const parameterKind: ReadonlySet<NodeKind> = new Set(['type-parameter']);
 
@@ -175,6 +176,7 @@ export class ReferenceResolver {
         this.lookup(reference, path, scope); return;
       case 'named-type': case 'depends-on': this.lookup(reference, path, scope, typeKinds); return;
       case 'examples': this.lookup(reference, path, scope, subjectKinds); return;
+      case 'calls': this.lookup(reference, path, scope, callableKinds); return;
       case 'public':
         if (scope.composition) { this.defer(reference, 'composition'); return; }
         this.lookup(reference, path, scope, capabilityKind, true); return;

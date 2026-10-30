@@ -40,6 +40,10 @@ export class DiagramDriver {
   texts = new Map<string, string>();
   readonly sourceFiles: Record<string, string> = {};
   readonly external: ExternalModel[] = [];
+  externalComponent(module: string, name: string, operation: string): void {
+    this.external.push(new ExternalModel(module, [{ kind: 'component', name, public: [operation],
+      members: [{ kind: 'capability', name: operation, parameters: [], result: { kind: 'builtin', name: 'Nothing' } }] }]));
+  }
   pending: { text: string; retired: string[] } | undefined;
   readonly renames = new Map<string, string>();
   readonly remembered = new Map<string, unknown>();

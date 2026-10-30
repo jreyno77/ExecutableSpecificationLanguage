@@ -161,6 +161,10 @@ export class MarkdownExamples {
   expectLinkTo(name: string, label: string, target: string): void {
     expect(this.linkExists(this.section(name), this.driver.fileFor(name), label, target)).toBe(true);
   }
+  expectDeclaredCalls(name: string, targets: string[]): void {
+    expect(line(this.section(name), 'Calls')).toBe(targets.join(', '));
+    expect(codes(this.section(name)).some(code => /^calls /m.test(code))).toBe(false);
+  }
   expectCallLink(expression: string, target: string): void {
     expect(this.driver.paths().filter(path => path.endsWith('.md')).some(path => this.linkExists(this.driver.textAt(path), path, expression, target))).toBe(true);
   }

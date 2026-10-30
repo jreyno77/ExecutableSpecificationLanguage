@@ -293,7 +293,7 @@ export class KotlinDeclarations {
     lines.push(...item.parameters.flatMap(parameter => this.defaultDocumentation(parameter)));
     if (item.body.kind === 'available') for (const member of item.body.content.members) {
       const text = member.kind === 'promises' ? member.text : language(member); lines.push(text);
-      this.obligation('verification-required', member, 'Verify ' + this.authored(item) + ': ' + text);
+      if (member.kind !== 'calls') this.obligation('verification-required', member, 'Verify ' + this.authored(item) + ': ' + text);
     }
     for (const failure of item.failures) {
       const text = language(failure);
