@@ -6,7 +6,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 describe('reading several native diagram contracts', { timeout: 30_000 }, () => {
   it('reads Book and Library in request order with one native acquisition', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }\ntype Library { name: Text }');
+    const diagrams = await diagramContracts('component Book {}\ncomponent Library {}');
     const work = observeNativeWork();
     const reads = await diagrams.output.readAll([
       diagrams.id('Library'), diagrams.id('Book'), diagrams.id('Library'),
@@ -26,7 +26,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('keeps duplicate answers independent of each other and the supplied source', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }');
+    const diagrams = await diagramContracts('component Book {}');
     const before = structuredClone(diagrams.snapshot);
     const [first, second] = await diagrams.output.readAll([
       diagrams.id('Book'), diagrams.id('Book'),
@@ -42,7 +42,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('reads a later source edit and reports its old SVG without rendering during a read', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }');
+    const diagrams = await diagramContracts('component Book {}');
     const work = observeNativeWork();
     const first = (await diagrams.output.readAll([diagrams.id('Book')], diagrams.snapshot))[0]!;
     const changed = withText(diagrams.snapshot, 'design/structure.d2',
@@ -58,7 +58,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('keeps an unknown subject finding out of a known subject answer', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }');
+    const diagrams = await diagramContracts('component Book {}');
     const [unknown, book] = await diagrams.output.readAll(['unknown', diagrams.id('Book')], diagrams.snapshot);
 
     expect(unknown!.artifacts).toEqual([]);
@@ -69,7 +69,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('retains malformed owned D2 bytes and incomplete findings for every requested subject', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }\ntype Library { name: Text }');
+    const diagrams = await diagramContracts('component Book {}\ncomponent Library {}');
     const source = diagrams.text('design/structure.d2') + '\nbroken: {';
     const changed = withText(diagrams.snapshot, 'design/structure.d2', source);
     const work = observeNativeWork();
@@ -88,7 +88,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('compiles each captured document once while retaining an unrelated unsupported native scope', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }\ntype Library { name: Text }');
+    const diagrams = await diagramContracts('component Book {}\ncomponent Library {}');
     const captured = withFile(diagrams.snapshot, 'notes/nested.d2', 'container: { child: Child }\n');
     const work = observeNativeWork();
     const reads = await diagrams.output.readAll([
@@ -103,7 +103,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('does not start native work for an empty request', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }');
+    const diagrams = await diagramContracts('component Book {}');
     const work = observeNativeWork();
 
     expect(await diagrams.output.readAll([], diagrams.snapshot)).toEqual([]);
@@ -111,7 +111,7 @@ describe('reading several native diagram contracts', { timeout: 30_000 }, () => 
   });
 
   it('awaits native disposal when projecting one answer fails', async () => {
-    const diagrams = await diagramContracts('type Book { title: Text }');
+    const diagrams = await diagramContracts('component Book {}');
     const failure = Error('Deliberate subject-projection failure'), disposal = holdNativeDisposal();
     const work = observeNativeWork(disposal);
     vi.spyOn(DiagramDocuments.prototype, 'read').mockImplementationOnce(() => { throw failure; });

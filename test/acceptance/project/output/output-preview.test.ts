@@ -15,12 +15,12 @@ describe('authored output previews', () => {
     preview.expectSvgLabel('draft/uml/structure.svg', 'Book');
     preview.expectNoFindings('uml');
   });
-  it('previews a readable source page and Home with the document execution scope', async () => {
+  it('previews a readable source page and Home without generated analysis boilerplate', async () => {
     const preview = PreviewExample.specify('type Book { title: Text }');
     await preview.show('markdown', { directory: 'draft/docs' });
     preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown', 'type Book');
     preview.expectDocument('markdown', 'draft/docs/Home.md', 'text/markdown', '[book](pages/book.md)');
-    preview.expectDocument('markdown', 'draft/docs/pages/book.md', 'text/markdown',
+    preview.expectDocumentExcludes('markdown', 'draft/docs/pages/book.md',
       'Statically checked specification. Runtime behavior is not verified by this document.');
   });
   it('reflects a changed field type in the same document', async () => {

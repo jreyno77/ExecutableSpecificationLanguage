@@ -3,6 +3,7 @@ import { DiagramDriver } from '../../../driver/project/output/diagrams.js';
 import type { Class, Text, ShapeBase } from '@d2lang/d2';
 import { DOMParser } from '@xmldom/xmldom';
 import { createHash } from 'node:crypto';
+import type { Item } from '../../../../src/index.js';
 
 const active = new Set<DiagramDriver>();
 afterEach(async () => { for (const driver of active) await driver.dispose(); active.clear(); });
@@ -20,6 +21,146 @@ export class DiagramExamples {
   private shapes() { return [...this.driver.native.values()].flatMap(result => result.diagram.shapes) as (Class & Text & ShapeBase)[]; }
   private edges() { return [...this.driver.native.values()].flatMap(result => result.diagram.connections); }
   private object(name: string) { return this.shapes().find(shape => shape.label.split('\n').includes(name)); }
+  expectContainerKinds(expected: Record<string, string>): void {
+    const containers = this.shapes().filter(shape => shape.type === 'class');
+    expect(containers.map(shape => shape.label.split('\n').at(-1)).sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, kind] of Object.entries(expected)) this.expectDeclaration(name, kind);
+  }
+  expectOperationLabel(name: string, label: string): void {
+    const parts = name.split('.'), owner = parts.length > 1 ? parts.slice(0, -1).join('.') : name;
+    expect(this.object(owner)?.methods?.map(method => method.name)).toContain(label);
+  }
+  expectNoDiagramDefinitions(names: string[]): void { for (const name of names) this.expectNoDeclaration(name); }
+  expectNoVisibleTypeAnnotations(): void {
+    for (const shape of this.shapes().filter(shape => shape.type === 'class')) {
+      for (const method of shape.methods ?? []) { expect(method.name).not.toContain(':'); expect(method.return).toBe(''); }
+      for (const field of shape.fields ?? []) expect(field.name).toMatch(/^(?:Promises · .+|.+ · \d+(?: · \d+)?)$/);
+    }
+  }
+  expectNoDanglingEdges(): void {
+    const native = this.driver.native.get('design/structure.d2'); expect(native).toBeDefined();
+    const classes = new Set(native!.diagram.shapes.filter(shape => shape.type === 'class').map(shape => shape.id));
+    for (const edge of native!.diagram.connections) { expect(classes.has(edge.src)).toBe(true); expect(classes.has(edge.dst)).toBe(true); }
+  }
+  expectPromiseSection(owner: string, operation: string, expected: string[]): void {
+    const rows = this.object(owner)?.fields?.filter(field => field.name === 'Promises · ' + operation) ?? [];
+    expect(rows).toHaveLength(1); expect(rows[0]!.type).toBe('');
+    const promises = this.object(owner)?.fields?.filter(field => new RegExp('^' + operation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' · \\d+$').test(field.name)) ?? [];
+    expect(promises.map(field => field.type)).toEqual(expected);
+    this.driver.remembered.set('promises:' + owner + '.' + operation, expected);
+  }
+  private svgContainer(name: string) {
+    const shape = this.object(name); expect(shape, name).toBeDefined();
+    const text = this.driver.texts.get('design/structure.svg'); expect(text).toBeDefined();
+    const xml = new DOMParser({ onError: (_level, message) => { throw Error(message); } }).parseFromString(text!, 'image/svg+xml');
+    const group = Array.from(xml.getElementsByTagName('g')).find(group => Buffer.from(group.getAttribute('class') ?? '', 'base64').toString() === shape!.id);
+    expect(group, 'actual rendered SVG group for ' + name).toBeDefined();
+    const rect = Array.from(group!.getElementsByTagName('rect')).find(rect => !rect.getAttribute('class')?.includes('class_header'));
+    expect(rect, 'actual rendered owner rectangle').toBeDefined();
+    const header = Array.from(group!.getElementsByTagName('rect')).find(rect => rect.getAttribute('class')?.includes('class_header'));
+    expect(header, 'actual rendered class title compartment').toBeDefined();
+    return { group: group!, rect: rect!, header: header! };
+  }
+  expectAllContainerTitlesAboveTheirContent(): void {
+    for (const shape of this.shapes().filter(shape => shape.type === 'class')) {
+      const name = shape.label.split('\n').at(-1)!;
+      const { group, header } = this.svgContainer(name);
+      const bottom = Number(header.getAttribute('y')) + Number(header.getAttribute('height'));
+      const texts = Array.from(group.getElementsByTagName('text'));
+      const title = texts.find(text => Array.from(text.getElementsByTagName('tspan')).some(line => line.textContent === name));
+      expect(title, 'visible container title').toBeDefined();
+      expect(Number(title!.getAttribute('y'))).toBeLessThan(bottom);
+      for (const text of texts.filter(text => text !== title)) expect(Number(text.getAttribute('y'))).toBeGreaterThanOrEqual(bottom);
+    }
+  }
+  expectPromiseGeometryInside(owner: string, operation: string): void {
+    const expected = this.driver.remembered.get('promises:' + owner + '.' + operation) as string[] | undefined; expect(expected).toBeDefined();
+    const { group, rect, header } = this.svgContainer(owner);
+    const bounds = { left: Number(rect.getAttribute('x')), top: Number(header.getAttribute('y')) + Number(header.getAttribute('height')),
+      right: Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')), bottom: Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) };
+    const texts = Array.from(group.getElementsByTagName('text'));
+    const positions: number[] = [];
+    for (const promise of expected!) {
+      const candidates = texts.filter(text => text.textContent?.includes(promise));
+      expect(candidates, 'one actual SVG text node for ' + promise).toHaveLength(1);
+      const text = candidates[0]!, lines = Array.from(text.getElementsByTagName('tspan'));
+      let y = Number(text.getAttribute('y'));
+      const font = Number(/font-size:([\d.]+)px/.exec(text.getAttribute('style') ?? '')?.[1] ?? 20);
+      if (!lines.length) {
+        expect(text.textContent).toBe(promise); positions.push(y);
+      } else {
+        let found = false;
+        for (const line of lines) {
+          y = line.hasAttribute('y') ? Number(line.getAttribute('y')) : y + Number(line.getAttribute('dy') ?? 0);
+          if (line.textContent === promise) { positions.push(y); found = true; break; }
+        }
+        expect(found, 'authored promise is an actual rendered text line').toBe(true);
+      }
+      const x = Number(text.getAttribute('x'));
+      expect(x).toBeGreaterThanOrEqual(bounds.left); expect(x).toBeLessThanOrEqual(bounds.right);
+      expect(y - font).toBeGreaterThanOrEqual(bounds.top); expect(y).toBeLessThanOrEqual(bounds.bottom);
+    }
+    for (let i = 1; i < positions.length; i++) expect(positions[i]! - positions[i - 1]!).toBeGreaterThanOrEqual(20);
+  }
+  expectNoDetachedPromiseNodes(): void { expect(this.shapes().some(shape => shape.type === 'page')).toBe(false); }
+  expectNoVisibleText(text: string): void {
+    const xml = new DOMParser().parseFromString(this.driver.texts.get('design/structure.svg')!, 'image/svg+xml');
+    expect(Array.from(xml.getElementsByTagName('text')).some(node => node.textContent?.includes(text))).toBe(false);
+  }
+  async openPriorOwnedDiagramWithType(): Promise<void> { await this.driver.openLegacyTypeFixture(); }
+  async addHandwrittenEdge(from: string, to: string, label: string): Promise<void> { await this.driver.appendHandwrittenEdge(from, to, label); }
+  rememberProjectBytes(): void {
+    this.driver.remembered.set('project-bytes', new Map([...this.driver.bytes].map(([path, bytes]) => [path, createHash('sha256').update(bytes).digest('hex')])));
+  }
+  expectLocatedOutputConflict(path: string): void {
+    expect(this.driver.findings.some(problem => problem.code === 'output-conflict' && problem.at.kind === 'dependency' && problem.at.path.includes(path))).toBe(true);
+  }
+  expectNoPlannedWrites(): void { expect(this.driver.planned.value?.changes ?? []).toEqual([]); }
+  expectRememberedProjectBytesUnchanged(): void { expect(this.driver.after).toEqual(this.driver.remembered.get('project-bytes')); }
+  private declared(name: string) { return this.driver.current.specification.inspection.read(this.driver.current.node(this.driver.identifier(name))); }
+  expectDeclaredKind(name: string, kind: string): void { expect(this.declared(name).kind).toBe(kind); }
+  expectExternalDeclaration(name: string, module: string): void { expect(this.declared(name).origin).toMatchObject({ kind: 'external', module }); }
+  expectDeclaredResultKind(name: string, kind: 'none' | 'unspecified'): void {
+    expect(this.driver.current.specification.types.callable(this.declared(name).id).result).toMatchObject({ status: 'known', value: { kind } });
+  }
+  expectDeclaredResultTarget(name: string, target: string): void {
+    const types = this.driver.current.specification.types, result = types.callable(this.declared(name).id).result;
+    expect(result.status).toBe('known');
+    if (result.status !== 'known' || result.value.kind !== 'value') throw Error('Expected declared value result');
+    expect(types.describe(result.value.type)).toMatchObject({ kind: 'declared', declaration: this.declared(target).id });
+  }
+  expectDeclaredFailure(name: string, target: string, arguments_: string[] = []): void {
+    const types = this.driver.current.specification.types, failures = types.callable(this.declared(name).id).failures;
+    expect(failures).toHaveLength(1); const fact = failures[0]!; expect(fact.status).toBe('known');
+    if (fact.status !== 'known') throw Error('Expected known failure');
+    const description = types.describe(fact.value); expect(description).toMatchObject({ kind: 'declared', declaration: this.declared(target).id });
+    if (!('arguments' in description)) throw Error('Expected declared failure arguments');
+    expect(description.arguments.map(argument => types.describe(argument))).toEqual(arguments_.map(argument => expect.objectContaining({ kind: 'declared', declaration: this.declared(argument).id })));
+  }
+  private declaredField(owner: string, field: string) {
+    const node = this.declared(owner); if (node.kind !== 'record-type-declaration') throw Error('Expected record');
+    const found = node.fields.find(item => item.kind === 'field' && item.name === field); expect(found).toBeDefined();
+    if (!found || found.kind !== 'field') throw Error('Expected field'); return found;
+  }
+  expectDeclaredFieldLiteral(owner: string, field: string, value: string): void { expect(this.declaredField(owner, field).declaredType).toMatchObject({ kind: 'literal-type', value: { kind: 'string-literal', value } }); }
+  expectDeclaredFieldReference(owner: string, field: string, target: string): void { expect(this.declaredField(owner, field).declaredType).toMatchObject({ kind: 'named-type', reference: { segments: [target] } }); }
+  expectDeclaredAliasReference(name: string, target: string): void { expect(this.declared(name)).toMatchObject({ kind: 'alias-type-declaration', targetType: { kind: 'named-type', reference: { segments: [target] } } }); }
+  expectDeclaredTupleAlias(name: string, targets: string[]): void { expect(this.declared(name)).toMatchObject({ kind: 'alias-type-declaration', targetType: { kind: 'tuple-type', elements: targets.map(target => ({ kind: 'named-type', reference: { segments: [target] } })) } }); }
+  private expectLiteralUnion(node: Item, expected: string[]): void { expect(node).toMatchObject({ kind: 'union-type', alternatives: expected.map(value => ({ kind: 'literal-type', value: { kind: 'string-literal', value } })) }); }
+  expectDeclaredReturnLiterals(name: string, expected: string[]): void { const node = this.declared(name); if (node.kind !== 'capability' && node.kind !== 'function' || !node.returnType) throw Error('Expected callable result'); this.expectLiteralUnion(node.returnType, expected); }
+  expectDeclaredFieldUnionLiterals(owner: string, field: string, expected: string[]): void { this.expectLiteralUnion(this.declaredField(owner, field).declaredType, expected); }
+  expectDeclaredAliasUnionLiterals(name: string, expected: string[]): void { const node = this.declared(name); if (node.kind !== 'alias-type-declaration') throw Error('Expected alias'); this.expectLiteralUnion(node.targetType, expected); }
+  expectAuthoredPromises(name: string, expected: string[]): void { const node = this.declared(name); if ((node.kind !== 'capability' && node.kind !== 'function') || node.body.kind !== 'available') throw Error('Expected contract body'); expect(node.body.content.members.flatMap(item => item.kind === 'promises' ? [item.text] : [])).toEqual(expected); }
+  expectDeclaredParameterReferences(name: string, parameter: string, expected: string[]): void {
+    const node = this.declared(name); if (node.kind !== 'capability' && node.kind !== 'function') throw Error('Expected callable');
+    const slot = node.parameters.find(slot => slot.name === parameter); expect(slot).toBeDefined();
+    const inspection = this.driver.current.specification.inspection;
+    const references = (item: Item): string[] => item.kind === 'reference' ? [item.segments.join('.')]
+      : [...inspection.children(item.id)].flatMap(references);
+    expect(references(slot!.declaredType)).toEqual(expected);
+  }
+  expectDeclaredReturnShape(name: string, kind: string): void { const node = this.declared(name); if (node.kind !== 'capability' && node.kind !== 'function') throw Error('Expected callable'); expect(node.returnType?.kind).toBe(kind); }
+  expectDeclaredParameterShape(name: string, parameter: string, kind: string): void { const node = this.declared(name); if (node.kind !== 'capability' && node.kind !== 'function') throw Error('Expected callable'); expect(node.parameters.find(slot => slot.name === parameter)?.declaredType.kind).toBe(kind); }
   expectDeclaration(name: string, kind: string): void { expect(this.driver.written.receipt, JSON.stringify(this.driver.written)).toBeDefined(); expect(this.object(name)?.label).toContain('«' + kind + '»'); }
   expectRole(role: { from: string; to: string; role: string; label?: string }): void {
     const from = this.object(role.from)?.id, to = this.object(role.to)?.id;
@@ -32,25 +173,36 @@ export class DiagramExamples {
   }
   expectNoOwnershipDiamonds(): void { expect(this.edges().some(edge => edge.srcArrow.includes('diamond') || edge.dstArrow.includes('diamond'))).toBe(false); }
   expectNoSequenceFiles(): void { expect([...this.driver.native.keys()].filter(path => path.includes('/interactions/'))).toEqual([]); }
-  expectSignature(name: string, signature: string): void {
-    const parts = name.split('.'), owner = parts.length > 1 ? parts.slice(0, -1).join('.') : name;
-    expect(this.object(owner)?.methods?.map(method => method.name + ' → ' + method.return)).toContain(signature);
+  expectCapabilityVisibility(name: string, visibility: 'public' | 'internal'): void {
+    const parts = name.split('.'), owner = parts.slice(0, -1).join('.'), member = parts.at(-1)!;
+    const method = this.object(owner)?.methods?.find(method => method.name.startsWith(member + '('));
+    expect(method, name).toBeDefined(); expect(method!.visibility).toBe(visibility === 'public' ? 'public' : 'private');
+    expect(this.object('expec_legend')?.label ?? this.shapes().find(shape => shape.id === 'expec_legend')?.label).toContain('+ public; − internal (not published)');
   }
-  expectField(owner: string, name: string, type: string): void { expect(this.object(owner)?.fields?.map(field => [field.name, field.type])).toContainEqual([name, type]); }
-  expectNoRuntimeFailureClaim(): void { expect(this.edges().filter(edge => edge.label.includes('may fail with')).length).toBe(1); }
-  expectProblem(code: string): void { expect(this.driver.findings.map(problem => problem.code)).toContain(code); }
+  expectAuthoredPublicCapabilities(name: string, expected: string[]): void {
+    const inspection = this.driver.current.specification.inspection;
+    const owner = [...inspection.query('concept'), ...inspection.query('component'), ...inspection.query('class'), ...inspection.query('interface')].find(item => item.name === name);
+    expect(owner).toBeDefined();
+    const names = owner!.members.flatMap(member => member.kind === 'public' ? member.references.map(reference => {
+      expect(reference.resolution.status).toBe('bound');
+      if (reference.resolution.status !== 'bound') throw Error('Unbound public selection');
+      const selected = inspection.read(reference.resolution.target); return 'name' in selected ? selected.name : selected.kind;
+    }) : []);
+    expect(names).toEqual(expected);
+  }
+  expectCapabilityRole(operation: string, role: string, target: string): void { expect(this.driver.capabilityRole(operation, role, target), operation + ' ' + role + ' ' + target).toBe(true); }
+  expectStructureDirection(direction: string): void { expect(this.driver.native.get('design/structure.d2')?.graph).toMatchObject({ root: { attributes: { direction: { value: direction } } } }); }
+  expectProblem(code: string): void { expect(this.driver.findings.map(problem => problem.code), JSON.stringify(this.driver.findings)).toContain(code); }
   expectNoProblem(code: string): void { expect(this.driver.findings.map(problem => problem.code)).not.toContain(code); }
   expectNoProjectChanges(): void { expect(this.driver.after).toEqual(this.driver.before); }
   expectNoDeclaration(name: string): void { expect(this.object(name)).toBeUndefined(); }
   expectDeclarationCount(name: string, count: number): void { expect(this.shapes().filter(shape => shape.label === name || shape.label.endsWith('\n' + name))).toHaveLength(count); }
   expectNoRenderedMember(name: string): void { const [owner, member] = name.split('.'); expect(this.object(owner!)?.methods?.some(method => method.name.startsWith(member + '('))).not.toBe(true); }
-  expectTypeLabel(owner: string, label: string): void { expect(this.object(owner)?.fields?.some(field => field.name === 'alias' && field.type === label)).toBe(true); }
   expectNativeEdgeCountBetween(a: string, b: string, count: number): void {
     const first = this.object(a)?.id, second = this.object(b)?.id; expect(this.edges().filter(edge => edge.src === first && edge.dst === second || edge.src === second && edge.dst === first)).toHaveLength(count);
   }
   expectNoNativeObject(key: string): void { expect(this.shapes().some(shape => shape.id === key)).toBe(false); }
   expectNativeExplicitEdgeCount(count: number): void { expect([...this.driver.native.values()].flatMap(result => (result.graph.ast.nodes as { map_key?: { edges?: unknown[] } }[]).flatMap(node => node.map_key?.edges ?? []))).toHaveLength(count); }
-  expectUnverifiedPromise(_name: string, text: string): void { expect(this.shapes().some(shape => shape.label.includes('Unverified intent: ' + text))).toBe(true); }
   expectNativeSvgLabel(label: string): void {
     const texts = [...this.driver.texts].filter(([path]) => path.endsWith('.svg')).map(([, text]) => {
       const xml = new DOMParser({ onError: (_level, message) => { throw new Error(message); } }).parseFromString(text, 'image/svg+xml');
@@ -66,8 +218,6 @@ export class DiagramExamples {
     });
     expect(labels).toContain(label);
   }
-  expectExternalProxy(name: string, module: string): void { expect(this.object(name)?.label).toContain('«external'); expect(this.object(name)?.label).toContain('from ' + module); }
-  expectNoProjectImplementationClaim(name: string): void { expect(this.object(name)?.label).toContain('«external'); }
   private sequence(title: string) { return [...this.driver.native.values()].find(result => (result.diagram.root as Text).label.includes(title)); }
   expectParticipants(title: string, labels: string[]): void { expect(this.sequence(title)?.diagram.shapes.filter(shape => !shape.id.includes('.') && shape.type !== 'text').map(shape => (shape as Text).label)).toEqual(labels); }
   expectDistinctParticipantKeys(a: string, b: string): void { const shapes = this.shapes(); expect(shapes.find(shape => shape.label.startsWith(a + ': '))?.id).not.toBe(shapes.find(shape => shape.label.startsWith(b + ': '))?.id); }

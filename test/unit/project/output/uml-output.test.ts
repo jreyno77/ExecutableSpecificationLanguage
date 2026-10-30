@@ -28,13 +28,13 @@ class DiagramPlan {
 }
 
 describe('diagram planning boundaries', { timeout: 30_000 }, () => {
-  it('inserts the fields of a genuinely new top-level record with that record', async () => {
+  it('inserts a genuinely new top-level component with its capability', async () => {
     const plan = new DiagramPlan(); plan.specify('concept Store {}'); await plan.create();
-    plan.specify('concept Store {}\ntype Book { title: Text }');
+    plan.specify('concept Store {}\ncomponent Book { capability title() returns Text }');
     const result = await plan.change('insert'); expect(result.problems).toEqual([]); expect(result.value?.artifacts.some(artifact => artifact.specId === plan.id('title'))).toBe(true);
   });
-  it('requires update when adding a field to an already rendered record', async () => {
-    const plan = new DiagramPlan(); plan.specify('type Book {}'); await plan.create(); plan.specify('type Book { title: Text }');
+  it('requires update when adding a capability to an already rendered component', async () => {
+    const plan = new DiagramPlan(); plan.specify('component Book {}'); await plan.create(); plan.specify('component Book { capability title() returns Text }');
     expect((await plan.change('insert')).problems.map(problem => problem.code)).toContain('not-addition-only');
   });
   it('does not conceal a skipped contract update behind a later empty host diff', async () => {
@@ -68,10 +68,10 @@ describe('diagram planning boundaries', { timeout: 30_000 }, () => {
   it('retains the legend and notes after deleting the final structural declaration', async () => {
     const plan = new DiagramPlan(); plan.specify('concept Store {}'); await plan.create(); plan.write('design/structure.d2', plan.text() + '\n# Design notes.\n');
     const result = await plan.output.plan({ operation: 'delete', id: plan.id('Store') }, plan.snapshot()); expect(result.problems).toEqual([]); plan.apply(result.value!);
-    expect(plan.text()).toContain('Declared contracts:'); expect(plan.text()).toContain('# Design notes.'); expect((await plan.output.search(plan.id('Store'), plan.snapshot())).definitions).toEqual([]);
+    expect(plan.text()).toContain('Declared architecture:'); expect(plan.text()).toContain('# Design notes.'); expect((await plan.output.search(plan.id('Store'), plan.snapshot())).definitions).toEqual([]);
   });
-  it('documents a local type by its enclosing qualified name and local meaning', async () => {
-    const plan = new DiagramPlan(); plan.specify('concept Store { local type Cache { size: Number } }'); await plan.create();
+  it('documents a local interface by its enclosing qualified name and local meaning', async () => {
+    const plan = new DiagramPlan(); plan.specify('concept Store { local interface Cache {} }'); await plan.create();
     expect(plan.text()).toContain('Store.Cache'); expect(plan.text()).toContain('local');
   });
   it('gives a represented parameter a containing-signature locator rather than a fictitious token range', async () => {
@@ -101,6 +101,6 @@ describe('diagram planning boundaries', { timeout: 30_000 }, () => {
   it('removes owned promise annotations with their deleted contract', async () => {
     const plan = new DiagramPlan(); plan.specify('concept Store { public save\ncapability save() returns Nothing { promises "Keeps player data" } }'); await plan.create();
     const result = await plan.output.plan({ operation: 'delete', id: plan.id('Store') }, plan.snapshot()); expect(result.problems).toEqual([]); plan.apply(result.value!);
-    expect(plan.text()).not.toContain('Keeps player data'); expect(plan.text()).toContain('Declared contracts:');
+    expect(plan.text()).not.toContain('Keeps player data'); expect(plan.text()).toContain('Declared architecture:');
   });
 });
