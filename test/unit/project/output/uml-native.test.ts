@@ -52,6 +52,16 @@ describe('native diagram source facts', { timeout: 30_000 }, () => {
     expect(documents.problems.map(problem => problem.code)).toContain('invalid-output-document');
     expect(documents.search('export').outgoing.uses).toEqual([]);
   });
+
+  it('keeps an authored leading sign distinct from native method visibility', async () => {
+    const documents = await inspect(metadata({ definition: 'relay' }) + 'relay: Relay {shape: class;\n'
+      + metadata({ member: 'export', owner: 'relay', parameters: [], name: 'export' }) + '"export()": ""\n}\n'
+      + metadata({ definition: 'courier' }) + 'courier: Courier {shape: class;\n'
+      + metadata({ member: 'ship', owner: 'courier', parameters: [], name: '-ship' }) + '"+-ship()": ""\n}\n'
+      + metadata({ edge: { subject: 'export', owner: 'relay', role: 'call', target: 'ship' } }) + 'relay -> courier: "export calls -ship"\n');
+    expect(documents.problems).toEqual([]);
+    expect(documents.search('export').outgoing.uses.map(use => use.target)).toEqual([{ kind: 'specified', id: 'ship' }]);
+  });
   it('keeps a direct class method at its literal original UTF-16 key and statement', async () => {
     const source = '# 📚\nstore: Store {\n  shape: class\n  "save(title: Text)": Nothing\n}\n';
     const diagrams = new NativeDiagrams();
