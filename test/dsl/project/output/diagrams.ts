@@ -34,9 +34,33 @@ export class DiagramExamples {
   expectNoSequenceFiles(): void { expect([...this.driver.native.keys()].filter(path => path.includes('/interactions/'))).toEqual([]); }
   expectSignature(name: string, signature: string): void {
     const parts = name.split('.'), owner = parts.length > 1 ? parts.slice(0, -1).join('.') : name;
-    expect(this.object(owner)?.methods?.map(method => method.name + ' → ' + method.return)).toContain(signature);
+    expect(this.object(owner)?.methods?.map(method => method.name + ' → ' + method.return.replaceAll(' |\n', ' | '))).toContain(signature);
   }
-  expectField(owner: string, name: string, type: string): void { expect(this.object(owner)?.fields?.map(field => [field.name, field.type])).toContainEqual([name, type]); }
+  expectDisplayedReturn(name: string, result: string): void {
+    const parts = name.split('.'), owner = parts.slice(0, -1).join('.'), member = parts.at(-1)!;
+    expect(this.object(owner)?.methods?.find(method => method.name.startsWith(member + '('))?.return).toBe(result);
+  }
+  expectDisplayedField(owner: string, name: string, type: string): void { expect(this.object(owner)?.fields?.map(field => [field.name, field.type])).toContainEqual([name, type]); }
+  expectCapabilityVisibility(name: string, visibility: 'public' | 'internal'): void {
+    const parts = name.split('.'), owner = parts.slice(0, -1).join('.'), member = parts.at(-1)!;
+    const method = this.object(owner)?.methods?.find(method => method.name.startsWith(member + '('));
+    expect(method, name).toBeDefined(); expect(method!.visibility).toBe(visibility === 'public' ? 'public' : 'private');
+    expect(this.object('expec_legend')?.label ?? this.shapes().find(shape => shape.id === 'expec_legend')?.label).toContain('+ public; − internal (not published)');
+  }
+  expectAuthoredPublicCapabilities(name: string, expected: string[]): void {
+    const inspection = this.driver.current.specification.inspection;
+    const owner = [...inspection.query('concept'), ...inspection.query('component'), ...inspection.query('class'), ...inspection.query('interface')].find(item => item.name === name);
+    expect(owner).toBeDefined();
+    const names = owner!.members.flatMap(member => member.kind === 'public' ? member.references.map(reference => {
+      expect(reference.resolution.status).toBe('bound');
+      if (reference.resolution.status !== 'bound') throw Error('Unbound public selection');
+      const selected = inspection.read(reference.resolution.target); return 'name' in selected ? selected.name : selected.kind;
+    }) : []);
+    expect(names).toEqual(expected);
+  }
+  expectCapabilityRole(operation: string, role: string, target: string): void { expect(this.driver.capabilityRole(operation, role, target), operation + ' ' + role + ' ' + target).toBe(true); }
+  expectStructureDirection(direction: string): void { expect(this.driver.native.get('design/structure.d2')?.graph).toMatchObject({ root: { attributes: { direction: { value: direction } } } }); }
+  expectField(owner: string, name: string, type: string): void { expect(this.object(owner)?.fields?.map(field => [field.name, field.type.replaceAll(' |\n', ' | ')])).toContainEqual([name, type]); }
   expectNoRuntimeFailureClaim(): void { expect(this.edges().filter(edge => edge.label.includes('may fail with')).length).toBe(1); }
   expectProblem(code: string): void { expect(this.driver.findings.map(problem => problem.code)).toContain(code); }
   expectNoProblem(code: string): void { expect(this.driver.findings.map(problem => problem.code)).not.toContain(code); }
@@ -44,13 +68,13 @@ export class DiagramExamples {
   expectNoDeclaration(name: string): void { expect(this.object(name)).toBeUndefined(); }
   expectDeclarationCount(name: string, count: number): void { expect(this.shapes().filter(shape => shape.label === name || shape.label.endsWith('\n' + name))).toHaveLength(count); }
   expectNoRenderedMember(name: string): void { const [owner, member] = name.split('.'); expect(this.object(owner!)?.methods?.some(method => method.name.startsWith(member + '('))).not.toBe(true); }
-  expectTypeLabel(owner: string, label: string): void { expect(this.object(owner)?.fields?.some(field => field.name === 'alias' && field.type === label)).toBe(true); }
+  expectTypeLabel(owner: string, label: string): void { expect(this.object(owner)?.fields?.some(field => field.name === 'alias' && field.type.replaceAll(' |\n', ' | ') === label)).toBe(true); }
   expectNativeEdgeCountBetween(a: string, b: string, count: number): void {
     const first = this.object(a)?.id, second = this.object(b)?.id; expect(this.edges().filter(edge => edge.src === first && edge.dst === second || edge.src === second && edge.dst === first)).toHaveLength(count);
   }
   expectNoNativeObject(key: string): void { expect(this.shapes().some(shape => shape.id === key)).toBe(false); }
   expectNativeExplicitEdgeCount(count: number): void { expect([...this.driver.native.values()].flatMap(result => (result.graph.ast.nodes as { map_key?: { edges?: unknown[] } }[]).flatMap(node => node.map_key?.edges ?? []))).toHaveLength(count); }
-  expectUnverifiedPromise(_name: string, text: string): void { expect(this.shapes().some(shape => shape.label.includes('Unverified intent: ' + text))).toBe(true); }
+  expectUnverifiedPromise(_name: string, text: string): void { expect(this.shapes().some(shape => shape.label === 'Unverified intent:\n' + text)).toBe(true); }
   expectNativeSvgLabel(label: string): void {
     const texts = [...this.driver.texts].filter(([path]) => path.endsWith('.svg')).map(([, text]) => {
       const xml = new DOMParser({ onError: (_level, message) => { throw new Error(message); } }).parseFromString(text, 'image/svg+xml');

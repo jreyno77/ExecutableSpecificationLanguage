@@ -10,6 +10,7 @@ export interface DiagramSubject { id: string; name: string; kind: string; owner?
 export interface Drawing { view: 'structure' | 'interaction'; id?: string; text: string; subjects: DiagramSubject[] }
 const kinds = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'function']);
 const quote = JSON.stringify;
+const classType = (node: Item): string => node.kind === 'union-type' ? node.alternatives.map(typeLabel).join(' |\n') : typeLabel(node);
 
 /** Writes native diagram statements from checked declarations; it does not resolve or execute them. */
 export function structure(current: IdentifiedSpecification): Drawing {
@@ -41,7 +42,7 @@ export function structure(current: IdentifiedSpecification): Drawing {
     };
     visit(type);
   };
-  const signature = (item: Item<'capability' | 'function' | 'construction'>, root: Item): string[] => {
+  const signature = (item: Item<'capability' | 'function' | 'construction'>, root: Item, visibility?: 'public' | 'internal'): string[] => {
     const id = identity(item, current.id(root.id)), operation = item.kind === 'construction' ? 'construction' : item.name;
     const parameters = item.parameters.map(parameter => { identity(parameter, id); return parameter.name + ': ' + typeLabel(parameter.declaredType); });
     for (const parameter of item.parameters) {
@@ -55,11 +56,12 @@ export function structure(current: IdentifiedSpecification): Drawing {
       if (item.returnType) references(item.returnType, item, root, 'output', (item.returnType.kind === 'named-type' && !item.returnType.arguments.length ? '' : 'output type: ') + operation + ' result: ' + result);
       for (const failure of item.failures) references(failure, item, root, 'failure', 'may fail with ' + typeLabel(failure));
       if (item.body.kind === 'available') for (const [index, promise] of item.body.content.members.filter(member => member.kind === 'promises').entries()) {
-        nodes.push(nativeKey(id) + '_promise_' + index + ': ' + quote('Unverified intent: ' + promise.text) + ' {shape: page}');
+        nodes.push(nativeKey(id) + '_promise_' + index + ': ' + quote('Unverified intent:\n' + promise.text) + ' {shape: page}');
       }
     }
+    const displayedResult = item.kind !== 'construction' && item.returnType ? classType(item.returnType) : result;
     return [metadata({ view: 'structure', member: id, owner: nativeKey(current.id(root.id)), parameters: item.parameters.map(parameter => current.id(parameter.id)) }),
-      quote(operation + '(' + parameters.join(', ') + ')') + ': ' + (/^\w+$/.test(result) ? result : quote(item.kind === 'construction' ? 'construction' : result))];
+      quote((visibility === 'internal' ? '-' : '') + operation + '(' + parameters.join(', ') + ')') + ': ' + (/^\w+$/.test(displayedResult) ? displayedResult : quote(item.kind === 'construction' ? 'construction' : displayedResult))];
   };
   const declaration = (item: Item): void => {
     if (rendered.has(item.id) || !kinds.has(item.kind)) return; rendered.add(item.id);
@@ -70,15 +72,16 @@ export function structure(current: IdentifiedSpecification): Drawing {
     else if (item.kind === 'record-type-declaration') for (const field of item.fields) {
       const node = field.kind === 'local' ? field.declaration : field;
       if (node.kind === 'field') {
-        identity(node, id); contents.push(metadata({ view: 'structure', member: current.id(node.id), owner: nativeKey(id), parameters: [] }), quote(node.name) + ': ' + quote(typeLabel(node.declaredType)));
+        identity(node, id); contents.push(metadata({ view: 'structure', member: current.id(node.id), owner: nativeKey(id), parameters: [] }), quote(node.name) + ': ' + quote(classType(node.declaredType)));
         references(node.declaredType, node, item, 'field', 'field: ' + node.name + ': ' + typeLabel(node.declaredType));
       } else declaration(node);
     }
-    else if (item.kind === 'alias-type-declaration') { contents.push(quote('alias') + ': ' + quote(item.name + parameters(item.typeParameters) + ' = ' + typeLabel(item.targetType))); references(item.targetType, item, item, 'alias', 'alias of ' + typeLabel(item.targetType)); }
+    else if (item.kind === 'alias-type-declaration') { contents.push(quote('alias') + ': ' + quote(item.name + parameters(item.typeParameters) + ' = ' + classType(item.targetType))); references(item.targetType, item, item, 'alias', 'alias of ' + typeLabel(item.targetType)); }
     else if (item.kind === 'concept' || item.kind === 'component' || item.kind === 'class' || item.kind === 'interface') {
       const selected = new Set(item.members.flatMap(member => member.kind === 'public' ? member.references.flatMap(reference => reference.resolution.status === 'bound' ? [reference.resolution.target] : []) : []));
       for (const member of item.members) {
-        if (member.kind === 'capability' && selected.has(member.id) || member.kind === 'construction') contents.push(...signature(member, item));
+        if (member.kind === 'capability') contents.push(...signature(member, item, selected.has(member.id) ? 'public' : 'internal'));
+        else if (member.kind === 'construction') contents.push(...signature(member, item));
         else if (member.kind === 'depends-on') for (const reference of member.references) {
           if (reference.resolution.status !== 'bound') throw new TypeError('Diagram dependencies must be resolved.');
           const target = inspection.read(reference.resolution.target); declaration(target);
@@ -91,8 +94,8 @@ export function structure(current: IdentifiedSpecification): Drawing {
       + contents.map(line => '  ' + line).join('\n') + '\n}');
   };
   for (const root of inspection.roots()) if (root.origin.kind === 'source') declaration(root);
-  return { view: 'structure', subjects, text: metadata({ view: 'structure' }) + '\n' + nodes.join('\n') + '\n' + edges.join('\n')
-    + '\nexpec_legend: "Declared contracts: inputs toward consumer; outputs toward result.\\nDependencies and fields do not imply ownership or runtime calls." {shape: text}\n' };
+  return { view: 'structure', subjects, text: metadata({ view: 'structure' }) + '\ndirection: down\n' + nodes.join('\n') + '\n' + edges.join('\n')
+    + '\nexpec_legend: "Declared contracts: inputs toward consumer; outputs toward result.\\n+ public; − internal (not published).\\nDependencies and fields do not imply ownership or runtime calls." {shape: text}\n' };
 }
 const parameters = (items: readonly Item<'type-parameter'>[]): string => items.length ? '<' + items.map(item => item.name).join(', ') + '>' : '';
 

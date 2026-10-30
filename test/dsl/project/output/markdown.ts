@@ -123,7 +123,10 @@ export class MarkdownExamples {
     expect(codes(this.section(name))[0]).toMatch(/^(?:function|capability) /); this.expectPageScope(name);
   }
   private expectPageScope(name: string): void {
-    expect(this.driver.textAt(this.driver.fileFor(name))).toContain('Statically checked specification. Runtime behavior is not verified by this document.');
+    const page = this.driver.textAt(this.driver.fileFor(name));
+    expect(page).not.toContain('Source:');
+    expect(page).not.toContain('Statically checked specification. Runtime behavior is not verified by this document.');
+    expect(page).not.toMatch(/(?:Status|Result):\s*(?:Passed|Verified)/);
   }
   expectAuthoredExample(name: string): void { expect(codes(this.section(name))[0]).toMatch(/^(?:example|scenario) /); this.expectPageScope(name); }
   expectImplementationRequired(name: string): void { expect(plain(this.section(name))).toContain('Implementation required.'); expect(codes(this.section(name))[0]).not.toMatch(/\{\s*$/); this.expectPageScope(name); }
@@ -181,9 +184,8 @@ export class MarkdownExamples {
   expectCapture(name: string, capture: string, type: string): void { expect(line(this.section(name), 'Captures')).toContain(capture + ': ' + type); }
   expectOrigin(name: string, locator: string, lineNumber: number): void {
     const id = this.driver.id(name), record = this.driver.current.baseline.elements.find(record => record.id === id)!;
-    expect(this.driver.textAt(this.driver.fileFor(name))).toContain('Source: ' + locator);
     expect(record.origin.kind).toBe('source'); if (record.origin.kind !== 'source') throw Error('Expected actual source provenance.');
-    expect(record.origin.node.sourceId).toBe(locator); expect(record.origin.range.start.line).toBe(lineNumber);
+    expect(record.origin.node.sourceId).toBe(locator); expect(record.origin.range.sourceId).toBe(locator); expect(record.origin.range.start.line).toBe(lineNumber);
     expect(this.section(name)).toContain(this.driver.marker(name));
   }
   expectExternalReference(name: string, locator: string, status: string): void {
@@ -206,7 +208,10 @@ export class MarkdownExamples {
   expectNoClaim(text: string): void { expect(this.all()).not.toContain(text); }
   expectNoRuntimeVerification(): void {
     const pages = this.driver.paths().filter(path => path.startsWith('docs/specification/') && path.endsWith('.md')); expect(pages.length).toBeGreaterThan(0);
-    for (const path of pages) expect(this.driver.textAt(path)).toContain('Statically checked specification. Runtime behavior is not verified by this document.');
+    for (const path of pages) {
+      expect(this.driver.textAt(path)).not.toContain('Source:');
+      expect(this.driver.textAt(path)).not.toContain('Statically checked specification. Runtime behavior is not verified by this document.');
+    }
     expect(this.all()).not.toMatch(/(?:Status|Result):\s*(?:Passed|Verified)/);
   }
   rememberLocation(name: string): void { this.driver.locations.set(name, this.driver.fileFor(name)); }

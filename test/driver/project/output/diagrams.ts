@@ -165,6 +165,21 @@ export class DiagramDriver {
     await this.search(name); const result = reconcileRelationships(this.current, expected.map(name => this.identifier(name)), this.found.outgoing);
     if (!result.value) throw new Error(JSON.stringify(result)); this.comparison = result.value;
   }
+  capabilityRole(operation: string, role: string, target: string): boolean {
+    type Segment = { unquoted_string?: { value: { string: string }[] } };
+    type Node = { comment?: { value: string }; map_key?: { edges?: { src: { path: Segment[] }; dst: { path: Segment[] } }[] } };
+    const key = (segments: Segment[]) => segments.map(part => part.unquoted_string?.value.map(value => value.string).join('')).join('.');
+    const subject = this.identifier(operation), owner = this.nativeKey(operation.split('.').slice(0, -1).join('.')), endpoint = this.nativeKey(target);
+    for (const native of this.native.values()) {
+      let marked: { subject: string; role: string } | undefined;
+      for (const node of native.graph.ast.nodes as Node[]) {
+        for (const line of node.comment?.value.split('\n') ?? []) if (line.startsWith('expec-uml: ')) marked = JSON.parse(Buffer.from(line.slice(11), 'base64url').toString()).edge;
+        if (marked?.subject === subject && marked.role === role && node.map_key?.edges?.some(edge => key(edge.src.path) === owner && key(edge.dst.path) === endpoint)) return true;
+        if (node.map_key) marked = undefined;
+      }
+    }
+    return false;
+  }
   async createFrom(entry: string, options: { views: string[] }): Promise<void> {
     const models = Object.entries(this.sourceFiles).map(([locator, text]) => {
       const result = new LangiumReader().read({ sourceId: locator, text });

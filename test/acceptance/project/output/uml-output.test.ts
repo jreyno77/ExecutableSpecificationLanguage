@@ -67,7 +67,7 @@ describe('the structure view keeps readable type meaning', { timeout: 30_000 }, 
     diagrams.expectNoOwnershipDiamonds();
   });
 
-  it('shows source kinds and public selection without turning every concept into a class', async () => {
+  it('shows source kinds and capability visibility without turning every concept into a class', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('interface Storage { public save\ncapability save() returns Nothing\ncapability reset() returns Nothing }\ncomponent Screen {}\nopaque type Secret\ntype Pair<T> = [T, T]');
     await diagrams.create({ views: ['structure'] });
@@ -76,7 +76,10 @@ describe('the structure view keeps readable type meaning', { timeout: 30_000 }, 
     diagrams.expectDeclaration('Secret', 'opaque type');
     diagrams.expectDeclaration('Pair', 'alias type');
     diagrams.expectSignature('Storage.save', 'save() → Nothing');
-    diagrams.expectNoRenderedMember('Storage.reset');
+    diagrams.expectSignature('Storage.reset', 'reset() → Nothing');
+    diagrams.expectCapabilityVisibility('Storage.save', 'public');
+    diagrams.expectCapabilityVisibility('Storage.reset', 'internal');
+    diagrams.expectAuthoredPublicCapabilities('Storage', ['save']);
     diagrams.expectTypeLabel('Pair', 'Pair<T> = [T, T]');
   });
 

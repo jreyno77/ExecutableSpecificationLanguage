@@ -19,7 +19,6 @@ const fence = (text: string): string => {
   const delimiter = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map(match => match[0].length + 1)));
   return delimiter + 'expec\n' + text + '\n' + delimiter + '\n\n';
 };
-const scope = 'Statically checked specification. Runtime behavior is not verified by this document.';
 
 /** Groups the existing inspected subjects into reader pages, retaining their persistent identities. */
 export class MarkdownDocumentation {
@@ -93,7 +92,7 @@ export class MarkdownDocumentation {
       let text = pageStart({ outputId: 'markdown', kind: 'source', key }) + '\n\n# ' + markdownText(visible) + '\n\n'
         + navigationStart + '\n\n[Home](' + back + ')\n\n## Contents\n\n' + source.roots.flatMap(id => toc(id)).join('\n') + '\n\n' + navigationEnd + '\n\n';
       for (const id of source.roots) text += this.section(id, 2, subjects);
-      text += 'Source: ' + markdownText(visible + (key.endsWith('.expec') ? '.expec' : '')) + '\n\n' + scope + '\n\n' + pageEnd(key) + '\n\n';
+      text += pageEnd(key) + '\n\n';
       pages.push({ kind: 'source', key, path: source.path, region: Buffer.from(text), subjects });
     }
     return [renderMarkdownHome(this.directory, pages), ...pages];
@@ -253,6 +252,6 @@ export function renderMarkdownHome(directory: string, sourcePages: readonly { pa
   const text = pageStart({ outputId: 'markdown', kind: 'home', key: 'Home' }) + '\n\n# Home\n\n'
     + navigationStart + '\n\n' + sources.map(source => '- [' + markdownText(source.path.slice((directory + '/pages/').length).replace(/\.md$/, '')) + ']('
       + posix.relative(directory, source.path).split('/').map(encodeURIComponent).join('/') + ')').join('\n')
-    + '\n\n' + navigationEnd + '\n\n' + scope + '\n\n' + pageEnd('Home') + '\n\n';
+    + '\n\n' + navigationEnd + '\n\n' + pageEnd('Home') + '\n\n';
   return { kind: 'home', key: 'Home', path: directory + '/Home.md', region: Buffer.from(text), subjects: [] };
 }
