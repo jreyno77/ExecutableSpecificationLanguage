@@ -14,8 +14,10 @@ concept ResultsRelay {
 }`);
   await docs.generateFrom('ResultsRelay.expec');
   docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/ResultsRelay.md']);
-  docs.expectPageSections('ResultsRelay.expec', ['Payload', 'DownloadError', 'ResultsRelay']);
-  docs.expectTableOfContents('ResultsRelay.expec', ['Payload', 'DownloadError', 'ResultsRelay', 'download']);
+  docs.expectPageSections('ResultsRelay.expec', ['ResultsRelay', 'Glossary']);
+  docs.expectGlossary('ResultsRelay.expec', ['Payload', 'DownloadError']);
+  docs.expectGlossaryNavigation('ResultsRelay.expec', 'Payload');
+  docs.expectTableOfContents('ResultsRelay.expec', ['ResultsRelay', 'download', 'Glossary']);
   docs.expectPromiseBullets('ResultsRelay.download', ['Persist the supplied result.', 'Allow cancellation.']);
   docs.expectInputEntries('ResultsRelay.download', [{ name: 'result', type: 'Payload' }]);
   docs.expectReturn('ResultsRelay.download', 'Nothing');
@@ -59,6 +61,7 @@ it('always creates Home and an empty entry page without inventing semantic subje
   await docs.generateFrom('empty.expec');
   docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/empty.md']);
   docs.expectHomeLinks(['pages/empty.md']);
+  docs.expectGlossary('empty.expec', []);
   docs.expectNoInventedSemanticSubjects();
 });
 
@@ -91,6 +94,7 @@ concept Library {
  capability reset() returns Nothing
 }`);
   await docs.generate();
+  docs.expectInputsFollowSignature('Library.open');
   docs.expectInputEntries('Library.open', [{ name: 'note', type: 'Note?' }, { name: 'title', type: 'Text', default: '"Dune"' }]);
   docs.expectPublicCapabilities('Library', ['open']);
   docs.expectInternalDeclarations('Library', ['reset']);
@@ -108,8 +112,9 @@ it('adds only new sections and generated navigation during an eligible insertion
   docs.sourceFile('library.expec', 'concept Library {}\ntype Book { title: Text }');
   await docs.insertFrom('library.expec');
   docs.expectRememberedSectionBytes('Library');
-  docs.expectPageSections('library.expec', ['Library', 'Book']);
-  docs.expectTableOfContents('library.expec', ['Library', 'Book']);
+  docs.expectPageSections('library.expec', ['Library', 'Glossary']);
+  docs.expectGlossary('library.expec', ['Book']);
+  docs.expectTableOfContents('library.expec', ['Library', 'Glossary']);
   docs.expectRememberedPageNotesBytes('library.expec');
   docs.expectAllGeneratedLinksResolve();
 });
@@ -206,7 +211,8 @@ it('public preview exposes the same readable source pages with its own valid ide
   docs.sourceFile('library.expec', 'type Book { title: Text }\nconcept Library {}');
   await docs.previewFrom('library.expec');
   docs.expectPreviewPages(['docs/specification/Home.md', 'docs/specification/pages/library.md']);
-  docs.expectPreviewSections('library.expec', ['Book', 'Library']);
+  docs.expectPreviewSections('library.expec', ['Library', 'Glossary']);
+  docs.expectPreviewGlossary('library.expec', ['Book']);
   docs.expectAllPreviewLinksResolve();
 });
 
@@ -239,4 +245,51 @@ it('keeps an empty specification and its Home free of generated boilerplate', as
   docs.expectNoClaim('Source:');
   docs.expectNoClaim('Statically checked specification. Runtime behavior is not verified by this document.');
   docs.expectNoInventedSemanticSubjects();
+});
+
+it('shows export inputs directly beneath its signature with their real type links', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('ResultsRelay.expec', `opaque type URL
+type ResultPayload { result: Text }
+error type ResultRelayExportError { code: "delivery-issue" }
+concept Courier { public ship
+ capability ship() returns Nothing }
+concept ResultsRelay {
+ public export
+ capability export(result: ResultPayload, targetLocation: URL) returns Nothing fails with ResultRelayExportError {
+  promises "The result has been sent to a provided target"
+  promises "Can be cancelled"
+  calls Courier.ship
+ }
+}`);
+  await docs.generateFrom('ResultsRelay.expec');
+  docs.expectInputsFollowSignature('ResultsRelay.export');
+  docs.expectInputEntries('ResultsRelay.export', [
+    { name: 'result', type: 'ResultPayload' },
+    { name: 'targetLocation', type: 'URL' },
+  ]);
+  docs.expectInputFragmentOwnsTypeLink('ResultsRelay.export.result', 'ResultPayload');
+  docs.expectInputFragmentOwnsTypeLink('ResultsRelay.export.targetLocation', 'URL');
+  docs.expectReturn('ResultsRelay.export', 'Nothing');
+  docs.expectFailures('ResultsRelay.export', ['ResultRelayExportError']);
+  docs.expectDeclaredCalls('ResultsRelay.export', ['Courier.ship']);
+  docs.expectAllGeneratedLinksResolve();
+  docs.expectNoRepeatedWarningsOrInputs('ResultsRelay.export');
+});
+
+it('labels contractual promises separately from declared failures', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('export.expec', `error type ExportFailure { code: "delivery-issue" }
+function exportResult() returns Nothing fails with ExportFailure {
+ promises "The result has been sent to a provided target"
+ promises "Can be cancelled"
+}`);
+  await docs.generateFrom('export.expec');
+  docs.expectContractualPromises('exportResult', [
+    'The result has been sent to a provided target',
+    'Can be cancelled',
+  ]);
+  docs.expectFailures('exportResult', ['ExportFailure']);
+  docs.expectReturn('exportResult', 'Nothing');
+  docs.expectNoRuntimeVerification();
 });

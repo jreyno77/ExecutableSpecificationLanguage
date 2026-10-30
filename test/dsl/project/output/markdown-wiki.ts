@@ -48,12 +48,130 @@ export class MarkdownWikiExamples extends MarkdownExamples {
     const headings = nodes(this.page(source)).filter(node => node.type === 'heading' && node.depth === 2).map(node => plain(this.page(source).slice(node.position!.start.offset, node.position!.end.offset)));
     expect(headings.filter(name => name !== 'Contents' && name !== 'Your notes')).toEqual(names);
   }
+  private expectGlossaryText(text: string, names: string[], retainedIdentities = true) {
+    const headings = nodes(text).filter(node => node.type === 'heading');
+    const glossaries = headings.filter(node => node.depth === 2 && plain(text.slice(node.position!.start.offset, node.position!.end.offset)) === 'Glossary');
+    expect(glossaries).toHaveLength(names.length ? 1 : 0);
+    if (!names.length) return;
+    const start = glossaries[0]!.position!.end.offset!;
+    const end = text.indexOf('<!-- expec-page-end:', start);
+    expect(end).toBeGreaterThan(start);
+    const entries = headings.filter(node => node.depth === 3 && node.position!.start.offset! > start && node.position!.start.offset! < end);
+    expect(entries.map(node => plain(text.slice(node.position!.start.offset, node.position!.end.offset)))).toEqual(names);
+    expect(headings.filter(node => node.depth === 2 && node.position!.start.offset! > start && node.position!.start.offset! < end)).toEqual([]);
+    const sections = [...text.matchAll(/<!-- expec-section:([a-f0-9]+) -->/g)].map(match => ({
+      start: match.index!, end: match.index! + match[0].length, metadata: JSON.parse(Buffer.from(match[1]!, 'hex').toString()),
+    }));
+    for (const [index, name] of names.entries()) {
+      const heading = entries[index]!, section = sections.filter(section => section.end < heading.position!.start.offset!).at(-1);
+      expect(section, name).toBeDefined(); expect(section!.metadata.outputId).toBe('markdown');
+      if (retainedIdentities) expect(section!.metadata.specId, name).toBe(this.driver.id(name));
+      expect(sections.filter(candidate => candidate.metadata.specId === section!.metadata.specId), name).toHaveLength(1);
+      expect(section!.start, name).toBeGreaterThan(start); expect(section!.start, name).toBeLessThan(end);
+      const anchor = '<a id="' + nativeAnchor(section!.metadata.specId) + '"></a>';
+      expect(text.split(anchor).length - 1, name).toBe(1);
+      expect(text.indexOf(anchor), name).toBeGreaterThan(section!.start);
+      expect(text.indexOf(anchor), name).toBeLessThan(end);
+    }
+  }
+  expectGlossary(source: string, names: string[]) { this.expectGlossaryText(this.page(source), names); }
+  expectPreviewGlossary(source: string, names: string[]) {
+    const document = this.driver.previewDocuments.find(document => document.path === sourcePath(source));
+    expect(document).toBeDefined(); this.expectGlossaryText(Buffer.from(document!.bytes).toString(), names, false);
+  }
+  expectExamplesGroupedWith(subject: string, titles: string[], placement: { before: string }) {
+    const path = this.driver.fileFor(subject), text = this.driver.textAt(path);
+    const start = text.indexOf(this.driver.marker(subject)), next = text.indexOf(this.driver.marker(placement.before));
+    expect(start).toBeGreaterThanOrEqual(0); expect(this.driver.fileFor(placement.before)).toBe(path); expect(next).toBeGreaterThan(start);
+    const headings = nodes(text).filter(node => node.type === 'heading');
+    const heading = headings.find(node => node.position!.start.offset! > start)!;
+    expect(heading).toBeDefined();
+    const boundary = headings.find(node => node.position!.start.offset! > heading.position!.start.offset! && node.depth <= heading.depth)?.position!.start.offset ?? text.length;
+    for (const title of titles) {
+      expect(this.driver.fileFor(title)).toBe(path);
+      const offset = text.indexOf(this.driver.marker(title));
+      expect(offset, title).toBeGreaterThan(heading.position!.end.offset!);
+      expect(offset, title).toBeLessThan(next); expect(offset, title).toBeLessThan(boundary);
+      this.expectDeclarationCount(title, 1);
+    }
+  }
+  expectLinkedExamples(subject: string, source: string, titles: string[]) {
+    const subjectPath = this.driver.fileFor(subject), targetPath = sourcePath(source), target = this.driver.textAt(targetPath);
+    const resolve = (from: string, url: string) => {
+      const [path, fragment] = url.split('#');
+      return { path: posix.normalize(posix.join(posix.dirname(from), decodeURIComponent(path || posix.basename(from)))), fragment: fragment && decodeURIComponent(fragment) };
+    };
+    const candidates = links(this.wikiSection(subject)).map(link => resolve(subjectPath, link.url)).filter(link => link.path === targetPath && link.fragment);
+    expect(candidates.length, 'Actual Examples link from ' + subject).toBeGreaterThan(0);
+    const regions = candidates.map(link => {
+      expect(target).toContain('<a id="' + link.fragment + '"></a>');
+      const id = Buffer.from(link.fragment!.slice('expec-'.length), 'hex').toString();
+      const marker = [...target.matchAll(/<!-- expec-section:([a-f0-9]+) -->/g)].find(match => {
+        const metadata = JSON.parse(Buffer.from(match[1]!, 'hex').toString()); return metadata.outputId === 'markdown' && metadata.specId === id;
+      });
+      expect(marker).toBeDefined();
+      const end = target.indexOf('<!-- expec-end:' + Buffer.from(id).toString('hex') + ' -->', marker!.index);
+      expect(end).toBeGreaterThan(marker!.index!); return target.slice(marker!.index, end);
+    });
+    for (const title of titles) {
+      expect(this.driver.fileFor(title)).toBe(targetPath);
+      expect(regions.some(region => region.includes(this.driver.marker(title))), title).toBe(true);
+      this.expectDeclarationCount(title, 1);
+    }
+    expect(regions.some(region => links(region).map(link => resolve(targetPath, link.url)).some(link => link.path === subjectPath && link.fragment === nativeAnchor(this.driver.id(subject))))).toBe(true);
+  }
+  expectGlossaryNavigation(source: string, firstType: string) {
+    const text = this.page(source), navigation = this.navigation(source);
+    const heading = nodes(text).find(node => node.type === 'heading' && node.depth === 2 && plain(text.slice(node.position!.start.offset, node.position!.end.offset)) === 'Glossary');
+    expect(heading).toBeDefined();
+    const start = heading!.position!.end.offset!, end = text.indexOf('<!-- expec-page-end:', start);
+    expect(end).toBeGreaterThan(start);
+    const glossary = text.slice(start, end), anchors = [...glossary.matchAll(/<a id="([^"]+)">/g)].map(match => match[1]!);
+    const firstAnchor = nativeAnchor(this.driver.id(firstType)); expect(anchors[0]).toBe(firstAnchor);
+    const actual = links(navigation).map(link => ({ label: plain(navigation.slice(link.position!.start.offset, link.position!.end.offset)), url: link.url }));
+    expect(actual.filter(link => link.label === 'Glossary')).toEqual([{ label: 'Glossary', url: '#' + firstAnchor }]);
+    expect(actual.filter(link => link.url.startsWith('#') && anchors.includes(decodeURIComponent(link.url.slice(1)))))
+      .toEqual([{ label: 'Glossary', url: '#' + firstAnchor }]);
+    for (const entry of nodes(glossary).filter(node => node.type === 'heading' && node.depth === 3))
+      expect(actual.map(link => link.label)).not.toContain(plain(glossary.slice(entry.position!.start.offset, entry.position!.end.offset)));
+  }
   expectTableOfContents(source: string, names: string[]) {
     expect(links(this.navigation(source)).filter(link => link.url.startsWith('#')).map(link => plain(this.navigation(source).slice(link.position!.start.offset, link.position!.end.offset)))).toEqual(names);
   }
   expectPromiseBullets(name: string, expected: string[]) {
     const actual = nodes(this.wikiSection(name)).filter(node => node.type === 'listItem').map(node => plain(this.wikiSection(name).slice(node.position!.start.offset, node.position!.end.offset)));
     for (const promise of expected) expect(actual.filter(text => text === promise)).toHaveLength(1);
+  }
+  expectInputsFollowSignature(name: string) {
+    const text = this.wikiSection(name);
+    const blocks = fromMarkdown(text).children.filter(node => node.type === 'code' || plain(text.slice(node.position!.start.offset, node.position!.end.offset)).trim());
+    const signature = blocks.findIndex(node => node.type === 'code'), inputs = blocks[signature + 1];
+    expect(signature).toBeGreaterThanOrEqual(0);
+    expect(inputs?.type).toBe('paragraph');
+    expect(inputs && plain(text.slice(inputs.position!.start.offset, inputs.position!.end.offset))).toBe('Inputs');
+    expect(inputs?.type === 'paragraph' && inputs.children.length === 1 && inputs.children[0]?.type === 'strong').toBe(true);
+    const result = blocks.find(node => plain(text.slice(node.position!.start.offset, node.position!.end.offset)).startsWith('Returns:'));
+    expect(result).toBeDefined();
+    const fragments = [...text.matchAll(/<!-- expec-fragment:([a-f0-9]+) -->/g)];
+    expect(fragments.length).toBeGreaterThan(0);
+    for (const fragment of fragments) {
+      const id = JSON.parse(Buffer.from(fragment[1]!, 'hex').toString()).specId as string;
+      const end = text.indexOf('<!-- expec-end:' + Buffer.from(id).toString('hex') + ' -->', fragment.index);
+      expect(fragment.index).toBeGreaterThan(inputs!.position!.end.offset!);
+      expect(end).toBeGreaterThan(fragment.index!); expect(end).toBeLessThan(result!.position!.start.offset!);
+    }
+  }
+  expectContractualPromises(name: string, expected: string[]) {
+    const text = this.wikiSection(name);
+    const blocks = fromMarkdown(text).children.filter(node => node.type !== 'html' && plain(text.slice(node.position!.start.offset, node.position!.end.offset)).trim());
+    const labels = blocks.filter(node => plain(text.slice(node.position!.start.offset, node.position!.end.offset)) === 'Contractual promises');
+    expect(labels).toHaveLength(1);
+    const label = labels[0]!;
+    expect(label.type === 'paragraph' && label.children.length === 1 && label.children[0]?.type === 'strong').toBe(true);
+    const index = blocks.indexOf(label), previous = blocks[index - 1], list = blocks[index + 1];
+    expect(previous && plain(text.slice(previous.position!.start.offset, previous.position!.end.offset))).toMatch(/^(May fail with:|No domain failures declared)/);
+    expect(list?.type).toBe('list');
+    expect(list?.type === 'list' ? list.children.map(item => plain(text.slice(item.position!.start.offset, item.position!.end.offset))) : []).toEqual(expected);
   }
   expectInputEntries(name: string, expected: { name: string; type: string; default?: string }[]) {
     const owner = this.wikiSection(name), offsets = expected.map(parameter => owner.indexOf(this.driver.marker(name + '.' + parameter.name, 'markdown', 'fragment')));
