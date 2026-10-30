@@ -5,8 +5,8 @@ describe('complete declared structural contracts', { timeout: 30_000 }, () => {
   it('shows public and internal signatures with their actual relationships', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify(`opaque type URL
-opaque type Receipt
-opaque type Storage
+component Receipt {}
+component Storage {}
 type Address = URL
 type Payload { destination: Address }
 error type Rejected { code: "invalid-destination" }
@@ -17,30 +17,32 @@ concept Relay {
   capability cache(address: Address) returns Receipt fails with Rejected
 }`);
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectSignature('Relay.send', 'send(payload: Payload) → Receipt');
-    diagrams.expectSignature('Relay.cache', 'cache(address: Address) → Receipt');
+    diagrams.expectOperationLabel('Relay.send', 'send(payload)');
+    diagrams.expectOperationLabel('Relay.cache', 'cache(address)');
     diagrams.expectCapabilityVisibility('Relay.send', 'public');
     diagrams.expectCapabilityVisibility('Relay.cache', 'internal');
     diagrams.expectAuthoredPublicCapabilities('Relay', ['send']);
-    diagrams.expectRole({ from: 'Payload', to: 'Relay', role: 'input', label: 'send.payload: Payload' });
-    diagrams.expectRole({ from: 'Address', to: 'Relay', role: 'input', label: 'cache.address: Address' });
-    diagrams.expectRole({ from: 'Relay', to: 'Receipt', role: 'output', label: 'send result: Receipt' });
-    diagrams.expectRole({ from: 'Relay', to: 'Receipt', role: 'output', label: 'cache result: Receipt' });
-    diagrams.expectRole({ from: 'Relay', to: 'Rejected', role: 'failure', label: 'may fail with Rejected' });
-    diagrams.expectCapabilityRole('Relay.send', 'failure', 'Rejected');
-    diagrams.expectCapabilityRole('Relay.cache', 'failure', 'Rejected');
+    diagrams.expectRole({ from: 'Relay', to: 'Receipt', role: 'output', label: 'result: send' });
+    diagrams.expectRole({ from: 'Relay', to: 'Receipt', role: 'output', label: 'result: cache' });
+    diagrams.expectCapabilityRole('Relay.send', 'output', 'Receipt');
+    diagrams.expectCapabilityRole('Relay.cache', 'output', 'Receipt');
+    diagrams.expectDeclaredFailure('Relay.send', 'Rejected');
+    diagrams.expectDeclaredFailure('Relay.cache', 'Rejected');
+    diagrams.expectDeclaredParameterReferences('Relay.send', 'payload', ['Payload']);
+    diagrams.expectDeclaredParameterReferences('Relay.cache', 'address', ['Address']);
     diagrams.expectRole({ from: 'Relay', to: 'Storage', role: 'dependency' });
-    diagrams.expectRole({ from: 'Payload', to: 'Address', role: 'field', label: 'field: destination: Address' });
-    diagrams.expectRole({ from: 'Address', to: 'URL', role: 'alias', label: 'alias of URL' });
-    diagrams.expectNativeExplicitEdgeCount(9); // two independent failure edges, one per capability
+    diagrams.expectDeclaredFieldReference('Payload', 'destination', 'Address');
+    diagrams.expectDeclaredAliasReference('Address', 'URL');
+    diagrams.expectNoDiagramDefinitions(['URL', 'Address', 'Payload', 'Rejected']);
+    diagrams.expectNativeExplicitEdgeCount(3); // two distinct capability outputs and one component dependency
     diagrams.expectNoOwnershipDiamonds();
     diagrams.expectNoSequenceFiles();
     await diagrams.search('Relay.cache');
     diagrams.expectNoDuplicateDefinition('Relay.cache');
-    diagrams.expectDefinitionStatement('Relay.cache', '"-cache(address: Address)": Receipt');
-    diagrams.expectOutgoingTo('Address');
+    diagrams.expectDefinitionStatement('Relay.cache', '"-cache(address)": ""');
+    diagrams.expectNoOutgoingTo('Address');
     diagrams.expectOutgoingTo('Receipt');
-    diagrams.expectOutgoingTo('Rejected');
+    diagrams.expectNoOutgoingTo('Rejected');
     diagrams.expectCompleteWithinNativeProfile();
     await diagrams.read('Relay.cache.address');
     diagrams.expectReadFiles(['design/structure.d2', 'design/structure.svg']);
@@ -50,7 +52,7 @@ concept Relay {
   it('renders the same complete structural facts in a compact downward layout', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify(`opaque type URL
-opaque type Storage
+component Storage {}
 type Address = URL
 type Payload { destination: Address }
 error type Rejected { code: "invalid-destination" }
@@ -61,25 +63,26 @@ concept Relay {
     await diagrams.create({ views: ['structure'] });
     diagrams.expectStructureDirection('down');
     diagrams.expectCapabilityVisibility('Relay.send', 'internal');
-    diagrams.expectSignature('Relay.send', 'send(payload: Payload) → Address');
-    diagrams.expectRole({ from: 'Payload', to: 'Relay', role: 'input' });
-    diagrams.expectRole({ from: 'Relay', to: 'Address', role: 'output' });
-    diagrams.expectRole({ from: 'Relay', to: 'Rejected', role: 'failure' });
+    diagrams.expectOperationLabel('Relay.send', 'send(payload)');
+    diagrams.expectDeclaredParameterReferences('Relay.send', 'payload', ['Payload']);
+    diagrams.expectDeclaredReturnShape('Relay.send', 'named-type');
+    diagrams.expectDeclaredFailure('Relay.send', 'Rejected');
     diagrams.expectRole({ from: 'Relay', to: 'Storage', role: 'dependency' });
-    diagrams.expectRole({ from: 'Payload', to: 'Address', role: 'field' });
-    diagrams.expectRole({ from: 'Address', to: 'URL', role: 'alias' });
-    diagrams.expectNativeExplicitEdgeCount(6);
+    diagrams.expectDeclaredFieldReference('Payload', 'destination', 'Address');
+    diagrams.expectDeclaredAliasReference('Address', 'URL');
+    diagrams.expectNoDiagramDefinitions(['URL', 'Address', 'Payload', 'Rejected']);
+    diagrams.expectNativeExplicitEdgeCount(1);
     diagrams.expectNativeSvgDocuments(1);
     diagrams.expectNativeSvgLabel('Relay');
-    diagrams.expectNativeSvgLabel('send(payload: Payload)');
+    diagrams.expectNativeSvgLabel('send(payload)');
     diagrams.expectSvgDigestMatchesActualSource('design/structure.svg', 'design/structure.d2');
     diagrams.expectSvgContainsNoExternalAssetReferences();
   });
 });
 
 
-describe('wrapped native type displays', { timeout: 30_000 }, () => {
-it('wraps union displays without changing literal values or callable keys', async () => {
+describe('literal specification meaning survives architectural presentation', { timeout: 30_000 }, () => {
+it('omits union clutter without changing literal values, promise spacing or callable keys', async () => {
   const diagrams = await DiagramExamples.connect();
   diagrams.specify(`type Destination = "remote" | "database" | "filesystem"
 error type Rejected {
@@ -93,13 +96,15 @@ concept Relay {
   }
 }`);
   await diagrams.create({ views: ['structure'] });
-  diagrams.expectSignature('Relay.send', 'send() → "complete" | "working" | "failed"');
-  diagrams.expectDisplayedReturn('Relay.send', '"complete" |\n"working" |\n"failed"');
-  diagrams.expectDisplayedField('Rejected', 'code', '"invalid-destination" |\n"invalid-payload" |\n"shipping-issue"');
-  diagrams.expectDisplayedField('Rejected', 'note', '"keep | this  spacing"');
-  diagrams.expectDisplayedField('Destination', 'alias', 'Destination = "remote" |\n"database" |\n"filesystem"');
+  diagrams.expectOperationLabel('Relay.send', 'send()');
+  diagrams.expectDeclaredReturnLiterals('Relay.send', ['complete', 'working', 'failed']);
+  diagrams.expectDeclaredFieldUnionLiterals('Rejected', 'code', ['invalid-destination', 'invalid-payload', 'shipping-issue']);
+  diagrams.expectDeclaredFieldLiteral('Rejected', 'note', 'keep | this  spacing');
+  diagrams.expectDeclaredAliasUnionLiterals('Destination', ['remote', 'database', 'filesystem']);
+  diagrams.expectNoDiagramDefinitions(['Rejected', 'Destination']);
   diagrams.expectStructureDirection('down');
-  diagrams.expectUnverifiedPromise('Relay.send', 'Keep  two spaces | and punctuation.');
+  diagrams.expectPromiseSection('Relay', 'send', ['Keep  two spaces | and punctuation.']);
+  diagrams.expectAuthoredPromises('Relay.send', ['Keep  two spaces | and punctuation.']);
   await diagrams.search('Relay.send');
   diagrams.expectDefinitionKey('Relay.send', '"send()"');
   diagrams.expectNativeSvgDocuments(1);

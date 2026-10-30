@@ -214,6 +214,20 @@ export class DiagramDriver {
     } }
     finally { await engine.dispose(); }
   }
+  async openLegacyTypeFixture(): Promise<void> {
+    const fixture: { generatedBy: string; source: string; files: { path: string; text: string }[] } = JSON.parse(
+      await fs.readFile(new URL('../../../resources/diagrams/legacy-type-structure.json', import.meta.url), 'utf8'));
+    if (fixture.generatedBy !== '10d575a6df6f17b1befad46fe942e82e9e9851a6') throw Error('Unexpected legacy fixture producer');
+    this.specify(fixture.source);
+    const opened = this.outputs.open('uml', { directory: 'design', views: ['structure'] }, this.context, new FileProjectWriter(this.context));
+    if (!opened.value) throw Error(JSON.stringify(opened));
+    this.output = opened.value;
+    for (const file of fixture.files) await this.write(file.path, file.text);
+    await this.inspectNative();
+  }
+  async appendHandwrittenEdge(from: string, to: string, label: string): Promise<void> {
+    await this.append('design/structure.d2', '\n' + this.nativeKey(from) + ' -> ' + this.nativeKey(to) + ': ' + JSON.stringify(label) + '\n');
+  }
   async dispose(): Promise<void> {
     this.restoreWrites(); this.restoreResources?.(); await this.fresh?.dispose();
     const path = resolve(this.directory), child = relative(this.temporary, path);

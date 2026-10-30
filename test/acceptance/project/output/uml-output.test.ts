@@ -4,12 +4,12 @@ import { DiagramExamples } from '../../../dsl/project/output/diagrams.js';
 describe('readable declared diagrams', { timeout: 30_000 }, () => {
   it('shows inputs, outputs and dependencies as distinct declared roles', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('opaque type Config\nopaque type Snapshot\nopaque type Storage\nconcept StoreGame {\ndepends on Storage\npublic startup, save\ncapability startup(config: Config) returns Snapshot\ncapability save(snapshot: Snapshot) returns Nothing\n}');
+    diagrams.specify('component Config {}\ncomponent Snapshot {}\ncomponent Storage {}\nconcept StoreGame {\ndepends on Storage\npublic startup, save\ncapability startup(config: Config) returns Snapshot\ncapability save(snapshot: Snapshot) returns Nothing\n}');
     await diagrams.create({ views: ['structure'] });
     diagrams.expectDeclaration('StoreGame', 'concept');
-    diagrams.expectRole({ from: 'Config', to: 'StoreGame', role: 'input', label: 'startup.config: Config' });
-    diagrams.expectRole({ from: 'StoreGame', to: 'Snapshot', role: 'output', label: 'startup result: Snapshot' });
-    diagrams.expectRole({ from: 'Snapshot', to: 'StoreGame', role: 'input', label: 'save.snapshot: Snapshot' });
+    diagrams.expectRole({ from: 'Config', to: 'StoreGame', role: 'input', label: 'input: startup.config' });
+    diagrams.expectRole({ from: 'StoreGame', to: 'Snapshot', role: 'output', label: 'result: startup' });
+    diagrams.expectRole({ from: 'Snapshot', to: 'StoreGame', role: 'input', label: 'input: save.snapshot' });
     diagrams.expectRole({ from: 'StoreGame', to: 'Storage', role: 'dependency' });
     diagrams.expectNoOwnershipDiamonds(); diagrams.expectNoSequenceFiles();
   });
@@ -26,15 +26,21 @@ describe('readable declared diagrams', { timeout: 30_000 }, () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Store { public save, stop\ncapability save()\ncapability stop() returns Nothing }');
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectSignature('Store.save', 'save() → unspecified'); diagrams.expectSignature('Store.stop', 'stop() → Nothing');
+    diagrams.expectOperationLabel('Store.save', 'save()'); diagrams.expectOperationLabel('Store.stop', 'stop()');
+    diagrams.expectDeclaredResultKind('Store.save', 'unspecified'); diagrams.expectDeclaredResultKind('Store.stop', 'none');
+    diagrams.expectNoVisibleTypeAnnotations();
   });
   it('shows error data and possible failures without changing the successful result', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('type Account { id: Text }\nerror type Rejected { code: "duplicate-account"\nemail: Text }\nfunction create(email: Text) returns Account fails with Rejected');
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectDeclaration('Rejected', 'error type'); diagrams.expectField('Rejected', 'code', '"duplicate-account"'); diagrams.expectField('Rejected', 'email', 'Text');
-    diagrams.expectRole({ from: 'create', to: 'Rejected', role: 'failure' }); diagrams.expectRole({ from: 'create', to: 'Account', role: 'output' });
-    diagrams.expectNoRuntimeFailureClaim();
+    diagrams.expectContainerKinds({ create: 'function' });
+    diagrams.expectNoDiagramDefinitions(['Account', 'Rejected']);
+    diagrams.expectDeclaredFieldLiteral('Rejected', 'code', 'duplicate-account');
+    diagrams.expectDeclaredFieldReference('Rejected', 'email', 'Text');
+    diagrams.expectDeclaredResultTarget('create', 'Account');
+    diagrams.expectDeclaredFailure('create', 'Rejected');
+    diagrams.expectNativeExplicitEdgeCount(0);
   });
   it('refuses to invent a sequence from dependencies', async () => {
     const diagrams = await DiagramExamples.connect();
@@ -43,26 +49,30 @@ describe('readable declared diagrams', { timeout: 30_000 }, () => {
     diagrams.expectProblem('missing-interaction'); diagrams.expectNoProjectChanges();
   });
 });
-describe('the structure view keeps readable type meaning', { timeout: 30_000 }, () => {
+describe('the structure view keeps architecture while the specification retains types', { timeout: 30_000 }, () => {
   it('retains generic wrappers and distinct roles between the same declarations', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('type Book { title: Text }\nconcept Library { public add, find\ncapability add(books: List<Book>) returns Nothing\ncapability find(title: Text) returns Book? }');
+    diagrams.specify('component Book {}\nconcept Library { public add, find\ncapability add(books: List<Book>) returns Nothing\ncapability find(title: Text) returns Book? }');
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectSignature('Library.add', 'add(books: List<Book>) → Nothing');
-    diagrams.expectSignature('Library.find', 'find(title: Text) → Book?');
-    diagrams.expectRole({ from: 'Book', to: 'Library', role: 'input', label: 'input type: add.books: List<Book>' });
-    diagrams.expectRole({ from: 'Library', to: 'Book', role: 'output', label: 'output type: find result: Book?' });
+    diagrams.expectOperationLabel('Library.add', 'add(books)');
+    diagrams.expectDeclaredParameterReferences('Library.add', 'books', ['List', 'Book']);
+    diagrams.expectOperationLabel('Library.find', 'find(title)');
+    diagrams.expectDeclaredReturnShape('Library.find', 'optional-type');
+    diagrams.expectRole({ from: 'Book', to: 'Library', role: 'input', label: 'input: add.books' });
+    diagrams.expectRole({ from: 'Library', to: 'Book', role: 'output', label: 'result: find' });
     diagrams.expectNoDeclaration('List');
     diagrams.expectNativeEdgeCountBetween('Book', 'Library', 2);
   });
 
-  it('distinguishes construction, field and alias references without claiming ownership', async () => {
+  it('keeps direct construction without projecting data fields or aliases', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('type Config { name: Text }\ntype Settings = Config\ntype Snapshot { config: Config }\nconcept Store { depends on Config\nconstruction(settings: Settings) }');
+    diagrams.specify('component Config {}\ntype Settings = Config\ntype Snapshot { config: Config }\nconcept Store { depends on Config\nconstruction(config: Config, settings: Settings) }');
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectRole({ from: 'Settings', to: 'Store', role: 'construction', label: 'construction input: settings: Settings' });
-    diagrams.expectRole({ from: 'Snapshot', to: 'Config', role: 'field', label: 'field: config: Config' });
-    diagrams.expectRole({ from: 'Settings', to: 'Config', role: 'alias', label: 'alias of Config' });
+    diagrams.expectRole({ from: 'Config', to: 'Store', role: 'construction', label: 'construction input: config' });
+    diagrams.expectNoDiagramDefinitions(['Settings', 'Snapshot']);
+    diagrams.expectDeclaredFieldReference('Snapshot', 'config', 'Config');
+    diagrams.expectDeclaredAliasReference('Settings', 'Config');
+    diagrams.expectNativeExplicitEdgeCount(2);
     diagrams.expectRole({ from: 'Store', to: 'Config', role: 'dependency' });
     diagrams.expectNoOwnershipDiamonds();
   });
@@ -73,24 +83,25 @@ describe('the structure view keeps readable type meaning', { timeout: 30_000 }, 
     await diagrams.create({ views: ['structure'] });
     diagrams.expectDeclaration('Storage', 'interface');
     diagrams.expectDeclaration('Screen', 'component');
-    diagrams.expectDeclaration('Secret', 'opaque type');
-    diagrams.expectDeclaration('Pair', 'alias type');
-    diagrams.expectSignature('Storage.save', 'save() → Nothing');
-    diagrams.expectSignature('Storage.reset', 'reset() → Nothing');
+    diagrams.expectNoDeclaration('Secret'); diagrams.expectDeclaredKind('Secret', 'opaque-type-declaration');
+    diagrams.expectNoDeclaration('Pair'); diagrams.expectDeclaredTupleAlias('Pair', ['T', 'T']);
+    diagrams.expectOperationLabel('Storage.save', 'save()');
+    diagrams.expectOperationLabel('Storage.reset', 'reset()');
     diagrams.expectCapabilityVisibility('Storage.save', 'public');
     diagrams.expectCapabilityVisibility('Storage.reset', 'internal');
     diagrams.expectAuthoredPublicCapabilities('Storage', ['save']);
-    diagrams.expectTypeLabel('Pair', 'Pair<T> = [T, T]');
   });
 
   it('references a generic error payload without calling that payload an error', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('type Book { title: Text }\nerror type Rejected<T> { code: "rejected"\npayload: T }\nfunction save(book: Book) returns Nothing fails with Rejected<Book>');
     await diagrams.create({ views: ['structure'] });
-    diagrams.expectRole({ from: 'save', to: 'Rejected', role: 'failure', label: 'may fail with Rejected<Book>' });
-    diagrams.expectRole({ from: 'save', to: 'Book', role: 'failure-type-argument', label: 'failure type argument: Book in Rejected<Book>' });
-    diagrams.expectNoRole({ from: 'save', to: 'Book', role: 'failure' });
-    diagrams.expectSignature('save', 'save(book: Book) → Nothing');
+    diagrams.expectContainerKinds({ save: 'function' });
+    diagrams.expectNoDiagramDefinitions(['Rejected', 'Book']);
+    diagrams.expectDeclaredFailure('save', 'Rejected', ['Book']);
+    diagrams.expectDeclaredKind('Book', 'record-type-declaration');
+    diagrams.expectOperationLabel('save', 'save(book)');
+    diagrams.expectNativeExplicitEdgeCount(0);
   });
 
   it('keeps display text from injecting native declarations or edges', async () => {
@@ -101,20 +112,22 @@ describe('the structure view keeps readable type meaning', { timeout: 30_000 }, 
     diagrams.expectNoNativeObject('x');
     diagrams.expectNoNativeObject('y');
     diagrams.expectNativeExplicitEdgeCount(0);
-    diagrams.expectUnverifiedPromise('Game -> Storage.save', 'x -> y: surprise');
+    diagrams.expectPromiseSection('Game -> Storage', 'save', ['x -> y: surprise']);
+    diagrams.expectNoDetachedPromiseNodes();
     diagrams.expectNativeSvgLabel('Game -> Storage');
   });
 
-  it('documents composed source once and labels referenced external types', async () => {
+  it('documents composed source once while keeping external data out of the architecture', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.sourceFile('entry.expec', 'include "./game.expec"\nuse Receipt from "vendor"\nfunction save() returns Receipt');
     diagrams.sourceFile('game.expec', 'concept Game {}');
     diagrams.externalRecord('vendor', 'Receipt', ['saved: Boolean']);
     await diagrams.createFrom('entry.expec', { views: ['structure'] });
     diagrams.expectDeclarationCount('Game', 1);
-    diagrams.expectExternalProxy('Receipt', 'vendor');
-    diagrams.expectRole({ from: 'save', to: 'Receipt', role: 'output' });
-    diagrams.expectNoProjectImplementationClaim('Receipt');
+    diagrams.expectNoDeclaration('Receipt');
+    diagrams.expectExternalDeclaration('Receipt', 'vendor');
+    diagrams.expectDeclaredResultTarget('save', 'Receipt');
+    diagrams.expectContainerKinds({ Game: 'concept', save: 'function' });
   });
 });
 
@@ -202,10 +215,10 @@ describe('native search observes current diagrams rather than saved expectations
     const diagrams = await DiagramExamples.connect();
     diagrams.specify('concept Store { public save\ncapability save(title: Text) returns Nothing }');
     await diagrams.create({ views: ['structure'] });
-    await diagrams.replaceNativeMemberText('Store.save', '"save(title: Text)": Nothing', '"save(title: Text, mode: Text)": Nothing');
+    await diagrams.replaceNativeMemberText('Store.save', '"save(title)": ""', '"save(title, mode)": ""');
     await diagrams.search('Store.save');
-    diagrams.expectDefinitionStatement('Store.save', '"save(title: Text, mode: Text)": Nothing');
-    diagrams.expectDefinitionKey('Store.save', '"save(title: Text, mode: Text)"');
+    diagrams.expectDefinitionStatement('Store.save', '"save(title, mode)": ""');
+    diagrams.expectDefinitionKey('Store.save', '"save(title, mode)"');
     diagrams.expectOriginalRangeMatchesCurrentStatement('Store.save');
     diagrams.expectNoWholeClassSubstituteForMember('Store.save');
     await diagrams.update();
@@ -214,17 +227,17 @@ describe('native search observes current diagrams rather than saved expectations
 
   it('does not assign every class relationship to each of its methods', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('type Snapshot { title: Text }\ntype Config { value: Number }\nconcept Store { public save, start\ncapability save(snapshot: Snapshot) returns Nothing\ncapability start(config: Config) returns Nothing }');
+    diagrams.specify('component Snapshot {}\ncomponent Config {}\nconcept Store { public save, start\ncapability save(snapshot: Snapshot) returns Nothing\ncapability start(config: Config) returns Nothing }');
     await diagrams.create({ views: ['structure'] });
     await diagrams.search('Store.save');
     diagrams.expectDeclaredOccurrenceReference('Store.save', 'Snapshot');
     diagrams.expectNoDeclaredOccurrenceReference('Store.save', 'Config');
-    diagrams.expectDefinitionStatement('Store.save', '"save(snapshot: Snapshot)": Nothing');
+    diagrams.expectDefinitionStatement('Store.save', '"save(snapshot)": ""');
   });
 
   it('does not resolve display labels or class field strings as native references', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('type Snapshot { title: Text }');
+    diagrams.specify('concept Snapshot {}');
     await diagrams.create({ views: ['structure'] });
     await diagrams.write('notes/display.d2', 'other: "Snapshot" {shape: class; value: Snapshot}\n');
     await diagrams.search('Snapshot');
@@ -274,7 +287,7 @@ describe('native search observes current diagrams rather than saved expectations
 
   it('compares declared input uses without reversing the actual drawn data flow', async () => {
     const diagrams = await DiagramExamples.connect();
-    diagrams.specify('type Snapshot { title: Text }\nconcept Store { public save\ncapability save(snapshot: Snapshot) returns Nothing }');
+    diagrams.specify('component Snapshot {}\nconcept Store { public save\ncapability save(snapshot: Snapshot) returns Nothing }');
     await diagrams.create({ views: ['structure'] });
     diagrams.expectRole({ from: 'Snapshot', to: 'Store', role: 'input' });
     await diagrams.search('Store');
@@ -324,7 +337,7 @@ describe('source and rendered artifacts evolve without losing notes', { timeout:
     diagrams.revise('concept Store { public saveGame\ncapability saveGame() returns Nothing }\ninteraction "saving"() { participant caller: Store\nparticipant store: Store\nmessage caller -> store.saveGame() }');
     diagrams.renameIdentity('Store.save', 'Store.saveGame');
     await diagrams.update();
-    diagrams.expectSignature('Store.saveGame', 'saveGame() → Nothing');
+    diagrams.expectOperationLabel('Store.saveGame', 'saveGame()');
     diagrams.expectMessages('saving', ['caller -> store: saveGame()']);
     diagrams.expectNativeKeyUnchanged('Store');
     diagrams.expectFileEndsWithBytes('design/structure.d2', '\n# Preserve this exact note.\r\n');
@@ -465,8 +478,8 @@ describe('native rendering and the installed adapter establish actual delivery',
     diagrams.specify('type Snapshot { title: Text }\nconcept Store { public save\ncapability save(snapshot: Snapshot) returns Nothing }\ninteraction "save"(snapshot: Snapshot) { participant caller: Store\nparticipant store: Store\nmessage caller -> store.save(snapshot) }');
     await diagrams.create({ views: ['structure', 'interactions'] });
     diagrams.expectNativeSvgDocuments(2);
-    diagrams.expectNativeSvgLabel('Snapshot');
-    diagrams.expectNativeSvgLabel('save(snapshot: Snapshot)');
+    diagrams.expectNativeSvgLabel('Store');
+    diagrams.expectDeclaredParameterReferences('Store.save', 'snapshot', ['Snapshot']);
     diagrams.expectNativeSvgLabel('save(snapshot)');
     diagrams.expectAllSvgDigestsMatchActualSources();
     diagrams.expectSvgContainsNoExternalAssetReferences();
@@ -494,8 +507,9 @@ describe('literal diagram methods and guarded native patterns', { timeout: 30_00
     await diagrams.append('design/structure.d2', '\n# Keep this handwritten note.\r\n');
     diagrams.revise('component Screen { public select\ncapability select(label: Text?) returns Nothing }');
     await diagrams.update();
-    diagrams.expectSignature('Screen.select', 'select(label: Text?) → Nothing');
-    diagrams.expectVisibleSvgLabel('select(label: Text?)');
+    diagrams.expectOperationLabel('Screen.select', 'select(label)');
+    diagrams.expectDeclaredParameterShape('Screen.select', 'label', 'optional-type');
+    diagrams.expectVisibleSvgLabel('select(label)');
     diagrams.expectFileEndsWithBytes('design/structure.d2', '\n# Keep this handwritten note.\r\n');
     diagrams.expectNoProblem('unsupported-diagram-syntax');
   });
@@ -507,5 +521,118 @@ describe('literal diagram methods and guarded native patterns', { timeout: 30_00
     await diagrams.update();
     diagrams.expectProblem('unsupported-diagram-syntax');
     diagrams.expectNoProjectChanges();
+  });
+});
+
+describe('architectural diagrams keep contracts together', { timeout: 30_000 }, () => {
+  it('names every architectural kind at the top of its container', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`concept Policy {}
+component Relay {}
+class Courier {}
+interface Delivery {}
+function summarize() returns Text`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectContainerKinds({
+      Policy: 'concept', Relay: 'component', Courier: 'class',
+      Delivery: 'interface', summarize: 'function',
+    });
+    diagrams.expectAllContainerTitlesAboveTheirContent();
+  });
+
+  it('shows the architecture without data-type boxes or signature clutter', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`type Payload { text: Text }
+opaque type URL
+type Label = Text
+error type Rejected { code: "invalid" }
+component Courier {
+  public ship
+  capability ship(payload: Payload, target: URL) returns Label fails with Rejected
+}
+component Relay {
+  depends on Courier
+  capability export(payload: Payload, target: URL) returns Nothing
+}
+function summarize(payload: Payload) returns Text`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectContainerKinds({ Courier: 'component', Relay: 'component', summarize: 'function' });
+    diagrams.expectOperationLabel('Courier.ship', 'ship(payload, target)');
+    diagrams.expectOperationLabel('Relay.export', 'export(payload, target)');
+    diagrams.expectCapabilityVisibility('Courier.ship', 'public');
+    diagrams.expectCapabilityVisibility('Relay.export', 'internal');
+    diagrams.expectNoDiagramDefinitions(['Payload', 'URL', 'Label', 'Rejected']);
+    diagrams.expectNoVisibleTypeAnnotations();
+    diagrams.expectRole({ from: 'Relay', to: 'Courier', role: 'dependency' });
+    diagrams.expectNativeExplicitEdgeCount(1);
+    diagrams.expectNoDanglingEdges();
+    diagrams.expectNoSequenceFiles();
+  });
+
+  it('keeps each promise inside its component under the capability that declares it', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`concept ResultsRelay {
+  capability export() returns Nothing {
+    promises "Creates a temporary backing file"
+    promises "Can support large results"
+    promises "Cleanup"
+  }
+}`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectPromiseSection('ResultsRelay', 'export', [
+      'Creates a temporary backing file', 'Can support large results', 'Cleanup',
+    ]);
+    diagrams.expectPromiseGeometryInside('ResultsRelay', 'export');
+    diagrams.expectAllContainerTitlesAboveTheirContent();
+    diagrams.expectNoDetachedPromiseNodes();
+    diagrams.expectNoVisibleText('Unverified intent');
+    diagrams.expectNoVisibleText('Verified');
+    await diagrams.search('ResultsRelay.export');
+    diagrams.expectNoDuplicateDefinition('ResultsRelay.export');
+    diagrams.expectCompleteWithinNativeProfile();
+  });
+
+  it('does not invent a component relationship through a hidden record', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`component Courier {}
+type Request { courier: Courier }
+component Relay {
+  capability export(request: Request) returns Nothing
+}`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectContainerKinds({ Courier: 'component', Relay: 'component' });
+    diagrams.expectNoDiagramDefinitions(['Request']);
+    diagrams.expectNativeExplicitEdgeCount(0);
+    diagrams.expectNoDanglingEdges();
+  });
+
+  it('renders a type-only specification as an empty architectural view', async () => {
+    const diagrams = await DiagramExamples.connect();
+    diagrams.specify(`type Payload { text: Text }
+opaque type URL
+type Label = Text
+error type Rejected { code: "invalid" }`);
+    await diagrams.create({ views: ['structure'] });
+    diagrams.expectContainerKinds({});
+    diagrams.expectNoDiagramDefinitions(['Payload', 'URL', 'Label', 'Rejected']);
+    diagrams.expectNativeExplicitEdgeCount(0);
+    diagrams.expectNativeSvgDocuments(1);
+    diagrams.expectAllSvgDigestsMatchActualSources();
+    diagrams.expectNoDanglingEdges();
+  });
+
+  it('preserves a handwritten edge when an older generated type box would disappear', async () => {
+    const diagrams = await DiagramExamples.connect();
+    await diagrams.openPriorOwnedDiagramWithType();
+    await diagrams.addHandwrittenEdge('Relay', 'Payload', 'review data mapping');
+    diagrams.rememberProjectBytes();
+    diagrams.revise(`type Payload { text: Text }
+component Relay {
+  capability export(payload: Payload) returns Nothing
+}`);
+    await diagrams.planUpdate();
+    diagrams.expectLocatedOutputConflict('design/structure.d2');
+    diagrams.expectNoPlannedWrites();
+    diagrams.expectRememberedProjectBytesUnchanged();
   });
 });

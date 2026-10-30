@@ -8,9 +8,17 @@ export const nativeKey = (id: string): string => 's_' + hash(Buffer.from(id));
 export const metadata = (data: object): string => '# expec-uml: ' + Buffer.from(JSON.stringify({ format: 1, outputId: 'uml', ...data })).toString('base64url');
 export interface DiagramSubject { id: string; name: string; kind: string; owner?: string | undefined }
 export interface Drawing { view: 'structure' | 'interaction'; id?: string; text: string; subjects: DiagramSubject[] }
-const kinds = new Set(['concept', 'component', 'class', 'interface', 'record-type-declaration', 'alias-type-declaration', 'opaque-type-declaration', 'function']);
+const kinds = new Set(['concept', 'component', 'class', 'interface', 'function']);
 const quote = JSON.stringify;
-const classType = (node: Item): string => node.kind === 'union-type' ? node.alternatives.map(typeLabel).join(' |\n') : typeLabel(node);
+const wrapPromise = (text: string): string => text.split('\n').flatMap(line => {
+  const lines: string[] = [];
+  while (line.length > 60) {
+    const space = line.lastIndexOf(' ', 60);
+    if (space < 1) break;
+    lines.push(line.slice(0, space)); line = line.slice(space + 1);
+  }
+  return [...lines, line];
+}).join('\n');
 
 /** Writes native diagram statements from checked declarations; it does not resolve or execute them. */
 export function structure(current: IdentifiedSpecification): Drawing {
@@ -24,44 +32,39 @@ export function structure(current: IdentifiedSpecification): Drawing {
   const ownerOf = (item: Item): Item | undefined => { const parent = inspection.parent(item.id); return parent?.kind === 'local' ? inspection.parent(parent.id) : parent; };
   const qualified = (item: Item): string => { const parent = ownerOf(item); return parent && kinds.has(parent.kind) ? qualified(parent) + '.' + name(item) : name(item); };
   const references = (type: Item, owner: Item, root: Item, role: string, label: string): void => {
-    const visit = (item: Item, argument = false): void => {
+    const visit = (item: Item): void => {
       if (item.kind === 'named-type') {
         if (item.reference.resolution.status !== 'bound') throw new TypeError('Diagram types must be resolved.');
         const target = inspection.read(item.reference.resolution.target);
-        if (target.origin.kind !== 'builtin' && target.kind !== 'type-parameter') {
+        if (target.origin.kind !== 'builtin' && kinds.has(target.kind)) {
           declaration(target);
           const source = nativeKey(current.id(root.id)), destination = nativeKey(current.id(target.id));
           const incoming = role === 'input' || role === 'construction';
-          const edgeRole = role === 'failure' && argument ? 'failure-type-argument' : role;
-          const edgeLabel = role === 'failure' && argument ? 'failure type argument: ' + typeLabel(item) + ' in ' + typeLabel(type) : label;
-          edges.push(metadata({ view: 'structure', edge: { subject: current.id(owner.id), owner: current.id(root.id), role: edgeRole } }) + '\n'
-            + (incoming ? destination + ' -> ' + source : source + ' -> ' + destination) + ': ' + quote(edgeLabel));
+          edges.push(metadata({ view: 'structure', edge: { subject: current.id(owner.id), owner: current.id(root.id), role } }) + '\n'
+            + (incoming ? destination + ' -> ' + source : source + ' -> ' + destination) + ': ' + quote(label));
         }
-        for (const child of item.arguments) visit(child, true);
-      } else for (const child of inspection.children(item.id)) visit(child, argument);
+        for (const child of item.arguments) visit(child);
+      } else for (const child of inspection.children(item.id)) visit(child);
     };
     visit(type);
   };
   const signature = (item: Item<'capability' | 'function' | 'construction'>, root: Item, visibility?: 'public' | 'internal'): string[] => {
     const id = identity(item, current.id(root.id)), operation = item.kind === 'construction' ? 'construction' : item.name;
-    const parameters = item.parameters.map(parameter => { identity(parameter, id); return parameter.name + ': ' + typeLabel(parameter.declaredType); });
+    const parameters = item.parameters.map(parameter => { identity(parameter, id); return parameter.name; });
     for (const parameter of item.parameters) {
-      const plain = parameter.declaredType.kind === 'named-type' && !parameter.declaredType.arguments.length;
       references(parameter.declaredType, item, root, item.kind === 'construction' ? 'construction' : 'input', item.kind === 'construction'
-        ? 'construction input: ' + parameter.name + ': ' + typeLabel(parameter.declaredType)
-        : (plain ? '' : 'input type: ') + operation + '.' + parameter.name + ': ' + typeLabel(parameter.declaredType));
+        ? 'construction input: ' + parameter.name : 'input: ' + operation + '.' + parameter.name);
     }
-    const result = item.kind !== 'construction' && item.returnType ? typeLabel(item.returnType) : 'unspecified';
     if (item.kind !== 'construction') {
-      if (item.returnType) references(item.returnType, item, root, 'output', (item.returnType.kind === 'named-type' && !item.returnType.arguments.length ? '' : 'output type: ') + operation + ' result: ' + result);
-      for (const failure of item.failures) references(failure, item, root, 'failure', 'may fail with ' + typeLabel(failure));
-      if (item.body.kind === 'available') for (const [index, promise] of item.body.content.members.filter(member => member.kind === 'promises').entries()) {
-        nodes.push(nativeKey(id) + '_promise_' + index + ': ' + quote('Unverified intent:\n' + promise.text) + ' {shape: page}');
-      }
+      if (item.returnType) references(item.returnType, item, root, 'output', 'result: ' + operation);
     }
-    const displayedResult = item.kind !== 'construction' && item.returnType ? classType(item.returnType) : result;
-    return [metadata({ view: 'structure', member: id, owner: nativeKey(current.id(root.id)), parameters: item.parameters.map(parameter => current.id(parameter.id)) }),
-      quote((visibility === 'internal' ? '-' : '') + operation + '(' + parameters.join(', ') + ')') + ': ' + (/^\w+$/.test(displayedResult) ? displayedResult : quote(item.kind === 'construction' ? 'construction' : displayedResult))];
+    const promises = item.kind !== 'construction' && item.body.kind === 'available'
+      ? item.body.content.members.filter(member => member.kind === 'promises') : [];
+    return [metadata({ view: 'structure', member: id, owner: nativeKey(current.id(root.id)), name: operation, parameters: item.parameters.map(parameter => current.id(parameter.id)) }),
+      quote((visibility === 'internal' ? '-' : /^[+-]/.test(operation) ? '+' : '') + operation + '(' + parameters.join(', ') + ')') + ': ""',
+      ...promises.length ? [quote('Promises · ' + operation) + ': ""',
+        ...promises.flatMap((promise, index) => wrapPromise(promise.text).split('\n').map((line, part) =>
+          quote(operation + ' · ' + (index + 1) + (part ? ' · ' + (part + 1) : '')) + ': ' + quote(line)))] : []];
   };
   const declaration = (item: Item): void => {
     if (rendered.has(item.id) || !kinds.has(item.kind)) return; rendered.add(item.id);
@@ -69,14 +72,6 @@ export function structure(current: IdentifiedSpecification): Drawing {
     const kind = item.origin.kind === 'external' ? 'external ' + item.kind.replace('-type-declaration', ' type')
       : item.kind === 'record-type-declaration' && item.error ? 'error type' : item.kind.replace('-type-declaration', ' type');
     if (item.kind === 'function') contents.push(...signature(item, item));
-    else if (item.kind === 'record-type-declaration') for (const field of item.fields) {
-      const node = field.kind === 'local' ? field.declaration : field;
-      if (node.kind === 'field') {
-        identity(node, id); contents.push(metadata({ view: 'structure', member: current.id(node.id), owner: nativeKey(id), parameters: [] }), quote(node.name) + ': ' + quote(classType(node.declaredType)));
-        references(node.declaredType, node, item, 'field', 'field: ' + node.name + ': ' + typeLabel(node.declaredType));
-      } else declaration(node);
-    }
-    else if (item.kind === 'alias-type-declaration') { contents.push(quote('alias') + ': ' + quote(item.name + parameters(item.typeParameters) + ' = ' + classType(item.targetType))); references(item.targetType, item, item, 'alias', 'alias of ' + typeLabel(item.targetType)); }
     else if (item.kind === 'concept' || item.kind === 'component' || item.kind === 'class' || item.kind === 'interface') {
       const selected = new Set(item.members.flatMap(member => member.kind === 'public' ? member.references.flatMap(reference => reference.resolution.status === 'bound' ? [reference.resolution.target] : []) : []));
       for (const member of item.members) {
@@ -84,20 +79,21 @@ export function structure(current: IdentifiedSpecification): Drawing {
         else if (member.kind === 'construction') contents.push(...signature(member, item));
         else if (member.kind === 'depends-on') for (const reference of member.references) {
           if (reference.resolution.status !== 'bound') throw new TypeError('Diagram dependencies must be resolved.');
-          const target = inspection.read(reference.resolution.target); declaration(target);
+          const target = inspection.read(reference.resolution.target);
+          if (!kinds.has(target.kind)) continue;
+          declaration(target);
           edges.push(metadata({ view: 'structure', edge: { subject: id, owner: id, role: 'dependency' } }) + '\n' + nativeKey(id) + ' -> ' + nativeKey(current.id(target.id)) + ': ' + quote(label + ' depends on ' + qualified(target) + ' (dependency)'));
-        } else if (member.kind === 'local') declaration(member.declaration); else if (kinds.has(member.kind)) declaration(member);
+        } else if (member.kind === 'field') references(member.declaredType, member, item, 'field', 'field: ' + member.name);
+        else if (member.kind === 'local') declaration(member.declaration); else if (kinds.has(member.kind)) declaration(member);
       }
     }
     nodes.push(metadata({ view: 'structure', definition: id, kind, name: label, ...owner && kinds.has(owner.kind) ? { owner: current.id(owner.id) } : {} }) + '\n' + nativeKey(id) + ': ' + quote('«' + (inspection.parent(item.id)?.kind === 'local' ? 'local ' : '') + kind + '»\n' + label + (item.origin.kind === 'external' ? '\nfrom ' + item.origin.module : '')) + ' {\n  shape: class\n'
-      + ('typeParameters' in item && item.typeParameters.length ? '  "type parameters": ' + quote(parameters(item.typeParameters)) + '\n' : '')
       + contents.map(line => '  ' + line).join('\n') + '\n}');
   };
   for (const root of inspection.roots()) if (root.origin.kind === 'source') declaration(root);
   return { view: 'structure', subjects, text: metadata({ view: 'structure' }) + '\ndirection: down\n' + nodes.join('\n') + '\n' + edges.join('\n')
-    + '\nexpec_legend: "Declared contracts: inputs toward consumer; outputs toward result.\\n+ public; − internal (not published).\\nDependencies and fields do not imply ownership or runtime calls." {shape: text}\n' };
+    + '\nexpec_legend: "Declared architecture:\\n+ public; − internal (not published).\\nDependencies are declared relationships." {shape: text}\n' };
 }
-const parameters = (items: readonly Item<'type-parameter'>[]): string => items.length ? '<' + items.map(item => item.name).join(', ') + '>' : '';
 
 export function interactions(current: IdentifiedSpecification): Drawing[] {
   const specification = current.specification, inspection = specification.inspection;
