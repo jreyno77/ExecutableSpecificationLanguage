@@ -11,6 +11,47 @@ async function inspect(text: string) {
 }
 
 describe('native diagram source facts', { timeout: 30_000 }, () => {
+  it('reads an operation call from its actual owning class endpoints', async () => {
+    const documents = await inspect(metadata({ definition: 'relay' }) + 'relay: Relay {shape: class;\n'
+      + metadata({ member: 'export', owner: 'relay', parameters: [], name: 'export' }) + '"export()": ""\n}\n'
+      + metadata({ definition: 'courier' }) + 'courier: Courier {shape: class;\n'
+      + metadata({ member: 'ship', owner: 'courier', parameters: [], name: 'ship' }) + '"ship()": ""\n}\n'
+      + metadata({ edge: { subject: 'export', owner: 'relay', role: 'call', target: 'ship' } }) + 'relay -> courier: "export calls ship"\n');
+    expect(documents.problems).toEqual([]);
+    expect(documents.search('export').outgoing.uses.map(use => use.target)).toEqual([{ kind: 'specified', id: 'ship' }]);
+    expect(documents.search('ship').incoming.uses.map(use => use.target)).toEqual([{ kind: 'specified', id: 'export' }]);
+  });
+
+  it('withholds a call when its arrow is redirected away from the target operation owner', async () => {
+    const documents = await inspect(metadata({ definition: 'relay' }) + 'relay: Relay {shape: class;\n'
+      + metadata({ member: 'export', owner: 'relay', parameters: [], name: 'export' }) + '"export()": ""\n}\n'
+      + metadata({ definition: 'courier' }) + 'courier: Courier {shape: class;\n'
+      + metadata({ member: 'ship', owner: 'courier', parameters: [], name: 'ship' }) + '"ship()": ""\n}\nwarehouse: Warehouse\n'
+      + metadata({ edge: { subject: 'export', owner: 'relay', role: 'call', target: 'ship' } }) + 'relay -> warehouse: "export calls ship"\n');
+    expect(documents.problems.map(problem => problem.code)).toContain('invalid-output-document');
+    expect(documents.search('export').outgoing.uses).toEqual([]);
+  });
+
+  it('withholds a call whose operation belongs to a different actual container', async () => {
+    const documents = await inspect(metadata({ definition: 'relay' }) + 'relay: Relay {shape: class;\n'
+      + metadata({ member: 'export', owner: 'relay', parameters: [], name: 'export' }) + '"export()": ""\n}\n'
+      + metadata({ definition: 'courier' }) + 'courier: Courier {shape: class; "ship()": ""}\n'
+      + metadata({ definition: 'warehouse' }) + 'warehouse: Warehouse {shape: class;\n'
+      + metadata({ member: 'warehouse-ship', owner: 'warehouse', parameters: [], name: 'ship' }) + '"ship()": ""\n}\n'
+      + metadata({ edge: { subject: 'export', owner: 'relay', role: 'call', target: 'warehouse-ship' } }) + 'relay -> courier: "export calls ship"\n');
+    expect(documents.problems.map(problem => problem.code)).toContain('invalid-output-document');
+    expect(documents.search('warehouse-ship').incoming.uses).toEqual([]);
+  });
+
+  it('withholds a call when visible operation names disagree with their native members', async () => {
+    const documents = await inspect(metadata({ definition: 'relay' }) + 'relay: Relay {shape: class;\n'
+      + metadata({ member: 'export', owner: 'relay', parameters: [], name: 'export' }) + '"export()": ""\n}\n'
+      + metadata({ definition: 'courier' }) + 'courier: Courier {shape: class;\n'
+      + metadata({ member: 'ship', owner: 'courier', parameters: [], name: 'ship' }) + '"ship()": ""\n}\n'
+      + metadata({ edge: { subject: 'export', owner: 'relay', role: 'call', target: 'ship' } }) + 'relay -> courier: "export calls carry"\n');
+    expect(documents.problems.map(problem => problem.code)).toContain('invalid-output-document');
+    expect(documents.search('export').outgoing.uses).toEqual([]);
+  });
   it('keeps a direct class method at its literal original UTF-16 key and statement', async () => {
     const source = '# 📚\nstore: Store {\n  shape: class\n  "save(title: Text)": Nothing\n}\n';
     const diagrams = new NativeDiagrams();
