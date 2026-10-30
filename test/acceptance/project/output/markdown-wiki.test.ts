@@ -209,3 +209,34 @@ it('public preview exposes the same readable source pages with its own valid ide
   docs.expectPreviewSections('library.expec', ['Book', 'Library']);
   docs.expectAllPreviewLinksResolve();
 });
+
+it('keeps reader documents free of source and analysis boilerplate while retaining exact origins', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('relay.expec', 'concept Relay { capability send() returns Nothing }');
+  await docs.identifyFrom('relay.expec');
+  docs.rememberSourceIdentity('Relay');
+  await docs.previewIdentifiedRegistration();
+  docs.expectPreviewPages(['docs/specification/Home.md', 'docs/specification/pages/relay.md']);
+  docs.rememberPreviewDocuments();
+  await docs.generateIdentified();
+  docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/relay.md']);
+  docs.expectNoClaim('Source:');
+  docs.expectNoClaim('Statically checked specification. Runtime behavior is not verified by this document.');
+  docs.expectNoRuntimeVerification();
+  docs.expectOrigin('Relay', 'relay.expec', 1);
+  docs.expectRetainedSourceIdentity('Relay', 'relay.expec');
+  docs.expectHomeLinks(['pages/relay.md']);
+  docs.expectAllGeneratedLinksResolve();
+  docs.expectGeneratedRegionsEqualRememberedPreview();
+});
+
+it('keeps an empty specification and its Home free of generated boilerplate', async () => {
+  const docs = new MarkdownWikiExamples();
+  docs.sourceFile('empty.expec', '');
+  await docs.generateFrom('empty.expec');
+  docs.expectFiles(['docs/specification/Home.md', 'docs/specification/pages/empty.md']);
+  docs.expectHomeLinks(['pages/empty.md']);
+  docs.expectNoClaim('Source:');
+  docs.expectNoClaim('Statically checked specification. Runtime behavior is not verified by this document.');
+  docs.expectNoInventedSemanticSubjects();
+});

@@ -7,7 +7,7 @@ import { parentPort } from 'node:worker_threads';
 import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute, sep } from 'node:path';
-const packageRoot = fileURLToPath(new URL('../../../node_modules/@d2lang/d2/', import.meta.url));
+const packageRoot = fs.realpathSync.native(fileURLToPath(new URL('../../../node_modules/@d2lang/d2/', import.meta.url)));
 const denied = detail => { parentPort.postMessage({ expecResourceDenied: detail }); throw Error('Diagram resource denied: ' + detail); };
 const read = path => {
   const target = resolve(path instanceof URL ? fileURLToPath(path) : String(path)), part = relative(packageRoot, target);

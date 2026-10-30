@@ -165,6 +165,21 @@ export class DiagramDriver {
     await this.search(name); const result = reconcileRelationships(this.current, expected.map(name => this.identifier(name)), this.found.outgoing);
     if (!result.value) throw new Error(JSON.stringify(result)); this.comparison = result.value;
   }
+  capabilityRole(operation: string, role: string, target: string): boolean {
+    type Segment = { unquoted_string?: { value: { string: string }[] } };
+    type Node = { comment?: { value: string }; map_key?: { edges?: { src: { path: Segment[] }; dst: { path: Segment[] } }[] } };
+    const key = (segments: Segment[]) => segments.map(part => part.unquoted_string?.value.map(value => value.string).join('')).join('.');
+    const subject = this.identifier(operation), owner = this.nativeKey(operation.split('.').slice(0, -1).join('.')), endpoint = this.nativeKey(target);
+    for (const native of this.native.values()) {
+      let marked: { subject: string; role: string } | undefined;
+      for (const node of native.graph.ast.nodes as Node[]) {
+        for (const line of node.comment?.value.split('\n') ?? []) if (line.startsWith('expec-uml: ')) marked = JSON.parse(Buffer.from(line.slice(11), 'base64url').toString()).edge;
+        if (marked?.subject === subject && marked.role === role && node.map_key?.edges?.some(edge => key(edge.src.path) === owner && key(edge.dst.path) === endpoint)) return true;
+        if (node.map_key) marked = undefined;
+      }
+    }
+    return false;
+  }
   async createFrom(entry: string, options: { views: string[] }): Promise<void> {
     const models = Object.entries(this.sourceFiles).map(([locator, text]) => {
       const result = new LangiumReader().read({ sourceId: locator, text });
@@ -198,6 +213,20 @@ export class DiagramDriver {
       }
     } }
     finally { await engine.dispose(); }
+  }
+  async openLegacyTypeFixture(): Promise<void> {
+    const fixture: { generatedBy: string; source: string; files: { path: string; text: string }[] } = JSON.parse(
+      await fs.readFile(new URL('../../../resources/diagrams/legacy-type-structure.json', import.meta.url), 'utf8'));
+    if (fixture.generatedBy !== '10d575a6df6f17b1befad46fe942e82e9e9851a6') throw Error('Unexpected legacy fixture producer');
+    this.specify(fixture.source);
+    const opened = this.outputs.open('uml', { directory: 'design', views: ['structure'] }, this.context, new FileProjectWriter(this.context));
+    if (!opened.value) throw Error(JSON.stringify(opened));
+    this.output = opened.value;
+    for (const file of fixture.files) await this.write(file.path, file.text);
+    await this.inspectNative();
+  }
+  async appendHandwrittenEdge(from: string, to: string, label: string): Promise<void> {
+    await this.append('design/structure.d2', '\n' + this.nativeKey(from) + ' -> ' + this.nativeKey(to) + ': ' + JSON.stringify(label) + '\n');
   }
   async dispose(): Promise<void> {
     this.restoreWrites(); this.restoreResources?.(); await this.fresh?.dispose();
