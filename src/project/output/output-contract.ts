@@ -1,7 +1,7 @@
 import { protectsExcludedPath, validPathPolicy } from '../connection/project-exclusions.js';
 import type { IdentifiedSpecification, SpecDiff } from '../../model/specification-identity.js';
 import type { Check, Diagnostic } from '../../compiler/checking.js';
-import { canonical, identifier, locatorSchema } from '../../model/identity-baseline.js';
+import { canonical, identifier, jsonData, locatorSchema } from '../../model/identity-baseline.js';
 import type { OutputPlan, OutputPreviewDocument } from './output.js';
 import type { ProjectSnapshot } from '../connection/project-connection.js';
 import type { ProjectRead, ProjectSearch } from '../connection/project-inspection.js';
@@ -131,7 +131,23 @@ export function checkPreview(result: Check<readonly OutputPreviewDocument[]>): v
   for (const document of result.value) {
     require(document && literal(document.path) && typeof document.mediaType === 'string'
       && /^[A-Za-z0-9!#$&^_.+-]+[/][A-Za-z0-9!#$&^_.+-]+$/.test(document.mediaType) && document.bytes instanceof Uint8Array
-      && Object.keys(document).every(key => ['path', 'mediaType', 'bytes'].includes(key)), 'Malformed output preview document.');
+      && Object.keys(document).every(key => ['path', 'mediaType', 'bytes', 'diagram'].includes(key)), 'Malformed output preview document.');
+    if (document.diagram !== undefined) {
+      const diagram = document.diagram, ids = new Set<string>();
+      require(document.mediaType.toLowerCase() === 'image/svg+xml' && diagram && jsonData(diagram)
+        && Object.keys(diagram).length === 3 && Object.keys(diagram).every(key => ['width', 'height', 'promises'].includes(key))
+        && typeof diagram.width === 'number' && diagram.width > 0 && typeof diagram.height === 'number' && diagram.height > 0
+        && Array.isArray(diagram.promises), 'Malformed diagram preview.');
+      for (const item of diagram.promises) {
+        require(item && Object.keys(item).length === 7 && Object.keys(item).every(key => ['id', 'label', 'x', 'y', 'width', 'height', 'promises'].includes(key))
+          && typeof item.id === 'string' && item.id.length > 0 && !ids.has(item.id) && typeof item.label === 'string' && item.label.length > 0
+          && [item.x, item.y, item.width, item.height].every(value => typeof value === 'number' && Number.isFinite(value))
+          && item.x >= 0 && item.y >= 0 && item.width > 0 && item.height > 0
+          && item.x + item.width <= diagram.width && item.y + item.height <= diagram.height
+          && Array.isArray(item.promises) && item.promises.length > 0 && item.promises.every(text => typeof text === 'string'), 'Malformed diagram promise annotation.');
+        ids.add(item.id);
+      }
+    }
     const key = process.platform === 'win32' ? document.path.toLowerCase() : document.path;
     require(!paths.has(key), 'Duplicate output preview path.'); paths.add(key);
   }

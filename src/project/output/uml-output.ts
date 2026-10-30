@@ -10,6 +10,7 @@ import { structure, interactions, nativeKey, type Drawing } from './uml-projecti
 import type { FileChange } from '../connection/project-writer.js';
 import { NativeDiagrams } from './uml-native.js';
 import { DiagramDocuments, diagramLocator } from './uml-documents.js';
+import { promiseAnnotations } from './uml-annotations.js';
 import { outputProblem } from './output-documents.js';
 import { validDiff } from './output-contract.js';
 import { begin, end, notes, region, handwritten, provenance, renderedSource, readState, statePath, type DiagramState } from './uml-state.js';
@@ -34,10 +35,11 @@ export const umlOutput: OutputRegistration = {
         const document = await engine.read(path, sources);
         if (document.problems.length) return { problems: document.problems, deferred: [] };
         if (document.limitations.length) return { problems: [outputProblem('unsupported-diagram-syntax', path, document.limitations.join('; '))], deferred: [] };
-        let svg: string;
-        try { svg = await engine.render(document); }
+        let svg: string, diagram: OutputPreviewDocument['diagram'];
+        try { svg = await engine.render(document); if (!document.interaction) diagram = promiseAnnotations(current, document, svg); }
         catch (error) { return { problems: [outputProblem('native-render-failed', path, String(error))], deferred: [] }; }
-        documents.push({ path, mediaType: 'text/vnd.d2', bytes: Buffer.from(text) }, { path: svgPath(path), mediaType: 'image/svg+xml', bytes: Buffer.from(svg) });
+        documents.push({ path, mediaType: 'text/vnd.d2', bytes: Buffer.from(text) }, { path: svgPath(path), mediaType: 'image/svg+xml', bytes: Buffer.from(svg),
+          ...diagram === undefined ? {} : { diagram } });
       }
       return success(documents);
     } finally { await engine.dispose(); }

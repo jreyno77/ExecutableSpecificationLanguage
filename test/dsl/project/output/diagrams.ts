@@ -44,11 +44,13 @@ export class DiagramExamples {
     for (const edge of native!.diagram.connections) { expect(classes.has(edge.src)).toBe(true); expect(classes.has(edge.dst)).toBe(true); }
   }
   expectPromiseSection(owner: string, operation: string, expected: string[]): void {
-    const rows = this.object(owner)?.fields?.filter(field => field.name === 'Promises · ' + operation) ?? [];
-    expect(rows).toHaveLength(1); expect(rows[0]!.type).toBe('');
-    const promises = this.object(owner)?.fields?.filter(field => new RegExp('^' + operation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' · \\d+$').test(field.name)) ?? [];
-    expect(promises.map(field => field.type)).toEqual(expected);
-    this.driver.remembered.set('promises:' + owner + '.' + operation, expected);
+    const { group } = this.svgContainer(owner), titles = Array.from(group.getElementsByTagName('title'));
+    expect(titles).toHaveLength(1);
+    expect(titles[0]!.textContent).toBe(owner + '.' + operation + ':\n' + expected.join('\n'));
+    expect(this.object(owner)?.fields ?? []).toEqual([]);
+    for (const text of Array.from(group.getElementsByTagName('text'))) for (const promise of expected) expect(text.textContent).not.toContain(promise);
+    const method = this.object(owner)?.methods?.find(method => method.name.startsWith(operation + '('));
+    expect(method?.return).toBe('...');
   }
   private svgContainer(name: string) {
     const shape = this.object(name); expect(shape, name).toBeDefined();
@@ -73,35 +75,6 @@ export class DiagramExamples {
       expect(Number(title!.getAttribute('y'))).toBeLessThan(bottom);
       for (const text of texts.filter(text => text !== title)) expect(Number(text.getAttribute('y'))).toBeGreaterThanOrEqual(bottom);
     }
-  }
-  expectPromiseGeometryInside(owner: string, operation: string): void {
-    const expected = this.driver.remembered.get('promises:' + owner + '.' + operation) as string[] | undefined; expect(expected).toBeDefined();
-    const { group, rect, header } = this.svgContainer(owner);
-    const bounds = { left: Number(rect.getAttribute('x')), top: Number(header.getAttribute('y')) + Number(header.getAttribute('height')),
-      right: Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')), bottom: Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) };
-    const texts = Array.from(group.getElementsByTagName('text'));
-    const positions: number[] = [];
-    for (const promise of expected!) {
-      const candidates = texts.filter(text => text.textContent?.includes(promise));
-      expect(candidates, 'one actual SVG text node for ' + promise).toHaveLength(1);
-      const text = candidates[0]!, lines = Array.from(text.getElementsByTagName('tspan'));
-      let y = Number(text.getAttribute('y'));
-      const font = Number(/font-size:([\d.]+)px/.exec(text.getAttribute('style') ?? '')?.[1] ?? 20);
-      if (!lines.length) {
-        expect(text.textContent).toBe(promise); positions.push(y);
-      } else {
-        let found = false;
-        for (const line of lines) {
-          y = line.hasAttribute('y') ? Number(line.getAttribute('y')) : y + Number(line.getAttribute('dy') ?? 0);
-          if (line.textContent === promise) { positions.push(y); found = true; break; }
-        }
-        expect(found, 'authored promise is an actual rendered text line').toBe(true);
-      }
-      const x = Number(text.getAttribute('x'));
-      expect(x).toBeGreaterThanOrEqual(bounds.left); expect(x).toBeLessThanOrEqual(bounds.right);
-      expect(y - font).toBeGreaterThanOrEqual(bounds.top); expect(y).toBeLessThanOrEqual(bounds.bottom);
-    }
-    for (let i = 1; i < positions.length; i++) expect(positions[i]! - positions[i - 1]!).toBeGreaterThanOrEqual(20);
   }
   expectNoDetachedPromiseNodes(): void { expect(this.shapes().some(shape => shape.type === 'page')).toBe(false); }
   expectNoVisibleText(text: string): void {

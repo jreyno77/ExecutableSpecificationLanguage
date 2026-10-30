@@ -10,15 +10,12 @@ export interface DiagramSubject { id: string; name: string; kind: string; owner?
 export interface Drawing { view: 'structure' | 'interaction'; id?: string; text: string; subjects: DiagramSubject[] }
 const kinds = new Set(['concept', 'component', 'class', 'interface', 'function']);
 const quote = JSON.stringify;
-const wrapPromise = (text: string): string => text.split('\n').flatMap(line => {
-  const lines: string[] = [];
-  while (line.length > 60) {
-    const space = line.lastIndexOf(' ', 60);
-    if (space < 1) break;
-    lines.push(line.slice(0, space)); line = line.slice(space + 1);
-  }
-  return [...lines, line];
-}).join('\n');
+const literalTooltip = (text: string): string => {
+  const fence = '`'.repeat(Math.max(3, ...(text.match(/`+/g) ?? []).map(run => run.length + 1)));
+  return fence + 'text\n' + text + '\n' + fence;
+};
+const promises = (item: Item<'capability' | 'function'>): string[] => item.body.kind === 'available'
+  ? item.body.content.members.flatMap(member => member.kind === 'promises' ? [member.text] : []) : [];
 
 /** Writes native diagram statements from checked declarations; it does not resolve or execute them. */
 export function structure(current: IdentifiedSpecification): Drawing {
@@ -58,13 +55,10 @@ export function structure(current: IdentifiedSpecification): Drawing {
     if (item.kind !== 'construction') {
       if (item.returnType) references(item.returnType, item, root, 'output', 'result: ' + operation);
     }
-    const promises = item.kind !== 'construction' && item.body.kind === 'available'
-      ? item.body.content.members.filter(member => member.kind === 'promises') : [];
+    const declaredPromises = item.kind === 'construction' ? [] : promises(item);
     return [metadata({ view: 'structure', member: id, owner: nativeKey(current.id(root.id)), name: operation, parameters: item.parameters.map(parameter => current.id(parameter.id)) }),
-      quote((visibility === 'internal' ? '-' : /^[+-]/.test(operation) ? '+' : '') + operation + '(' + parameters.join(', ') + ')') + ': ""',
-      ...promises.length ? [quote('Promises · ' + operation) + ': ""',
-        ...promises.flatMap((promise, index) => wrapPromise(promise.text).split('\n').map((line, part) =>
-          quote(operation + ' · ' + (index + 1) + (part ? ' · ' + (part + 1) : '')) + ': ' + quote(line)))] : []];
+      quote((visibility === 'internal' ? '-' : /^[+-]/.test(operation) ? '+' : '') + operation + '(' + parameters.join(', ') + ')')
+      + ': ' + quote(declaredPromises.length ? '...' : '')];
   };
   const declaration = (item: Item): void => {
     if (rendered.has(item.id) || !kinds.has(item.kind)) return; rendered.add(item.id);
@@ -87,7 +81,12 @@ export function structure(current: IdentifiedSpecification): Drawing {
         else if (member.kind === 'local') declaration(member.declaration); else if (kinds.has(member.kind)) declaration(member);
       }
     }
-    nodes.push(metadata({ view: 'structure', definition: id, kind, name: label, ...owner && kinds.has(owner.kind) ? { owner: current.id(owner.id) } : {} }) + '\n' + nativeKey(id) + ': ' + quote('«' + (inspection.parent(item.id)?.kind === 'local' ? 'local ' : '') + kind + '»\n' + label + (item.origin.kind === 'external' ? '\nfrom ' + item.origin.module : '')) + ' {\n  shape: class\n'
+    const operations = item.kind === 'function' ? [item] : 'members' in item ? item.members.filter(member => member.kind === 'capability') : [];
+    const intent = operations.flatMap(operation => {
+      const text = promises(operation); return text.length ? [qualified(operation) + ':\n' + text.join('\n')] : [];
+    });
+    if (intent.length) contents.push('tooltip: ' + quote(literalTooltip(intent.join('\n\n'))));
+    nodes.push(metadata({ view: 'structure', definition: id, kind, name: label, ...intent.length ? { promiseTooltip: true } : {}, ...owner && kinds.has(owner.kind) ? { owner: current.id(owner.id) } : {} }) + '\n' + nativeKey(id) + ': ' + quote('«' + (inspection.parent(item.id)?.kind === 'local' ? 'local ' : '') + kind + '»\n' + label + (item.origin.kind === 'external' ? '\nfrom ' + item.origin.module : '')) + ' {\n  shape: class\n'
       + contents.map(line => '  ' + line).join('\n') + '\n}');
   };
   for (const root of inspection.roots()) if (root.origin.kind === 'source') declaration(root);

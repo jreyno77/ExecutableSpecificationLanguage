@@ -569,7 +569,7 @@ function summarize(payload: Payload) returns Text`);
     diagrams.expectNoSequenceFiles();
   });
 
-  it('keeps each promise inside its component under the capability that declares it', async () => {
+  it('keeps promises grouped with their owning capability as compact static notes', async () => {
     const diagrams = await DiagramExamples.connect();
     diagrams.specify(`concept ResultsRelay {
   capability export() returns Nothing {
@@ -582,7 +582,6 @@ function summarize(payload: Payload) returns Text`);
     diagrams.expectPromiseSection('ResultsRelay', 'export', [
       'Creates a temporary backing file', 'Can support large results', 'Cleanup',
     ]);
-    diagrams.expectPromiseGeometryInside('ResultsRelay', 'export');
     diagrams.expectAllContainerTitlesAboveTheirContent();
     diagrams.expectNoDetachedPromiseNodes();
     diagrams.expectNoVisibleText('Unverified intent');
